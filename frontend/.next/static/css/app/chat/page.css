@@ -1,0 +1,261 @@
+/*!******************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[13].oneOf[9].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[9].use[3]!./node_modules/next/dist/build/webpack/loaders/resolve-url-loader/index.js??ruleSet[1].rules[13].oneOf[9].use[4]!./node_modules/next/dist/compiled/sass-loader/cjs.js??ruleSet[1].rules[13].oneOf[9].use[5]!./src/components/Sidebar.module.scss ***!
+  \******************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+/* Sidebar.module.scss */
+.Sidebar_sidebar__HYpoR {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 240px;
+  height: 100vh;
+  background-color: #f5f5f7;
+  display: flex;
+  flex-direction: column;
+  padding: 2rem 1.5rem;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
+  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.04);
+  z-index: 10;
+}
+
+.Sidebar_logo__kWqdj {
+  font-size: 24px;
+  font-weight: 800;
+  color: #111827;
+  margin-bottom: 2rem;
+}
+
+.Sidebar_nav__YylVO {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.Sidebar_navItem__plUhC {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: 500;
+  color: #374151;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.Sidebar_navItem__plUhC:hover {
+  background-color: #e5e7eb;
+}
+
+.Sidebar_active__ncUoD {
+  background-color: #374151;
+  color: #ffffff;
+  font-weight: 600;
+}
+/*!**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[13].oneOf[9].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[9].use[3]!./node_modules/next/dist/build/webpack/loaders/resolve-url-loader/index.js??ruleSet[1].rules[13].oneOf[9].use[4]!./node_modules/next/dist/compiled/sass-loader/cjs.js??ruleSet[1].rules[13].oneOf[9].use[5]!./src/components/ChatMessage.module.scss ***!
+  \**********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+.ChatMessage_messageWrapper__z2pUp {
+  display: flex;
+  margin-bottom: 12px;
+}
+
+.ChatMessage_user__0T7E0 {
+  justify-content: flex-end;
+}
+
+.ChatMessage_assistant__vF_2O {
+  justify-content: flex-start;
+}
+
+.ChatMessage_messageBubble__oMW37 {
+  max-width: 75%;
+  background-color: #f2f2f2;
+  padding: 12px 16px;
+  border-radius: 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.ChatMessage_user__0T7E0 .ChatMessage_messageBubble__oMW37 {
+  background-color: #d1eaff;
+  border-top-right-radius: 0;
+}
+
+.ChatMessage_assistant__vF_2O .ChatMessage_messageBubble__oMW37 {
+  margin-left: 280px;
+  padding: 2rem;
+  overflow-y: auto;
+  background-color: #eeeeee;
+  border-top-left-radius: 0;
+}
+/*!*************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[13].oneOf[9].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[9].use[3]!./node_modules/next/dist/build/webpack/loaders/resolve-url-loader/index.js??ruleSet[1].rules[13].oneOf[9].use[4]!./node_modules/next/dist/compiled/sass-loader/cjs.js??ruleSet[1].rules[13].oneOf[9].use[5]!./src/app/chat/chat.module.scss ***!
+  \*************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+@charset "UTF-8";
+.chat_container__H6II8 {
+  display: flex;
+  height: 100vh;
+  background-color: #f9f9fb;
+  font-family: "Helvetica Neue", "Arial", sans-serif;
+}
+
+.chat_mainContent__3H4tJ {
+  flex: 1 1;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow: hidden;
+  position: relative;
+}
+
+.chat_pageTitle__c3Zs7 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #222;
+}
+
+.chat_cardList__HPaCQ {
+  flex: 1 1;
+  overflow-y: auto;
+  padding-right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 80px;
+}
+
+.chat_inputWrapper__gd_0N {
+  position: fixed;
+  bottom: 24px;
+  left: 240px;
+  right: 260px;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+}
+
+.chat_inputField__90AhX {
+  flex: 1 1;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  resize: none;
+  overflow-y: auto;
+  /* ✅ 默认高度更高，自动增长 */
+  min-height: 64px;
+  max-height: 200px;
+  /* ✅ 自适应行数 */
+  height: auto;
+  /* ✅ 过高后可滚动 */
+  box-sizing: border-box;
+}
+
+.chat_inputField__90AhX:focus {
+  outline: none;
+  background-color: #fff;
+}
+
+.chat_submitButton___St9N {
+  background: #007aff;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.chat_submitButton___St9N:hover:not(:disabled) {
+  background: #005fd1;
+  transform: scale(1.05);
+}
+.chat_submitButton___St9N:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .chat_inputWrapper__gd_0N {
+    left: 0;
+    right: 0;
+    max-width: 100%;
+    margin: 0 16px;
+  }
+}
+.chat_submitButton___St9N:hover {
+  background: #005fd1;
+}
+
+.chat_submitButton___St9N:disabled {
+  background: #c0c0c0;
+  cursor: not-allowed;
+}
+
+.chat_errorText__YGY0I {
+  color: red;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* ✅ 聊天记录面板样式 */
+.chat_historyPanel__LNSjB {
+  width: 220px;
+  background-color: #ffffff;
+  border-left: 1px solid #e5e7eb;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat_historyHeader__YSslD {
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+}
+
+.chat_historyList__5GE8W {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1 1;
+  overflow-y: auto;
+}
+
+.chat_historyList__5GE8W li {
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+  color: #333;
+}
+
+.chat_historyList__5GE8W li:hover {
+  background-color: #f3f4f6;
+}
+
+.chat_activeHistory__xskmM {
+  background-color: #007aff;
+  color: white;
+  font-weight: 600;
+}

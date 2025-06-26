@@ -1,0 +1,174 @@
+.container {
+  display: flex;
+  height: 100vh;
+  background-color: #f9f9fb;
+  font-family: 'Helvetica Neue', 'Arial', sans-serif;
+}
+
+.mainContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow: hidden;
+  position: relative;
+}
+
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #222;
+}
+
+.cardList {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 80px;
+}
+
+.inputWrapper {
+  position: fixed;
+  bottom: 24px;
+  left: 240px;            // ✅ 左侧 Sidebar 宽度
+  right: 260px;           // ✅ 右侧聊天记录宽度（你设置的）
+  max-width: 720px;       // ✅ 更宽一点点，适配桌面主流显示器
+  margin: 0 auto;         // ✅ 居中效果（搭配 max-width 限制）
+  display: flex;
+  align-items: flex-end;  // ✅ 让输入框与发送按钮底部对齐
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 10px;    // ✅ 圆角适中
+  padding: 12px 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+}
+
+
+.inputField {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  resize: none;
+  overflow-y: auto;
+  //background-color: #f9f9fb;
+
+  /* ✅ 默认高度更高，自动增长 */
+  min-height: 64px;
+  max-height: 200px;
+
+  /* ✅ 自适应行数 */
+  height: auto;
+
+  /* ✅ 过高后可滚动 */
+  box-sizing: border-box;
+}
+
+.inputField:focus {
+  outline: none;
+  background-color: #fff;
+  //box-shadow: inset 0 0 0 2px #007aff22;
+}
+
+.submitButton {
+  background: #007aff;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;      // ✅ 更适合小尺寸圆角
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+  &:hover:not(:disabled) {
+    background: #005fd1;
+    transform: scale(1.05);
+  }
+
+  &:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+}
+
+@media (max-width: 768px) {
+  .inputWrapper {
+    left: 0;
+    right: 0;
+    max-width: 100%;
+    margin: 0 16px;
+  }
+}
+
+.submitButton:hover {
+  background: #005fd1;
+}
+
+.submitButton:disabled {
+  background: #c0c0c0;
+  cursor: not-allowed;
+}
+
+.errorText {
+  color: red;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* ✅ 聊天记录面板样式 */
+.historyPanel {
+  width: 220px;
+  background-color: #ffffff;
+  border-left: 1px solid #e5e7eb;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.historyHeader {
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+}
+
+.historyList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.historyList li {
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+  color: #333;
+}
+
+.historyList li:hover {
+  background-color: #f3f4f6;
+}
+
+.activeHistory {
+  background-color: #007aff;
+  color: white;
+  font-weight: 600;
+}

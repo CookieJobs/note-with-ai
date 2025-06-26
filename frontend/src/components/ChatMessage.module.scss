@@ -1,0 +1,37 @@
+.messageWrapper {
+    display: flex;
+    margin-bottom: 12px;
+  }
+  
+  .user {
+    justify-content: flex-end;
+  }
+  
+  .assistant {
+    justify-content: flex-start;
+  }
+  
+  .messageBubble {
+    max-width: 75%;
+    background-color: #f2f2f2;
+    padding: 12px 16px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  
+  .user .messageBubble {
+    background-color: #d1eaff;
+    border-top-right-radius: 0;
+  }
+  
+  .assistant .messageBubble {
+    margin-left: 280px; // 🧱 留出 Sidebar 空间
+    padding: 2rem;
+    overflow-y: auto;
+    background-color: #eeeeee;
+    border-top-left-radius: 0;
+  }
+  

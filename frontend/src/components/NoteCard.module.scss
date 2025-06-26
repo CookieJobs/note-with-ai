@@ -1,0 +1,84 @@
+/* NoteCard.module.scss */
+
+.card {
+    background-color: #f9f9fb;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    position: relative;
+    max-width: 700px;
+    word-wrap: break-word;
+  }
+  
+  .timestamp {
+    font-size: 12px;
+    color: #999999;
+    margin-bottom: 8px;
+    user-select: none;
+  }
+  
+  .title {
+    font-weight: 600;
+    font-size: 16px;
+    color: #222222;
+    margin-bottom: 8px;
+  }
+  
+  .content {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333333;
+    white-space: pre-wrap;
+  }
+  
+.keywords {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px; // 元素之间间距
+}
+
+.keyword {
+  background-color: #eef2f6;
+  color: #34495e;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border: 1px solid #dce3ea;
+
+  &:hover {
+    background-color: #d0e6ff;
+    color: #1a3d7c;
+  }
+}
+@media (max-width: 480px) {
+  .keywords {
+    gap: 6px;
+  }
+  .keyword {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+}
+  
+  .deleteBtn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: #888888;
+    font-size: 16px;
+    cursor: pointer;
+    transition: color 0.2s ease;
+  
+    &:hover {
+      color: #e03e2f;
+    }
+  }
+  
