@@ -1,26 +1,21 @@
 {
   "pages": {
-    "/notes/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/notes/page.css",
-      "static/chunks/app/notes/page.js"
-    ],
-    "/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/layout.js"
-    ],
     "/chat/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/css/app/chat/page.css",
       "static/chunks/app/chat/page.js"
     ],
-    "/for-me/page": [
+    "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/for-me/page.js"
+      "static/chunks/app/layout.js"
+    ],
+    "/notes/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/notes/page.css",
+      "static/chunks/app/notes/page.js"
     ]
   }
 }

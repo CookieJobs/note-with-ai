@@ -247,11 +247,12 @@
   cursor: pointer;
   font-size: 14px;
   transition: background-color 0.2s;
-  color: #333;
+  color: #ffffff;
 }
 
 .chat_historyList__5GE8W li:hover {
   background-color: #f3f4f6;
+  color: #212121;
 }
 
 .chat_activeHistory__xskmM {

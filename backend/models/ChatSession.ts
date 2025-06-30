@@ -1,15 +1,18 @@
 // backend/models/ChatSession.ts
 import mongoose from 'mongoose';
 
-const messageSchema = new mongoose.Schema({
-  role: { type: String, enum: ['user', 'assistant', 'system'], required: true },
-  content: { type: String, required: true },
+const MessageSchema = new mongoose.Schema({
+  role: { type: String, enum: ['user', 'assistant'], required: true },
+  content: { type: String, required: true }
 });
 
-const chatSessionSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  messages: [messageSchema],
-  createdAt: { type: Date, default: Date.now },
-});
+const ChatSessionSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    title: { type: String, required: true },
+    messages: [MessageSchema],
+  },
+  { timestamps: true }
+);
 
-export const ChatSession = mongoose.model('ChatSession', chatSessionSchema);
+export default mongoose.model('ChatSession', ChatSessionSchema);

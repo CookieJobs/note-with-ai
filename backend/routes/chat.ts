@@ -2,8 +2,46 @@
 import express from 'express';
 import { chatWithDeepSeek } from '../services/deepseek';
 import { ChatSession } from '../models/ChatSession';
+import { Chat } from '../models/Chat';
+import { saveChatSession, getChatSessions } from '../controllers/chatController';
 
 const router = express.Router();
+
+// 保存聊天记录
+router.post('/save', saveChatSession);
+
+// 获取所有聊天记录
+router.get('/list', getChatSessions);
+
+// 获取所有会话（根据 UUID）
+router.get('/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const sessions = await Chat.find({ userId }).sort({ createdAt: -1 });
+    res.json({ sessions });
+  } catch (err) {
+    res.status(500).json({ error: '获取聊天记录失败' });
+  }
+});
+
+// 保存一个新消息（更新指定会话）
+router.post('/save', async (req, res) => {
+  const { userId, sessionId, title, messages } = req.body;
+  try {
+    if (!sessionId) {
+      // 创建新会话
+      const chat = new Chat({ userId, title, messages });
+      await chat.save();
+      return res.status(201).json({ sessionId: chat._id });
+    } else {
+      // 更新已有会话
+      await Chat.findByIdAndUpdate(sessionId, { messages });
+      return res.status(200).json({ message: '更新成功' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: '保存聊天记录失败' });
+  }
+});
 
 // 获取所有会话（聊天记录）
 router.get('/sessions', async (req, res) => {
@@ -87,6 +125,33 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error('❌ 聊天接口错误:', error);
     res.status(500).json({ error: '聊天失败' });
+  }
+});
+
+// 获取用户历史聊天记录
+router.get('/history/:uuid', async (req, res) => {
+  const { uuid } = req.params;
+  try {
+    const sessions = await ChatSession.find({ uuid }).sort({ createdAt: -1 }).limit(10);
+    res.status(200).json(sessions);
+  } catch (err: any) {
+    res.status(500).json({ error: '获取聊天记录失败', detail: err.message });
+  }
+});
+
+// 创建或更新聊天记录
+router.post('/save', async (req, res) => {
+  const { uuid, messages } = req.body;
+  if (!uuid || !Array.isArray(messages)) {
+    return res.status(400).json({ error: '参数错误' });
+  }
+
+  try {
+    const session = new ChatSession({ uuid, messages });
+    await session.save();
+    res.status(201).json({ message: '保存成功', sessionId: session._id });
+  } catch (err: any) {
+    res.status(500).json({ error: '保存失败', detail: err.message });
   }
 });
 
