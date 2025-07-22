@@ -6,11 +6,15 @@ const MessageSchema = new mongoose.Schema({
   content: { type: String, required: true },
 });
 
-const ChatSchema = new mongoose.Schema({
-  userId: { type: String, required: true }, // 来自 localStorage 的 UUID
-  title: { type: String, required: true },
-  messages: [MessageSchema],
-  createdAt: { type: Date, default: Date.now },
-});
+const ChatSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    title: { type: String, required: true },
+    messages: [MessageSchema],
+  },
+  { timestamps: true }
+);
 
-export const Chat = mongoose.model('Chat', ChatSchema);
+// ✅ 正确导出 Chat 模型
+const Chat = mongoose.model('Chat', ChatSchema);
+export default Chat;

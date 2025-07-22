@@ -1,6 +1,6 @@
 // backend/controllers/chatController.ts
 import { Request, Response } from 'express';
-import ChatSession from '../models/ChatSession';
+import Chat from '../models/Chat';
 
 export const saveChatSession = async (req: Request, res: Response) => {
   try {
@@ -10,14 +10,14 @@ export const saveChatSession = async (req: Request, res: Response) => {
 
     if (sessionId) {
       // 更新已有对话
-      session = await ChatSession.findByIdAndUpdate(
+      session = await Chat.findByIdAndUpdate(
         sessionId,
         { title, messages },
         { new: true }
       );
     } else {
       // 新建对话
-      session = new ChatSession({ userId, title, messages });
+      session = new Chat({ userId, title, messages });
       await session.save();
     }
 
@@ -36,7 +36,15 @@ export const getChatSessions = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: '缺少 userId 参数' });
     }
 
-    const sessions = await ChatSession.find({ userId }).sort({ updatedAt: -1 });
+    const sessions = await Chat.find({ userId }).sort({ updatedAt: -1 }).lean();
+    
+    // 映射 _id 为 id，避免前端处理混乱
+    const formatted = sessions.map((s) => ({
+      ...s,
+      id: s._id.toString(), // 转换为字符串
+      _id: undefined,       // 可选：移除 _id 字段
+    }));
+    
     res.json({ success: true, sessions });
   } catch (err) {
     console.error('❌ 获取聊天记录失败:', err);
