@@ -39,6 +39,45 @@ export async function chatWithDeepSeek(messages: { role: 'user' | 'assistant' | 
 
 
 /**
+ * 为聊天对话生成标题
+ */
+export async function summarizeChatTitle(content: string): Promise<string> {
+  try {
+    const messages = [
+      {
+        role: 'system',
+        content: `你是一个对话摘要助手。请根据用户和AI最近一轮的问答内容，生成一个高度概括且简洁的中文标题（不超过15字），只返回标题本身，不要包含任何解释或多余内容。`
+      },
+      {
+        role: 'user',
+        content
+      }
+    ];
+    const response = await axios.post(
+      CHAT_URL,
+      {
+        model: 'deepseek-chat',
+        messages,
+        max_tokens: 50,
+        temperature: 0.1,
+        stream: false
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    const title = response.data.choices[0].message.content.trim();
+    return title || '未命名对话';
+  } catch (error: any) {
+    console.error('❌ summarizeChatTitle 解析失败：', error.message || error);
+    return '未命名对话';
+  }
+}
+
+/**
  * 为笔记生成标题和关键词
  */
 export async function summarizeNote(content: string): Promise<{ title: string; keywords: string[] }> {

@@ -247,7 +247,10 @@
   cursor: pointer;
   font-size: 14px;
   transition: background-color 0.2s;
-  color: #ffffff;
+  color: #212121;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .chat_historyList__5GE8W li:hover {
@@ -259,4 +262,105 @@
   background-color: #007aff;
   color: white;
   font-weight: 600;
+}
+
+.chat_deleteButton__gEVL6 {
+  background: transparent;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  opacity: 0.6;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat_deleteButton__gEVL6:hover {
+  opacity: 1;
+  color: #ff3b30;
+  background-color: rgba(255, 59, 48, 0.1);
+}
+
+.chat_activeHistory__xskmM .chat_deleteButton__gEVL6 {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.chat_activeHistory__xskmM .chat_deleteButton__gEVL6:hover {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.chat_confirmDialog__DJNkD {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.chat_confirmDialogContent__Ixt_G {
+  background-color: white;
+  border-radius: 12px;
+  padding: 24px;
+  width: 320px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.chat_confirmDialogTitle___mzn6 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.chat_confirmDialogMessage__fk6Xw {
+  font-size: 14px;
+  margin-bottom: 24px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.chat_confirmDialogButtons__853cp {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.chat_cancelButton__yFxcY {
+  background-color: #f1f1f1;
+  color: #333;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.chat_cancelButton__yFxcY:hover {
+  background-color: #e5e5e5;
+}
+
+.chat_confirmButton__6MO8h {
+  background-color: #ff3b30;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.chat_confirmButton__6MO8h:hover {
+  background-color: #e0352b;
 }

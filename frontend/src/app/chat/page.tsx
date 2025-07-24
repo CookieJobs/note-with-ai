@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Sidebar from '../../components/Sidebar';
 import ChatMessage from '../../components/ChatMessage';
 import styles from './chat.module.scss';
-import { getOrCreateUUID } from '../../utils/uuid';
+import { getOrCreateUUID, generateUUID } from '../../utils/uuid';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -13,9 +13,37 @@ interface Message {
 
 interface ChatSession {
   id: string;
+  _id?: string; // MongoDB 返回的 _id 字段
   title: string;
   messages: Message[];
 }
+
+// 确认弹窗组件
+interface ConfirmDialogProps {
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+const ConfirmDialog = ({ title, message, onConfirm, onCancel }: ConfirmDialogProps) => {
+  return (
+    <div className={styles.confirmDialog}>
+      <div className={styles.confirmDialogContent}>
+        <h3 className={styles.confirmDialogTitle}>{title}</h3>
+        <p className={styles.confirmDialogMessage}>{message}</p>
+        <div className={styles.confirmDialogButtons}>
+          <button className={styles.cancelButton} onClick={onCancel}>
+            取消
+          </button>
+          <button className={styles.confirmButton} onClick={onConfirm}>
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function ChatPage() {
   const [userId, setUserId] = useState<string | null>(null);
@@ -24,6 +52,14 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isClient, setIsClient] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<string>('');
+
+  // 确保只在客户端渲染
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const storageKey = userId ? `chat_sessions_${userId}` : '';
   const currentSession = sessions.find((s) => s.id === currentSessionId);
@@ -31,93 +67,305 @@ export default function ChatPage() {
 
   // ✅ 客户端生成 UUID
   useEffect(() => {
+    if (!isClient) return;
     const uuid = getOrCreateUUID();
     if (uuid) {
       setUserId(uuid);
     }
-  }, []);
+  }, [isClient]);
 
   // ✅ 获取本地存储 & 请求服务器记录
   useEffect(() => {
-    if (!userId) return;
-
+    if (!userId || !isClient) return;
+    console.log('🟠 useEffect[userId] 触发, userId:', userId);
     const storageKey = `chat_sessions_${userId}`;
     const local = localStorage.getItem(storageKey);
     const parsed: ChatSession[] = local ? JSON.parse(local) : [];
-    setSessions(parsed);
-    setCurrentSessionId(parsed[0]?.id || '');
+    console.log('🟠 useEffect[userId] 本地 parsed:', parsed);
+    
+    // 只有在没有会话或当前没有选中会话时，才设置默认选中的会话
+    if (sessions.length === 0) {
+      setSessions(parsed);
+      if (!currentSessionId && parsed.length > 0) {
+        console.log('🟠 设置默认选中的会话:', parsed[0]?.id);
+        setCurrentSessionId(parsed[0]?.id || '');
+      }
+    }
 
-    loadSessionsFromDB(userId, parsed);
-  }, [userId]);
+    // 如果当前正在创建新会话，则不加载服务器会话
+    if (currentSessionId && currentSessionId.startsWith('local_')) {
+      console.log('🟠 检测到正在创建新会话，跳过加载服务器会话');
+      return;
+    }
+    
+    // 添加防抖，避免频繁加载服务器会话
+    const timer = setTimeout(() => {
+      console.log('🟠 延迟加载服务器会话');
+      loadSessionsFromDB(userId, parsed);
+    }, 1000); // 延迟1秒加载
+    
+    return () => clearTimeout(timer); // 清除定时器
+  }, [userId, isClient]); // 移除currentSessionId依赖，避免频繁触发
+
+  // 添加调试日志，帮助排查问题
+  useEffect(() => {
+    if (!isClient) return;
+    console.log('🔍 当前sessions:', sessions);
+    console.log('🔍 当前currentSessionId:', currentSessionId);
+  }, [sessions, currentSessionId, isClient]);
 
   const loadSessionsFromDB = async (userId: string, localSessions: ChatSession[]) => {
     try {
       const res = await fetch(`/api/chat/list?userId=${userId}`);
       const data = await res.json();
-      if (data.sessions) {
-        const combined = [...data.sessions, ...localSessions];
-        setSessions(combined);
-        setCurrentSessionId(combined[0]?.id || '');
-        localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(combined));
+      console.log('🟣 loadSessionsFromDB 服务端 data.sessions:', data.sessions);
+      if (data.sessions && data.sessions.length > 0) {
+        // 服务器数据优先，过滤掉本地重复会话
+        const serverSessionIds = new Set(data.sessions.map((s: ChatSession) => s.id || s._id));
+        // 过滤掉本地会话中与服务器重复的会话，并且过滤掉本地无效会话（如空消息会话）
+        const filteredLocal = localSessions.filter(s => !serverSessionIds.has(s.id) && !serverSessionIds.has(s._id) && s.messages.length > 0);
+        const combined = [...data.sessions, ...filteredLocal];
+        // 去重合并后的会话，防止重复
+        const uniqueSessionsMap = new Map<string, ChatSession>();
+        combined.forEach(session => {
+          const id = session.id || session._id;
+          if (!uniqueSessionsMap.has(id)) {
+            uniqueSessionsMap.set(id, session);
+          }
+        });
+        const uniqueSessions = Array.from(uniqueSessionsMap.values());
+        console.log('🟣 loadSessionsFromDB 合并后的 uniqueSessions:', uniqueSessions);
+        
+        // 保存当前会话ID
+        const currentId = currentSessionId;
+        console.log('🟣 loadSessionsFromDB 更新前的 currentSessionId:', currentId);
+        
+        // 如果当前正在创建新会话，则不更新会话列表
+        if (currentId && currentId.startsWith('local_')) {
+          console.log('🟣 loadSessionsFromDB 检测到正在创建新会话，跳过更新会话列表');
+          return;
+        }
+        
+        // 保留当前会话的消息内容
+        let currentSessionMessages: Message[] = [];
+        if (currentId) {
+          const currentSession = sessions.find(s => s.id === currentId);
+          if (currentSession) {
+            currentSessionMessages = currentSession.messages;
+          }
+        }
+        
+        // 更新会话列表，但保留当前会话的消息内容
+        setSessions(prevSessions => {
+          // 如果有当前会话，确保保留其消息内容
+          const updatedSessions = uniqueSessions.map(s => {
+            if (s.id === currentId || s._id === currentId) {
+              return { ...s, messages: currentSessionMessages.length > 0 ? currentSessionMessages : s.messages };
+            }
+            return s;
+          });
+          
+          // 更新本地存储
+          localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updatedSessions));
+          
+          return updatedSessions;
+        });
+        
+        // 如果当前没有选中的会话，或者当前选中的会话不在新的会话列表中，才设置为第一个会话
+        if (!currentId || !uniqueSessions.some(s => (s.id === currentId || s._id === currentId))) {
+          const newCurrentId = uniqueSessions[0]?.id || uniqueSessions[0]?._id || '';
+          console.log('🟣 loadSessionsFromDB 设置新的 currentSessionId:', newCurrentId);
+          setCurrentSessionId(newCurrentId);
+        } else {
+          console.log('🟣 loadSessionsFromDB 保持当前 currentSessionId:', currentId);
+        }
       }
     } catch (err) {
       console.error('❌ 获取聊天记录失败:', err);
     }
   };
 
-  const saveSessionToDB = async (session: ChatSession) => {
+  const startNewSession = async () => {
+    if (!userId) return;
+    
+    // 使用本地ID前缀，以便识别正在创建的新会话
+    const localId = `local_${generateUUID()}`;
+    console.log('🔵 startNewSession 生成本地ID:', localId);
+    
+    const newSession: ChatSession = {
+      id: localId,
+      title: '新对话',
+      messages: [],
+    };
+    
+    // 先在本地更新会话状态
+    setSessions(prev => [newSession, ...prev]);
+    setCurrentSessionId(localId);
+    console.log('🔵 startNewSession 设置 currentSessionId:', localId);
+    
+    // 保存到数据库
     try {
+      const savedId = await saveSessionToDB(userId, newSession);
+      console.log('🔵 startNewSession 保存到数据库后返回的ID:', savedId);
+      
+      // 如果服务器返回的ID与本地ID不同，更新会话ID
+      if (savedId && savedId !== localId) {
+        console.log('🔵 startNewSession 更新本地ID为服务器ID:', savedId);
+        setSessions(prev => prev.map(s => 
+          s.id === localId ? { ...s, id: savedId } : s
+        ));
+        setCurrentSessionId(savedId);
+        
+        // 更新本地存储
+        const updatedSessions = sessions.map(s => 
+          s.id === localId ? { ...s, id: savedId } : s
+        );
+        localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updatedSessions));
+      }
+    } catch (error) {
+      console.error('❌ 创建新会话失败:', error);
+    }
+  };
+
+  const saveSessionToDB = async (userId: string, session: ChatSession): Promise<string> => {
+    try {
+      const isLocalId = session.id.startsWith('local_');
+      console.log('🟢 saveSessionToDB 开始保存会话:', session.id, '是本地ID:', isLocalId);
+      
       const res = await fetch('/api/chat/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           userId,
-          sessionId: session.id.startsWith('local_') ? null : session.id,
+          sessionId: isLocalId ? undefined : session.id, // 如果是本地ID，则不传给服务器
           title: session.title,
           messages: session.messages,
         }),
       });
-      const data = await res.json();
 
-      if (session.id.startsWith('local_') && data.sessionId) {
-        const updated = sessions.map((s) =>
-          s.id === session.id ? { ...s, id: data.sessionId } : s
-        );
-        setSessions(updated);
-        setCurrentSessionId(data.sessionId);
-        localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
+      const data = await res.json();
+      console.log('🟢 saveSessionToDB 服务器返回:', data);
+
+      if (data.success && data.sessionId) {
+        // 如果是本地ID，需要更新会话ID为服务器返回的ID
+        if (isLocalId && data.sessionId !== session.id) {
+          console.log('🟢 saveSessionToDB 本地ID需要更新为服务器ID:', data.sessionId);
+          
+          // 更新本地状态
+          setSessions(prevSessions => {
+            const updated = prevSessions.map(s => 
+              s.id === session.id ? { ...s, id: data.sessionId } : s
+            );
+            
+            // 更新本地存储
+            localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
+            
+            return updated;
+          });
+          
+          // 如果当前会话ID是被更新的会话ID，也需要更新currentSessionId
+          if (currentSessionId === session.id) {
+            console.log('🟢 saveSessionToDB 更新当前会话ID:', data.sessionId);
+            setCurrentSessionId(data.sessionId);
+          }
+          
+          return data.sessionId;
+        }
       }
-    } catch (err) {
-      console.error('❌ 保存聊天记录失败:', err);
+      
+      return session.id; // 如果没有更新ID，则返回原ID
+    } catch (error) {
+      console.error('❌ 保存会话失败:', error);
+      return session.id; // 出错时返回原ID
     }
   };
 
-  const startNewSession = () => {
-    const newId = 'local_' + Date.now();
-    const newSession: ChatSession = {
-      id: newId,
-      title: '新对话',
-      messages: [],
-    };
-    const updated = [newSession, ...sessions];
+  // 删除聊天记录
+  const deleteSession = async (sessionId: string) => {
+    try {
+      // 如果是本地会话，直接删除
+      if (sessionId.startsWith('local_')) {
+        removeSessionLocally(sessionId);
+        return;
+      }
+
+      // 发送删除请求到服务器
+      const res = await fetch(`/api/chat/delete/${sessionId}?userId=${userId}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        console.log('✅ 聊天记录已从服务器删除');
+        removeSessionLocally(sessionId);
+      } else {
+        const error = await res.json();
+        console.error('❌ 删除聊天记录失败:', error);
+        setError('删除失败，请稍后重试');
+      }
+    } catch (err) {
+      console.error('❌ 删除聊天记录失败:', err);
+      setError('删除失败，请稍后重试');
+    }
+  };
+
+  // 从本地移除会话
+  const removeSessionLocally = (sessionId: string) => {
+    const updated = sessions.filter((s) => s.id !== sessionId);
     setSessions(updated);
-    setCurrentSessionId(newId);
     localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
+
+    // 如果删除的是当前会话，切换到第一个会话
+    if (sessionId === currentSessionId) {
+      setCurrentSessionId(updated[0]?.id || '');
+    }
+  };
+
+  // 处理删除按钮点击
+  const handleDeleteClick = (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation(); // 阻止事件冒泡，避免触发会话选择
+    setSessionToDelete(sessionId);
+    setShowDeleteConfirm(true);
+  };
+
+  // 确认删除
+  const confirmDelete = () => {
+    if (sessionToDelete) {
+      deleteSession(sessionToDelete);
+      setShowDeleteConfirm(false);
+      setSessionToDelete('');
+    }
+  };
+
+  // 取消删除
+  const cancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setSessionToDelete('');
   };
 
   const handleSend = async () => {
-    console.log('🔁 input:', input, 'loading:', loading, 'currentSession:', currentSession);
-
+    console.log('🚦 handleSend 触发, input:', input, 'currentSession:', currentSession, 'loading:', loading);
     if (!input.trim()) {
-      console.warn('🚫 输入为空，未发送');
+      console.log('⚠️ 输入为空, 不发送');
       return;
     }
     if (!currentSession) {
-      console.warn('🚫 没有当前会话，未发送');
+      setError('当前会话不存在，无法发送消息');
+      console.log('❌ currentSession 不存在, 无法发送');
       return;
     }
-    const userMessage = { role: 'user', content: input };
-    const updatedMessages = [...currentSession.messages, userMessage];
+    if (!userId) {
+      setError('用户未初始化，无法发送消息');
+      console.log('❌ userId 不存在, 无法发送');
+      return;
+    }
+
+    // 确保消息的role严格为'user'或'assistant'
+    const userMessage: Message = { role: 'user', content: input };
+    const updatedMessages: Message[] = [...currentSession.messages, userMessage];
+
+    // 先更新本地状态
     updateSessionMessages(currentSession.id, updatedMessages);
     setInput('');
     setLoading(true);
@@ -127,14 +375,52 @@ export default function ChatPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages }),
+        body: JSON.stringify({ messages: updatedMessages, sessionId: currentSession.id }),
       });
       if (!res.ok) throw new Error('请求失败');
       const data = await res.json();
-      const assistantMessage = { role: 'assistant', content: data.reply };
-      const finalMessages = [...updatedMessages, assistantMessage];
+
+      // 确保返回消息的role为'assistant'
+      const assistantMessage: Message = { role: 'assistant', content: data.reply };
+      const finalMessages: Message[] = [...updatedMessages, assistantMessage];
+
+      // 更新本地状态
       updateSessionMessages(currentSession.id, finalMessages);
-      await saveSessionToDB({ ...currentSession, messages: finalMessages });
+
+      // 自动摘要并更新会话标题
+      try {
+        const summaryRes = await fetch('/api/chat/summarizeTitle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userContent: userMessage.content,
+            aiContent: assistantMessage.content
+          })
+        });
+        if (summaryRes.ok) {
+          const { title } = await summaryRes.json();
+          // 更新会话标题
+          setSessions(prevSessions => {
+            const updated = prevSessions.map(s =>
+              s.id === currentSession.id ? { ...s, title } : s
+            );
+            // 更新本地存储
+            localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
+            return updated;
+          });
+          
+          // 保存到数据库
+          const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages, title });
+          console.log('🚦 handleSend 保存会话后返回的ID:', newSessionId);
+        } else {
+          // 摘要失败也要保存消息
+          const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages });
+          console.log('🚦 handleSend 保存会话后返回的ID:', newSessionId);
+        }
+      } catch (e) {
+        const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages });
+        console.log('🚦 handleSend 保存会话后返回的ID:', newSessionId);
+      }
     } catch (err) {
       console.error(err);
       setError('发送失败，请稍后重试');
@@ -142,14 +428,38 @@ export default function ChatPage() {
       setLoading(false);
     }
   };
-
+  
   const updateSessionMessages = (sessionId: string, newMessages: Message[]) => {
-    const updated = sessions.map((s) =>
-      s.id === sessionId ? { ...s, messages: newMessages } : s
-    );
-    setSessions(updated);
-    localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
+    console.log('📝 updateSessionMessages 更新会话消息, sessionId:', sessionId, '新消息数量:', newMessages.length);
+    
+    // 创建一个新的会话数组，而不是直接修改原数组
+    setSessions(prevSessions => {
+      // 找到当前会话
+      const sessionToUpdate = prevSessions.find(s => s.id === sessionId);
+      if (!sessionToUpdate) {
+        console.log('📝 updateSessionMessages 未找到会话:', sessionId);
+        return prevSessions; // 如果找不到会话，返回原状态
+      }
+      
+      // 更新会话消息
+      const updated = prevSessions.map((s) =>
+        s.id === sessionId ? { ...s, messages: newMessages } : s
+      );
+      console.log('📝 updateSessionMessages 更新后的sessions数量:', updated.length);
+      
+      // 更新本地存储
+      if (userId) {
+        localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
+      }
+      
+      return updated;
+    });
   };
+
+  // 如果是服务端渲染，返回加载占位符
+  if (!isClient) {
+    return <div>Loading...</div>;
+  }
 
   if (!userId) return <div>🚀 正在初始化用户身份...</div>;
 
@@ -170,7 +480,10 @@ export default function ChatPage() {
             className={styles.inputField}
             placeholder="说点什么..."
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              console.log('📝 输入框内容变化:', e.target.value);
+            }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
               target.style.height = 'auto';
@@ -179,8 +492,8 @@ export default function ChatPage() {
             rows={1}
           />
           <button
-            onClick={()=>{
-              console.log('📨 点击了 Send 按钮');
+            onClick={() => {
+              console.log('📨 点击了 Send 按钮, 当前input:', input, 'loading:', loading, 'currentSession:', currentSession);
               handleSend();
             }}
             disabled={loading}
@@ -198,17 +511,35 @@ export default function ChatPage() {
           <button onClick={startNewSession}>➕</button>
         </div>
         <ul className={styles.historyList}>
-          {sessions.map((s) => (
-            <li
-              key={s.id}
-              className={s.id === currentSessionId ? styles.activeHistory : ''}
-              onClick={() => setCurrentSessionId(s.id)}
-            >
-              {s.title}
-            </li>
-          ))}
+          {isClient && sessions.map((s) => {
+            return (
+              <li
+                key={s.id}
+                className={s.id === currentSessionId ? styles.activeHistory : ''}
+                onClick={() => setCurrentSessionId(s.id)}
+              >
+                <span>{s.title}</span>
+                <button 
+                  className={styles.deleteButton}
+                  onClick={(e) => handleDeleteClick(e, s.id)}
+                >
+                  🗑️
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </aside>
+
+      {/* 删除确认弹窗 */}
+      {showDeleteConfirm && (
+        <ConfirmDialog
+          title="删除聊天记录"
+          message="确定要删除这个聊天记录吗？此操作不可恢复。"
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
+        />
+      )}
     </div>
   );
 }
