@@ -2,6 +2,7 @@
 import express from 'express';
 import { Note } from '../models/Note';
 import { summarizeNote, generateEmbedding } from '../services/deepseek';
+import { authenticateToken } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -9,32 +10,42 @@ router.get('/test', (req, res) => {
   res.json({ message: 'notes 路由已挂载' });
 });
 
-// 获取所有笔记，按创建时间倒序排列
-router.get('/', async (req, res) => {
+// 获取当前用户的所有笔记，按创建时间倒序排列
+router.get('/', authenticateToken, async (req, res): Promise<void> => {
   try {
-    const notes = await Note.find().sort({ createdAt: -1 });
-    res.status(200).json({ notes }); // ✅ 修改点
+    if (!req.user) {
+      res.status(401).json({ error: '未登录' });
+      return;
+    }
+    const notes = await Note.find({ userId: req.user.userId }).sort({ createdAt: -1 });
+    res.status(200).json({ notes });
   } catch (err: any) {
     res.status(500).json({ error: '获取笔记失败', detail: err.message || err });
   }
 });
 
 // 添加笔记
-router.post('/', async (req, res) => {
-  const { content } = req.body;
-  if (!content || typeof content !== 'string') {
-    return res.status(400).json({ error: '内容不能为空，且必须是字符串类型' });
-  }
-
+router.post('/', authenticateToken, async (req, res): Promise<void> => {
   try {
+    const { content } = req.body;
+    if (!content || typeof content !== 'string') {
+      res.status(400).json({ error: '内容不能为空，且必须是字符串类型' });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({ error: '未登录' });
+      return;
+    }
+
     // Step 1: 调用 AI 生成标题和关键词
     console.log('🌟 调用 AI 生成标题和关键词...');
     const { title, keywords } = await summarizeNote(content);
     console.log('✅ AI 返回标题和关键词：', title, keywords);
 
-    // Step 2: 存入数据库（embedding 之后再异步生成）
+    // Step 2: 存入数据库
     console.log('🌟 保存到数据库中...');
-    const note = new Note({ content, title, keywords });
+    const note = new Note({ content, title, keywords, userId: req.user.userId });
     const savedNote = await note.save();
     console.log('✅ 保存成功：', savedNote);
 
@@ -46,11 +57,22 @@ router.post('/', async (req, res) => {
 });
 
 // 删除笔记
-router.delete('/:id', async (req, res) => {
-  const { id } = req.params;
+router.delete('/:id', authenticateToken, async (req, res): Promise<void> => {
   try {
-    const result = await Note.findByIdAndDelete(id);
-    if (!result) return res.status(404).json({ error: '笔记不存在' });
+    const { id } = req.params;
+    
+    if (!req.user) {
+      res.status(401).json({ error: '未登录' });
+      return;
+    }
+
+    // 只能删除自己的笔记
+    const result = await Note.findOneAndDelete({ _id: id, userId: req.user.userId });
+    if (!result) {
+      res.status(404).json({ error: '笔记不存在或无权限删除' });
+      return;
+    }
+    
     res.status(200).json({ message: '笔记删除成功' });
   } catch (err: any) {
     console.error('❌ 删除笔记失败：', err.message || err);
@@ -58,14 +80,22 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-
 // 异步生成 embedding 接口
-router.post('/:id/embed', async (req, res) => {
-  const { id } = req.params;
-
+router.post('/:id/embed', authenticateToken, async (req, res): Promise<void> => {
   try {
-    const note = await Note.findById(id);
-    if (!note) return res.status(404).json({ error: '未找到该笔记' });
+    const { id } = req.params;
+
+    if (!req.user) {
+      res.status(401).json({ error: '未登录' });
+      return;
+    }
+
+    // 只能为自己的笔记生成embedding
+    const note = await Note.findOne({ _id: id, userId: req.user.userId });
+    if (!note) {
+      res.status(404).json({ error: '未找到该笔记或无权限访问' });
+      return;
+    }
 
     console.log('🌟 生成 embedding 中...');
     const embedding = await generateEmbedding(note.content);
@@ -81,14 +111,20 @@ router.post('/:id/embed', async (req, res) => {
 });
 
 // 聊天接口
-router.post('/chat', async (req, res) => {
-  const { messages } = req.body;
-
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: '消息内容无效' });
-  }
-
+router.post('/chat', authenticateToken, async (req, res): Promise<void> => {
   try {
+    const { messages } = req.body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      res.status(400).json({ error: '消息内容无效' });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({ error: '未登录' });
+      return;
+    }
+
     const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
       headers: {

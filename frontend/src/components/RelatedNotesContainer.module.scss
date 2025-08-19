@@ -1,0 +1,280 @@
+.relatedNotesContainer {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  margin: 16px 0;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+
+  &:hover {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.titleSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  font-size: 18px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.count {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.collapseButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  color: #64748b;
+
+  &:hover {
+    background: #f1f5f9;
+    color: #475569;
+  }
+}
+
+.collapseIcon {
+  display: inline-block;
+  transition: transform 0.3s ease;
+  font-size: 12px;
+
+  &.collapsed {
+    transform: rotate(-90deg);
+  }
+}
+
+.content {
+  max-height: 600px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+
+  &.collapsed {
+    max-height: 0;
+  }
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 20px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e2e8f0;
+  border-top: 2px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 20px;
+  color: #dc2626;
+  font-size: 14px;
+  background: #fef2f2;
+  border-left: 4px solid #dc2626;
+}
+
+.errorIcon {
+  font-size: 16px;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 20px;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.emptyIcon {
+  font-size: 16px;
+}
+
+.notesList {
+  padding: 8px 20px 20px;
+}
+
+.footer {
+  padding: 12px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #f1f5f9;
+  text-align: center;
+}
+
+.footerText {
+  font-size: 12px;
+  color: #64748b;
+  font-style: italic;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .relatedNotesContainer {
+    margin: 12px 0;
+    border-radius: 12px;
+  }
+
+  .header {
+    padding: 12px 16px;
+  }
+
+  .title {
+    font-size: 15px;
+  }
+
+  .count {
+    font-size: 13px;
+  }
+
+  .notesList {
+    padding: 6px 16px 16px;
+  }
+
+  .footer {
+    padding: 10px 16px;
+  }
+
+  .footerText {
+    font-size: 11px;
+  }
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .relatedNotesContainer {
+    background: rgba(30, 41, 59, 0.95);
+    border-color: #475569;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    border-bottom-color: #475569;
+  }
+
+  .title {
+    color: #f1f5f9;
+  }
+
+  .count {
+    color: #94a3b8;
+  }
+
+  .collapseButton {
+    color: #94a3b8;
+
+    &:hover {
+      background: #475569;
+      color: #cbd5e1;
+    }
+  }
+
+  .loading {
+    color: #94a3b8;
+  }
+
+  .spinner {
+    border-color: #475569;
+    border-top-color: #3b82f6;
+  }
+
+  .error {
+    background: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .empty {
+    color: #64748b;
+  }
+
+  .footer {
+    background: #1e293b;
+    border-top-color: #334155;
+  }
+
+  .footerText {
+    color: #94a3b8;
+  }
+}
+
+/* 动画效果 */
+.relatedNotesContainer {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 滚动条样式 */
+.content {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+
+    &:hover {
+      background: #94a3b8;
+    }
+  }
+}

@@ -1,0 +1,125 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { getUser, logout } from '../utils/auth';
+import styles from './TopNavigation.module.scss';
+
+const menuItems = [
+  { label: '笔记', href: '/notes' },
+  { label: '聊天', href: '/chat' },
+  { label: 'For me', href: '/for-me' },
+];
+
+export default function TopNavigation() {
+  const pathname = usePathname();
+  const [user, setUser] = useState<any>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
+  useEffect(() => {
+    const userData = getUser();
+    setUser(userData);
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    setShowUserMenu(false);
+  };
+
+  return (
+    <header className={styles.topNav}>
+      <div className={styles.container}>
+        {/* 左侧 Logo */}
+        <div className={styles.leftSection}>
+          <h1 className={styles.logo}>NoteWithAI</h1>
+        </div>
+
+        {/* 中间导航菜单 */}
+        <div className={styles.middleSection}>
+          <nav className={styles.nav}>
+            {menuItems.map(({ label, href }) => {
+              const isActive = pathname === href;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`${styles.navItem} ${isActive ? styles.active : ''}`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* 右侧用户信息 */}
+        <div className={styles.rightSection}>
+          {user && (
+            <div className={styles.userSection}>
+              <div 
+                className={styles.userInfo}
+                onClick={() => setShowUserMenu(!showUserMenu)}
+              >
+                <div className={styles.userAvatar}>
+                  {user.username.charAt(0).toUpperCase()}
+                </div>
+                <span className={styles.userName}>{user.username}</span>
+                <svg 
+                  className={`${styles.chevron} ${showUserMenu ? styles.chevronUp : ''}`}
+                  width="16" 
+                  height="16" 
+                  viewBox="0 0 24 24" 
+                  fill="none"
+                >
+                  <path 
+                    d="M6 9l6 6 6-6" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              
+              {showUserMenu && (
+                <div className={styles.userMenu}>
+                  <div className={styles.userMenuHeader}>
+                    <div className={styles.userAvatarLarge}>
+                      {user.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div className={styles.userDetails}>
+                      <span className={styles.userNameLarge}>{user.username}</span>
+                      <span className={styles.userEmail}>{user.email}</span>
+                    </div>
+                  </div>
+                  <div className={styles.userMenuDivider}></div>
+                  <button onClick={handleLogout} className={styles.logoutButton}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path 
+                        d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" 
+                        stroke="currentColor" 
+                        strokeWidth="2" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    退出账户
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* 点击外部关闭用户菜单 */}
+      {showUserMenu && (
+        <div 
+          className={styles.overlay} 
+          onClick={() => setShowUserMenu(false)}
+        />
+      )}
+    </header>
+  );
+}

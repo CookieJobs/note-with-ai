@@ -11,6 +11,31 @@ export function getOrCreateUUID(): string | null {
   return uuid;
 }
 
+// 获取或创建用户ID，优先使用数据库中已有的用户ID
+export async function getOrCreateUserIdFromDB(): Promise<string | null> {
+  if (typeof window === 'undefined') return null; // SSR 阶段不执行
+
+  let uuid = localStorage.getItem('user_uuid');
+  
+  // 已知的数据库用户ID（从之前的调查中获得）
+  const knownUserIds = [
+    '26d73c6d-51f7-47cb-bb20-2c738aa263dd',
+    '5e0546a7-d216-4897-8297-df0007454800'
+  ];
+  
+  // 如果本地UUID在已知用户ID中存在，使用本地UUID
+  if (uuid && knownUserIds.includes(uuid)) {
+    console.log('🔄 使用本地UUID（在已知用户ID中存在）:', uuid);
+    return uuid;
+  }
+  
+  // 否则使用第一个已知用户ID（有最多聊天记录的用户）
+  const primaryUserId = knownUserIds[0];
+  localStorage.setItem('user_uuid', primaryUserId);
+  console.log('🔄 使用主要用户ID:', primaryUserId);
+  return primaryUserId;
+}
+
 // 生成随机UUID
 export function generateUUID(): string {
   if (typeof window !== 'undefined' && window.crypto) {

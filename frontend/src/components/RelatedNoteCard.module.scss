@@ -1,0 +1,240 @@
+.relatedNoteCard {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #3b82f6;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px 0;
+  position: relative;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    border-left-color: #2563eb;
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4);
+    border-radius: 12px 12px 0 0;
+    opacity: 0.6;
+  }
+}
+
+.similarityBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.similarityDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.similarityText {
+  font-weight: 500;
+  color: #475569;
+}
+
+.similarityScore {
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  color: #334155;
+  font-size: 11px;
+}
+
+.noteContent {
+  margin-bottom: 12px;
+}
+
+.noteTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.4;
+}
+
+.noteText {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #475569;
+  margin: 0;
+  word-break: break-word;
+}
+
+.expandButton {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: #2563eb;
+  }
+}
+
+.expandIcon {
+  transition: transform 0.2s ease;
+  font-size: 10px;
+
+  &.expanded {
+    transform: rotate(180deg);
+  }
+}
+
+.keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.keyword {
+  background: #e0f2fe;
+  color: #0369a1;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid #bae6fd;
+}
+
+.keywordMore {
+  background: #f1f5f9;
+  color: #64748b;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid #e2e8f0;
+}
+
+.noteFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #64748b;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 8px;
+}
+
+.noteDate {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.noteSource {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-weight: 500;
+  border: 1px solid #fde68a;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .relatedNoteCard {
+    padding: 12px;
+    margin: 8px 0;
+  }
+
+  .noteTitle {
+    font-size: 13px;
+  }
+
+  .noteText {
+    font-size: 12px;
+  }
+
+  .keywords {
+    gap: 4px;
+  }
+
+  .keyword,
+  .keywordMore {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  .relatedNoteCard {
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    border-color: #475569;
+    color: #e2e8f0;
+
+    &:hover {
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+  }
+
+  .noteTitle {
+    color: #f1f5f9;
+  }
+
+  .noteText {
+    color: #cbd5e1;
+  }
+
+  .similarityText {
+    color: #94a3b8;
+  }
+
+  .similarityScore {
+    background: #475569;
+    color: #e2e8f0;
+  }
+
+  .keyword {
+    background: #1e40af;
+    color: #bfdbfe;
+    border-color: #3b82f6;
+  }
+
+  .keywordMore {
+    background: #475569;
+    color: #94a3b8;
+    border-color: #64748b;
+  }
+
+  .noteFooter {
+    border-top-color: #475569;
+    color: #94a3b8;
+  }
+
+  .noteSource {
+    background: #92400e;
+    color: #fbbf24;
+    border-color: #d97706;
+  }
+}

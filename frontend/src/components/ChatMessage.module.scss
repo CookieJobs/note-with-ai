@@ -1,37 +1,411 @@
 .messageWrapper {
-    display: flex;
-    margin-bottom: 12px;
+  margin-bottom: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: messageSlideIn 0.4s ease-out;
+}
+
+/* 用户消息卡片容器 */
+.userMessageCard {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+/* 用户消息样式 - 卡片形式，右对齐 */
+.userMessage {
+  background: linear-gradient(135deg, #e0f2fe, #bbdefb);
+  color: #1565c0;
+  padding: 12px 16px;
+  border-radius: 18px 18px 18px 18px;
+  max-width: 70%;
+  font-size: 15px;
+  line-height: 1.6;
+  word-wrap: break-word;
+  border: 1px solid rgba(33, 150, 243, 0.2);
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.1);
+  font-weight: 500;
+  position: relative;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent);
+    border-radius: inherit;
+    pointer-events: none;
+  }
+}
+
+/* AI消息样式 - 直接渲染，左对齐，无卡片 */
+.assistantMessage {
+  color: #2d3748;
+  font-size: 15px;
+  line-height: 1.7;
+  word-wrap: break-word;
+  font-weight: 400;
+  margin-left: 0;
+  margin-right: 0;
+  margin-bottom: 8px;
+  
+  /* 支持Markdown格式 */
+  p {
+    margin: 0 0 12px 0;
+    
+    &:last-child {
+      margin-bottom: 0;
+    }
   }
   
-  .user {
-    justify-content: flex-end;
+  h1, h2, h3, h4, h5, h6 {
+    margin: 16px 0 8px 0;
+    font-weight: 600;
+    color: #1a202c;
+    
+    &:first-child {
+      margin-top: 0;
+    }
   }
   
-  .assistant {
-    justify-content: flex-start;
+  ul, ol {
+    margin: 8px 0 12px 20px;
+    padding-left: 0;
   }
   
-  .messageBubble {
-    max-width: 75%;
-    background-color: #f2f2f2;
-    padding: 12px 16px;
-    border-radius: 18px;
+  li {
+    margin-bottom: 4px;
+  }
+  
+  blockquote {
+    border-left: 3px solid #e2e8f0;
+    padding-left: 16px;
+    margin: 12px 0;
+    color: #4a5568;
+    font-style: italic;
+  }
+  
+  code {
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    color: #d63384;
+  }
+  
+  pre {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 12px 0;
+    overflow-x: auto;
+    
+    code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #495057;
+    }
+  }
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 消息时间戳样式 */
+.messageTime {
+  font-size: 12px;
+  color: #a0aec0;
+  text-align: center;
+  margin: 8px 0;
+  font-weight: 500;
+}
+
+/* 消息状态指示器 */
+.messageStatus {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 4px;
+  gap: 4px;
+  
+  .statusIcon {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    
+    &.sending {
+      background: #fbbf24;
+      animation: pulse 1.5s infinite;
+    }
+    
+    &.sent {
+      background: #10b981;
+    }
+    
+    &.error {
+      background: #ef4444;
+    }
+  }
+  
+  .statusText {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 500;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 搜索中提示样式 */
+.searchingNotesContainer {
+  margin-top: 12px;
+  background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 12px;
+  padding: 12px 16px;
+  max-width: 75%;
+  animation: slideInUp 0.3s ease-out;
+}
+
+.searchingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.loadingDots {
+  display: flex;
+  gap: 4px;
+  
+  span {
+    width: 6px;
+    height: 6px;
+    background: #3b82f6;
+    border-radius: 50%;
+    animation: loadingPulse 1.4s infinite ease-in-out;
+    
+    &:nth-child(1) {
+      animation-delay: -0.32s;
+    }
+    
+    &:nth-child(2) {
+      animation-delay: -0.16s;
+    }
+    
+    &:nth-child(3) {
+      animation-delay: 0s;
+    }
+  }
+}
+
+.searchingText {
+  font-size: 13px;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+@keyframes loadingPulse {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* 相关笔记样式 */
+.relatedNotesContainer {
+  margin-top: 16px;
+  background: rgba(248, 250, 252, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  border-radius: 16px;
+  padding: 16px;
+  max-width: 75%;
+  animation: slideInUp 0.3s ease-out;
+}
+
+.relatedNotesHeader {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  &::before {
+    content: '';
+    width: 3px;
+    height: 16px;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    border-radius: 2px;
+  }
+}
+
+.relatedNotesList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.relatedNoteItem {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(226, 232, 240, 0.3);
+  border-radius: 12px;
+  padding: 14px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(59, 130, 246, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.noteHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.noteTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  flex: 1;
+  margin-right: 12px;
+}
+
+.noteSimilarity {
+  font-size: 12px;
+  font-weight: 500;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.noteContent {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #64748b;
+  margin-bottom: 8px;
+  word-wrap: break-word;
+}
+
+.noteFooter {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.noteDate {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .messageWrapper {
+    margin-bottom: 24px;
+  }
+  
+  .userMessage {
+    max-width: 85%;
     font-size: 14px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    padding: 14px 18px;
   }
   
-  .user .messageBubble {
-    background-color: #d1eaff;
-    border-top-right-radius: 0;
+  .assistantMessage {
+    font-size: 14px;
   }
   
-  .assistant .messageBubble {
-    margin-left: 280px; // 🧱 留出 Sidebar 空间
-    padding: 2rem;
-    overflow-y: auto;
-    background-color: #eeeeee;
-    border-top-left-radius: 0;
+  .relatedNotesContainer {
+    max-width: 90%;
   }
+  
+  .noteHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .noteSimilarity {
+    align-self: flex-end;
+  }
+}
+
+@media (max-width: 480px) {
+  .userMessage {
+    max-width: 90%;
+    font-size: 14px;
+    padding: 12px 16px;
+  }
+  
+  .assistantMessage {
+    font-size: 14px;
+  }
+}
   

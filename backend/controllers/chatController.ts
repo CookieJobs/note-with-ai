@@ -2,19 +2,29 @@
 import { Request, Response } from 'express';
 import Chat from '../models/Chat';
 
-export const saveChatSession = async (req: Request, res: Response) => {
+export const saveChatSession = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userId, sessionId, title, messages } = req.body;
+    if (!req.user) {
+      res.status(401).json({ success: false, message: '未登录' });
+      return;
+    }
+
+    const { sessionId, title, messages } = req.body;
+    const userId = req.user.userId;
 
     let session;
 
     if (sessionId) {
-      // 更新已有对话
-      session = await Chat.findByIdAndUpdate(
-        sessionId,
+      // 更新已有对话（确保只能更新自己的对话）
+      session = await Chat.findOneAndUpdate(
+        { _id: sessionId, userId },
         { title, messages },
         { new: true }
       );
+      if (!session) {
+        res.status(404).json({ success: false, message: '对话不存在或无权限' });
+        return;
+      }
     } else {
       // 新建对话
       session = new Chat({ userId, title, messages });
@@ -28,14 +38,14 @@ export const saveChatSession = async (req: Request, res: Response) => {
   }
 };
 
-export const getChatSessions = async (req: Request, res: Response) => {
+export const getChatSessions = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({ success: false, message: '缺少 userId 参数' });
+    if (!req.user) {
+      res.status(401).json({ success: false, message: '未登录' });
+      return;
     }
 
+    const userId = req.user.userId;
     const sessions = await Chat.find({ userId }).sort({ updatedAt: -1 }).lean();
     
     // 映射 _id 为 id，避免前端处理混乱
@@ -53,23 +63,26 @@ export const getChatSessions = async (req: Request, res: Response) => {
 };
 
 // 删除聊天记录
-export const deleteChatSession = async (req: Request, res: Response) => {
+export const deleteChatSession = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: '未登录' });
+      return;
+    }
+
     const { sessionId } = req.params;
-    const { userId } = req.query;
+    const userId = req.user.userId;
 
     if (!sessionId) {
-      return res.status(400).json({ success: false, message: '缺少 sessionId 参数' });
+      res.status(400).json({ success: false, message: '缺少 sessionId 参数' });
+      return;
     }
 
     // 确保只能删除自己的聊天记录
-    const session = await Chat.findOne({ _id: sessionId });
+    const session = await Chat.findOne({ _id: sessionId, userId });
     if (!session) {
-      return res.status(404).json({ success: false, message: '聊天记录不存在' });
-    }
-
-    if (session.userId !== userId) {
-      return res.status(403).json({ success: false, message: '无权删除此聊天记录' });
+      res.status(404).json({ success: false, message: '聊天记录不存在或无权限删除' });
+      return;
     }
 
     await Chat.findByIdAndDelete(sessionId);

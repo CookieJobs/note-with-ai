@@ -8,7 +8,7 @@ const MessageSchema = new mongoose.Schema({
 
 const ChatSchema = new mongoose.Schema(
   {
-    userId: { type: String, required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true },
     messages: [MessageSchema],
   },

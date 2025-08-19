@@ -1,108 +1,676 @@
-/* notes.module.scss */
+/* 现代化笔记页面样式 - 对标国际大厂设计 */
 
 .container {
   display: flex;
-  height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  background-color: #f5f5f7;
-  color: #222;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  flex-direction: column;
 }
 
 .mainContent {
-  margin-left: 270px; // 🧱 留出 Sidebar 空间
-  padding: 2rem;
-  overflow-y: auto;
-  min-height: 100vh;
   flex: 1;
-  background-color: #ffffff;
   display: flex;
   flex-direction: column;
-  padding: 24px 32px 80px 32px; /* 下边距80px留给底部输入框 */
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 80px 24px 0 24px; /* 为固定的顶部导航栏预留空间 */
+  position: relative;
+}
+
+/* 顶部导航栏 */
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32px 0 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(20px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.8);
+  margin: 0 -24px 32px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.titleSection {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
 }
 
 .pageTitle {
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 700;
-  margin-bottom: 24px;
-  color: #222;
-  user-select: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0;
+  letter-spacing: -0.5px;
 }
 
-.cardList {
-  flex-grow: 1;
-  overflow-y: auto;
-  padding-right: 4px; /* 给滚动条留点空间 */
-}
-
-.emptyText {
-  font-size: 16px;
-  color: #999999;
-  text-align: center;
-  margin-top: 48px;
-  user-select: none;
-}
-
-.inputWrapper {
-  position: fixed;
-  bottom: 16px;
-  right: 32px;
-  left: 280px; /* 留出 sidebar 宽度 */
-  background-color: white;
-  display: flex;
-  align-items: flex-start; /* 内容顶部对齐 */
-  padding: 8px 16px;
-  border-radius: 30px;
-  box-shadow: 0 2px 10px rgb(0 0 0 / 0.1);
-  gap: 12px;
-  z-index: 100;
-  border-radius: 10px;
-}
-
-.inputField {
-  width: 100%;
-  min-height: 80px;
-  max-height: 200px;
+.noteCount {
   font-size: 14px;
-  padding: 12px 16px;
-  border: 1px solid #ffffff; // 基础边框
-  border-radius: 10px;
-  resize: none;
-  overflow-y: auto;
-  line-height: 1.6;
-  //background-color: #f8fbff;
-  box-sizing: border-box;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  color: #6b7280;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 4px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
 
-  &:focus {
-    outline: none;
-    //border-color: #888;
-    //box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.05);
+.userSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.userAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.userInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.userName {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.logoutButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.15);
+    transform: translateY(-1px);
+  }
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* 内容区域容器 */
+.contentWrapper {
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* 写作区域 */
+.composeArea {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  position: sticky;
+  top: 80px; /* 为顶部导航栏预留空间 */
+  z-index: 50;
+
+  &.composing {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    border-color: rgba(102, 126, 234, 0.3);
+  }
+}
+
+.composeHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.composeIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.composeTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.composeInput {
+  width: 100%;
+  min-height: 60px;
+  max-height: 300px;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #1f2937;
+  background: transparent;
+  font-family: inherit;
+
+  &::placeholder {
+    color: #9ca3af;
+  }
+}
+
+.composeActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.composeHint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+
+  kbd {
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-family: monospace;
+  }
+}
+
+.composeButtons {
+  display: flex;
+  gap: 12px;
+}
+
+.cancelButton {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #6b7280;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
   }
 }
 
 .submitButton {
-  background-color: #007aff;
-  border: none;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  font-size: 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.buttonSpinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 错误提示 */
+.errorBanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  margin-bottom: 24px;
+  font-size: 14px;
+  font-weight: 500;
+
+  svg {
+    flex-shrink: 0;
+  }
+}
+
+/* 笔记容器 */
+.notesContainer {
+  flex: 1;
+}
+
+.notesList {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-bottom: 40px;
+}
+
+/* 笔记卡片样式 */
+.noteCard {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    border-color: rgba(102, 126, 234, 0.3);
+  }
+
+  &:active {
+    transform: translateY(-2px);
+  }
+}
+
+.noteHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.noteTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.4;
+  word-break: break-word;
+  flex: 1;
+  margin-right: 12px;
+}
+
+.noteActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.noteDate {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+  background: rgba(107, 114, 128, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.deleteButton {
   display: flex;
   align-items: center;
   justify-content: center;
-  user-select: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0.7;
 
-  &:disabled {
-    background-color: #a0caff;
-    cursor: not-allowed;
+  &:hover {
+    background: rgba(239, 68, 68, 0.2);
+    opacity: 1;
+    transform: scale(1.05);
   }
 
-  &:hover:not(:disabled) {
-    background-color: #005fcc;
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.noteContent {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #4b5563;
+  margin-bottom: 16px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.noteKeywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.keyword {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  color: #667eea;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+    border-color: rgba(102, 126, 234, 0.3);
+  }
+}
+
+.keywordMore {
+  background: rgba(107, 114, 128, 0.1);
+  color: #6b7280;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(107, 114, 128, 0.2);
+}
+
+.expandIndicator {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  font-size: 12px;
+  color: #667eea;
+  font-weight: 500;
+  background: rgba(102, 126, 234, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(102, 126, 234, 0.15);
+    border-color: rgba(102, 126, 234, 0.3);
+  }
+}
+
+/* 确认删除弹窗 */
+.confirmDialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.confirmDialogContent {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+  text-align: center;
+}
+
+.confirmIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+
+.confirmTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 12px 0;
+}
+
+.confirmMessage {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+  margin: 0 0 24px 0;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.cancelButton {
+  padding: 10px 20px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #6b7280;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+
+  &:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+  }
+}
+
+.confirmButton {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+
+  &:hover {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+  }
+}
+
+/* 空状态 */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+}
+
+.emptyIcon {
+  width: 120px;
+  height: 120px;
+  margin-bottom: 24px;
+  opacity: 0.6;
+}
+
+.emptyTitle {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+
+.emptyDescription {
+  font-size: 16px;
+  color: #6b7280;
+  line-height: 1.5;
+  max-width: 400px;
+}
+
+/* 响应式设计 */
+/* 中等屏幕适配 */
+@media (max-width: 1024px) {
+  .container {
+    /* 通过流式布局适配，无需固定留白 */
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+    margin-left: 0;
+    padding-top: 60px; /* 为移动端菜单按钮留出空间 */
+  }
+
+  .mainContent {
+    padding: 80px 16px 0 16px; /* 为固定的顶部导航栏预留空间 */
+  }
+
+  .topBar {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+    margin: 0 -16px 24px;
+    padding: 16px;
+  }
+
+  .titleSection {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .pageTitle {
+    font-size: 28px;
+  }
+
+  .userSection {
+    align-self: flex-end;
+  }
+
+  .composeArea {
+    padding: 20px;
+    margin-bottom: 24px;
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .composeActions {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .composeButtons {
+    justify-content: flex-end;
+  }
+
+  .notesList {
+    gap: 16px;
+    max-width: none;
+    margin: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .mainContent {
+    padding: 80px 12px 0 12px; /* 为固定的顶部导航栏预留空间 */
+  }
+
+  .topBar {
+    margin: 0 -12px 20px;
+    padding: 12px;
+  }
+
+  .pageTitle {
+    font-size: 24px;
+  }
+
+  .composeArea {
+    padding: 16px;
+  }
+
+  .composeInput {
+    font-size: 16px; /* 防止 iOS 缩放 */
   }
 }
