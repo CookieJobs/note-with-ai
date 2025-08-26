@@ -1,7 +1,7 @@
 .relatedNoteCard {
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border: 1px solid #e2e8f0;
-  border-left: 4px solid #3b82f6;
+  border-left: 4px solid rgb(23,112,232);
   border-radius: 12px;
   padding: 16px;
   margin: 12px 0;
@@ -12,7 +12,7 @@
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-    border-left-color: #2563eb;
+    border-left-color: rgb(23,112,232);
   }
 
   &::before {
@@ -22,7 +22,7 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4);
+    background: linear-gradient(90deg, rgb(23,112,232), rgb(23,112,232), rgb(23,112,232));
     border-radius: 12px 12px 0 0;
     opacity: 0.6;
   }
@@ -84,7 +84,7 @@
 .expandButton {
   background: none;
   border: none;
-  color: #3b82f6;
+  color: rgb(23,112,232);
   font-size: 12px;
   cursor: pointer;
   padding: 4px 0;
@@ -95,7 +95,7 @@
   transition: color 0.2s ease;
 
   &:hover {
-    color: #2563eb;
+    color: rgba(23,112,232,0.8);
   }
 }
 
@@ -116,13 +116,13 @@
 }
 
 .keyword {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: rgba(23,112,232,0.1);
+  color: rgb(23,112,232);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 11px;
   font-weight: 500;
-  border: 1px solid #bae6fd;
+  border: 1px solid rgba(23,112,232,0.2);
 }
 
 .keywordMore {
@@ -216,9 +216,9 @@
   }
 
   .keyword {
-    background: #1e40af;
-    color: #bfdbfe;
-    border-color: #3b82f6;
+    background: rgba(23,112,232,0.2);
+    color: rgba(23,112,232,0.9);
+    border-color: rgba(23,112,232,0.3);
   }
 
   .keywordMore {

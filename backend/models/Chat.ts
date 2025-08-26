@@ -15,6 +15,20 @@ const ChatSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// 数据库索引优化
+// 1. 用户ID索引 - 提升按用户查询聊天会话的性能
+ChatSchema.index({ userId: 1 });
+
+// 2. 复合索引 - 优化按用户和时间查询
+ChatSchema.index({ userId: 1, updatedAt: -1 });
+
+// 3. 时间索引 - 提升按时间排序的查询性能
+ChatSchema.index({ createdAt: -1 });
+ChatSchema.index({ updatedAt: -1 });
+
+// 4. 标题文本索引 - 支持聊天标题搜索
+ChatSchema.index({ title: 'text' });
+
 // ✅ 正确导出 Chat 模型
 const Chat = mongoose.model('Chat', ChatSchema);
 export default Chat;

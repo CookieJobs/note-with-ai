@@ -25,6 +25,7 @@ interface NoteCardProps {
 const ModernNoteCard = ({ note, onDelete }: NoteCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAllKeywords, setShowAllKeywords] = useState(false);
   
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -72,13 +73,21 @@ const ModernNoteCard = ({ note, onDelete }: NoteCardProps) => {
         
         {note.keywords && note.keywords.length > 0 && (
           <div className={styles.noteKeywords}>
-            {note.keywords.slice(0, 3).map((keyword, index) => (
+            {(showAllKeywords ? note.keywords : note.keywords.slice(0, 3)).map((keyword, index) => (
               <span key={index} className={styles.keyword}>
                 {keyword}
               </span>
             ))}
             {note.keywords.length > 3 && (
-              <span className={styles.keywordMore}>+{note.keywords.length - 3}</span>
+              <span 
+                className={styles.keywordMore}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAllKeywords(!showAllKeywords);
+                }}
+              >
+                {showAllKeywords ? '收起' : `+${note.keywords.length - 3}`}
+              </span>
             )}
           </div>
         )}
@@ -177,14 +186,14 @@ export default function NotesPage() {
         if (!res.ok) throw new Error(`请求失败: ${res.status}`);
         return res.json();
       })
-      .then((data) => {
-        console.log('📝 /api/notes 返回内容:', data);
+      .then((response) => {
+        console.log('📝 /api/notes 返回内容:', response);
 
-        // 正确地提取 notes 字段
-        if (Array.isArray(data.notes)) {
-          setNotes(data.notes);
+        // 后端返回格式: {success: true, message: string, data: {notes: Note[]}}
+        if (response.success && response.data && Array.isArray(response.data.notes)) {
+          setNotes(response.data.notes);
         } else {
-          console.warn('⚠️ /api/notes 返回格式错误:', data);
+          console.warn('⚠️ /api/notes 返回格式错误:', response);
           setNotes([]);
         }
       })
@@ -289,100 +298,102 @@ export default function NotesPage() {
         {/*   </div> */}
         {/* </header> */}
 
-        <div className={styles.contentWrapper}>
-          {/* 写作区域 */}
-          <div className={`${styles.composeArea} ${isComposing ? styles.composing : ''}`}>
-            <div className={styles.composeHeader}>
-              <div className={styles.composeIcon}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              <span className={styles.composeTitle}>记录新想法</span>
-            </div>
-            
-            <textarea
-              ref={textareaRef}
-              className={styles.composeInput}
-              placeholder="有什么想法要记录吗？支持 Cmd/Ctrl + Enter 快速提交"
-              value={newContent}
-              onFocus={() => setIsComposing(true)}
-              onBlur={() => !newContent.trim() && setIsComposing(false)}
-              onChange={(e) => {
-                setNewContent(e.target.value);
-                adjustTextareaHeight();
-              }}
-              onKeyDown={handleKeyDown}
-            />
-            
-            {(isComposing || newContent.trim()) && (
-              <div className={styles.composeActions}>
-                <div className={styles.composeHint}>
-                  <kbd>⌘</kbd> + <kbd>Enter</kbd> 快速提交
-                </div>
-                <div className={styles.composeButtons}>
-                  <button
-                    className={styles.cancelButton}
-                    onClick={() => {
-                      setNewContent('');
-                      setIsComposing(false);
-                      if (textareaRef.current) {
-                        textareaRef.current.style.height = 'auto';
-                      }
-                    }}
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={loading || !newContent.trim()}
-                    className={styles.submitButton}
-                  >
-                    {loading ? (
-                      <div className={styles.buttonSpinner}></div>
-                    ) : (
-                      <>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                          <line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          <polygon points="22,2 15,22 11,13 2,9 22,2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        发布
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 错误提示 */}
-          {error && (
-            <div className={styles.errorBanner}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" strokeWidth="2"/>
-                <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" strokeWidth="2"/>
+        {/* 写作区域 - 紧贴topbar */}
+        <div className={`${styles.composeArea} ${isComposing ? styles.composing : ''}`}>
+          <div className={styles.composeHeader}>
+            <div className={styles.composeIcon}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              {error}
+            </div>
+            <span className={styles.composeTitle}>记录新想法</span>
+          </div>
+          
+          <textarea
+            ref={textareaRef}
+            className={styles.composeInput}
+            placeholder="有什么想法要记录吗？支持 Cmd/Ctrl + Enter 快速提交"
+            value={newContent}
+            onFocus={() => setIsComposing(true)}
+            onBlur={() => !newContent.trim() && setIsComposing(false)}
+            onChange={(e) => {
+              setNewContent(e.target.value);
+              adjustTextareaHeight();
+            }}
+            onKeyDown={handleKeyDown}
+          />
+          
+          {(isComposing || newContent.trim()) && (
+            <div className={styles.composeActions}>
+              <div className={styles.composeHint}>
+                <kbd>⌘</kbd> + <kbd>Enter</kbd> 快速提交
+              </div>
+              <div className={styles.composeButtons}>
+                <button
+                  className={styles.cancelButton}
+                  onClick={() => {
+                    setNewContent('');
+                    setIsComposing(false);
+                    if (textareaRef.current) {
+                      textareaRef.current.style.height = 'auto';
+                    }
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={loading || !newContent.trim()}
+                  className={styles.submitButton}
+                >
+                  {loading ? (
+                    <div className={styles.buttonSpinner}></div>
+                  ) : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <polygon points="22,2 15,22 11,13 2,9 22,2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      发布
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           )}
+        </div>
 
+        {/* 错误提示 */}
+        {error && (
+          <div className={styles.errorBanner}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+              <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" strokeWidth="2"/>
+              <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" strokeWidth="2"/>
+            </svg>
+            {error}
+          </div>
+        )}
+
+        <div className={styles.contentWrapper}>
           {/* 笔记列表 */}
-          <div className={styles.notesContainer}>
-            {notes.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <div className={styles.notesList}>
-                {notes.map((note) => (
-                  <ModernNoteCard
-                    key={note._id}
-                    note={note}
-                    onDelete={handleDelete}
-                  />
-                ))}
-              </div>
-            )}
+          <div className={styles.notesScrollContainer}>
+            <div className={styles.notesContainer}>
+              {notes.length === 0 ? (
+                <EmptyState />
+              ) : (
+                <div className={styles.notesList}>
+                  {notes.map((note) => (
+                    <ModernNoteCard
+                      key={note._id}
+                      note={note}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>

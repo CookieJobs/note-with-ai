@@ -248,7 +248,7 @@ export default function ForMePage() {
       <TopNavigation />
       <main className={styles.mainContent}>
         <div className={styles.header}>
-          <h1 className={styles.title}>🎯 For Me</h1>
+          <h1 className={styles.title}>For Me</h1>
           <p className={styles.subtitle}>基于你的笔记内容，为你推荐相关文章</p>
         </div>
 
@@ -322,9 +322,10 @@ export default function ForMePage() {
               </div>
             </div>
 
-            <div className={styles.notesList}>
-              {data.map((note) => (
-                <div key={note.id} className={styles.noteCard}>
+            <div className={styles.notesScrollContainer}>
+              <div className={styles.notesList}>
+                {data.map((note) => (
+                  <div key={note.id} className={styles.noteCard}>
                   <div className={styles.noteHeader}>
                     <h3 className={styles.noteTitle}>{note.title}</h3>
                     <button
@@ -438,6 +439,7 @@ export default function ForMePage() {
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           </>
         )}

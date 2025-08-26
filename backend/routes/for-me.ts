@@ -3,6 +3,8 @@ import { Note } from '../models/Note';
 import { extractSearchKeywords } from '../services/deepseek';
 import { searchArticlesForNote } from '../services/search';
 import { authenticateToken } from '../middleware/auth';
+import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandler';
+import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import crypto from 'crypto';
 
 const router = express.Router();
@@ -91,14 +93,15 @@ const generateRecommendationReason = (article: any, keywords: string[]): string 
 };
 
 // GET /api/for-me - 获取当前用户笔记的推荐文章
-router.get('/', authenticateToken, async (req: any, res: any) => {
-  try {
-    // 获取当前用户的笔记
-    const notes = await Note.find({ userId: req.user.userId }).sort({ createdAt: -1 });
-    
-    if (notes.length === 0) {
-      return res.json([]);
-    }
+router.get('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const user = await UserValidator.authenticateUser(req);
+  
+  // 获取当前用户的笔记
+  const notes = await Note.find({ userId: user._id }).sort({ createdAt: -1 });
+  
+  if (notes.length === 0) {
+    return ResponseHandler.success(res, []);
+  }
 
     // 为每个笔记生成推荐文章
     const notesWithArticles = await Promise.all(
@@ -154,17 +157,13 @@ router.get('/', authenticateToken, async (req: any, res: any) => {
       })
     );
 
-    res.json(notesWithArticles);
-  } catch (error) {
-    console.error('获取 For Me 数据失败:', error);
-    res.status(500).json({ error: '服务器内部错误' });
-  }
-});
+    return ResponseHandler.success(res, notesWithArticles);
+  }));
 
 // POST /api/for-me/refresh/:noteId - 刷新特定笔记的推荐文章
-router.post('/refresh/:noteId', authenticateToken, async (req: any, res: any) => {
-  try {
-    const { noteId } = req.params;
+router.post('/refresh/:noteId', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const user = await UserValidator.authenticateUser(req);
+  const { noteId } = req.params;
     
     // 查找当前用户的笔记
     const note = await Note.findOne({ _id: noteId, userId: req.user.userId });
@@ -207,11 +206,7 @@ router.post('/refresh/:noteId', authenticateToken, async (req: any, res: any) =>
       articles: sortedArticles
     };
 
-    res.json(updatedNote);
-  } catch (error) {
-    console.error('刷新笔记文章失败:', error);
-    res.status(500).json({ error: '服务器内部错误' });
-  }
-});
+    return ResponseHandler.success(res, updatedNote);
+  }));
 
 export default router;

@@ -2,8 +2,9 @@
 
 .container {
   display: flex;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  height: 100vh;
+  overflow: hidden;
+  background: rgb(230, 241, 255);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
   flex-direction: column;
 }
@@ -16,6 +17,10 @@
   margin: 0 auto;
   padding: 80px 24px 0 24px; /* 为固定的顶部导航栏预留空间 */
   position: relative;
+  width: 100%; /* 确保占满可用宽度 */
+  box-sizing: border-box; /* 包含padding在宽度内 */
+  overflow: hidden;
+  min-height: 0; /* 确保flex子元素可以收缩 */
 }
 
 /* 顶部导航栏 */
@@ -42,14 +47,15 @@
 }
 
 .pageTitle {
-  font-size: 32px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin: 0;
-  letter-spacing: -0.5px;
+  font-size: 32px;// 标题字体大小
+  font-weight: 700;// 加粗
+  //background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-color: rgb(23,112,232);
+  -webkit-background-clip: text;// 文字背景裁剪
+  -webkit-text-fill-color: transparent;// 文字填充颜色透明  
+  background-clip: text;// 文字背景裁剪
+  margin: 0;// 移除默认外边距
+  letter-spacing: -0.5px;// 字间距
 }
 
 .noteCount {
@@ -72,7 +78,7 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-color: rgb(23,112,232);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -124,6 +130,11 @@
   max-width: 800px;
   margin: 0 auto;
   width: 100%;
+  min-width: 0; /* 确保在flex容器中正确收缩 */
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0; /* 确保flex子元素可以收缩 */
 }
 
 /* 写作区域 */
@@ -137,8 +148,13 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
   position: sticky;
-  top: 80px; /* 为顶部导航栏预留空间 */
+  top: 16px; /* 为顶部导航栏预留空间 */
   z-index: 50;
+  max-width: 800px; /* 与笔记卡片保持相同宽度 */
+  margin-left: auto; /* 居中对齐 */
+  margin-right: auto; /* 居中对齐 */
+  width: 100%; /* 确保占满容器宽度 */
+  box-sizing: border-box; /* 包含padding和border在宽度内 */
 
   &.composing {
     transform: translateY(-2px);
@@ -158,7 +174,8 @@
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  //background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-color: rgb(23,112,232);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -179,10 +196,11 @@
   outline: none;
   resize: none;
   font-size: 16px;
-  line-height: 1.6;
+  line-height: 2.0;
   color: #1f2937;
   background: transparent;
   font-family: inherit;
+  box-sizing: border-box; /* 确保padding和border包含在width内 */
 
   &::placeholder {
     color: #9ca3af;
@@ -242,7 +260,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: rgb(23, 112, 232);
   color: white;
   border: none;
   border-radius: 8px;
@@ -250,11 +268,12 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px rgba(23, 112, 232, 0.3);
 
   &:hover:not(:disabled) {
+    background: rgba(23, 112, 232, 0.9);
     transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 6px 16px rgba(23, 112, 232, 0.4);
   }
 
   &:disabled {
@@ -302,9 +321,59 @@
   }
 }
 
+/* 笔记滚动容器 */
+.notesScrollContainer {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 将滚动条推到容器外侧，不占用内容宽度：只保留负外边距 */
+  padding-right: 0;
+  margin-right: -12px;
+  scroll-behavior: smooth;
+  min-height: 0; /* 确保flex子元素可以收缩 */
+  background: rgb(230, 241, 255); /* 与页面背景色保持一致 */
+  
+  /* 自定义滚动条样式 - Webkit */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.3);
+    border-radius: 3px;
+    transition: all 0.2s ease;
+    
+    &:hover {
+      background: rgba(148, 163, 184, 0.5);
+    }
+    
+    &:active {
+      background: rgba(148, 163, 184, 0.7);
+    }
+  }
+  
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  
+  /* Firefox 滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
 /* 笔记容器 */
 .notesContainer {
   flex: 1;
+  max-width: 800px; /* 与 composeArea 保持一致 */
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .notesList {
@@ -312,6 +381,7 @@
   flex-direction: column;
   gap: 24px;
   padding-bottom: 40px;
+  background: rgb(230, 241, 255);
 }
 
 /* 笔记卡片样式 */
@@ -320,8 +390,9 @@
   border-radius: 16px;
   padding: 20px;
   border: 1px solid rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
   transition: all 0.3s ease;
   cursor: pointer;
   position: relative;
@@ -329,8 +400,8 @@
 
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-    border-color: rgba(102, 126, 234, 0.3);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.10);
+    border-color: rgba(102, 126, 234, 0.25);
   }
 
   &:active {
@@ -414,18 +485,18 @@
 }
 
 .keyword {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-  color: #667eea;
+  background: rgba(23, 112, 232, 0.1);
+  color: rgb(23,112,232);
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
-  border: 1px solid rgba(102, 126, 234, 0.2);
+  border: 1px solid rgba(23, 112, 232, 0.2);
   transition: all 0.2s ease;
 
   &:hover {
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
-    border-color: rgba(102, 126, 234, 0.3);
+    background: rgba(23, 112, 232, 0.15);
+    border-color: rgba(23, 112, 232, 0.3);
   }
 }
 
@@ -437,6 +508,19 @@
   font-size: 11px;
   font-weight: 500;
   border: 1px solid rgba(107, 114, 128, 0.2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  
+  &:hover {
+    background: rgba(23, 112, 232, 0.1);
+    color: rgb(23, 112, 232);
+    border-color: rgba(23, 112, 232, 0.3);
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
 }
 
 .expandIndicator {
@@ -444,17 +528,17 @@
   bottom: 12px;
   right: 16px;
   font-size: 12px;
-  color: #667eea;
+  color: rgb(23,112,232);
   font-weight: 500;
-  background: rgba(102, 126, 234, 0.1);
+  background: rgba(23, 112, 232, 0.1);
   padding: 4px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(102, 126, 234, 0.2);
+  border: 1px solid rgba(23, 112, 232, 0.2);
   transition: all 0.2s ease;
 
   &:hover {
-    background: rgba(102, 126, 234, 0.15);
-    border-color: rgba(102, 126, 234, 0.3);
+    background: rgba(23, 112, 232, 0.15);
+    border-color: rgba(23, 112, 232, 0.3);
   }
 }
 
@@ -604,6 +688,21 @@
   .mainContent {
     padding: 80px 16px 0 16px; /* 为固定的顶部导航栏预留空间 */
   }
+  
+  .notesScrollContainer {
+    padding-right: 0; /* 不占用内容宽度 */
+    margin-right: -8px; /* 与桌面端策略一致，避免占用内容宽度 */
+    
+    /* 移动端滚动条样式调整 */
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+  }
+
+  .contentWrapper {
+    max-width: none; /* 移动端移除最大宽度限制 */
+    width: 100%;
+  }
 
   .topBar {
     flex-direction: column;
@@ -657,6 +756,29 @@
     padding: 80px 12px 0 12px; /* 为固定的顶部导航栏预留空间 */
   }
 
+  .contentWrapper {
+    max-width: none; /* 小屏幕移除最大宽度限制 */
+    width: 100%;
+  }
+  
+  .notesScrollContainer {
+    padding-right: 0; /* 不占用内容宽度 */
+    margin-right: -6px; /* 保持滚动条不占用内容宽度 */
+    
+    /* 小屏幕滚动条样式 */
+    &::-webkit-scrollbar {
+      width: 3px;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.1);
+      
+      &:hover {
+        background: rgba(0, 0, 0, 0.2);
+      }
+    }
+  }
+
   .topBar {
     margin: 0 -12px 20px;
     padding: 12px;
@@ -672,5 +794,7 @@
 
   .composeInput {
     font-size: 16px; /* 防止 iOS 缩放 */
+    width: 100%;
+    min-width: 0; /* 确保在小屏幕上正确显示 */
   }
 }

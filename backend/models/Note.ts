@@ -12,5 +12,21 @@ const NoteSchema = new mongoose.Schema(
   { timestamps: true } // 自动添加 createdAt 和 updatedAt 字段
 );
 
+// 数据库索引优化
+// 1. 用户ID索引 - 提升按用户查询笔记的性能
+NoteSchema.index({ userId: 1 });
+
+// 2. 复合索引 - 优化有向量的笔记查询
+NoteSchema.index({ userId: 1, embedding: 1 });
+
+// 3. 时间索引 - 提升按时间排序的查询性能
+NoteSchema.index({ createdAt: -1 });
+
+// 4. 文本索引 - 支持全文搜索
+NoteSchema.index({ title: 'text', content: 'text' });
+
+// 5. 关键词索引 - 提升关键词搜索性能
+NoteSchema.index({ keywords: 1 });
+
 // 防止模型重复注册（热更新或多次引入时）
 export const Note = mongoose.models.Note || mongoose.model('Note', NoteSchema);

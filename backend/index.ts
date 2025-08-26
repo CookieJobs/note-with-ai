@@ -11,6 +11,9 @@ import recommendRoutes from './routes/recommend';
 import forMeRoutes from './routes/for-me';
 import authRoutes from './routes/auth';
 import healthRoutes from './routes/health';
+import cacheRoutes from './routes/cache';
+import performanceRoutes from './routes/performance';
+import { globalErrorHandler } from './utils/errorHandler';
 
 dotenv.config();
 
@@ -38,7 +41,12 @@ app.use('/api/notes', noteRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/recommend', recommendRoutes);
 app.use('/api/for-me', forMeRoutes);
+app.use('/api/cache', cacheRoutes);
+app.use('/api/performance', performanceRoutes);
 app.use('/api', healthRoutes);
+
+// 全局错误处理中间件（必须在所有路由之后）
+app.use(globalErrorHandler);
 
 // ✅ 启动服务
 mongoose

@@ -3,6 +3,9 @@ import express from 'express';
 import { Note } from '../models/Note';
 import { summarizeNote, generateEmbedding } from '../services/deepseek';
 import { authenticateToken } from '../middleware/auth';
+import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandler';
+import { UserValidator, ResourceValidator } from '../utils/userValidation';
+import { DeepSeekApiClient } from '../utils/apiClient';
 
 const router = express.Router();
 
@@ -11,142 +14,88 @@ router.get('/test', (req, res) => {
 });
 
 // 获取当前用户的所有笔记，按创建时间倒序排列
-router.get('/', authenticateToken, async (req, res): Promise<void> => {
-  try {
-    if (!req.user) {
-      res.status(401).json({ error: '未登录' });
-      return;
-    }
-    const notes = await Note.find({ userId: req.user.userId }).sort({ createdAt: -1 });
-    res.status(200).json({ notes });
-  } catch (err: any) {
-    res.status(500).json({ error: '获取笔记失败', detail: err.message || err });
-  }
-});
+router.get('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const user = await UserValidator.authenticateUser(req);
+  
+  const notes = await Note.find({ userId: user._id }).sort({ createdAt: -1 });
+  ResponseHandler.success(res, { notes }, '获取笔记成功');
+}));
 
 // 添加笔记
-router.post('/', authenticateToken, async (req, res): Promise<void> => {
-  try {
-    const { content } = req.body;
-    if (!content || typeof content !== 'string') {
-      res.status(400).json({ error: '内容不能为空，且必须是字符串类型' });
-      return;
-    }
-
-    if (!req.user) {
-      res.status(401).json({ error: '未登录' });
-      return;
-    }
-
-    // Step 1: 调用 AI 生成标题和关键词
-    console.log('🌟 调用 AI 生成标题和关键词...');
-    const { title, keywords } = await summarizeNote(content);
-    console.log('✅ AI 返回标题和关键词：', title, keywords);
-
-    // Step 2: 存入数据库
-    console.log('🌟 保存到数据库中...');
-    const note = new Note({ content, title, keywords, userId: req.user.userId });
-    const savedNote = await note.save();
-    console.log('✅ 保存成功：', savedNote);
-
-    res.status(201).json(savedNote);
-  } catch (err: any) {
-    console.error('❌ 保存失败：', err.message || err);
-    res.status(500).json({ error: '保存笔记失败', detail: err.message || err });
+router.post('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const { content } = req.body;
+  
+  if (!content || typeof content !== 'string') {
+    throw ErrorHandler.createValidationError('内容不能为空，且必须是字符串类型');
   }
-});
+
+  const user = await UserValidator.authenticateUser(req);
+
+  // Step 1: 调用 AI 生成标题和关键词
+  console.log('🌟 调用 AI 生成标题和关键词...');
+  const { title, keywords } = await summarizeNote(content);
+  console.log('✅ AI 返回标题和关键词：', title, keywords);
+
+  // Step 2: 存入数据库
+  console.log('🌟 保存到数据库中...');
+  const note = new Note({ content, title, keywords, userId: user._id });
+  const savedNote = await note.save();
+  console.log('✅ 保存成功：', savedNote);
+
+  ResponseHandler.success(res, savedNote, '笔记创建成功', 201);
+}));
 
 // 删除笔记
-router.delete('/:id', authenticateToken, async (req, res): Promise<void> => {
-  try {
-    const { id } = req.params;
-    
-    if (!req.user) {
-      res.status(401).json({ error: '未登录' });
-      return;
-    }
+router.delete('/:id', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const { id } = req.params;
+  const user = await UserValidator.authenticateUser(req);
 
-    // 只能删除自己的笔记
-    const result = await Note.findOneAndDelete({ _id: id, userId: req.user.userId });
-    if (!result) {
-      res.status(404).json({ error: '笔记不存在或无权限删除' });
-      return;
-    }
-    
-    res.status(200).json({ message: '笔记删除成功' });
-  } catch (err: any) {
-    console.error('❌ 删除笔记失败：', err.message || err);
-    res.status(500).json({ error: '删除笔记失败', detail: err.message || err });
+  // 验证资源所有权并删除
+  await ResourceValidator.validateOwnership(Note, id, user._id.toString(), '笔记');
+  
+  const result = await Note.findByIdAndDelete(id);
+  if (!result) {
+    throw ErrorHandler.createNotFoundError('笔记删除失败');
   }
-});
+  
+  ResponseHandler.success(res, null, '笔记删除成功');
+}));
 
 // 异步生成 embedding 接口
-router.post('/:id/embed', authenticateToken, async (req, res): Promise<void> => {
-  try {
-    const { id } = req.params;
+router.post('/:id/embed', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const { id } = req.params;
+  const user = await UserValidator.authenticateUser(req);
 
-    if (!req.user) {
-      res.status(401).json({ error: '未登录' });
-      return;
-    }
+  // 验证资源所有权
+  const note = await ResourceValidator.validateOwnership(Note, id, user._id.toString(), '笔记');
 
-    // 只能为自己的笔记生成embedding
-    const note = await Note.findOne({ _id: id, userId: req.user.userId });
-    if (!note) {
-      res.status(404).json({ error: '未找到该笔记或无权限访问' });
-      return;
-    }
+  const embedding = await generateEmbedding(note.content);
+  note.embedding = embedding;
+  await note.save();
+  console.log('✅ embedding 保存成功');
 
-    console.log('🌟 生成 embedding 中...');
-    const embedding = await generateEmbedding(note.content);
-    note.embedding = embedding;
-    await note.save();
-    console.log('✅ embedding 保存成功');
-
-    res.status(200).json({ message: 'embedding 生成成功', embedding });
-  } catch (err: any) {
-    console.error('❌ embedding 生成失败：', err.message || err);
-    res.status(500).json({ error: 'embedding 生成失败', detail: err.message || err });
-  }
-});
+  ResponseHandler.success(res, { embedding }, 'embedding 生成成功');
+}));
 
 // 聊天接口
-router.post('/chat', authenticateToken, async (req, res): Promise<void> => {
-  try {
-    const { messages } = req.body;
+router.post('/chat', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const { messages } = req.body;
 
-    if (!Array.isArray(messages) || messages.length === 0) {
-      res.status(400).json({ error: '消息内容无效' });
-      return;
-    }
-
-    if (!req.user) {
-      res.status(401).json({ error: '未登录' });
-      return;
-    }
-
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages,
-        temperature: 0.7,
-        stream: false
-      })
-    });
-
-    const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content || 'AI 没有返回结果';
-
-    res.status(200).json({ reply });
-  } catch (err: any) {
-    console.error('❌ 聊天接口调用失败：', err.message || err);
-    res.status(500).json({ error: 'AI 回复失败', detail: err.message || err });
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw ErrorHandler.createValidationError('消息内容无效');
   }
-});
+
+  await UserValidator.authenticateUser(req);
+
+  const apiClient = new DeepSeekApiClient(process.env.DEEPSEEK_API_KEY!);
+  const data = await apiClient.chatCompletion(messages, {
+    temperature: 0.7,
+    stream: false
+  });
+
+  const reply = data.choices?.[0]?.message?.content || 'AI 没有返回结果';
+
+  ResponseHandler.success(res, { reply }, '聊天成功');
+}));
 
 export default router;

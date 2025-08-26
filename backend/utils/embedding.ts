@@ -123,47 +123,108 @@ export async function generateQwenEmbeddingBatch(
 }
 
 // 向量缓存配置
-const CACHE_MAX_SIZE = 1000; // 最大缓存条目数
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 缓存过期时间：24小时
+const CACHE_MAX_SIZE = parseInt(process.env.EMBEDDING_CACHE_SIZE || '2000'); // 增加缓存大小
+const CACHE_TTL = parseInt(process.env.EMBEDDING_CACHE_TTL || '7200000'); // 2小时
+const CACHE_CLEANUP_INTERVAL = parseInt(process.env.CACHE_CLEANUP_INTERVAL || '1800000'); // 30分钟清理一次
 
 interface CacheItem {
   embedding: number[];
   timestamp: number;
+  accessCount: number;
+  lastAccessed: number;
 }
+
+// 缓存统计
+interface CacheStats {
+  hits: number;
+  misses: number;
+  totalRequests: number;
+  hitRate: number;
+  cacheSize: number;
+}
+
+let cacheStats: CacheStats = {
+  hits: 0,
+  misses: 0,
+  totalRequests: 0,
+  hitRate: 0,
+  cacheSize: 0
+};
 
 // 向量缓存
 const embeddingCache = new Map<string, CacheItem>();
 
+// 定期清理过期缓存
+setInterval(() => {
+  cleanExpiredCache();
+  console.log(`🧹 缓存清理完成，当前缓存条目: ${embeddingCache.size}`);
+}, CACHE_CLEANUP_INTERVAL);
+
 // 缓存清理函数
 function cleanExpiredCache() {
   const now = Date.now();
-  const expiredKeys: string[] = [];
+  let cleanedCount = 0;
   
   for (const [key, item] of embeddingCache.entries()) {
     if (now - item.timestamp > CACHE_TTL) {
-      expiredKeys.push(key);
+      embeddingCache.delete(key);
+      cleanedCount++;
     }
   }
   
-  expiredKeys.forEach(key => embeddingCache.delete(key));
-  
-  if (expiredKeys.length > 0) {
-    console.log(`🧹 清理了 ${expiredKeys.length} 个过期的缓存条目`);
+  if (cleanedCount > 0) {
+    console.log(`🗑️ 清理了 ${cleanedCount} 个过期缓存条目`);
   }
+  
+  cacheStats.cacheSize = embeddingCache.size;
 }
 
-// 缓存大小管理
+// 智能缓存大小管理 - 使用LRU策略
 function manageCacheSize() {
   if (embeddingCache.size > CACHE_MAX_SIZE) {
-    // 删除最旧的条目
+    // 使用LRU策略删除最少使用的条目
     const entries = Array.from(embeddingCache.entries());
-    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+    entries.sort((a, b) => {
+      // 优先删除访问次数少且时间久的条目
+      const scoreA = a[1].accessCount / (Date.now() - a[1].lastAccessed + 1);
+      const scoreB = b[1].accessCount / (Date.now() - b[1].lastAccessed + 1);
+      return scoreA - scoreB;
+    });
     
-    const toDelete = entries.slice(0, embeddingCache.size - CACHE_MAX_SIZE + 100); // 多删除一些，避免频繁清理
-    toDelete.forEach(([key]) => embeddingCache.delete(key));
+    const toDelete = Math.floor(CACHE_MAX_SIZE * 0.2); // 删除20%的条目
+    const deletedEntries = entries.slice(0, toDelete);
+    deletedEntries.forEach(([key]) => embeddingCache.delete(key));
     
-    console.log(`📦 缓存大小管理：删除了 ${toDelete.length} 个最旧的缓存条目`);
+    console.log(`📦 缓存大小管理: 删除了 ${toDelete} 个条目，当前大小: ${embeddingCache.size}`);
   }
+  
+  cacheStats.cacheSize = embeddingCache.size;
+}
+
+// 获取缓存统计信息
+export function getCacheStats(): CacheStats {
+  cacheStats.hitRate = cacheStats.totalRequests > 0 
+    ? (cacheStats.hits / cacheStats.totalRequests) * 100 
+    : 0;
+  cacheStats.cacheSize = embeddingCache.size;
+  return { ...cacheStats };
+}
+
+// 清理所有缓存
+export function clearCache(): void {
+  const previousSize = embeddingCache.size;
+  embeddingCache.clear();
+  
+  // 重置统计信息
+  cacheStats = {
+    hits: 0,
+    misses: 0,
+    totalRequests: 0,
+    hitRate: 0,
+    cacheSize: 0
+  };
+  
+  console.log(`🗑️ 手动清理了所有缓存，清理了 ${previousSize} 个条目`);
 }
 
 export async function getCachedQwenEmbedding(
@@ -172,26 +233,39 @@ export async function getCachedQwenEmbedding(
 ): Promise<number[]> {
   const cacheKey = `qwen_${dimensions}_${hashText(text)}`;
   
-  // 清理过期缓存
-  cleanExpiredCache();
+  // 更新统计
+  cacheStats.totalRequests++;
   
   // 检查内存缓存
   const cachedItem = embeddingCache.get(cacheKey);
   if (cachedItem) {
-    console.log('🎯 命中向量缓存');
+    // 更新访问信息
+    cachedItem.accessCount++;
+    cachedItem.lastAccessed = Date.now();
+    
+    cacheStats.hits++;
+    console.log(`🎯 命中向量缓存 (命中率: ${((cacheStats.hits / cacheStats.totalRequests) * 100).toFixed(1)}%)`);
     return cachedItem.embedding;
   }
+  
+  // 缓存未命中
+  cacheStats.misses++;
   
   // 生成新向量并缓存
   const embedding = await generateQwenEmbedding(text, dimensions);
   if (embedding.length > 0) {
+    const now = Date.now();
     embeddingCache.set(cacheKey, {
       embedding,
-      timestamp: Date.now()
+      timestamp: now,
+      accessCount: 1,
+      lastAccessed: now
     });
     
     // 管理缓存大小
     manageCacheSize();
+    
+    console.log(`💾 新向量已缓存 (缓存大小: ${embeddingCache.size}/${CACHE_MAX_SIZE})`);
   }
   
   return embedding;

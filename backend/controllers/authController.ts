@@ -2,6 +2,8 @@
 import { Request, Response } from 'express';
 import User from '../models/User';
 import { generateToken } from '../utils/jwt';
+import { UserValidator } from '../utils/userValidation';
+import { ResponseHandler, ErrorHandler } from '../utils/errorHandler';
 
 // 用户注册
 export const register = async (req: Request, res: Response) => {
@@ -9,20 +11,15 @@ export const register = async (req: Request, res: Response) => {
     const { username, email, password } = req.body;
 
     // 验证必填字段
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: '用户名、邮箱和密码都是必填项' });
-    }
+    UserValidator.validateUserInput(req.body, ['username', 'email', 'password']);
+    
+    // 验证格式
+    UserValidator.validateUsernameFormat(username);
+    UserValidator.validateEmailFormat(email);
+    UserValidator.validatePasswordStrength(password);
 
-    // 检查用户名是否已存在
-    const existingUser = await User.findOne({
-      $or: [{ username }, { email }]
-    });
-
-    if (existingUser) {
-      return res.status(400).json({ 
-        error: existingUser.username === username ? '用户名已存在' : '邮箱已被注册' 
-      });
-    }
+    // 检查唯一性
+    await UserValidator.validateUniqueness(username, email);
 
     // 创建新用户
     const user = new User({ username, email, password });
@@ -35,21 +32,16 @@ export const register = async (req: Request, res: Response) => {
       email: user.email
     });
 
-    res.status(201).json({
-      success: true,
-      message: '注册成功',
+    ResponseHandler.success(res, {
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-        createdAt: user.createdAt
-      }
-    });
+      user: UserValidator.formatUserResponse(user)
+    }, '注册成功', 201);
   } catch (error) {
+    if (error instanceof Error && error.message.includes('已存在')) {
+      throw ErrorHandler.createValidationError(error.message);
+    }
     console.error('注册失败:', error);
-    res.status(500).json({ error: '注册失败，请稍后重试' });
+    throw ErrorHandler.createInternalError('注册失败，请稍后重试');
   }
 };
 
@@ -59,9 +51,7 @@ export const login = async (req: Request, res: Response) => {
     const { username, password } = req.body;
 
     // 验证必填字段
-    if (!username || !password) {
-      return res.status(400).json({ error: '用户名和密码都是必填项' });
-    }
+    UserValidator.validateUserInput(req.body, ['username', 'password']);
 
     // 查找用户（支持用户名或邮箱登录）
     const user = await User.findOne({
@@ -69,18 +59,18 @@ export const login = async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      return res.status(401).json({ error: '用户名或密码错误' });
+      throw ErrorHandler.createAuthenticationError('用户名或密码错误');
     }
 
     // 验证密码
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
-      return res.status(401).json({ error: '用户名或密码错误' });
+      throw ErrorHandler.createAuthenticationError('用户名或密码错误');
     }
 
     // 检查用户是否被禁用
     if (!user.isActive) {
-      return res.status(401).json({ error: '账号已被禁用' });
+      throw ErrorHandler.createAuthorizationError('账号已被禁用');
     }
 
     // 生成token
@@ -90,103 +80,64 @@ export const login = async (req: Request, res: Response) => {
       email: user.email
     });
 
-    res.json({
-      success: true,
-      message: '登录成功',
+    ResponseHandler.success(res, {
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-        createdAt: user.createdAt
-      }
-    });
+      user: UserValidator.formatUserResponse(user)
+    }, '登录成功');
   } catch (error) {
     console.error('登录失败:', error);
-    res.status(500).json({ error: '登录失败，请稍后重试' });
+    throw ErrorHandler.createInternalError('登录失败，请稍后重试');
   }
 };
 
 // 获取当前用户信息
 export const getCurrentUser = async (req: Request, res: Response) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: '未登录' });
-    }
-
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ error: '用户不存在' });
-    }
-
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-        createdAt: user.createdAt
-      }
+    const user = await UserValidator.authenticateUser(req);
+    
+    ResponseHandler.success(res, {
+      user: UserValidator.formatUserResponse(user)
     });
   } catch (error) {
     console.error('获取用户信息失败:', error);
-    res.status(500).json({ error: '获取用户信息失败' });
+    throw ErrorHandler.createInternalError('获取用户信息失败');
   }
 };
 
 // 更新用户信息
 export const updateProfile = async (req: Request, res: Response) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: '未登录' });
+    const user = await UserValidator.authenticateUser(req);
+    const { username, email, avatar } = req.body;
+    
+    // 验证格式
+    if (username) UserValidator.validateUsernameFormat(username);
+    if (email) UserValidator.validateEmailFormat(email);
+
+    // 如果要更新用户名或邮箱，检查是否已存在
+    if (username && username !== user.username) {
+      await UserValidator.validateUniqueness(username, undefined, user._id.toString());
     }
 
-    const { username, email, avatar } = req.body;
-    const userId = req.user.userId;
-
-    // 检查用户名和邮箱是否被其他用户使用
-    if (username || email) {
-      const existingUser = await User.findOne({
-        _id: { $ne: userId },
-        $or: [
-          ...(username ? [{ username }] : []),
-          ...(email ? [{ email }] : [])
-        ]
-      });
-
-      if (existingUser) {
-        return res.status(400).json({ 
-          error: existingUser.username === username ? '用户名已存在' : '邮箱已被使用' 
-        });
-      }
+    if (email && email !== user.email) {
+      await UserValidator.validateUniqueness(undefined, email, user._id.toString());
     }
 
     // 更新用户信息
-    const updateData: any = {};
-    if (username) updateData.username = username;
-    if (email) updateData.email = email;
-    if (avatar !== undefined) updateData.avatar = avatar;
+    if (username) user.username = username;
+    if (email) user.email = email;
+    if (avatar !== undefined) user.avatar = avatar;
 
-    const user = await User.findByIdAndUpdate(userId, updateData, { new: true });
-    if (!user) {
-      return res.status(404).json({ error: '用户不存在' });
-    }
+    await user.save();
 
-    res.json({
-      success: true,
-      message: '更新成功',
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-        createdAt: user.createdAt
-      }
-    });
+    ResponseHandler.success(res, {
+      user: UserValidator.formatUserResponse(user)
+    }, '用户信息更新成功');
   } catch (error) {
+    if (error instanceof Error && error.message.includes('已存在')) {
+      throw ErrorHandler.createValidationError(error.message);
+    }
     console.error('更新用户信息失败:', error);
-    res.status(500).json({ error: '更新失败，请稍后重试' });
+    throw ErrorHandler.createInternalError('更新用户信息失败');
   }
 };

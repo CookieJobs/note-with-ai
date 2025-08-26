@@ -1,44 +1,25 @@
 // backend/services/deepseek.ts
-import axios from 'axios';
 import dotenv from 'dotenv';
+import { DeepSeekApiClient } from '../utils/apiClient';
 
 dotenv.config();
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
-const CHAT_URL = 'https://api.deepseek.com/v1/chat/completions';
+if (!DEEPSEEK_API_KEY) {
+  throw new Error('DEEPSEEK_API_KEY environment variable is required');
+}
+
+// 创建DeepSeek API客户端实例
+const deepSeekClient = new DeepSeekApiClient(DEEPSEEK_API_KEY);
 
 /**
  * 与 DeepSeek 聊天模型对话
  */
 export async function chatWithDeepSeek(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<string> {
-  try {
-    const response = await axios.post(
-      CHAT_URL,
-      {
-        model: 'deepseek-chat',
-        messages,
-        temperature: 0.7,
-        max_tokens: 1024,
-        stream: false
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const reply = response.data.choices?.[0]?.message?.content?.trim();
-    if (!reply) {
-      throw new Error('未收到模型回复');
-    }
-    return reply;
-  } catch (error: any) {
-    console.error('❌ chatWithDeepSeek 调用失败:', error.message || error);
-    // 抛出错误而不是返回错误字符串
-    throw new Error(`DeepSeek API 调用失败: ${error.message || error}`);
-  }
+  return await deepSeekClient.chatCompletion(messages, {
+    temperature: 0.7,
+    max_tokens: 1024
+  });
 }
 
 
@@ -57,24 +38,11 @@ export async function summarizeChatTitle(content: string): Promise<string> {
         content
       }
     ];
-    const response = await axios.post(
-      CHAT_URL,
-      {
-        model: 'deepseek-chat',
-        messages,
-        max_tokens: 50,
-        temperature: 0.1,
-        stream: false
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    const title = response.data.choices[0].message.content.trim();
-    return title || '未命名对话';
+    
+    return await deepSeekClient.chatCompletion(messages, {
+      max_tokens: 50,
+      temperature: 0.1
+    });
   } catch (error: any) {
     console.error('❌ summarizeChatTitle 解析失败：', error.message || error);
     return '未命名对话';
@@ -101,25 +69,11 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
         }
       ];
   
-      const response = await axios.post(
-        CHAT_URL,
-        {
-          model: 'deepseek-chat',
-          messages,
-          max_tokens: 500,
-          temperature: 0.1,
-          response_format: { type: 'json_object' }, // 明确要求返回 JSON
-          stream: false
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-  
-      const text = response.data.choices[0].message.content;
+      const text = await deepSeekClient.chatCompletion(messages, {
+        max_tokens: 500,
+        temperature: 0.1,
+        response_format: { type: 'json_object' }
+      });
       console.log('🧠 AI原始返回:', text);
   
       const parsed = JSON.parse(text);
@@ -155,25 +109,11 @@ export async function extractSearchKeywords(content: string): Promise<string[]> 
       }
     ];
 
-    const response = await axios.post(
-      CHAT_URL,
-      {
-        model: 'deepseek-chat',
-        messages,
-        max_tokens: 200,
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-        stream: false
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const text = response.data.choices[0].message.content;
+    const text = await deepSeekClient.chatCompletion(messages, {
+      max_tokens: 200,
+      temperature: 0.1,
+      response_format: { type: 'json_object' }
+    });
     console.log('🔍 关键词提取结果:', text);
     
     // 尝试解析 JSON
@@ -234,21 +174,7 @@ export async function generateEmbedding(input: string): Promise<number[]> {
       }
     ];
 
-    const response = await axios.post(
-      CHAT_URL,
-      {
-        model: 'deepseek-reasoner',
-        messages,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    const reasoningContent = response.data.choices[0].message.reasoning_content;
+    const reasoningContent = await deepSeekClient.reasoningCompletion(messages);
 
     const vector = JSON.parse(reasoningContent);
     if (Array.isArray(vector) && typeof vector[0] === 'number') {

@@ -113,7 +113,7 @@
 .expandButton {
   background: none;
   border: none;
-  color: #667eea;
+  color: rgb(23,112,232);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -122,7 +122,7 @@
   transition: color 0.2s ease;
 
   &:hover {
-    color: #5a67d8;
+    color: rgba(23, 112, 232, 0.8);
     text-decoration: underline;
   }
 }
@@ -136,18 +136,18 @@
 }
 
 .keywordTag {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-  color: #667eea;
+  background: rgba(23, 112, 232, 0.1);
+  color: rgb(23,112,232);
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
-  border: 1px solid rgba(102, 126, 234, 0.2);
+  border: 1px solid rgba(23, 112, 232, 0.2);
   transition: all 0.2s ease;
 
   &:hover {
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
-    border-color: rgba(102, 126, 234, 0.3);
+    background: rgba(23, 112, 232, 0.15);
+    border-color: rgba(23, 112, 232, 0.3);
   }
 }
 
