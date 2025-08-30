@@ -14,11 +14,24 @@ export const getToken = (): string | null => {
   return localStorage.getItem('token');
 };
 
-// 获取存储的用户信息
+// 获取存储的用户信息（安全解析）
 export const getUser = (): User | null => {
   if (typeof window === 'undefined') return null;
   const userStr = localStorage.getItem('user');
-  return userStr ? JSON.parse(userStr) : null;
+  if (!userStr || userStr === 'undefined' || userStr === 'null') {
+    // 清理不合法的值，避免后续再次报错
+    if (userStr) localStorage.removeItem('user');
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(userStr);
+    // 仅当解析结果为对象时才返回
+    return parsed && typeof parsed === 'object' ? (parsed as User) : null;
+  } catch (e) {
+    // 当本地存储里是无效 JSON（例如字符串 'undefined'）时，避免抛错
+    localStorage.removeItem('user');
+    return null;
+  }
 };
 
 // 检查用户是否已登录
