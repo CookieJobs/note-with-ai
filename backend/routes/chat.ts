@@ -9,6 +9,14 @@ import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandl
 
 const router = express.Router();
 
+// 简单的消息清洗与校验函数
+function sanitizeMessages(messages: any[]): { role: 'user' | 'assistant'; content: string }[] {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
+    .map(m => ({ role: m.role, content: m.content.trim() }));
+}
+
 // 保存聊天记录
 router.post('/save', authenticateToken, asyncHandler(async (req: any, res: any) => {
   const { sessionId, messages, title } = req.body;
@@ -24,20 +32,23 @@ router.post('/save', authenticateToken, asyncHandler(async (req: any, res: any) 
     throw ErrorHandler.createAuthenticationError();
   }
 
+  // 对消息进行清洗，移除无效项（如无 content 的 assistant 占位条目）
+  const cleanedMessages = sanitizeMessages(messages);
+
   let chat;
   if (sessionId) {
     // 更新现有会话
     chat = await Chat.findByIdAndUpdate(
       sessionId,
-      { messages, title, updatedAt: new Date() },
-      { new: true }
+      { messages: cleanedMessages, title, updatedAt: new Date() },
+      { new: true, runValidators: true }
     );
     if (!chat) {
       throw ErrorHandler.createNotFoundError('会话不存在');
     }
   } else {
     // 创建新会话
-    chat = new Chat({ userId, messages, title: title || '新对话' });
+    chat = new Chat({ userId, messages: cleanedMessages, title: title || '新对话' });
     await chat.save();
   }
 
@@ -113,17 +124,30 @@ router.post('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
     throw ErrorHandler.createAuthenticationError();
   }
 
+  // 清洗消息，确保发送到模型的格式正确
+  const cleanedMessages = sanitizeMessages(messages);
+  if (cleanedMessages.length === 0) {
+    throw ErrorHandler.createValidationError('有效消息为空');
+  }
+
   try {
     // 获取AI回复
-    const reply = await chatWithDeepSeek(messages);
+    const reply = await chatWithDeepSeek(cleanedMessages);
     console.log('🤖 DeepSeek 回复:', reply);
+
+    // 组合最终消息（包含 AI 回复）
+    const finalMessages = [...cleanedMessages, { role: 'assistant' as const, content: reply }];
 
     // 保存到数据库（更新会话）
     if (sessionId) {
-      await Chat.findByIdAndUpdate(sessionId, { messages }, { new: true });
+      await Chat.findByIdAndUpdate(
+        sessionId,
+        { messages: finalMessages, title: title || '新对话', updatedAt: new Date() },
+        { new: true, runValidators: true }
+      );
     } else {
       // 若无sessionId则新建会话
-      const session = new Chat({ userId, title: title || '新对话', messages });
+      const session = new Chat({ userId, title: title || '新对话', messages: finalMessages });
       await session.save();
     }
 
@@ -131,7 +155,7 @@ router.post('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
   } catch (error: any) {
     console.error('❌ 聊天接口错误:', error);
     // 如果是DeepSeek API错误，返回更具体的错误信息
-    if (error.message && error.message.includes('DeepSeek API')) {
+    if (error.message && error.message.includes('API请求错误')) {
       throw ErrorHandler.createExternalApiError('AI服务暂时不可用，请稍后重试', 'DeepSeek');
     } else {
       throw ErrorHandler.createInternalError('聊天失败，请稍后重试');

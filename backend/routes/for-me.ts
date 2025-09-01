@@ -1,6 +1,6 @@
 import express from 'express';
 import { Note } from '../models/Note';
-import { extractSearchKeywords } from '../services/deepseek';
+import { extractSearchKeywords, chatWithDeepSeek } from '../services/deepseek';
 import { searchArticlesForNote } from '../services/search';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandler';
@@ -208,5 +208,97 @@ router.post('/refresh/:noteId', authenticateToken, asyncHandler(async (req: any,
 
     return ResponseHandler.success(res, updatedNote);
   }));
+
+// 将笔记内容拆分为片段（内容节点）
+const splitContentIntoNodes = (content: string): string[] => {
+  if (!content) return [];
+  // 先按换行切分，再按常见中英文标点进一步拆分
+  const roughParts = content
+    .split(/\n+/)
+    .flatMap(line => line.split(/[。！？!\?；;：:]/g))
+    .map(s => s.trim())
+    .filter(Boolean);
+  // 过滤过短或过长的片段，保留信息量适中的句子
+  return roughParts.filter(s => s.length >= 4 && s.length <= 200);
+};
+
+// GET /api/for-me/robot/intro - 基于随机笔记片段生成关怀性开场白
+router.get('/robot/intro', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const user = await UserValidator.authenticateUser(req);
+
+  // 读取用户全部笔记
+  const notes = await Note.find({ userId: user._id }).sort({ createdAt: -1 });
+  if (!notes || notes.length === 0) {
+    return ResponseHandler.success(res, {
+      noteId: null,
+      noteTitle: '',
+      snippet: '',
+      aiOpening: '我还没有看到你的任何笔记，要不要先去记录一点近期的想法或身体状况呢？'
+    }, '暂无笔记');
+  }
+
+  // 随机选择一条笔记
+  const randomNote = notes[Math.floor(Math.random() * notes.length)];
+  const nodes = splitContentIntoNodes(randomNote.content || '');
+
+  if (!nodes || nodes.length === 0) {
+    // 若无法拆分，退化为整段摘要
+    const fallbackSnippet = (randomNote.content || '').slice(0, 60);
+    const prompt = `你将看到用户过往笔记中的一个片段，请用体贴、自然的语气发起一句关怀性中文开场白，最多40字，不要复述片段。片段："${fallbackSnippet}"`;
+    try {
+      const aiOpening = await chatWithDeepSeek([
+        { role: 'system', content: '你是一个温暖、克制的生活助手。请基于用户过去的笔记片段，主动给出一句简短的关怀问候或追问，语气自然，不要暴露隐私。' },
+        { role: 'user', content: prompt }
+      ]);
+      return ResponseHandler.success(res, {
+        noteId: randomNote._id.toString(),
+        noteTitle: randomNote.title,
+        snippet: fallbackSnippet,
+        aiOpening
+      }, '生成成功');
+    } catch (e) {
+      const aiOpening = '最近还好吗？我注意到你曾记录了一些重要事项，想关心一下你的近况。';
+      return ResponseHandler.success(res, {
+        noteId: randomNote._id.toString(),
+        noteTitle: randomNote.title,
+        snippet: fallbackSnippet,
+        aiOpening
+      }, '生成成功(降级)');
+    }
+  }
+
+  // 随机选择一个内容节点
+  const snippet = nodes[Math.floor(Math.random() * nodes.length)];
+
+  // 组装对话，要求产出一条开场白
+  const system = '你是一个温暖、克制的生活助手。请基于用户过去的笔记片段，主动给出一句简短的关怀问候或追问，语气自然，避免复述原文，不要进行医疗建议。最多40字。';
+  const userMsg = `用户过往笔记片段："${snippet}"。请仅返回一句中文开场白，例如「您的膝盖恢复情况如何？」或「最近睡眠有改善吗？」。`;
+
+  try {
+    const aiOpening = await chatWithDeepSeek([
+      { role: 'system', content: system },
+      { role: 'user', content: userMsg }
+    ]);
+
+    return ResponseHandler.success(res, {
+      noteId: randomNote._id.toString(),
+      noteTitle: randomNote.title,
+      snippet,
+      aiOpening
+    }, '生成成功');
+  } catch (error) {
+    // DeepSeek 不可用时的兜底
+    let aiOpening = '最近过得还好吗？看到你之前的记录，我想来问候一下。';
+    if (/膝盖|膝关节/.test(snippet)) {
+      aiOpening = '您的膝盖恢复情况如何？有没有感觉好一些？';
+    }
+    return ResponseHandler.success(res, {
+      noteId: randomNote._id.toString(),
+      noteTitle: randomNote.title,
+      snippet,
+      aiOpening
+    }, '生成成功(降级)');
+  }
+}));
 
 export default router;

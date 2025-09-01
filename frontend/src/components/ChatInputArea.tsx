@@ -9,6 +9,7 @@ interface ChatInputAreaProps {
   error: string;
   onInputChange: (value: string) => void;
   onSend: () => void;
+  centered?: boolean; // 当为空状态时，输入框垂直居中显示
 }
 
 const ChatInputArea: React.FC<ChatInputAreaProps> = ({
@@ -17,6 +18,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   error,
   onInputChange,
   onSend,
+  centered = false,
 }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -31,10 +33,12 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     target.style.height = `${target.scrollHeight}px`;
   };
 
+  const containerClassName = `${styles.inputContainer} ${centered ? styles.inputContainerCentered : ''}`;
+
   return (
     <>
-      {/* 固定在底部的输入框 */}
-      <div className={styles.inputContainer}>
+      {/* 固定/居中的输入框（空状态时居中） */}
+      <div className={containerClassName}>
         <div className={styles.inputWrapper}>
           <textarea
             className={styles.inputField}

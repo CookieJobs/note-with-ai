@@ -242,6 +242,7 @@ export default function ChatPage() {
         error={error}
         onInputChange={handleInputChange}
         onSend={handleSendClick}
+        centered={messages.length === 0}
       />
 
       <DeleteConfirmModal

@@ -8,10 +8,15 @@ export interface User {
   createdAt: string;
 }
 
-// 获取存储的token
+// 获取存储的token（安全获取）
 export const getToken = (): string | null => {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('token');
+  const token = localStorage.getItem('token');
+  if (!token || token === 'undefined' || token === 'null') {
+    if (token) localStorage.removeItem('token');
+    return null;
+  }
+  return token;
 };
 
 // 获取存储的用户信息（安全解析）
@@ -56,7 +61,7 @@ export const getAuthHeaders = (): HeadersInit => {
   };
 };
 
-// 认证的fetch请求
+// 认证的fetch请求（统一处理401/403）
 export const authFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
   const response = await fetch(url, {
     ...options,
@@ -66,10 +71,10 @@ export const authFetch = async (url: string, options: RequestInit = {}): Promise
     }
   });
 
-  // 如果返回401，说明token过期或无效，自动登出
-  if (response.status === 401) {
+  // 如果返回401或403，说明token过期/无效或无权限，自动登出
+  if (response.status === 401 || response.status === 403) {
     logout();
-    throw new Error('认证失败，请重新登录');
+    throw new Error('认证失败或权限不足，请重新登录');
   }
 
   return response;

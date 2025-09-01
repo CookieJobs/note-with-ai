@@ -82,8 +82,18 @@ export default function AuthPage() {
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        // 后端统一响应: { success, message, data: { token, user } }
+        const payload = data?.data ?? {};
+        const token: string | undefined = payload.token;
+        const user = payload.user;
+
+        if (!token || !user) {
+          setError('登录响应无效，请重试');
+          return;
+        }
+
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
         router.push('/notes');
       } else {
         setError(data.error || (isLogin ? '登录失败' : '注册失败'));
@@ -138,12 +148,14 @@ export default function AuthPage() {
             <button
               className={`${styles.tab} ${isLogin ? styles.active : ''}`}
               onClick={() => setIsLogin(true)}
+              type="button"
             >
               登录
             </button>
             <button
               className={`${styles.tab} ${!isLogin ? styles.active : ''}`}
               onClick={() => setIsLogin(false)}
+              type="button"
             >
               注册
             </button>

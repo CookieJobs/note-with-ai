@@ -89,13 +89,13 @@ export const useChatMessages = (): UseChatMessagesReturn => {
 
       if (res.ok) {
         const data = await res.json();
-        const relatedNotes = data.relatedNotes || [];
+        const relatedNotes = (data && data.data && Array.isArray(data.data.relatedNotes) ? data.data.relatedNotes : (data.relatedNotes || []));
         
         console.log('📝 找到相关笔记:', relatedNotes.length, '条');
 
-        // 更新消息，添加相关笔记
+        // 更新消息，添加相关笔记，并同步更新本地存储
         setSessions(prevSessions => {
-          return prevSessions.map(session => {
+          const updatedSessions = prevSessions.map(session => {
             if (session.id === sessionId) {
               const updatedMessages = [...session.messages];
               if (updatedMessages[messageIndex]) {
@@ -109,26 +109,14 @@ export const useChatMessages = (): UseChatMessagesReturn => {
             }
             return session;
           });
-        });
 
-        // 更新本地存储
-        if (userId) {
-          const updatedSessions = sessions.map(session => {
-            if (session.id === sessionId) {
-              const updatedMessages = [...session.messages];
-              if (updatedMessages[messageIndex]) {
-                updatedMessages[messageIndex] = {
-                  ...updatedMessages[messageIndex],
-                  relatedNotes: relatedNotes,
-                  searchingNotes: false
-                };
-              }
-              return { ...session, messages: updatedMessages };
-            }
-            return session;
-          });
-          localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updatedSessions));
-        }
+          // 更新本地存储
+          if (userId) {
+            localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updatedSessions));
+          }
+
+          return updatedSessions;
+        });
       } else {
         console.error('搜索相关笔记失败');
         // 移除搜索中状态
@@ -203,27 +191,29 @@ export const useChatMessages = (): UseChatMessagesReturn => {
     setError('');
 
     try {
+      const serverSessionId = currentSession.id.startsWith('local_') ? undefined : currentSession.id;
       const res = await authFetch('/api/chat', {
         method: 'POST',
-        body: JSON.stringify({ messages: updatedMessages, sessionId: currentSession.id }),
+        body: JSON.stringify({ messages: updatedMessages, sessionId: serverSessionId }),
       });
       
       if (!res.ok) {
         // 尝试解析错误信息
         try {
           const errorData = await res.json();
-          throw new Error(errorData.error || '请求失败');
+          throw new Error(errorData.error || errorData.message || '请求失败');
         } catch {
           throw new Error('请求失败');
         }
       }
       
       const data = await res.json();
+      const reply: string = (data && data.data && typeof data.data.reply === 'string') ? data.data.reply : data.reply;
 
       // 确保返回消息的role为'assistant'
       const assistantMessage: Message = { 
         role: 'assistant', 
-        content: data.reply
+        content: reply
       };
       const finalMessages: Message[] = [...updatedMessages, assistantMessage];
 
@@ -243,34 +233,44 @@ export const useChatMessages = (): UseChatMessagesReturn => {
 
       // 自动摘要并更新会话标题
       try {
-        const summaryRes = await authFetch('/api/chat/summarizeTitle', {
-          method: 'POST',
-          body: JSON.stringify({
-            userContent: userMessage.content,
-            aiContent: assistantMessage.content
-          })
-        });
-        if (summaryRes.ok) {
-          const { title } = await summaryRes.json();
-          // 更新会话标题
-          setSessions(prevSessions => {
-            const updated = prevSessions.map(s =>
-              s.id === currentSession.id ? { ...s, title } : s
-            );
-            // 更新本地存储
-            if (userId) {
-              localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
-            }
-            return updated;
+        const userText = (userMessage.content || '').trim();
+        const aiText = (assistantMessage.content || '').trim();
+
+        if (userText && aiText) {
+          const summaryRes = await authFetch('/api/chat/summarizeTitle', {
+            method: 'POST',
+            body: JSON.stringify({
+              userContent: userText,
+              aiContent: aiText
+            })
           });
-          
-          // 保存到数据库
-          const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages, title });
-          console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
+          if (summaryRes.ok) {
+            const summaryData = await summaryRes.json();
+            const title: string = (summaryData && summaryData.data && typeof summaryData.data.title === 'string') ? summaryData.data.title : summaryData.title;
+            // 更新会话标题
+            setSessions(prevSessions => {
+              const updated = prevSessions.map(s =>
+                s.id === currentSession.id ? { ...s, title } : s
+              );
+              // 更新本地存储
+              if (userId) {
+                localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
+              }
+              return updated;
+            });
+            
+            // 保存到数据库
+            const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages, title });
+            console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
+          } else {
+            // 摘要失败也要保存消息
+            const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages });
+            console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
+          }
         } else {
-          // 摘要失败也要保存消息
+          // 内容为空，跳过标题摘要但依然保存消息
           const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages });
-          console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
+          console.log('🚦 sendMessage（跳过摘要）保存会话后返回的ID:', newSessionId);
         }
       } catch (e) {
         const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages });

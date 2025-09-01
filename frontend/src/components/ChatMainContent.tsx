@@ -56,13 +56,8 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages }) => {
         <div className={styles.contentWrapper}>
           <div className={`${styles.cardList} ${messages.length === 0 ? styles.emptyCardList : ''}`}>
             {messages.length === 0 ? (
-              <div className={styles.emptyState}>
-                <div className={styles.emptyIcon}>💬</div>
-                <div className={styles.emptyText}>开始新的对话</div>
-                <div className={styles.emptySubtext}>
-                  向AI助手提问任何问题，我会尽力为您提供帮助
-                </div>
-              </div>
+              // 隐藏空状态的视觉元素，仅保留一个占位容器以维持结构
+              <div className={styles.emptyStatePlaceholder} aria-hidden="true" />
             ) : (
               <>
                 {messages.map((msg, index) => (

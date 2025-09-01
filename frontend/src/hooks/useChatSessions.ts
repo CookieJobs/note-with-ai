@@ -59,18 +59,18 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
       const response = await res.json();
       console.log('🟣 loadSessionsFromDB 服务端响应:', response);
       // 后端返回格式: {success: true, message: string, data: {sessions: ChatSession[]}}
-      const sessions = response.success && response.data && response.data.sessions ? response.data.sessions : [];
-      console.log('🟣 loadSessionsFromDB 提取的会话数据:', sessions);
-      if (sessions && sessions.length > 0) {
+      const serverSessions: ChatSession[] = response.success && response.data && response.data.sessions ? response.data.sessions : [];
+      console.log('🟣 loadSessionsFromDB 提取的会话数据:', serverSessions);
+      if (serverSessions && serverSessions.length > 0) {
         // 服务器数据优先，过滤掉本地重复会话
-        const serverSessionIds = new Set(sessions.map((s: ChatSession) => s.id || s._id));
+        const serverSessionIds = new Set(serverSessions.map((s: ChatSession) => s.id || (s as any)._id));
         // 过滤掉本地会话中与服务器重复的会话，并且过滤掉本地无效会话（如空消息会话）
-        const filteredLocal = localSessions.filter(s => !serverSessionIds.has(s.id) && !serverSessionIds.has(s._id) && s.messages.length > 0);
-        const combined = [...sessions, ...filteredLocal];
+        const filteredLocal = localSessions.filter(s => !serverSessionIds.has(s.id) && !(s as any)._id && s.messages.length > 0);
+        const combined = [...serverSessions, ...filteredLocal];
         // 去重合并后的会话，防止重复
         const uniqueSessionsMap = new Map<string, ChatSession>();
         combined.forEach(session => {
-          const id = session.id || session._id;
+          const id = session.id || (session as any)._id;
           if (!uniqueSessionsMap.has(id)) {
             uniqueSessionsMap.set(id, session);
           }
@@ -88,12 +88,12 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
           return;
         }
         
-        // 保留当前会话的消息内容
+        // 保留当前会话的消息内容（使用现有 state sessions，而不是服务端列表）
         let currentSessionMessages: Message[] = [];
         if (currentId) {
-          const currentSession = sessions.find(s => s.id === currentId);
-          if (currentSession) {
-            currentSessionMessages = currentSession.messages;
+          const existingCurrent = sessions.find(s => (s.id === currentId) || ((s as any)._id === currentId));
+          if (existingCurrent) {
+            currentSessionMessages = existingCurrent.messages;
           }
         }
         
@@ -101,10 +101,10 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
         setSessions(prevSessions => {
           // 如果有当前会话，确保保留其消息内容
           const updatedSessions = uniqueSessions.map(s => {
-            if (s.id === currentId || s._id === currentId) {
-              return { ...s, messages: currentSessionMessages.length > 0 ? currentSessionMessages : s.messages };
+            if ((s.id === currentId) || ((s as any)._id === currentId)) {
+              return { ...s, messages: currentSessionMessages.length > 0 ? currentSessionMessages : s.messages } as ChatSession;
             }
-            return s;
+            return s as ChatSession;
           });
           
           // 更新本地存储
@@ -114,8 +114,8 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
         });
         
         // 如果当前没有选中的会话，或者当前选中的会话不在新的会话列表中，才设置为第一个会话
-        if (!currentId || !uniqueSessions.some(s => (s.id === currentId || s._id === currentId))) {
-          const newCurrentId = uniqueSessions[0]?.id || uniqueSessions[0]?._id || '';
+        if (!currentId || !uniqueSessions.some(s => ((s.id === currentId) || ((s as any)._id === currentId)))) {
+          const newCurrentId = (uniqueSessions[0]?.id || (uniqueSessions[0] as any)?._id || '');
           console.log('🟣 loadSessionsFromDB 设置新的 currentSessionId:', newCurrentId);
           setCurrentSessionId(newCurrentId);
         } else {
@@ -184,15 +184,16 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
       const data = await res.json();
       console.log('🟢 saveSessionToDB 服务器返回:', data);
 
-      if (data.success && data.sessionId) {
+      const serverSessionId: string | undefined = data && data.success && data.data && data.data.sessionId ? data.data.sessionId : data.sessionId;
+      if (serverSessionId) {
         // 如果是本地ID，需要更新会话ID为服务器返回的ID
-        if (isLocalId && data.sessionId !== session.id) {
-          console.log('🟢 saveSessionToDB 本地ID需要更新为服务器ID:', data.sessionId);
+        if (isLocalId && serverSessionId !== session.id) {
+          console.log('🟢 saveSessionToDB 本地ID需要更新为服务器ID:', serverSessionId);
           
           // 更新本地状态
           setSessions(prevSessions => {
             const updated = prevSessions.map(s => 
-              s.id === session.id ? { ...s, id: data.sessionId } : s
+              s.id === session.id ? { ...s, id: serverSessionId } : s
             );
             
             // 更新本地存储
@@ -203,11 +204,11 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
           
           // 如果当前会话ID是被更新的会话ID，也需要更新currentSessionId
           if (currentSessionId === session.id) {
-            console.log('🟢 saveSessionToDB 更新当前会话ID:', data.sessionId);
-            setCurrentSessionId(data.sessionId);
+            console.log('🟢 saveSessionToDB 更新当前会话ID:', serverSessionId);
+            setCurrentSessionId(serverSessionId);
           }
           
-          return data.sessionId;
+          return serverSessionId;
         }
       }
       

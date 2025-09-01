@@ -60,6 +60,11 @@ export default function ForMePage() {
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   // 顶部导航布局下不再需要移动端菜单开关
 
+  // AI 机器人状态
+  const [robotLoading, setRobotLoading] = useState<boolean>(false);
+  const [robotError, setRobotError] = useState<string | null>(null);
+  const [robotIntro, setRobotIntro] = useState<{ noteId: string | null; noteTitle: string; snippet: string; aiOpening: string } | null>(null);
+
   // 检查用户身份验证
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -87,6 +92,49 @@ export default function ForMePage() {
       setError(err instanceof Error ? err.message : '获取数据失败');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 获取AI机器人开场白
+  const fetchRobotIntro = async () => {
+    setRobotLoading(true);
+    setRobotError(null);
+    try {
+      const res = await authFetch('/api/for-me/robot/intro');
+      const json = await res.json();
+      // 兼容 ResponseHandler.success 包装或直接数据
+      const payload = json && json.data ? json.data : json;
+      setRobotIntro({
+        noteId: payload.noteId ?? null,
+        noteTitle: payload.noteTitle || '',
+        snippet: payload.snippet || '',
+        aiOpening: payload.aiOpening || '最近还好吗？我想来问候一下。'
+      });
+    } catch (e) {
+      setRobotError('获取AI开场失败，请稍后重试');
+    } finally {
+      setRobotLoading(false);
+    }
+  };
+
+  // 继续在聊天页交流：创建会话并跳转
+  const continueInChat = async () => {
+    if (!robotIntro) return router.push('/chat');
+    try {
+      await authFetch('/api/chat/save', {
+        method: 'POST',
+        body: JSON.stringify({
+          // 不传 sessionId 表示创建新会话
+          title: robotIntro.noteTitle ? `关怀 · ${robotIntro.noteTitle}` : '关怀对话',
+          messages: [
+            { role: 'assistant', content: robotIntro.aiOpening },
+          ],
+        })
+      });
+    } catch (e) {
+      // 忽略错误，直接跳转
+    } finally {
+      router.push('/chat');
     }
   };
 
@@ -220,6 +268,7 @@ export default function ForMePage() {
     if (isAuthenticated) {
       loadUserPreferences();
       fetchData();
+      fetchRobotIntro();
     }
   }, [isAuthenticated]);
 
@@ -250,6 +299,39 @@ export default function ForMePage() {
         <div className={styles.header}>
           <h1 className={styles.title}>For Me</h1>
           <p className={styles.subtitle}>基于你的笔记内容，为你推荐相关文章</p>
+        </div>
+
+        {/* AI 关怀助手 */}
+        <div className={styles.aiRobotCard}>
+          <div className={styles.aiRobotHeader}>
+            <div className={styles.aiRobotTitle}>🤖 AI 关怀助手</div>
+            <div className={styles.aiRobotDesc}>我会随机查看你的一条历史笔记片段，轻声问候，给你一点贴心的提醒与陪伴。</div>
+          </div>
+
+          {robotLoading && (
+            <div className={styles.robotLoading}>正在读取你的记录与心情...</div>
+          )}
+
+          {robotError && (
+            <div className={styles.robotError}>❌ {robotError}</div>
+          )}
+
+          {!robotLoading && !robotError && robotIntro && (
+            <div className={styles.aiRobotContent}>
+              {robotIntro.noteTitle && (
+                <div className={styles.robotNoteTitle}>来源笔记：{robotIntro.noteTitle}</div>
+              )}
+              {robotIntro.snippet && (
+                <div className={styles.robotSnippet}>“{robotIntro.snippet}”</div>
+              )}
+              <div className={styles.robotOpening}>{robotIntro.aiOpening}</div>
+
+              <div className={styles.aiRobotActions}>
+                <button className={styles.robotButtonSecondary} onClick={fetchRobotIntro}>换一个</button>
+                <button className={styles.robotButtonPrimary} onClick={continueInChat}>继续在聊天中聊</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {loading && (
