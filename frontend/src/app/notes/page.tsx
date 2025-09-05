@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import styles from './notes.module.scss';
 import { isAuthenticated, getUser, authFetch } from '../../utils/auth';
 import TopNavigation from '../../components/TopNavigation';
+import TrashIcon from '../../components/icons/TrashIcon';
 
 interface Note {
   _id: string;
@@ -58,11 +59,9 @@ const ModernNoteCard = ({ note, onDelete }: NoteCardProps) => {
                 setShowDeleteConfirm(true);
               }}
               aria-label="删除笔记"
+              title="删除笔记"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <TrashIcon size={16} />
             </button>
           </div>
         </div>

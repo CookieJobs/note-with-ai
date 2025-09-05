@@ -2,6 +2,7 @@
 
 import React from 'react';
 import styles from '../app/chat/chat.module.scss';
+import TrashIcon from './icons/TrashIcon';
 
 interface ChatSession {
   id: string;
@@ -31,7 +32,7 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
     <aside className={styles.historyPanel}>
       <div className={styles.historyHeader}>
         <span>💭 聊天记录</span>
-        <button onClick={onNewSession} title="新建对话">
+        <button onClick={onNewSession} title="新建对话" aria-label="新建对话">
           ➕
         </button>
       </div>
@@ -58,8 +59,9 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
                   className={styles.deleteButton}
                   onClick={(e) => onDeleteSession(e, session.id)}
                   title="删除对话"
+                  aria-label="删除对话"
                 >
-                  🗑️
+                  <TrashIcon size={14} />
                 </button>
               </li>
             );
