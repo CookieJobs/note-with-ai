@@ -21,6 +21,7 @@ export const ModernNoteCard: React.FC<ModernNoteCardProps> = ({ note, onDelete }
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -33,9 +34,10 @@ export const ModernNoteCard: React.FC<ModernNoteCardProps> = ({ note, onDelete }
     return `${Math.ceil(diffDays / 365)} 年前`;
   };
 
-  const getContentPreview = (content: string, maxLength: number = 150) => {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + '...';
+  const getContentPreview = (content?: string, maxLength: number = 150) => {
+    const text = content || '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
   };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
@@ -44,6 +46,7 @@ export const ModernNoteCard: React.FC<ModernNoteCardProps> = ({ note, onDelete }
   };
 
   const confirmDelete = () => {
+    if (!note?._id) return;
     onDelete(note._id);
     setShowDeleteConfirm(false);
   };
@@ -51,6 +54,9 @@ export const ModernNoteCard: React.FC<ModernNoteCardProps> = ({ note, onDelete }
   const cancelDelete = () => {
     setShowDeleteConfirm(false);
   };
+
+  const contentText = note?.content || '';
+  const keywords = Array.isArray(note?.keywords) ? note.keywords.filter(Boolean) : [];
 
   return (
     <>
@@ -70,7 +76,7 @@ export const ModernNoteCard: React.FC<ModernNoteCardProps> = ({ note, onDelete }
             </svg>
           </div>
           <div className={styles.cardMeta}>
-            <span className={styles.timestamp}>{formatDate(note.createdAt)}</span>
+            <span className={styles.timestamp}>{formatDate(note?.createdAt)}</span>
             <button 
               className={styles.deleteButton}
               onClick={handleDeleteClick}
@@ -83,16 +89,16 @@ export const ModernNoteCard: React.FC<ModernNoteCardProps> = ({ note, onDelete }
         </div>
 
         {/* 标题 */}
-        {note.title && (
+        {note?.title && (
           <h3 className={styles.noteTitle}>{note.title}</h3>
         )}
 
         {/* 内容 */}
         <div className={styles.noteContent}>
           <p className={styles.contentText}>
-            {isExpanded ? note.content : getContentPreview(note.content)}
+            {isExpanded ? contentText : getContentPreview(contentText)}
           </p>
-          {note.content.length > 150 && (
+          {(contentText.length > 150) && (
             <button className={styles.expandButton}>
               {isExpanded ? '收起' : '展开'}
             </button>
@@ -100,16 +106,16 @@ export const ModernNoteCard: React.FC<ModernNoteCardProps> = ({ note, onDelete }
         </div>
 
         {/* 关键词标签 */}
-        {note.keywords && note.keywords.length > 0 && (
+        {keywords.length > 0 && (
           <div className={styles.keywordTags}>
-            {note.keywords.slice(0, 3).map((keyword, index) => (
-              <span key={index} className={styles.keywordTag}>
-                {keyword}
+            {keywords.slice(0, 3).map((keyword, index) => (
+              <span key={`${String(keyword)}-${index}`} className={styles.keywordTag}>
+                {String(keyword)}
               </span>
             ))}
-            {note.keywords.length > 3 && (
+            {keywords.length > 3 && (
               <span className={styles.moreKeywords}>
-                +{note.keywords.length - 3}
+                +{keywords.length - 3}
               </span>
             )}
           </div>

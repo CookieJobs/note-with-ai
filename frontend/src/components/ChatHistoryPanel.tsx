@@ -3,6 +3,7 @@
 import React from 'react';
 import styles from '../app/chat/chat.module.scss';
 import TrashIcon from './icons/TrashIcon';
+import PlusIcon from './icons/PlusIcon';
 
 interface ChatSession {
   id: string;
@@ -33,7 +34,7 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
       <div className={styles.historyHeader}>
         <span>💭 聊天记录</span>
         <button onClick={onNewSession} title="新建对话" aria-label="新建对话">
-          ➕
+          <PlusIcon size={16} />
         </button>
       </div>
       <ul className={styles.historyList}>

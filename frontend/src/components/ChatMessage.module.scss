@@ -302,12 +302,26 @@
   padding: 14px;
   transition: all 0.2s ease;
   cursor: pointer;
+  /* 使整卡区域为块级并移除默认链接样式 */
+  display: block;
+  text-decoration: none;
+  color: inherit;
   
   &:hover {
     background: rgba(255, 255, 255, 0.9);
     border-color: rgba(59, 130, 246, 0.3);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    text-decoration: none; /* 悬停时也不显示下划线 */
+  }
+  
+  &:visited,
+  &:active,
+  &:focus,
+  &:focus-visible {
+    text-decoration: none;
+    outline: none;
+    color: inherit;
   }
 }
 

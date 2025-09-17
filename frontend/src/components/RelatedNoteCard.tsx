@@ -23,13 +23,14 @@ export const RelatedNoteCard: React.FC<RelatedNoteCardProps> = ({
 
   const handleToggleExpand = () => {
     setIsExpanded(!isExpanded);
-    if (onExpand) {
+    if (onExpand && note?._id) {
       onExpand(note._id);
     }
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -55,10 +56,14 @@ export const RelatedNoteCard: React.FC<RelatedNoteCardProps> = ({
     return '弱相关';
   };
 
-  const truncateContent = (content: string, maxLength: number = 120) => {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + '...';
+  const truncateContent = (content?: string, maxLength: number = 120) => {
+    const text = content || '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
   };
+
+  const contentText = note?.content || '';
+  const keywords = Array.isArray(note?.keywords) ? note.keywords.filter(Boolean) : [];
 
   return (
     <div className={styles.relatedNoteCard}>
@@ -85,10 +90,10 @@ export const RelatedNoteCard: React.FC<RelatedNoteCardProps> = ({
         )}
         
         <p className={styles.noteText}>
-          {isExpanded ? note.content : truncateContent(note.content)}
+          {isExpanded ? contentText : truncateContent(contentText)}
         </p>
 
-        {note.content.length > 120 && (
+        {contentText.length > 120 && (
           <button 
             className={styles.expandButton}
             onClick={handleToggleExpand}
@@ -102,16 +107,16 @@ export const RelatedNoteCard: React.FC<RelatedNoteCardProps> = ({
       </div>
 
       {/* 关键词标签 */}
-      {note.keywords && note.keywords.length > 0 && (
+      {keywords.length > 0 && (
         <div className={styles.keywords}>
-          {note.keywords.slice(0, 3).map((keyword, index) => (
-            <span key={index} className={styles.keyword}>
-              #{keyword}
+          {keywords.slice(0, 3).map((keyword, index) => (
+            <span key={`${String(keyword)}-${index}`} className={styles.keyword}>
+              #{String(keyword)}
             </span>
           ))}
-          {note.keywords.length > 3 && (
+          {keywords.length > 3 && (
             <span className={styles.keywordMore}>
-              +{note.keywords.length - 3}
+              +{keywords.length - 3}
             </span>
           )}
         </div>

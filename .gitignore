@@ -14,3 +14,9 @@ build/
 .env
 .env.local
 .env.*.local
+
+# Ignore nested Next.js build in frontend
+frontend/.next/
+
+# Ignore backend environment file explicitly
+backend/.env

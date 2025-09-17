@@ -25,6 +25,7 @@ interface ChatMainContentProps {
 }
 
 const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages }) => {
+  const safeMessages = Array.isArray(messages) ? messages : [];
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +41,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages }) => {
 
   // 当消息更新时自动滚动到底部
   useEffect(() => {
-    if (messages.length > 0) {
+    if (safeMessages.length > 0) {
       // 延迟滚动，确保DOM已更新
       const timer = setTimeout(() => {
         scrollToBottom();
@@ -48,27 +49,31 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages }) => {
       
       return () => clearTimeout(timer);
     }
-  }, [messages]);
+  }, [safeMessages]);
 
   return (
     <main className={styles.mainContent}>
       <div className={styles.messagesContainer} ref={messagesContainerRef}>
         <div className={styles.contentWrapper}>
-          <div className={`${styles.cardList} ${messages.length === 0 ? styles.emptyCardList : ''}`}>
-            {messages.length === 0 ? (
+          <div className={`${styles.cardList} ${safeMessages.length === 0 ? styles.emptyCardList : ''}`}>
+            {safeMessages.length === 0 ? (
               // 隐藏空状态的视觉元素，仅保留一个占位容器以维持结构
               <div className={styles.emptyStatePlaceholder} aria-hidden="true" />
             ) : (
               <>
-                {messages.map((msg, index) => (
-                  <ChatMessage 
-                    key={index} 
-                    role={msg.role} 
-                    content={msg.content} 
-                    relatedNotes={msg.relatedNotes}
-                    searchingNotes={msg.searchingNotes}
-                  />
-                ))}
+                {safeMessages.map((msg, index) => {
+                  const keyBase = `${msg.role}-${(msg.content || '').slice(0, 20)}`;
+                  const itemKey = `${keyBase}-${index}`; // 兜底避免完全相同内容导致key冲突
+                  return (
+                    <ChatMessage 
+                      key={itemKey} 
+                      role={msg.role} 
+                      content={msg.content} 
+                      relatedNotes={msg.relatedNotes}
+                      searchingNotes={msg.searchingNotes}
+                    />
+                  );
+                })}
                 {/* 滚动锚点 */}
                 <div ref={messagesEndRef} style={{ height: '1px' }} />
               </>

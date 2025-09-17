@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import styles from './ChatMessage.module.scss';
+import Link from 'next/link';
 
 interface RelatedNote {
   id: string;
@@ -52,33 +53,53 @@ export default function ChatMessage({ role, content, relatedNotes, searchingNote
       )}
       
       {/* 显示相关笔记 - 只在AI回复且有相关笔记时显示 */}
-      {!isUser && relatedNotes && relatedNotes.length > 0 && (
+      {!isUser && Array.isArray(relatedNotes) && relatedNotes.length > 0 && (
         <div className={styles.relatedNotesContainer}>
           <div className={styles.relatedNotesHeader}>
             📝 相关笔记 ({relatedNotes.length})
           </div>
           <div className={styles.relatedNotesList}>
-            {relatedNotes.map((note) => (
-              <div key={note.id} className={styles.relatedNoteItem}>
-                <div className={styles.noteHeader}>
-                  <span className={styles.noteTitle}>{note.title}</span>
-                  <span className={styles.noteSimilarity}>
-                    {Math.round(note.similarity * 100)}% 相关
-                  </span>
+            {relatedNotes.map((note) => {
+              const safeTitle = (note && typeof note.title === 'string' && note.title.trim()) ? note.title : '无标题';
+              const rawContent = (note && typeof note.content === 'string') ? note.content : '';
+              const preview = rawContent.length > 200 ? rawContent.substring(0, 200) + '...' : rawContent;
+              const similarity = Number.isFinite(note?.similarity) ? Math.round((note!.similarity as number) * 100) : 0;
+              const date = note?.createdAt ? new Date(note.createdAt) : null;
+              const dateText = (date && !isNaN(date.getTime())) ? date.toLocaleDateString('zh-CN') : '-';
+              const safeId = (note as any)?.id || (note as any)?._id || '';
+              const key = safeId || `${safeTitle}-${dateText}`;
+
+              const cardInner = (
+                <>
+                  <div className={styles.noteHeader}>
+                    <span className={styles.noteTitle}>{safeTitle}</span>
+                    <span className={styles.noteSimilarity}>
+                      {similarity}% 相关
+                    </span>
+                  </div>
+                  <div className={styles.noteContent}>{preview}</div>
+                  <div className={styles.noteFooter}>
+                    <span className={styles.noteDate}>{dateText}</span>
+                  </div>
+                </>
+              );
+
+              return safeId ? (
+                <Link
+                  key={key}
+                  href={`/notes?highlight=${encodeURIComponent(safeId)}`}
+                  prefetch={false}
+                  className={styles.relatedNoteItem}
+                  aria-label={`查看笔记详情：${safeTitle}`}
+                >
+                  {cardInner}
+                </Link>
+              ) : (
+                <div key={key} className={styles.relatedNoteItem}>
+                  {cardInner}
                 </div>
-                <div className={styles.noteContent}>
-                  {note.content.length > 200 
-                    ? note.content.substring(0, 200) + '...' 
-                    : note.content
-                  }
-                </div>
-                <div className={styles.noteFooter}>
-                  <span className={styles.noteDate}>
-                    {new Date(note.createdAt).toLocaleDateString('zh-CN')}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

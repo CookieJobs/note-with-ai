@@ -2,6 +2,7 @@
 import express from 'express';
 import { chatWithDeepSeek, summarizeChatTitle } from '../services/deepseek';
 import  Chat  from '../models/Chat';
+import mongoose from 'mongoose';
 
 import { authenticateToken } from '../middleware/auth';
 import { findRelatedNotes, findRelatedNotesAdvanced } from '../utils/embedding';
@@ -36,16 +37,20 @@ router.post('/save', authenticateToken, asyncHandler(async (req: any, res: any) 
   const cleanedMessages = sanitizeMessages(messages);
 
   let chat;
-  if (sessionId) {
-    // 更新现有会话
+  if (sessionId && mongoose.Types.ObjectId.isValid(sessionId)) {
+    // 更新现有会话（仅当 sessionId 为有效 ObjectId 时）
     chat = await Chat.findByIdAndUpdate(
       sessionId,
-      { messages: cleanedMessages, title, updatedAt: new Date() },
+      { messages: cleanedMessages, title: title || '新对话', updatedAt: new Date() },
       { new: true, runValidators: true }
     );
     if (!chat) {
       throw ErrorHandler.createNotFoundError('会话不存在');
     }
+  } else if (sessionId && !mongoose.Types.ObjectId.isValid(sessionId)) {
+    console.warn('⚠️ 无效的 sessionId，忽略更新并创建新会话:', sessionId);
+    chat = new Chat({ userId, messages: cleanedMessages, title: title || '新对话' });
+    await chat.save();
   } else {
     // 创建新会话
     chat = new Chat({ userId, messages: cleanedMessages, title: title || '新对话' });
@@ -97,13 +102,17 @@ router.delete('/:sessionId', authenticateToken, asyncHandler(async (req: any, re
 // 聊天标题自动摘要接口
 router.post('/summarizeTitle', authenticateToken, asyncHandler(async (req: any, res: any) => {
   const { userContent, aiContent } = req.body;
-  
-  if (!userContent || !aiContent) {
-    throw ErrorHandler.createValidationError('缺少内容');
+
+  // 兜底：若内容为空则直接返回默认标题，防止 400
+  const userText = (userContent ?? '').toString().trim();
+  const aiText = (aiContent ?? '').toString().trim();
+
+  if (!userText && !aiText) {
+    return ResponseHandler.success(res, { title: '未命名对话' }, '无内容，返回默认标题');
   }
-  
-  // 拼接用户和AI内容作为摘要输入
-  const prompt = `用户: ${userContent}\nAI: ${aiContent}`;
+
+  // 拼接用户和AI内容作为摘要输入（若只有一项，也可使用单项）
+  const prompt = userText && aiText ? `用户: ${userText}\nAI: ${aiText}` : (userText || aiText);
   const title = await summarizeChatTitle(prompt);
   
   ResponseHandler.success(res, { title }, '生成标题成功');
@@ -139,12 +148,16 @@ router.post('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
     const finalMessages = [...cleanedMessages, { role: 'assistant' as const, content: reply }];
 
     // 保存到数据库（更新会话）
-    if (sessionId) {
+    if (sessionId && mongoose.Types.ObjectId.isValid(sessionId)) {
       await Chat.findByIdAndUpdate(
         sessionId,
         { messages: finalMessages, title: title || '新对话', updatedAt: new Date() },
         { new: true, runValidators: true }
       );
+    } else if (sessionId && !mongoose.Types.ObjectId.isValid(sessionId)) {
+      console.warn('⚠️ 无效的 sessionId，忽略更新并创建新会话:', sessionId);
+      const session = new Chat({ userId, title: title || '新对话', messages: finalMessages });
+      await session.save();
     } else {
       // 若无sessionId则新建会话
       const session = new Chat({ userId, title: title || '新对话', messages: finalMessages });

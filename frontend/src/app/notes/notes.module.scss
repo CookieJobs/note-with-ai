@@ -214,6 +214,19 @@
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid rgba(0, 0, 0, 0.05);
+  // 方案B：默认隐藏，focus-within 时显示
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease, max-height 0.22s ease;
+}
+
+/* 当输入容器或其内部获得焦点时展示操作区 */
+.composeArea:focus-within .composeActions {
+  opacity: 1;
+  max-height: 120px; /* 默认最大高度，可容纳提示+按钮 */
+  pointer-events: auto;
 }
 
 .composeHint {
@@ -368,6 +381,9 @@
 
 /* 笔记容器 */
 .notesContainer {
+  display: flex; /* 关键：让子元素的 flex:1 生效 */
+  flex-direction: column;
+  min-height: 0; /* 关键：允许子元素在 flex 容器中收缩，从而产生内部滚动 */
   flex: 1;
   max-width: 800px; /* 与 composeArea 保持一致 */
   margin-left: auto;
@@ -416,7 +432,18 @@
   margin-bottom: 12px;
 }
 
+/* 恢复标题样式 */
 .noteTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.4;
+  word-break: break-word;
+  flex: 1;
+  margin: 0 12px 0 0;
+}
+
+.noteText {
   font-size: 18px;
   font-weight: 600;
   color: #1f2937;
@@ -469,14 +496,72 @@
 }
 
 .noteContent {
+  margin-bottom: 16px;
+  position: relative;
+}
+
+/* 多行截断，保留换行但按视觉行数裁剪 */
+.noteText {
+  display: -webkit-box;
+  -webkit-line-clamp: 6; /* 6 行 */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre-wrap; /* 保留换行与空白 */
   font-size: 14px;
   line-height: 1.6;
   color: #4b5563;
-  margin-bottom: 16px;
-  word-break: break-word;
-  white-space: pre-wrap;
+  margin: 0;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+  font-weight: 400;
 }
 
+/* 展开后：取消 line-clamp，使正文完整展示 */
+.noteTextExpanded {
+  display: block;
+  overflow: visible;
+  text-overflow: initial;
+  white-space: pre-wrap; /* 尽量保留用户换行 */
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  margin: 0;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+  font-weight: 400; /* 与收起一致 */
+}
+
+/* 包裹容器用于高度过渡与淡入 */
+.noteTextWrapper {
+  overflow: hidden;
+  transition: max-height 220ms ease;
+}
+
+/* 展开/收起 按钮 */
+.expandToggle {
+  margin-top: 8px;
+  background: transparent;
+  color: rgb(23,112,232);
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+  transition: color 0.2s ease;
+}
+
+.expandToggle:hover {
+  color: #1258b3;
+}
+
+@media (hover: none) {
+  .expandToggle {
+    padding: 4px 2px; /* 提高移动端易点性 */
+  }
+}
 .noteKeywords {
   display: flex;
   flex-wrap: wrap;
@@ -796,5 +881,27 @@
     font-size: 16px; /* 防止 iOS 缩放 */
     width: 100%;
     min-width: 0; /* 确保在小屏幕上正确显示 */
+  }
+}
+
+/* 从聊天跳转的高亮效果 */
+.noteCardHighlight {
+  box-shadow: 0 0 0 2px rgba(23,112,232,0.35), 0 8px 24px rgba(23,112,232,0.15);
+  border-color: rgba(23,112,232,0.45) !important;
+  animation: notePulse 1.4s ease-in-out 0s 1;
+}
+
+@keyframes notePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(23,112,232,0.0), 0 0 0 rgba(0,0,0,0);
+    background-color: rgba(23,112,232,0.05);
+  }
+  40% {
+    box-shadow: 0 0 0 4px rgba(23,112,232,0.25), 0 8px 20px rgba(23,112,232,0.2);
+    background-color: rgba(23,112,232,0.08);
+  }
+  100% {
+    box-shadow: 0 0 0 2px rgba(23,112,232,0.25), 0 4px 12px rgba(0,0,0,0.06);
+    background-color: transparent;
   }
 }

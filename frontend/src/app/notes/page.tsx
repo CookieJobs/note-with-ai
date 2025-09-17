@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 // import Sidebar from '../../components/Sidebar';
 // import MobileMenuButton from '../../components/MobileMenuButton';
 import styles from './notes.module.scss';
@@ -21,13 +21,22 @@ interface Note {
 interface NoteCardProps {
   note: Note;
   onDelete: (id: string) => void;
+  isHighlighted?: boolean;
+  cardRef?: (el: HTMLDivElement | null) => void;
 }
 
-const ModernNoteCard = ({ note, onDelete }: NoteCardProps) => {
+const ModernNoteCard = ({ note, onDelete, isHighlighted, cardRef }: NoteCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAllKeywords, setShowAllKeywords] = useState(false);
   
+  // 新增：正文引用与可展开判定
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const [canExpand, setCanExpand] = useState(false);
+  // 新增：包裹容器用于高度动画
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [maxHeight, setMaxHeight] = useState<string>('');
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -40,118 +49,104 @@ const ModernNoteCard = ({ note, onDelete }: NoteCardProps) => {
     return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
   };
 
-  const truncateContent = (content: string, maxLength: number = 150) => {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + '...';
-  };
+  // 仅依据“内容的总高度”和“6行高度”判断是否可展开，避免依赖 CSS line-clamp
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+
+    const computeCollapsedH = () => {
+      const computed = window.getComputedStyle(el);
+      const lineHeightStr = computed.lineHeight;
+      const lineHeight = parseFloat(lineHeightStr || '22');
+      return Math.max(0, Math.round(lineHeight * 6));
+    };
+
+    const check = () => {
+      const collapsedH = computeCollapsedH();
+      const hasOverflow = el.scrollHeight - 1 > collapsedH; // 内容总高度是否超过6行
+      setCanExpand(hasOverflow);
+    };
+
+    check();
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => check());
+      ro.observe(el);
+    } else {
+      window.addEventListener('resize', check);
+    }
+
+    return () => {
+      if (ro) ro.disconnect();
+      else window.removeEventListener('resize', check);
+    };
+  }, [note.content]);
+
+  // 根据 isExpanded 平滑过渡高度
+  useEffect(() => {
+    const p = textRef.current;
+    const wrap = wrapperRef.current;
+    if (!p || !wrap) return;
+
+    const computed = window.getComputedStyle(p);
+    const lineHeightStr = computed.lineHeight;
+    const lineHeight = parseFloat(lineHeightStr || '22');
+    const collapsedH = Math.max(0, Math.round(lineHeight * 6)); // 6 行
+
+    if (isExpanded) {
+      // 展开：以内容完整高度为目标
+      const fullH = p.scrollHeight;
+      setMaxHeight(fullH + 'px');
+    } else {
+      // 收起：回到 6 行高度
+      setMaxHeight(collapsedH + 'px');
+    }
+  }, [isExpanded, note.content]);
+
+  // 组合卡片 classname，高亮时追加类名
+  const cardClassName = `${styles.noteCard} ${isHighlighted ? styles.noteCardHighlight : ''}`;
 
   return (
-    <>
-      <div className={styles.noteCard} onClick={() => setIsExpanded(!isExpanded)}>
-        <div className={styles.noteHeader}>
-          <div className={styles.noteTitle}>{note.title}</div>
-          <div className={styles.noteActions}>
-            <span className={styles.noteDate}>{formatDate(note.createdAt)}</span>
-            <button
-              className={styles.deleteButton}
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowDeleteConfirm(true);
-              }}
-              aria-label="删除笔记"
-              title="删除笔记"
-            >
-              <TrashIcon size={16} />
-            </button>
-          </div>
+    <div ref={cardRef || undefined} className={cardClassName}>
+      {/* 其余渲染保持不变 */}
+      <div className={styles.noteHeader}>
+        <h3 className={styles.noteTitle}>{note.title}</h3>
+        <div className={styles.noteActions}>
+          <span className={styles.noteDate}>{formatDate(note.createdAt)}</span>
+          <button className={styles.deleteButton} onClick={() => onDelete(note._id)}>
+            <TrashIcon />
+          </button>
         </div>
-        
-        <div className={styles.noteContent}>
-          {isExpanded ? note.content : truncateContent(note.content)}
+      </div>
+      <div className={styles.noteContent}>
+        <div ref={wrapperRef} className={styles.noteTextWrapper} style={{ maxHeight }}>
+          <p ref={textRef} className={isExpanded ? styles.noteTextExpanded : styles.noteText}>{note.content}</p>
         </div>
-        
-        {note.keywords && note.keywords.length > 0 && (
-          <div className={styles.noteKeywords}>
-            {(showAllKeywords ? note.keywords : note.keywords.slice(0, 3)).map((keyword, index) => (
-              <span key={index} className={styles.keyword}>
-                {keyword}
-              </span>
-            ))}
-            {note.keywords.length > 3 && (
-              <span 
-                className={styles.keywordMore}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowAllKeywords(!showAllKeywords);
-                }}
-              >
-                {showAllKeywords ? '收起' : `+${note.keywords.length - 3}`}
-              </span>
-            )}
-          </div>
-        )}
-        
-        {note.content.length > 150 && (
-          <div className={styles.expandIndicator}>
-            {isExpanded ? '收起' : '展开'}
-          </div>
+        {(isExpanded || canExpand) && (
+          <button
+            type="button"
+            className={styles.expandToggle}
+            onClick={() => setIsExpanded((v) => !v)}
+          >
+            {isExpanded ? '收起' : '展开全文'}
+          </button>
         )}
       </div>
-
-      {showDeleteConfirm && (
-        <div className={styles.confirmDialog} onClick={() => setShowDeleteConfirm(false)}>
-          <div className={styles.confirmDialogContent} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.confirmIcon}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2"/>
-                <path d="M15 9l-6 6M9 9l6 6" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <h3 className={styles.confirmTitle}>删除笔记</h3>
-            <p className={styles.confirmMessage}>确定要删除这条笔记吗？此操作无法撤销。</p>
-            <div className={styles.confirmActions}>
-              <button 
-                className={styles.cancelButton} 
-                onClick={() => setShowDeleteConfirm(false)}
-              >
-                取消
-              </button>
-              <button 
-                className={styles.confirmButton} 
-                onClick={() => {
-                  onDelete(note._id);
-                  setShowDeleteConfirm(false);
-                }}
-              >
-                删除
-              </button>
-            </div>
-          </div>
+      {note.keywords && note.keywords.length > 0 && (
+        <div className={styles.noteKeywords}>
+          {note.keywords.map((kw, idx) => (
+            <span key={idx} className={styles.keyword}>{kw}</span>
+          ))}
         </div>
       )}
-    </>
+    </div>
   );
 };
 
-// 空状态组件
-const EmptyState = () => (
-  <div className={styles.emptyState}>
-    <div className={styles.emptyIcon}>
-      <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <polyline points="14,2 14,8 20,8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <polyline points="10,9 9,9 8,9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    </div>
-    <h3 className={styles.emptyTitle}>还没有笔记</h3>
-    <p className={styles.emptyDescription}>开始记录你的想法和灵感吧</p>
-  </div>
-);
-
 export default function NotesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<any>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [newContent, setNewContent] = useState('');
@@ -159,7 +154,65 @@ export default function NotesPage() {
   const [error, setError] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // 新增：compose 区域容器与操作区 refs + 隐藏定时器
+  const composeContainerRef = useRef<HTMLDivElement | null>(null);
+  const composeActionsRef = useRef<HTMLDivElement | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
+
+  // 新增：隐藏时禁用可聚焦元素，显示时恢复（轻量可访问性增强）
+  const setActionsA11yHidden = useCallback((hidden: boolean) => {
+    const actions = composeActionsRef.current;
+    if (!actions) return;
+
+    actions.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+
+    const focusables = actions.querySelectorAll<HTMLElement>(
+      'a[href], button, textarea, input, select, [tabindex]'
+    );
+    focusables.forEach((el) => {
+      if (hidden) {
+        const prev = el.getAttribute('tabindex');
+        if (prev !== null) el.setAttribute('data-prev-tabindex', prev);
+        el.setAttribute('tabindex', '-1');
+      } else {
+        const prev = el.getAttribute('data-prev-tabindex');
+        if (prev !== null) {
+          if (prev === '') el.removeAttribute('tabindex');
+          else el.setAttribute('tabindex', prev);
+          el.removeAttribute('data-prev-tabindex');
+        } else if (el.getAttribute('tabindex') === '-1') {
+          el.removeAttribute('tabindex');
+        }
+      }
+    });
+  }, []);
+
+  // 组合区获得与失去焦点时的处理（避免从输入框切到按钮时闪烁）
+  const handleComposeFocusCapture = useCallback(() => {
+    if (hideTimerRef.current) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    setActionsA11yHidden(false);
+  }, [setActionsA11yHidden]);
+
+  const handleComposeBlurCapture = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    const next = e.relatedTarget as Node | null;
+    const container = composeContainerRef.current;
+    if (container && next && container.contains(next)) return; // 焦点仍在容器内
+
+    hideTimerRef.current = window.setTimeout(() => {
+      setActionsA11yHidden(true);
+    }, 120);
+  }, [setActionsA11yHidden]);
+
+  // 初始时默认隐藏 actions（未激活）
+  useEffect(() => {
+    setActionsA11yHidden(true);
+  }, [setActionsA11yHidden]);
+  const highlightId = searchParams.get('highlight') || '';
+  const highlightedRef = useRef<HTMLDivElement | null>(null);
 
   // 检查用户认证状态
   useEffect(() => {
@@ -179,59 +232,51 @@ export default function NotesPage() {
   // 加载笔记
   useEffect(() => {
     if (!user) return;
+
+    const controller = new AbortController();
+    let mounted = true;
     
-    authFetch('/api/notes')
+    authFetch('/api/notes', { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`请求失败: ${res.status}`);
         return res.json();
       })
       .then((response) => {
+        if (!mounted) return;
         console.log('📝 /api/notes 返回内容:', response);
 
-        // 后端返回格式: {success: true, message: string, data: {notes: Note[]}}
         if (response.success && response.data && Array.isArray(response.data.notes)) {
           setNotes(response.data.notes);
+        } else if (Array.isArray(response?.notes)) {
+          setNotes(response.notes);
         } else {
           console.warn('⚠️ /api/notes 返回格式错误:', response);
           setNotes([]);
         }
       })
-      .catch((err) => {
+      .catch((err: any) => {
+        if (err?.name === 'AbortError') return;
         console.error('加载失败:', err);
         setError('加载失败，请稍后重试');
       });
+
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
   }, [user]);
 
-  const handleSubmit = async () => {
-    if (!newContent.trim()) return;
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const res = await authFetch('/api/notes', {
-        method: 'POST',
-        body: JSON.stringify({ content: newContent }),
-      });
-
-      if (!res.ok) throw new Error(`提交失败: ${res.status}`);
-      const newNote = await res.json();
-
-      setNotes((prev) => [newNote, ...prev]);
-      setNewContent('');
-      setIsComposing(false);
-      
-      // 重置文本框高度
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
+  // 首次加载后滚动并高亮
+  useEffect(() => {
+    if (!highlightId || notes.length === 0) return;
+    // 延迟到列表渲染完成
+    const timer = setTimeout(() => {
+      if (highlightedRef.current) {
+        highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-    } catch (err) {
-      console.error(err);
-      setError('提交失败，请稍后重试');
-    } finally {
-      setLoading(false);
-    }
-  };
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [highlightId, notes]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -247,151 +292,157 @@ export default function NotesPage() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+  const attachRefIfHighlighted = (id: string) => (el: HTMLDivElement | null) => {
+    if (!highlightId) return;
+    if (id === highlightId) {
+      highlightedRef.current = el;
+      // 临时添加动画类，3秒后移除高亮（通过 CSS 动画淡出）
+      if (el) {
+        el.classList.add(styles.noteCardHighlight);
+        setTimeout(() => {
+          el && el.classList.remove(styles.noteCardHighlight);
+        }, 3000);
+      }
+    }
+  };
+
+  // 新增：提交新笔记
+  const handleSubmit = async () => {
+    const content = newContent.trim();
+    if (!content || loading) return;
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await authFetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`创建失败: ${res.status} ${txt}`);
+      }
+
+      const data = await res.json();
+      // 兼容不同返回结构
+      const created: Note | undefined = (data?.success && data?.data) ? data.data : data;
+      if (created && created._id) {
+        setNotes(prev => [created, ...prev]);
+        setNewContent('');
+        setIsComposing(false);
+        // 聚焦输入框，便于继续记录
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      } else {
+        console.warn('未知的创建返回结构:', data);
+      }
+    } catch (err: any) {
+      console.error('创建笔记失败:', err);
+      setError(err?.message || '创建笔记失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 新增：键盘快捷键 Cmd/Ctrl + Enter 提交
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       handleSubmit();
     }
   };
 
-  const adjustTextareaHeight = () => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
-    }
-  };
-
-  if (!user) {
-    return (
-      <div className={styles.loadingContainer}>
-        <div className={styles.loadingSpinner}></div>
-        <p>正在验证身份...</p>
-      </div>
-    );
-  }
-
   return (
-    // 顶部导航布局容器
     <div className={styles.container}>
       <TopNavigation />
       <main className={styles.mainContent}>
-        {/* 移除内部 topBar，避免重复展示用户区 */}
-        {/* <header className={styles.topBar}> */}
-        {/*   <div className={styles.titleSection}> */}
-        {/*     <h1 className={styles.pageTitle}>Notes</h1> */}
-        {/*     <span className={styles.noteCount}>{notes.length} 条笔记</span> */}
-        {/*   </div> */}
-        {/*   <div className={styles.userSection}> */}
-        {/*     <div className={styles.userAvatar}> */}
-        {/*       {user.username.charAt(0).toUpperCase()} */}
-        {/*     </div> */}
-        {/*     <div className={styles.userInfo}> */}
-        {/*       <span className={styles.userName}>{user.username}</span> */}
-        {/*       <button onClick={logout} className={styles.logoutButton}> */}
-        {/*         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"> */}
-        {/*           <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/> */}
-        {/*         </svg> */}
-        {/*         退出 */}
-        {/*       </button> */}
-        {/*     </div> */}
-        {/*   </div> */}
-        {/* </header> */}
-
-        {/* 写作区域 - 紧贴topbar */}
-        <div className={`${styles.composeArea} ${isComposing ? styles.composing : ''}`}>
-          <div className={styles.composeHeader}>
-            <div className={styles.composeIcon}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <div className={styles.contentWrapper}>
+          {/* 错误提示 */}
+          {error && (
+            <div className={styles.errorBanner}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 9v4m0 4h.01M10.29 3.86l-7.5 12.99A1 1 0 003.62 18h16.76a1 1 0 00.86-1.5l-7.5-12.99a1 1 0 00-1.72 0z" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
+              <span>{error}</span>
             </div>
-            <span className={styles.composeTitle}>记录新想法</span>
-          </div>
-          
-          <textarea
-            ref={textareaRef}
-            className={styles.composeInput}
-            placeholder="有什么想法要记录吗？支持 Cmd/Ctrl + Enter 快速提交"
-            value={newContent}
-            onFocus={() => setIsComposing(true)}
-            onBlur={() => !newContent.trim() && setIsComposing(false)}
-            onChange={(e) => {
-              setNewContent(e.target.value);
-              adjustTextareaHeight();
-            }}
-            onKeyDown={handleKeyDown}
-          />
-          
-          {(isComposing || newContent.trim()) && (
-            <div className={styles.composeActions}>
+          )}
+
+          {/* 写作输入区域（恢复） */}
+          <div
+            ref={composeContainerRef}
+            className={`${styles.composeArea} ${isComposing ? styles.composing : ''}`}
+            onFocusCapture={handleComposeFocusCapture}
+            onBlurCapture={handleComposeBlurCapture}
+          >
+            <div className={styles.composeHeader}>
+              <div className={styles.composeIcon}>📝</div>
+              <div className={styles.composeTitle}>快速记录</div>
+            </div>
+            <textarea
+              ref={textareaRef}
+              className={styles.composeInput}
+              placeholder="此刻的想法、待办或总结... 支持 Cmd/Ctrl + Enter 快速保存"
+              value={newContent}
+              onChange={e => setNewContent(e.target.value)}
+              onFocus={() => setIsComposing(true)}
+              onKeyDown={handleKeyDown}
+              rows={3}
+              disabled={loading}
+            />
+            <div className={styles.composeActions} ref={composeActionsRef} aria-hidden="true">
               <div className={styles.composeHint}>
-                <kbd>⌘</kbd> + <kbd>Enter</kbd> 快速提交
+                <span>按</span>
+                <kbd>Cmd</kbd>
+                <span>/</span>
+                <kbd>Ctrl</kbd>
+                <span> + </span>
+                <kbd>Enter</kbd>
+                <span> 快速保存</span>
               </div>
               <div className={styles.composeButtons}>
+                {isComposing && (
+                  <button
+                    className={styles.cancelButton}
+                    onClick={() => { setIsComposing(false); setNewContent(''); }}
+                    disabled={loading}
+                  >
+                    取消
+                  </button>
+                )}
                 <button
-                  className={styles.cancelButton}
-                  onClick={() => {
-                    setNewContent('');
-                    setIsComposing(false);
-                    if (textareaRef.current) {
-                      textareaRef.current.style.height = 'auto';
-                    }
-                  }}
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleSubmit}
-                  disabled={loading || !newContent.trim()}
                   className={styles.submitButton}
+                  onClick={handleSubmit}
+                  disabled={loading || newContent.trim().length === 0}
                 >
                   {loading ? (
-                    <div className={styles.buttonSpinner}></div>
+                    <span className={styles.buttonSpinner} />
                   ) : (
                     <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                        <line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <polygon points="22,2 15,22 11,13 2,9 22,2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
-                      发布
+                      保存
                     </>
                   )}
                 </button>
               </div>
             </div>
-          )}
-        </div>
-
-        {/* 错误提示 */}
-        {error && (
-          <div className={styles.errorBanner}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-              <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" strokeWidth="2"/>
-              <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" strokeWidth="2"/>
-            </svg>
-            {error}
           </div>
-        )}
 
-        <div className={styles.contentWrapper}>
-          {/* 笔记列表 */}
-          <div className={styles.notesScrollContainer}>
-            <div className={styles.notesContainer}>
-              {notes.length === 0 ? (
-                <EmptyState />
-              ) : (
-                <div className={styles.notesList}>
-                  {notes.map((note) => (
-                    <ModernNoteCard
-                      key={note._id}
-                      note={note}
-                      onDelete={handleDelete}
-                    />
-                  ))}
-                </div>
-              )}
+          <div className={styles.notesContainer}>
+            <div className={styles.notesScrollContainer}>
+              <div className={styles.notesList}>
+                {notes.map((note) => (
+                  <ModernNoteCard
+                    key={note._id}
+                    note={note}
+                    onDelete={handleDelete}
+                    isHighlighted={!!highlightId && note._id === highlightId}
+                    cardRef={attachRefIfHighlighted(note._id)}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>

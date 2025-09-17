@@ -17,12 +17,6 @@
       "static/css/app/notes/page.css",
       "static/chunks/app/notes/page.js"
     ],
-    "/auth/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/auth/page.css",
-      "static/chunks/app/auth/page.js"
-    ],
     "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
