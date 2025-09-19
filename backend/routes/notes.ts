@@ -98,4 +98,27 @@ router.post('/chat', authenticateToken, asyncHandler(async (req: any, res: any) 
   ResponseHandler.success(res, { reply }, '聊天成功');
 }));
 
+// 更新笔记标题
+router.post('/:id', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const { id } = req.params;
+  const { title } = req.body;
+  const user = await UserValidator.authenticateUser(req);
+  console.log('收到更新标题请求，ID:', id, '新标题:', title);
+
+  // 验证标题参数
+  if (title === undefined || typeof title !== 'string') {
+    throw ErrorHandler.createValidationError('标题必须是字符串类型');
+  }
+
+  // 验证资源所有权
+  const note = await ResourceValidator.validateOwnership(Note, id, user._id.toString(), '笔记');
+
+  // 更新标题
+  note.title = title.trim();
+  await note.save();
+  console.log('✅ 笔记标题更新成功');
+
+  ResponseHandler.success(res, { note }, '笔记标题更新成功');
+}));
+
 export default router;

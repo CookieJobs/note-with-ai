@@ -22,18 +22,21 @@ interface NoteCardProps {
   note: Note;
   onDelete: (id: string) => void;
   isHighlighted?: boolean;
+  onUpdateTitle: (id: string, newTitle: string) => void;
   cardRef?: (el: HTMLDivElement | null) => void;
 }
 
-const ModernNoteCard = ({ note, onDelete, isHighlighted, cardRef }: NoteCardProps) => {
+const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, cardRef }: NoteCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAllKeywords, setShowAllKeywords] = useState(false);
-  
-  // 新增：正文引用与可展开判定
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState(note.title || '');
+  const [titleInputRef, setTitleInputRef] = useState<HTMLInputElement | null>(null);
+  // 正文引用与可展开判定
   const textRef = useRef<HTMLParagraphElement>(null);
   const [canExpand, setCanExpand] = useState(false);
-  // 新增：包裹容器用于高度动画
+  // 包裹容器用于高度动画
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [maxHeight, setMaxHeight] = useState<string>('');
 
@@ -49,6 +52,71 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, cardRef }: NoteCardProp
     return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
   };
 
+  // 保存标题修改
+  const saveTitle = async () => {
+    console.log("进入save")
+    if (editTitle.trim() !== note.title) {
+      try {
+        note.title = editTitle.trim();
+        console.log('准备保存标题:', editTitle.trim());
+        // 调用API保存新标题
+        const response = await authFetch(`/api/notes/${note._id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ title: note.title }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('保存标题失败');
+        }
+        
+        const data = await response.json();
+        
+        onUpdateTitle(note._id, note.title);
+        
+        console.log('标题保存成功:', data.data.note.title);
+      } catch (error) {
+        console.error('保存标题失败:', error);
+        // 可以添加错误提示给用户
+        setEditTitle(note.title || ''); // 恢复原标题
+      }
+    }
+    setIsEditingTitle(false);
+  };
+
+  // 取消编辑标题
+  const cancelEditTitle = () => {
+    setEditTitle(note.title || '');
+    setIsEditingTitle(false);
+  };
+
+  // 处理标题输入框的键盘事件
+  const handleTitleKeyPress = (e: React.KeyboardEvent) => {
+    console.log('键盘事件:', e.key);
+    if (e.key === 'Enter') {
+      saveTitle();
+    } else if (e.key === 'Escape') {
+      cancelEditTitle();
+    }
+  };
+  
+  // 当进入编辑模式时，自动聚焦输入框
+  useEffect(() => {
+    if (isEditingTitle) {
+      requestAnimationFrame(() => {
+        titleInputRef?.focus();
+        titleInputRef?.select();
+      });
+    }
+  }, [isEditingTitle]);
+
+  // 同步 note.title 到 editTitle
+  useEffect(() => {
+    setEditTitle(note.title || '');
+  }, [note.title]);
+  
   // 仅依据“内容的总高度”和“6行高度”判断是否可展开，避免依赖 CSS line-clamp
   useEffect(() => {
     const el = textRef.current;
@@ -110,15 +178,71 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, cardRef }: NoteCardProp
   return (
     <div ref={cardRef || undefined} className={cardClassName}>
       {/* 其余渲染保持不变 */}
-      <div className={styles.noteHeader}>
-        <h3 className={styles.noteTitle}>{note.title}</h3>
+      <div className={styles.noteHeader} onClick={() => setIsExpanded(!isExpanded)}>
+        {isEditingTitle ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+            <input
+              autoFocus
+              ref={setTitleInputRef}
+              type="text"
+              value={editTitle}
+              onChange={(e) => {
+                console.log('设置新标题:', e.target.value);
+                setEditTitle(e.target.value)
+              }}
+              onKeyDown={handleTitleKeyPress}
+              onBlur={cancelEditTitle}
+              className={styles.noteTitleInput}
+              placeholder="添加标题..."
+              maxLength={100}
+            />
+            {/* <button
+              onMouseDown={(e) => {
+                console.log('点击确认按钮');
+                e.stopPropagation();
+                saveTitle();
+              }}
+              className={styles.noteEditTitleConfirm}
+              aria-label="保存标题"
+            >
+              ✓
+            </button> */}
+          </div>
+        ) : (
+          <div 
+            className={styles.noteTitle} 
+            onClick={(e) => {
+              console.log('标题被点击，进入编辑模式');
+              e.stopPropagation();
+              setIsEditingTitle(true);
+            }}
+          >
+            {note.title || '点击添加标题'}
+          </div>
+        )} 
         <div className={styles.noteActions}>
+          {isEditingTitle && (
+            <button
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                saveTitle();
+              }}
+              className={styles.noteEditTitleConfirm}
+              aria-label="保存标题"
+            >
+              ✓
+            </button>
+          )}
           <span className={styles.noteDate}>{formatDate(note.createdAt)}</span>
-          <button className={styles.deleteButton} onClick={() => onDelete(note._id)}>
+          <button className={styles.deleteButton} onClick={(e) => {
+                e.stopPropagation();
+                setShowDeleteConfirm(true);
+              }}>
             <TrashIcon />
           </button>
         </div>
       </div>
+      
       <div className={styles.noteContent}>
         <div ref={wrapperRef} className={styles.noteTextWrapper} style={{ maxHeight }}>
           <p ref={textRef} className={isExpanded ? styles.noteTextExpanded : styles.noteText}>{note.content}</p>
@@ -133,6 +257,7 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, cardRef }: NoteCardProp
           </button>
         )}
       </div>
+      
       {note.keywords && note.keywords.length > 0 && (
         <div className={styles.noteKeywords}>
           {note.keywords.map((kw, idx) => (
@@ -140,9 +265,43 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, cardRef }: NoteCardProp
           ))}
         </div>
       )}
+    
+
+    {showDeleteConfirm && (
+      <div className={styles.confirmDialog} onClick={() => setShowDeleteConfirm(false)}>
+        <div className={styles.confirmDialogContent} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.confirmIcon}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2"/>
+              <path d="M15 9l-6 6M9 9l6 6" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <h3 className={styles.confirmTitle}>删除笔记</h3>
+          <p className={styles.confirmMessage}>确定要删除这条笔记吗？此操作无法撤销。</p>
+          <div className={styles.confirmActions}>
+            <button 
+              className={styles.cancelButton} 
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              取消
+            </button>
+            <button 
+              className={styles.confirmButton} 
+              onClick={() => {
+                onDelete(note._id);
+                setShowDeleteConfirm(false);
+              }}
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 };
+
 
 export default function NotesPage() {
   const router = useRouter();
@@ -159,6 +318,15 @@ export default function NotesPage() {
   const composeContainerRef = useRef<HTMLDivElement | null>(null);
   const composeActionsRef = useRef<HTMLDivElement | null>(null);
   const hideTimerRef = useRef<number | null>(null);
+
+  // 更新笔记标题
+  const handleUpdateTitle = (id: string, newTitle: string) => {
+    setNotes(prevNotes => 
+      prevNotes.map(note => 
+        note._id === id ? { ...note, title: newTitle } : note
+      )
+    );
+  };
 
   // 新增：隐藏时禁用可聚焦元素，显示时恢复（轻量可访问性增强）
   const setActionsA11yHidden = useCallback((hidden: boolean) => {
@@ -438,6 +606,7 @@ export default function NotesPage() {
                     key={note._id}
                     note={note}
                     onDelete={handleDelete}
+                    onUpdateTitle={handleUpdateTitle}
                     isHighlighted={!!highlightId && note._id === highlightId}
                     cardRef={attachRefIfHighlighted(note._id)}
                   />

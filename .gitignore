@@ -14,9 +14,15 @@ build/
 .env
 .env.local
 .env.*.local
+<<<<<<< Updated upstream
 
 # Ignore nested Next.js build in frontend
 frontend/.next/
 
 # Ignore backend environment file explicitly
 backend/.env
+=======
+.idea/workspace.xml
+frontend/.next/*
+backend/.next/*
+>>>>>>> Stashed changes
