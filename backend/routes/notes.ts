@@ -121,4 +121,66 @@ router.post('/:id', authenticateToken, asyncHandler(async (req: any, res: any) =
   ResponseHandler.success(res, { note }, '笔记标题更新成功');
 }));
 
+// 局部更新笔记（正文/标题/关键词），支持乐观并发控制
+router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const { id } = req.params;
+  const { title, content, keywords, updatedAt, autoSummarize } = req.body || {};
+  const user = await UserValidator.authenticateUser(req);
+  console.log('收到笔记局部更新请求，ID:', id, 'payload:', { title, content, keywords, updatedAt, autoSummarize });
+
+  // 验证资源所有权
+  const note = await ResourceValidator.validateOwnership(Note, id, user._id.toString(), '笔记');
+
+  // 乐观并发：如提交了 updatedAt，需与当前记录一致
+  if (updatedAt) {
+    const clientUpdatedAt = new Date(updatedAt).getTime();
+    const currentUpdatedAt = new Date(note.updatedAt).getTime();
+    if (isNaN(clientUpdatedAt)) {
+      throw ErrorHandler.createValidationError('updatedAt 无效');
+    }
+    if (clientUpdatedAt !== currentUpdatedAt) {
+      res.status(409).json({ success: false, error: '笔记已在他处更新', data: { note } });
+      return;
+    }
+  }
+
+  // 字段校验
+  if (title !== undefined && typeof title !== 'string') {
+    throw ErrorHandler.createValidationError('标题必须是字符串类型');
+  }
+  if (content !== undefined && typeof content !== 'string') {
+    throw ErrorHandler.createValidationError('内容必须是字符串类型');
+  }
+  if (keywords !== undefined) {
+    if (!Array.isArray(keywords) || !keywords.every((k) => typeof k === 'string')) {
+      throw ErrorHandler.createValidationError('关键词必须是字符串数组');
+    }
+  }
+
+  // 应用更新
+  let contentChanged = false;
+  if (title !== undefined) note.title = title.trim();
+  if (content !== undefined) {
+    note.content = content;
+    contentChanged = true;
+  }
+  if (keywords !== undefined) note.keywords = keywords;
+
+  // 可选：自动摘要与关键词重生成（基于正文变更）
+  if (autoSummarize === true && contentChanged) {
+    try {
+      const summary = await summarizeNote(note.content);
+      if (summary?.title) note.title = summary.title;
+      if (Array.isArray(summary?.keywords)) note.keywords = summary.keywords;
+    } catch (e) {
+      console.warn('自动摘要失败，忽略：', e);
+    }
+  }
+
+  await note.save();
+  console.log('✅ 笔记局部更新成功');
+
+  ResponseHandler.success(res, { note }, '笔记更新成功');
+}));
+
 export default router;

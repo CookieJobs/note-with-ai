@@ -92,6 +92,18 @@
   background-clip: text;
 }
 
+.promptTitle {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  background: linear-gradient(135deg, rgb(23,112,232), rgb(23,112,232));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0 0 12px 0;
+}
+
 .userInfo {
   display: flex;
   align-items: center;
@@ -166,6 +178,65 @@
     }
   }
 }
+
+.carePanel {
+  width: 100%;
+  max-width: 800px;
+  margin: 24px auto;
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(23,112,232,0.15);
+  background: rgba(255,255,255,0.9);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 32px rgba(23, 112, 232, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* 与居中输入区域保持同一水平边界的外层壳 */
+.centerArea {
+  width: calc(100vw - 344px - 24px);
+  margin-left: 344px;
+  margin-right: 24px;
+}
+
+@media (max-width: 992px) {
+  .centerArea {
+    width: auto;
+    margin-left: 24px;
+    margin-right: 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  .centerArea {
+    width: auto;
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+}
+.careHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.careIcon { width: 40px; height: 40px; border-radius: 12px; background: rgba(23,112,232,0.12); display: flex; align-items: center; justify-content: center; }
+.careTitles { display: flex; flex-direction: column; flex: 1; }
+.careTitle { font-weight: 700; font-size: 18px; background: linear-gradient(135deg, rgb(23,112,232), rgb(23,112,232)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.careSubTitle { font-size: 12px; color: #6b7280; }
+.careLoading { font-size: 14px; color: #6b7280; }
+.careError { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #dc2626; }
+.careContent { display: flex; flex-direction: column; gap: 10px; }
+.aiRobotActions { display: flex; gap: 10px; }
+.robotButtonPrimary { padding: 10px 14px; background: rgb(23,112,232); color: #fff; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; box-shadow: 0 6px 16px rgba(23,112,232,0.24); }
+.robotButtonPrimary:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(23,112,232,0.3); }
+.robotButtonSecondary { padding: 10px 14px; background: rgba(23,112,232,0.08); color: rgb(23,112,232); border: 1px solid rgba(23,112,232,0.2); border-radius: 10px; cursor: pointer; transition: transform 0.15s ease; }
+.robotButtonSecondary:hover { transform: translateY(-1px); }
+.robotNoteTitle { font-size: 13px; color: #374151; }
+.robotSnippet { font-size: 13px; color: #6b7280; }
+.robotOpening { font-size: 15px; color: #1f2937; }
 
 .emptyState {
   display: flex;

@@ -39,6 +39,9 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     <>
       {/* 固定/居中的输入框（空状态时居中） */}
       <div className={containerClassName}>
+        {centered && (
+          <div className={styles.promptTitle}>您现在在想什么？</div>
+        )}
         <div className={styles.inputWrapper}>
           <textarea
             className={styles.inputField}

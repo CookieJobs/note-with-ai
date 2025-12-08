@@ -163,6 +163,26 @@
   }
 }
 
+/* 收缩态：滚动时为列表留出更多空间 */
+.composeAreaCollapsed {
+  padding: 12px;
+  margin-bottom: 20px;
+}
+
+.composeAreaCollapsed .composeHeader { margin-bottom: 8px; }
+.composeAreaCollapsed .composeIcon { width: 28px; height: 28px; }
+.composeAreaCollapsed .composeTitle { font-size: 16px; }
+.composeAreaCollapsed .composeInput {
+  min-height: 32px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.composeAreaCollapsed .composeActions {
+  opacity: 0;
+  max-height: 0;
+  pointer-events: none;
+}
+
 .composeHeader {
   display: flex;
   align-items: center;
@@ -568,6 +588,44 @@
   position: relative;
 }
 
+.noteContentInput {
+  width: 100%;
+  min-height: 120px;
+  border: 2px solid rgb(23,112,232);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1f2937;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+  background: white;
+}
+
+.noteEditBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.editToggle {
+  padding: 6px 12px;
+  background: rgba(23, 112, 232, 0.1);
+  color: rgb(23,112,232);
+  border: 1px solid rgba(23, 112, 232, 0.2);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.errorInline {
+  font-size: 12px;
+  color: #dc2626;
+}
+
 /* 多行截断，保留换行但按视觉行数裁剪 */
 .noteText {
   display: -webkit-box;
@@ -636,6 +694,61 @@
   gap: 6px;
   margin-bottom: 12px;
 }
+
+.keywordsEditorRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.keywordsInput {
+  flex: 1;
+  padding: 6px 10px;
+  border: 2px solid rgb(23,112,232);
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1f2937;
+  font-family: inherit;
+}
+
+.keywordsSave {
+  padding: 6px 12px;
+  background: rgba(23, 112, 232, 0.1);
+  color: rgb(23,112,232);
+  border: 1px solid rgba(23, 112, 232, 0.2);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.savingInline {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.successInline {
+  font-size: 12px;
+  color: #16a34a;
+}
+
+.keywordsEdit {
+  margin-left: 8px;
+  background: transparent;
+  color: rgb(23,112,232);
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 编辑态包裹，取消高度限制，完整展示输入框 */
+.noteTextWrapperEditing { overflow: visible; max-height: none; }
+
+/* 正文编辑操作按钮 */
+.noteEditActions { display: flex; align-items: center; gap: 12px; }
+.noteEditCancel { padding: 6px 12px; border: 1px solid #d1d5db; background: white; color: #6b7280; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; }
+.noteEditSave { padding: 6px 14px; background: rgb(23, 112, 232); color: white; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 3px 10px rgba(23, 112, 232, 0.3); }
 
 .keyword {
   background: rgba(23, 112, 232, 0.1);

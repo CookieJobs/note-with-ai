@@ -1,6 +1,7 @@
 // backend/routes/chat.ts
 import express from 'express';
 import { chatWithDeepSeek, summarizeChatTitle } from '../services/deepseek';
+import { Note } from '../models/Note';
 import  Chat  from '../models/Chat';
 import mongoose from 'mongoose';
 
@@ -255,6 +256,87 @@ router.post('/search-related-notes', authenticateToken, asyncHandler(async (req:
   }));
 
   ResponseHandler.success(res, { relatedNotes: formattedNotes }, '搜索相关笔记成功');
+}));
+
+// 将笔记内容拆分为片段（内容节点）
+const splitContentIntoNodes = (content: string): string[] => {
+  if (!content) return [];
+  const roughParts = content
+    .split(/\n+/)
+    .flatMap(line => line.split(/[。！？!\?；;：:]/g))
+    .map(s => s.trim())
+    .filter(Boolean);
+  return roughParts.filter(s => s.length >= 4 && s.length <= 200);
+};
+
+// AI 关怀助手开场白（迁移自 for-me）
+router.get('/robot/intro', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const userId = req.user?.userId;
+  const notes = await Note.find({ userId }).sort({ createdAt: -1 });
+
+  if (!notes || notes.length === 0) {
+    return ResponseHandler.success(res, {
+      noteId: null,
+      noteTitle: '',
+      snippet: '',
+      aiOpening: '我还没有看到你的任何笔记，要不要先去记录一点近期的想法或身体状况呢？'
+    }, '暂无笔记');
+  }
+
+  const randomNote = notes[Math.floor(Math.random() * notes.length)];
+  const nodes = splitContentIntoNodes(randomNote.content || '');
+  if (!nodes || nodes.length === 0) {
+    const fallbackSnippet = (randomNote.content || '').slice(0, 60);
+    const prompt = `你将看到用户过往笔记中的一个片段，请用体贴、自然的语气发起一句关怀性中文开场白，最多40字，不要复述片段。片段:"${fallbackSnippet}"`;
+    try {
+      const aiOpening = await chatWithDeepSeek([
+        { role: 'system', content: '你是一个温暖、克制的生活助手。请基于用户过去的笔记片段，主动给出一句简短的关怀问候或追问，语气自然，不要暴露隐私。' },
+        { role: 'user', content: prompt }
+      ]);
+      return ResponseHandler.success(res, {
+        noteId: randomNote._id.toString(),
+        noteTitle: randomNote.title,
+        snippet: fallbackSnippet,
+        aiOpening
+      }, '生成成功');
+    } catch (_e) {
+      const aiOpening = '最近还好吗？我注意到你曾记录了一些重要事项，想关心一下你的近况。';
+      return ResponseHandler.success(res, {
+        noteId: randomNote._id.toString(),
+        noteTitle: randomNote.title,
+        snippet: fallbackSnippet,
+        aiOpening
+      }, '生成成功(降级)');
+    }
+  }
+
+  const snippet = nodes[Math.floor(Math.random() * nodes.length)];
+  const system = '你是一个温暖、克制的生活助手。请基于用户过去的笔记片段，主动给出一句简短的关怀问候或追问，语气自然，避免复述原文，不要进行医疗建议。最多40字。';
+  const userMsg = `用户过往笔记片段:"${snippet}"。请仅返回一句中文开场白，例如「您的膝盖恢复情况如何？」或「最近睡眠有改善吗？」。`;
+
+  try {
+    const aiOpening = await chatWithDeepSeek([
+      { role: 'system', content: system },
+      { role: 'user', content: userMsg }
+    ]);
+    return ResponseHandler.success(res, {
+      noteId: randomNote._id.toString(),
+      noteTitle: randomNote.title,
+      snippet,
+      aiOpening
+    }, '生成成功');
+  } catch (_e) {
+    let aiOpening = '最近过得还好吗？看到你之前的记录，我想来问候一下。';
+    if (/膝盖|膝关节/.test(snippet)) {
+      aiOpening = '您的膝盖恢复情况如何？有没有感觉好一些？';
+    }
+    return ResponseHandler.success(res, {
+      noteId: randomNote._id.toString(),
+      noteTitle: randomNote.title,
+      snippet,
+      aiOpening
+    }, '生成成功(降级)');
+  }
 }));
 
 export default router;

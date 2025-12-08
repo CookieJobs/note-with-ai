@@ -11,6 +11,7 @@ import ChatInputArea from '../../components/ChatInputArea';
 import DeleteConfirmModal from '../../components/DeleteConfirmModal';
 import { useChatSessions } from '../../hooks/useChatSessions';
 import { useChatMessages } from '../../hooks/useChatMessages';
+import CareAssistantPanel from '../../components/CareAssistantPanel';
 
 interface RelatedNote {
   id: string;
@@ -43,6 +44,7 @@ export default function ChatPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string>('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showCare, setShowCare] = useState(false);
 
   // 使用自定义Hooks
   const {
@@ -204,6 +206,16 @@ export default function ChatPage() {
 // 使用 Hook 中的 updateSessionMessages 函数
   const updateSessionMessages = updateSessionMessagesHook;
 
+  // 仅在新会话且消息为空时显示“随机漫步”，并对每个会话只激活一次
+  useEffect(() => {
+    const sid = currentSession?.id || '';
+    const hasMessages = Array.isArray(messages) && messages.length > 0;
+    if (!sid) { setShowCare(false); return; }
+    if (hasMessages) { setShowCare(false); return; }
+    // 会话存在且消息为空：显示随机漫步
+    setShowCare(true);
+  }, [currentSession?.id, messages.length]);
+
   // 如果是服务端渲染，返回加载占位符
   if (!isClient) {
     return <div>Loading...</div>;
@@ -221,6 +233,25 @@ export default function ChatPage() {
     handleSend();
   };
 
+  const handleCareInsert = (text: string) => {
+    setInput(text);
+  };
+
+  const handleCareSend = async (text: string) => {
+    if (!currentSession || !user?.id) return;
+    const prev = input;
+    setInput(text);
+    await sendMessageHook(
+      text,
+      currentSession,
+      user.id,
+      updateSessionMessages,
+      saveSessionToDBHook,
+      setSessions
+    );
+    setInput(prev);
+  };
+
   return (
     <div className={`${styles.container} ${messages.length === 0 ? styles.emptyContainer : ''}`}>
       <TopNavigation />
@@ -236,6 +267,8 @@ export default function ChatPage() {
 
       <ChatMainContent messages={messages} />
 
+      {/* 提示文案已移动到 ChatInputArea 内部，使其与输入框位置和宽度一致 */}
+
       <ChatInputArea
         input={input}
         loading={loading}
@@ -244,6 +277,14 @@ export default function ChatPage() {
         onSend={handleSendClick}
         centered={messages.length === 0}
       />
+
+      {currentSession && showCare && (
+        <div className={styles.centerArea}>
+          <div className={styles.contentWrapper}>
+            <CareAssistantPanel auto={false} onInsert={handleCareInsert} onSend={handleCareSend} />
+          </div>
+        </div>
+      )}
 
       <DeleteConfirmModal
         show={showDeleteConfirm}

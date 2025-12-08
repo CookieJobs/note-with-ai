@@ -9,12 +9,15 @@ import { isAuthenticated, getUser, authFetch } from '../../utils/auth';
 import TopNavigation from '../../components/TopNavigation';
 import TrashIcon from '../../components/icons/TrashIcon';
 
+export const dynamic = 'force-dynamic';
+
 interface Note {
   _id: string;
   title: string;
   content: string;
   keywords: string[];
   createdAt: string;
+  updatedAt?: string;
 }
 
 // 现代化的笔记卡片组件
@@ -23,16 +26,33 @@ interface NoteCardProps {
   onDelete: (id: string) => void;
   isHighlighted?: boolean;
   onUpdateTitle: (id: string, newTitle: string) => void;
+  onUpdateContent?: (id: string, newContent: string, updatedAt?: string) => void;
+  onUpdateKeywords?: (id: string, newKeywords: string[], updatedAt?: string) => void;
   cardRef?: (el: HTMLDivElement | null) => void;
 }
 
-const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, cardRef }: NoteCardProps) => {
+const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdateContent, onUpdateKeywords, cardRef }: NoteCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAllKeywords, setShowAllKeywords] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(note.title || '');
   const [titleInputRef, setTitleInputRef] = useState<HTMLInputElement | null>(null);
+  // 正文编辑相关
+  const [isEditingContent, setIsEditingContent] = useState(false);
+  const [editContent, setEditContent] = useState(note.content || '');
+  const [originalContent, setOriginalContent] = useState(note.content || '');
+  const [contentSaving, setContentSaving] = useState(false);
+  const [contentError, setContentError] = useState('');
+  const saveTimerRef = useRef<number | null>(null);
+  // 关键词编辑相关
+  const [isEditingKeywords, setIsEditingKeywords] = useState(false);
+  const [editKeywords, setEditKeywords] = useState<string>((note.keywords || []).join(','));
+  const [keywordsSaving, setKeywordsSaving] = useState(false);
+  const [keywordsError, setKeywordsError] = useState('');
+  const savingKeywordsRef = useRef<boolean>(false);
+  const [keywordsSaved, setKeywordsSaved] = useState(false);
+  const keywordsSavedTimerRef = useRef<number | null>(null);
   // 正文引用与可展开判定
   const textRef = useRef<HTMLParagraphElement>(null);
   const [canExpand, setCanExpand] = useState(false);
@@ -50,6 +70,96 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, cardRef 
     if (diffDays === 2) return '昨天';
     if (diffDays <= 7) return `${diffDays - 1} 天前`;
     return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  };
+
+  // 保存正文（防抖）
+  const saveContent = async (val: string, exitAfterSuccess: boolean = false) => {
+    if (!onUpdateContent) return;
+    if (val.trim() === note.content) {
+      if (exitAfterSuccess) setIsEditingContent(false);
+      return;
+    }
+    setContentSaving(true);
+    setContentError('');
+    try {
+      const response = await authFetch(`/api/notes/${note._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: val, updatedAt: note.updatedAt }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 409) {
+          const serverNote = data?.data?.note;
+          if (serverNote?.content) {
+            onUpdateContent(note._id, serverNote.content, serverNote.updatedAt);
+            setEditContent(serverNote.content);
+          }
+          setContentError('检测到他处更新，已同步最新内容');
+        } else {
+          throw new Error(data?.error || '保存失败');
+        }
+      } else {
+        const updated = data?.data?.note || {};
+        onUpdateContent(note._id, updated.content || val, updated.updatedAt);
+        // 异步触发 embedding 更新
+        authFetch(`/api/notes/${note._id}/embed`, { method: 'POST' }).catch(() => {});
+        if (exitAfterSuccess) setIsEditingContent(false);
+      }
+    } catch (e: any) {
+      setContentError(e?.message || '保存失败');
+    } finally {
+      setContentSaving(false);
+    }
+  };
+
+  const scheduleSaveContent = (val: string) => {};
+
+  const cancelEditContent = () => {
+    setEditContent(note.content || '');
+    setIsEditingContent(false);
+    setContentError('');
+  };
+
+  // 保存关键词
+  const saveKeywords = async (val: string) => {
+    if (!onUpdateKeywords) return;
+    if (savingKeywordsRef.current) return;
+    const arr = val.split(',').map(s => s.trim()).filter(Boolean);
+    setKeywordsSaving(true);
+    setKeywordsError('');
+    setKeywordsSaved(false);
+    savingKeywordsRef.current = true;
+    try {
+      const response = await authFetch(`/api/notes/${note._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 409) {
+          const serverNote = data?.data?.note;
+          if (Array.isArray(serverNote?.keywords)) {
+            onUpdateKeywords(note._id, serverNote.keywords, serverNote.updatedAt);
+            setEditKeywords(serverNote.keywords.join(','));
+          }
+          setKeywordsError('检测到他处更新，已同步最新关键词');
+        } else {
+          throw new Error(data?.error || '保存失败');
+        }
+      } else {
+        const updated = data?.data?.note || {};
+        onUpdateKeywords(note._id, updated.keywords || arr, updated.updatedAt);
+        // 成功后退出编辑模式
+        setIsEditingKeywords(false);
+      }
+    } catch (e: any) {
+      setKeywordsError(e?.message || '保存失败');
+    } finally {
+      setKeywordsSaving(false);
+      savingKeywordsRef.current = false;
+    }
   };
 
   // 保存标题修改
@@ -116,6 +226,12 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, cardRef 
   useEffect(() => {
     setEditTitle(note.title || '');
   }, [note.title]);
+  useEffect(() => {
+    setEditContent(note.content || '');
+  }, [note.content]);
+  useEffect(() => {
+    setEditKeywords((note.keywords || []).join(','));
+  }, [note.keywords]);
   
   // 仅依据“内容的总高度”和“6行高度”判断是否可展开，避免依赖 CSS line-clamp
   useEffect(() => {
@@ -244,8 +360,47 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, cardRef 
       </div>
       
       <div className={styles.noteContent}>
-        <div ref={wrapperRef} className={styles.noteTextWrapper} style={{ maxHeight }}>
-          <p ref={textRef} className={isExpanded ? styles.noteTextExpanded : styles.noteText}>{note.content}</p>
+        <div
+          ref={wrapperRef}
+          className={isEditingContent ? styles.noteTextWrapperEditing : styles.noteTextWrapper}
+          style={{ maxHeight: isEditingContent ? undefined : maxHeight }}
+        >
+          {isEditingContent ? (
+            <textarea
+              className={styles.noteContentInput}
+              value={editContent}
+              onChange={(e) => {
+                const v = e.target.value;
+                setEditContent(v);
+              }}
+              rows={Math.min(12, Math.max(6, Math.ceil(editContent.length / 80)))}
+            />
+          ) : (
+            <p
+              ref={textRef}
+              className={isExpanded ? styles.noteTextExpanded : styles.noteText}
+              onDoubleClick={() => { setOriginalContent(note.content || ''); setEditContent(note.content || ''); setIsEditingContent(true); }}
+            >{note.content}</p>
+          )}
+        </div>
+        <div className={styles.noteEditBar}>
+          {isEditingContent && (
+            <div className={styles.noteEditActions}>
+              <button
+                type="button"
+                className={styles.noteEditCancel}
+                onClick={() => { setEditContent(originalContent || ''); setIsEditingContent(false); setContentError(''); }}
+                disabled={contentSaving}
+              >取消</button>
+              <button
+                type="button"
+                className={styles.noteEditSave}
+                onClick={() => saveContent(editContent, true)}
+                disabled={contentSaving}
+              >保存</button>
+              {contentError && <span className={styles.errorInline}>{contentError}</span>}
+            </div>
+          )}
         </div>
         {(isExpanded || canExpand) && (
           <button
@@ -258,13 +413,39 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, cardRef 
         )}
       </div>
       
-      {note.keywords && note.keywords.length > 0 && (
-        <div className={styles.noteKeywords}>
-          {note.keywords.map((kw, idx) => (
-            <span key={idx} className={styles.keyword}>{kw}</span>
-          ))}
-        </div>
-      )}
+      <div className={styles.noteKeywords}>
+        {isEditingKeywords ? (
+          <div className={styles.keywordsEditorRow}>
+            <input
+              type="text"
+              className={styles.keywordsInput}
+              value={editKeywords}
+              onChange={(e) => setEditKeywords(e.target.value)}
+              // 仅通过按钮或 Enter 保存，避免与按钮点击产生双重提交
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveKeywords(editKeywords); } }}
+              placeholder="以逗号分隔，如：效率,复盘"
+            />
+            <button
+              className={styles.keywordsSave}
+              onClick={(e) => { e.stopPropagation(); saveKeywords(editKeywords); }}
+              disabled={keywordsSaving}
+            >保存关键词</button>
+            {keywordsSaving && <span className={styles.savingInline}>保存中…</span>}
+            {!keywordsSaving && !keywordsError && keywordsSaved && <span className={styles.successInline}>已保存</span>}
+            {keywordsError && <span className={styles.errorInline}>{keywordsError}</span>}
+          </div>
+        ) : (
+          <>
+            {(note.keywords || []).map((kw, idx) => (
+              <span key={idx} className={styles.keyword}>{kw}</span>
+            ))}
+            <button
+              className={styles.keywordsEdit}
+              onClick={() => setIsEditingKeywords(true)}
+            >编辑关键词</button>
+          </>
+        )}
+      </div>
     
 
     {showDeleteConfirm && (
@@ -318,12 +499,31 @@ export default function NotesPage() {
   const composeContainerRef = useRef<HTMLDivElement | null>(null);
   const composeActionsRef = useRef<HTMLDivElement | null>(null);
   const hideTimerRef = useRef<number | null>(null);
+  // 新增：滚动容器 ref 与收缩状态
+  const notesScrollRef = useRef<HTMLDivElement | null>(null);
+  const [composeCollapsed, setComposeCollapsed] = useState(false);
 
   // 更新笔记标题
   const handleUpdateTitle = (id: string, newTitle: string) => {
     setNotes(prevNotes => 
       prevNotes.map(note => 
         note._id === id ? { ...note, title: newTitle } : note
+      )
+    );
+  };
+
+  const handleUpdateContent = (id: string, newContent: string, updatedAt?: string) => {
+    setNotes(prevNotes => 
+      prevNotes.map(note => 
+        note._id === id ? { ...note, content: newContent, updatedAt: updatedAt || note.updatedAt } : note
+      )
+    );
+  };
+
+  const handleUpdateKeywords = (id: string, newKeywords: string[], updatedAt?: string) => {
+    setNotes(prevNotes => 
+      prevNotes.map(note => 
+        note._id === id ? { ...note, keywords: newKeywords, updatedAt: updatedAt || note.updatedAt } : note
       )
     );
   };
@@ -370,6 +570,7 @@ export default function NotesPage() {
     const container = composeContainerRef.current;
     if (container && next && container.contains(next)) return; // 焦点仍在容器内
 
+    setIsComposing(false);
     hideTimerRef.current = window.setTimeout(() => {
       setActionsA11yHidden(true);
     }, 120);
@@ -379,6 +580,31 @@ export default function NotesPage() {
   useEffect(() => {
     setActionsA11yHidden(true);
   }, [setActionsA11yHidden]);
+
+  // 监听列表滚动以控制“快速记录”收缩态
+  useEffect(() => {
+    const scroller = notesScrollRef.current;
+    if (!scroller) return;
+    let ticking = false;
+    const threshold = 80;
+    const update = () => {
+      const collapsed = scroller.scrollTop > threshold && !isComposing;
+      setComposeCollapsed(collapsed);
+      ticking = false;
+    };
+    const onScroll = () => {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(update);
+      }
+    };
+    scroller.addEventListener('scroll', onScroll);
+    // 初始化一次
+    setComposeCollapsed(scroller.scrollTop > threshold && !isComposing);
+    return () => {
+      scroller.removeEventListener('scroll', onScroll);
+    };
+  }, [isComposing]);
   const highlightId = searchParams.get('highlight') || '';
   const highlightedRef = useRef<HTMLDivElement | null>(null);
 
@@ -539,7 +765,7 @@ export default function NotesPage() {
           {/* 写作输入区域（恢复） */}
           <div
             ref={composeContainerRef}
-            className={`${styles.composeArea} ${isComposing ? styles.composing : ''}`}
+            className={`${styles.composeArea} ${isComposing ? styles.composing : ''} ${composeCollapsed ? styles.composeAreaCollapsed : ''}`}
             onFocusCapture={handleComposeFocusCapture}
             onBlurCapture={handleComposeBlurCapture}
           >
@@ -553,9 +779,9 @@ export default function NotesPage() {
               placeholder="此刻的想法、待办或总结... 支持 Cmd/Ctrl + Enter 快速保存"
               value={newContent}
               onChange={e => setNewContent(e.target.value)}
-              onFocus={() => setIsComposing(true)}
+              onFocus={() => { setIsComposing(true); setComposeCollapsed(false); }}
               onKeyDown={handleKeyDown}
-              rows={3}
+              rows={composeCollapsed ? 1 : 3}
               disabled={loading}
             />
             <div className={styles.composeActions} ref={composeActionsRef} aria-hidden="true">
@@ -572,7 +798,7 @@ export default function NotesPage() {
                 {isComposing && (
                   <button
                     className={styles.cancelButton}
-                    onClick={() => { setIsComposing(false); setNewContent(''); }}
+                    onClick={() => { setIsComposing(false); setNewContent(''); const st = notesScrollRef.current?.scrollTop || 0; setComposeCollapsed(st > 80); }}
                     disabled={loading}
                   >
                     取消
@@ -599,7 +825,7 @@ export default function NotesPage() {
           </div>
 
           <div className={styles.notesContainer}>
-            <div className={styles.notesScrollContainer}>
+            <div className={styles.notesScrollContainer} ref={notesScrollRef}>
               <div className={styles.notesList}>
                 {notes.map((note) => (
                   <ModernNoteCard
@@ -607,6 +833,8 @@ export default function NotesPage() {
                     note={note}
                     onDelete={handleDelete}
                     onUpdateTitle={handleUpdateTitle}
+                    onUpdateContent={handleUpdateContent}
+                    onUpdateKeywords={handleUpdateKeywords}
                     isHighlighted={!!highlightId && note._id === highlightId}
                     cardRef={attachRefIfHighlighted(note._id)}
                   />

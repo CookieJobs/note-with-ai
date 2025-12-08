@@ -9,7 +9,6 @@ import styles from './TopNavigation.module.scss';
 const menuItems = [
   { label: '笔记', href: '/notes' },
   { label: '聊天', href: '/chat' },
-  { label: 'For me', href: '/for-me' },
 ];
 
 export default function TopNavigation() {
