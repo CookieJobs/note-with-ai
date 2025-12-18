@@ -463,6 +463,15 @@
   margin: 0 12px 0 0;
 }
 
+.titleSkeleton {
+  width: 160px;
+  height: 22px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
 .noteText {
   font-size: 18px;
   font-weight: 600;
@@ -588,6 +597,16 @@
   position: relative;
 }
 
+.fadeOverlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 32px;
+  height: 64px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.85));
+}
+
 .noteContentInput {
   width: 100%;
   min-height: 120px;
@@ -683,6 +702,27 @@
   color: #1258b3;
 }
 
+.expandPill {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  padding: 6px 10px;
+  background: rgba(23, 112, 232, 0.1);
+  color: rgb(23,112,232);
+  border: 1px solid rgba(23, 112, 232, 0.2);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.expandPill:hover {
+  background: rgba(23, 112, 232, 0.15);
+  border-color: rgba(23, 112, 232, 0.3);
+}
+
 @media (hover: none) {
   .expandToggle {
     padding: 4px 2px; /* 提高移动端易点性 */
@@ -693,6 +733,15 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 12px;
+}
+
+.chipSkeleton {
+  width: 60px;
+  height: 20px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }
 
 .keywordsEditorRow {
@@ -759,6 +808,7 @@
   font-weight: 500;
   border: 1px solid rgba(23, 112, 232, 0.2);
   transition: all 0.2s ease;
+  cursor: pointer;
 
   &:hover {
     background: rgba(23, 112, 232, 0.15);
@@ -787,6 +837,16 @@
   &:active {
     transform: scale(0.95);
   }
+}
+
+.keywordEditInput {
+  padding: 4px 8px;
+  border: 2px solid rgb(23,112,232);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #1f2937;
+  font-family: inherit;
 }
 
 .expandIndicator {
@@ -934,6 +994,88 @@
   color: #6b7280;
   line-height: 1.5;
   max-width: 400px;
+}
+
+/* 相关笔记区域 */
+.noteItemWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.relatedNotesSection {
+  margin: 0 0 0 24px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  border-left: 3px solid rgb(23, 112, 232);
+  animation: slideDown 0.3s ease-out;
+}
+
+.relatedHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #4b5563;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.relatedIcon {
+  font-size: 16px;
+}
+
+.relatedTitle {
+  font-weight: 600;
+  color: #374151;
+}
+
+.relatedLoading {
+  font-size: 12px;
+  color: #6b7280;
+  animation: pulse 1.5s infinite;
+}
+
+.relatedList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.emptyRelated {
+  color: #6b7280;
+  font-size: 13px;
+  padding: 8px 0;
+  font-style: italic;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* 响应式设计 */

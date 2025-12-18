@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 // import Sidebar from '../../components/Sidebar';
 // import MobileMenuButton from '../../components/MobileMenuButton';
 import styles from './notes.module.scss';
 import { isAuthenticated, getUser, authFetch } from '../../utils/auth';
+import { generateUUID } from '../../utils/uuid';
 import TopNavigation from '../../components/TopNavigation';
 import TrashIcon from '../../components/icons/TrashIcon';
+import RelatedNoteCard, { RelatedNote } from '../../components/RelatedNoteCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +20,7 @@ interface Note {
   keywords: string[];
   createdAt: string;
   updatedAt?: string;
+  enriching?: boolean;
 }
 
 // 现代化的笔记卡片组件
@@ -53,6 +56,9 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdate
   const savingKeywordsRef = useRef<boolean>(false);
   const [keywordsSaved, setKeywordsSaved] = useState(false);
   const keywordsSavedTimerRef = useRef<number | null>(null);
+  // 单标签编辑
+  const [activeKeywordIndex, setActiveKeywordIndex] = useState<number | null>(null);
+  const [tagEditValue, setTagEditValue] = useState<string>('');
   // 正文引用与可展开判定
   const textRef = useRef<HTMLParagraphElement>(null);
   const [canExpand, setCanExpand] = useState(false);
@@ -333,7 +339,11 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdate
               setIsEditingTitle(true);
             }}
           >
-            {note.title || '点击添加标题'}
+            {note.enriching && (!note.title || note.title.trim().length === 0) ? (
+              <div className={styles.titleSkeleton} />
+            ) : (
+              note.title || '点击添加标题'
+            )}
           </div>
         )} 
         <div className={styles.noteActions}>
@@ -383,6 +393,9 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdate
             >{note.content}</p>
           )}
         </div>
+        {!isEditingContent && !isExpanded && canExpand && (
+          <div className={styles.fadeOverlay} />
+        )}
         <div className={styles.noteEditBar}>
           {isEditingContent && (
             <div className={styles.noteEditActions}>
@@ -402,47 +415,98 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdate
             </div>
           )}
         </div>
-        {(isExpanded || canExpand) && (
+        {canExpand && !isEditingContent && (
           <button
             type="button"
-            className={styles.expandToggle}
+            className={styles.expandPill}
             onClick={() => setIsExpanded((v) => !v)}
           >
-            {isExpanded ? '收起' : '展开全文'}
+            {isExpanded ? '收起' : '展开'}
           </button>
         )}
       </div>
       
       <div className={styles.noteKeywords}>
-        {isEditingKeywords ? (
-          <div className={styles.keywordsEditorRow}>
-            <input
-              type="text"
-              className={styles.keywordsInput}
-              value={editKeywords}
-              onChange={(e) => setEditKeywords(e.target.value)}
-              // 仅通过按钮或 Enter 保存，避免与按钮点击产生双重提交
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveKeywords(editKeywords); } }}
-              placeholder="以逗号分隔，如：效率,复盘"
-            />
-            <button
-              className={styles.keywordsSave}
-              onClick={(e) => { e.stopPropagation(); saveKeywords(editKeywords); }}
-              disabled={keywordsSaving}
-            >保存关键词</button>
-            {keywordsSaving && <span className={styles.savingInline}>保存中…</span>}
-            {!keywordsSaving && !keywordsError && keywordsSaved && <span className={styles.successInline}>已保存</span>}
-            {keywordsError && <span className={styles.errorInline}>{keywordsError}</span>}
-          </div>
+        {note.enriching && (!(note.keywords && note.keywords.length)) ? (
+          <>
+            <span className={styles.chipSkeleton} />
+            <span className={styles.chipSkeleton} />
+            <span className={styles.chipSkeleton} />
+          </>
         ) : (
           <>
-            {(note.keywords || []).map((kw, idx) => (
-              <span key={idx} className={styles.keyword}>{kw}</span>
-            ))}
-            <button
-              className={styles.keywordsEdit}
-              onClick={() => setIsEditingKeywords(true)}
-            >编辑关键词</button>
+            {(note.keywords && note.keywords.length > 0) ? (
+              (note.keywords || []).map((kw, idx) => (
+                activeKeywordIndex === idx ? (
+                  <input
+                    key={idx}
+                    className={styles.keywordEditInput}
+                    value={tagEditValue}
+                    autoFocus
+                    onChange={(e) => setTagEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const arr = [...(note.keywords || [])];
+                        const v = tagEditValue.trim();
+                        if (v) arr[idx] = v; else arr.splice(idx, 1);
+                        authFetch(`/api/notes/${note._id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
+                        })
+                        .then(r => r.json())
+                        .then(data => {
+                          const updated = data?.data?.note;
+                          const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
+                          onUpdateKeywords && onUpdateKeywords(note._id, next, updated?.updatedAt);
+                          setActiveKeywordIndex(null);
+                          setTagEditValue('');
+                        })
+                        .catch(() => { setActiveKeywordIndex(null); setTagEditValue(''); });
+                      } else if (e.key === 'Escape') {
+                        setActiveKeywordIndex(null);
+                        setTagEditValue('');
+                      }
+                    }}
+                    onBlur={() => {
+                      const arr = [...(note.keywords || [])];
+                      const v = tagEditValue.trim();
+                      if (v) arr[idx] = v; else arr.splice(idx, 1);
+                      authFetch(`/api/notes/${note._id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
+                      })
+                      .then(r => r.json())
+                      .then(data => {
+                        const updated = data?.data?.note;
+                        const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
+                        onUpdateKeywords && onUpdateKeywords(note._id, next, updated?.updatedAt);
+                      })
+                      .finally(() => { setActiveKeywordIndex(null); setTagEditValue(''); });
+                    }}
+                  />
+                ) : (
+                  <span
+                    key={idx}
+                    className={styles.keyword}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => { setActiveKeywordIndex(idx); setTagEditValue(kw); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { setActiveKeywordIndex(idx); setTagEditValue(kw); } }}
+                  >{kw}</span>
+                )
+              ))
+            ) : (
+              <span
+                className={styles.keyword}
+                role="button"
+                tabIndex={0}
+                onClick={() => { setActiveKeywordIndex(0); setTagEditValue(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { setActiveKeywordIndex(0); setTagEditValue(''); } }}
+              >点击添加关键词</span>
+            )}
           </>
         )}
       </div>
@@ -483,8 +547,7 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdate
   );
 };
 
-
-export default function NotesPage() {
+function NotesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [user, setUser] = useState<any>(null);
@@ -502,6 +565,12 @@ export default function NotesPage() {
   // 新增：滚动容器 ref 与收缩状态
   const notesScrollRef = useRef<HTMLDivElement | null>(null);
   const [composeCollapsed, setComposeCollapsed] = useState(false);
+  
+  // 相关笔记状态
+  const [activeRelatedNoteId, setActiveRelatedNoteId] = useState<string | null>(null);
+  const [relatedNotes, setRelatedNotes] = useState<RelatedNote[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
+  const [noRelatedFound, setNoRelatedFound] = useState(false);
 
   // 更新笔记标题
   const handleUpdateTitle = (id: string, newTitle: string) => {
@@ -706,7 +775,17 @@ export default function NotesPage() {
     if (!content || loading) return;
     setLoading(true);
     setError('');
-
+    // 乐观插入临时笔记并标记富化中
+    const tempId = 'temp-' + generateUUID();
+    const tempNote: Note = {
+      _id: tempId,
+      title: '',
+      content,
+      keywords: [],
+      createdAt: new Date().toISOString(),
+      enriching: true,
+    };
+    setNotes(prev => [tempNote, ...prev]);
     try {
       const res = await authFetch('/api/notes', {
         method: 'POST',
@@ -720,12 +799,88 @@ export default function NotesPage() {
       }
 
       const data = await res.json();
-      // 兼容不同返回结构
       const created: Note | undefined = (data?.success && data?.data) ? data.data : data;
       if (created && created._id) {
-        setNotes(prev => [created, ...prev]);
+        setNotes(prev => prev.map(n => n._id === tempId ? { ...created, enriching: true } as Note : n));
         setNewContent('');
         setIsComposing(false);
+
+        // 获取相关笔记
+        setActiveRelatedNoteId(created._id);
+        setRelatedNotes([]);
+        setNoRelatedFound(false);
+        setRelatedLoading(true);
+
+        // 1. 异步生成 embedding，不阻塞相关笔记查询（因为查询用的是文本）
+        authFetch(`/api/notes/${created._id}/embed`, { method: 'POST' }).catch(console.error);
+
+        // 1.5 异步生成标题与关键词（内容不变也触发）
+        authFetch(`/api/notes/${created._id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: created.content, autoSummarize: true })
+        })
+        .then(r => r.json())
+        .then(patchData => {
+          const updated = patchData?.data?.note;
+          if (updated && updated._id === created._id) {
+            setNotes(prev => prev.map(n => n._id === created._id ? {
+              ...n,
+              title: typeof updated.title === 'string' ? updated.title : n.title,
+              keywords: Array.isArray(updated.keywords) ? updated.keywords : n.keywords,
+              enriching: false,
+              updatedAt: updated.updatedAt || n.updatedAt,
+            } : n));
+          } else {
+            setNotes(prev => prev.map(n => n._id === created._id ? { ...n, enriching: false } : n));
+          }
+        })
+        .catch(() => {
+          setNotes(prev => prev.map(n => n._id === created._id ? { ...n, enriching: false } : n));
+        });
+
+        // 2. 查询相关笔记
+        authFetch('/api/chat/related-notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            message: created.content, 
+            excludeNoteId: created._id,
+            limit: 3,
+            threshold: 0.3 // 显式降低阈值
+          }),
+        })
+        .then(res => res.json())
+        .then(relatedData => {
+           if (relatedData.success && Array.isArray(relatedData.data?.relatedNotes)) {
+             const list = relatedData.data.relatedNotes;
+             if (list.length > 0) {
+               // 转换后端返回的数据结构以匹配 RelatedNote 接口
+               const formattedNotes = list.map((item: any) => ({
+                 ...item.note,
+                 similarity: item.score
+               }));
+               setRelatedNotes(formattedNotes);
+             } else {
+               setNoRelatedFound(true);
+               // 3秒后自动隐藏区域
+               setTimeout(() => {
+                 setActiveRelatedNoteId(null);
+                 setNoRelatedFound(false);
+               }, 3000);
+             }
+           } else {
+             setNoRelatedFound(true);
+             setTimeout(() => { setActiveRelatedNoteId(null); setNoRelatedFound(false); }, 3000);
+           }
+        })
+        .catch(err => {
+          console.error('获取相关笔记失败:', err);
+          setNoRelatedFound(true);
+          setTimeout(() => { setActiveRelatedNoteId(null); setNoRelatedFound(false); }, 3000);
+        })
+        .finally(() => setRelatedLoading(false));
+
         // 聚焦输入框，便于继续记录
         requestAnimationFrame(() => textareaRef.current?.focus());
       } else {
@@ -734,6 +889,8 @@ export default function NotesPage() {
     } catch (err: any) {
       console.error('创建笔记失败:', err);
       setError(err?.message || '创建笔记失败，请稍后重试');
+      // 回滚临时笔记
+      setNotes(prev => prev.filter(n => n._id !== tempId));
     } finally {
       setLoading(false);
     }
@@ -828,16 +985,48 @@ export default function NotesPage() {
             <div className={styles.notesScrollContainer} ref={notesScrollRef}>
               <div className={styles.notesList}>
                 {notes.map((note) => (
-                  <ModernNoteCard
-                    key={note._id}
-                    note={note}
-                    onDelete={handleDelete}
-                    onUpdateTitle={handleUpdateTitle}
-                    onUpdateContent={handleUpdateContent}
-                    onUpdateKeywords={handleUpdateKeywords}
-                    isHighlighted={!!highlightId && note._id === highlightId}
-                    cardRef={attachRefIfHighlighted(note._id)}
-                  />
+                  <div key={note._id} id={`note-${note._id}`} className={styles.noteItemWrapper}>
+                    <ModernNoteCard
+                      note={note}
+                      onDelete={handleDelete}
+                      onUpdateTitle={handleUpdateTitle}
+                      onUpdateContent={handleUpdateContent}
+                      onUpdateKeywords={handleUpdateKeywords}
+                      isHighlighted={!!highlightId && note._id === highlightId}
+                      cardRef={attachRefIfHighlighted(note._id)}
+                    />
+                    {note._id === activeRelatedNoteId && (relatedNotes.length > 0 || relatedLoading || noRelatedFound) && (
+                      <div className={styles.relatedNotesSection}>
+                        <div className={styles.relatedHeader}>
+                          <span className={styles.relatedIcon}>🔗</span>
+                          <span className={styles.relatedTitle}>相关笔记</span>
+                          {relatedLoading && <span className={styles.relatedLoading}>查找中...</span>}
+                        </div>
+                        <div className={styles.relatedList}>
+                          {!relatedLoading && relatedNotes.length > 0 && relatedNotes.map(rn => (
+                            <RelatedNoteCard 
+                              key={rn._id} 
+                              note={rn} 
+                              onExpand={(id) => {
+                                const el = document.getElementById(`note-${id}`);
+                                if (el) {
+                                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                  // 添加高亮动画
+                                  el.classList.add(styles.noteCardHighlight);
+                                  setTimeout(() => el.classList.remove(styles.noteCardHighlight), 2000);
+                                }
+                              }}
+                            />
+                          ))}
+                          {!relatedLoading && noRelatedFound && (
+                            <div className={styles.emptyRelated}>
+                              未找到相关笔记
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -845,5 +1034,13 @@ export default function NotesPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function NotesPage() {
+  return (
+    <Suspense fallback={<div>Loading notes...</div>}>
+      <NotesContent />
+    </Suspense>
   );
 }

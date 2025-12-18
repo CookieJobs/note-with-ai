@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styles from './RelatedNoteCard.module.scss';
 
-interface RelatedNote {
+export interface RelatedNote {
   _id: string;
   title?: string;
   content: string;

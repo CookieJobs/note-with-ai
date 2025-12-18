@@ -7,10 +7,7 @@
     "dev": "ts-node-dev --trace-deprecation --respawn --transpile-only index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "cron": "ts-node scripts/embeddingCronJob.ts",
-    "cron:manual": "ts-node scripts/embeddingCronJob.ts --manual",
-    "cron:test": "node scripts/toggleEmbeddingMode.js test",
-    "cron:prod": "node scripts/toggleEmbeddingMode.js prod"
+    "repair:embeddings": "ts-node scripts/repair_embeddings.ts"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +20,7 @@
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
+    "mongodb": "^7.0.0",
     "mongoose": "^8.16.0",
     "node-cron": "^3.0.3"
   },

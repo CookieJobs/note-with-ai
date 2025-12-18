@@ -12,7 +12,7 @@ const router = express.Router();
  */
 router.post('/related-notes', authenticateToken, asyncHandler(async (req, res): Promise<void> => {
   const user = await UserValidator.authenticateUser(req);
-  const { message, threshold = 0.7, limit = 3 } = req.body;
+  const { message, threshold = 0.3, limit = 3, excludeNoteId } = req.body;
 
   if (!message || typeof message !== 'string') {
     throw ErrorHandler.createValidationError('消息内容不能为空');
@@ -23,7 +23,8 @@ router.post('/related-notes', authenticateToken, asyncHandler(async (req, res): 
     message,
     user._id.toString(),
     threshold,
-    limit
+    limit,
+    excludeNoteId
   );
 
   const responseData = {

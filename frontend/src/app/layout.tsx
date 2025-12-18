@@ -1,5 +1,6 @@
 // frontend/src/app/layout.tsx
 import '../styles/globals.css';
+import GlobalKeybindings from '../components/GlobalKeybindings';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className="bg-gray-50 text-gray-900">{children}</body>
+      <body className="bg-gray-50 text-gray-900">
+        <GlobalKeybindings />
+        {children}
+      </body>
     </html>
   );
 }

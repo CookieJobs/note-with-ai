@@ -47,14 +47,30 @@ app.use('/api', healthRoutes);
 app.use(globalErrorHandler);
 
 // ✅ 启动服务
-mongoose
-  .connect(MONGODB_URI)
-  .then(() => {
+const connectDB = async () => {
+  if (mongoose.connection.readyState >= 1) {
+    return;
+  }
+  try {
+    await mongoose.connect(MONGODB_URI);
     console.log('✅ MongoDB 连接成功');
+  } catch (err) {
+    console.error('❌ MongoDB 连接失败:', err);
+    throw err;
+  }
+};
+
+// Vercel Serverless Handler
+export default async (req: any, res: any) => {
+  await connectDB();
+  return app(req, res);
+};
+
+// Local Development Server
+if (require.main === module) {
+  connectDB().then(() => {
     app.listen(PORT, () => {
       console.log(`🚀 Backend running at http://localhost:${PORT}`);
     });
-  })
-  .catch((err) => {
-    console.error('❌ MongoDB 连接失败:', err);
   });
+}

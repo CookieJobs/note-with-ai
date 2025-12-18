@@ -287,16 +287,23 @@ export async function findRelatedNotes(
   searchText: string,
   userId: string,
   threshold: number = 0.3, // 降低默认阈值，更宽松的匹配
-  limit: number = 3
+  limit: number = 3,
+  excludeNoteId?: string
 ): Promise<{ note: any; score: number; matchType: 'vector' | 'keyword' }[]> {
   try {
     const { Note } = await import('../models/Note');
     
     // 获取用户的所有笔记（包含embedding）
-    const userNotes = await Note.find({ 
+    const query: any = { 
       userId, 
       embedding: { $exists: true, $ne: null, $not: { $size: 0 } }
-    });
+    };
+    
+    if (excludeNoteId) {
+      query._id = { $ne: excludeNoteId };
+    }
+
+    const userNotes = await Note.find(query);
 
     if (userNotes.length === 0) {
       console.log('⚠️ 用户没有包含向量的笔记');

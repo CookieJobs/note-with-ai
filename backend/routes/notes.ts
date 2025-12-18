@@ -1,7 +1,8 @@
 // backend/routes/notes.ts
 import express from 'express';
 import { Note } from '../models/Note';
-import { summarizeNote, generateEmbedding } from '../services/deepseek';
+import { summarizeNote } from '../services/deepseek';
+import { generateQwenEmbedding } from '../utils/embedding';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandler';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
@@ -24,24 +25,14 @@ router.get('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
 // 添加笔记
 router.post('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
   const { content } = req.body;
-  
   if (!content || typeof content !== 'string') {
     throw ErrorHandler.createValidationError('内容不能为空，且必须是字符串类型');
   }
-
   const user = await UserValidator.authenticateUser(req);
-
-  // Step 1: 调用 AI 生成标题和关键词
-  console.log('🌟 调用 AI 生成标题和关键词...');
-  const { title, keywords } = await summarizeNote(content);
-  console.log('✅ AI 返回标题和关键词：', title, keywords);
-
-  // Step 2: 存入数据库
-  console.log('🌟 保存到数据库中...');
-  const note = new Note({ content, title, keywords, userId: user._id });
+  const firstLine = (content || '').split('\n')[0].trim();
+  const fallbackTitle = firstLine.length > 0 ? firstLine.slice(0, 100) : '';
+  const note = new Note({ content, title: fallbackTitle, keywords: [], userId: user._id });
   const savedNote = await note.save();
-  console.log('✅ 保存成功：', savedNote);
-
   ResponseHandler.success(res, savedNote, '笔记创建成功', 201);
 }));
 
@@ -69,7 +60,7 @@ router.post('/:id/embed', authenticateToken, asyncHandler(async (req: any, res: 
   // 验证资源所有权
   const note = await ResourceValidator.validateOwnership(Note, id, user._id.toString(), '笔记');
 
-  const embedding = await generateEmbedding(note.content);
+  const embedding = await generateQwenEmbedding(note.content);
   note.embedding = embedding;
   await note.save();
   console.log('✅ embedding 保存成功');

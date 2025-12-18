@@ -159,32 +159,9 @@ function extractKeywordsFromContent(content: string): string[] {
 }
 
 /**
- * 可选：单独提供向量生成逻辑用于延迟处理或后台任务
+ * @deprecated 废弃：DeepSeek 聊天模型不适合生成向量，请使用 utils/embedding.ts 中的 generateQwenEmbedding
  */
 export async function generateEmbedding(input: string): Promise<number[]> {
-  try {
-    const messages = [
-      {
-        role: 'system',
-        content: '你是一个嵌入助手。用户会提供一段文本，请你返回一个表示该文本语义的 1536 维向量数组（只包含数字）。请确保你的回复只包含数组本身，格式为 JSON 数组，例如：[0.123, -0.456, ...]。不要添加任何解释说明。'
-      },
-      {
-        role: 'user',
-        content: input
-      }
-    ];
-
-    const reasoningContent = await deepSeekClient.reasoningCompletion(messages);
-
-    const vector = JSON.parse(reasoningContent);
-    if (Array.isArray(vector) && typeof vector[0] === 'number') {
-      return vector;
-    } else {
-      console.warn('嵌入向量格式异常，返回空数组');
-      return [];
-    }
-  } catch (error) {
-    console.error('Embedding via chat error:', error);
-    return [];
-  }
+  console.warn('⚠️ 警告：正在调用已废弃的 generateEmbedding (DeepSeek)，请尽快迁移至 Qwen Embedding');
+  return [];
 }
