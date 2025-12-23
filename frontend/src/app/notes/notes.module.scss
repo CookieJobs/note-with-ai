@@ -1,3 +1,9 @@
+/*
+Input: 待补充
+Output: 待补充
+Pos: 前端 样式
+Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+*/
 /* 现代化笔记页面样式 - 对标国际大厂设计 */
 
 .container {
@@ -606,6 +612,12 @@
   pointer-events: none;
   background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1) 80%);
   z-index: 10;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.fadeOverlayVisible {
+  opacity: 1;
 }
 
 .noteContentInput {
@@ -646,42 +658,29 @@
   color: #dc2626;
 }
 
-/* 多行截断，保留换行但按视觉行数裁剪 */
+/* 正文统一样式，依靠外层容器 max-height 截断 */
 .noteText {
-  display: -webkit-box;
-  -webkit-line-clamp: 6; /* 6 行 */
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre-wrap; /* 保留换行与空白 */
+  display: block;
+  overflow: visible;
+  white-space: pre-wrap;
   font-size: 14px;
   line-height: 1.6;
   color: #4b5563;
   margin: 0;
-  opacity: 1;
-  transition: opacity 0.2s ease;
   font-weight: 400;
 }
 
-/* 展开后：取消 line-clamp，使正文完整展示 */
+/* 展开后颜色略深，可选 */
 .noteTextExpanded {
-  display: block;
-  overflow: visible;
-  text-overflow: initial;
-  white-space: pre-wrap; /* 尽量保留用户换行 */
-  font-size: 14px;
-  line-height: 1.6;
+  composes: noteText;
   color: #374151;
-  margin: 0;
-  opacity: 1;
-  transition: opacity 0.2s ease;
-  font-weight: 400; /* 与收起一致 */
 }
 
 /* 包裹容器用于高度过渡与淡入 */
 .noteTextWrapper {
   overflow: hidden;
-  transition: max-height 220ms ease;
+  transition: max-height 300ms ease;
+  will-change: max-height;
 }
 
 /* 展开/收起 按钮 */

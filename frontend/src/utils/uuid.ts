@@ -1,3 +1,9 @@
+/*
+Input: 待补充
+Output: 待补充
+Pos: 前端 模块
+Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+*/
 // frontend/src/utils/uuid.ts
 export function getOrCreateUUID(): string | null {
   if (typeof window === 'undefined') return null; // SSR 阶段不执行

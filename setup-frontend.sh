@@ -1,3 +1,7 @@
+# Input: 待补充
+# Output: 待补充
+# Pos: 前端 脚本
+# Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 #!/bin/bash
 
 echo "🚧 正在创建 frontend 目录结构..."

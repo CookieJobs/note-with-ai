@@ -1,3 +1,9 @@
+/*
+Input: 待补充
+Output: 待补充
+Pos: 前端 模块
+Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+*/
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react';
@@ -388,13 +394,13 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdate
           ) : (
             <p
               ref={textRef}
-              className={isExpanded ? styles.noteTextExpanded : styles.noteText}
+              className={styles.noteText}
               onDoubleClick={() => { setOriginalContent(note.content || ''); setEditContent(note.content || ''); setIsEditingContent(true); }}
             >{note.content}</p>
           )}
         </div>
-        {!isEditingContent && !isExpanded && canExpand && (
-          <div className={styles.fadeOverlay} />
+        {!isEditingContent && canExpand && (
+          <div className={`${styles.fadeOverlay} ${!isExpanded ? styles.fadeOverlayVisible : ''}`} />
         )}
         <div className={styles.noteEditBar}>
           {isEditingContent && (

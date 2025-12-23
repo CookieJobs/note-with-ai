@@ -1,5 +1,15 @@
 {
+  "scripts": {
+    "build": "echo 'No build step for root'",
+    "doc:scan": "node scripts/doc-tools/scan.js",
+    "doc:inject": "node scripts/doc-tools/inject.js",
+    "doc:check": "node scripts/doc-tools/check.js",
+    "prepare": "husky install"
+  },
   "dependencies": {
     "sass": "^1.89.2"
+  },
+  "devDependencies": {
+    "husky": "^9.0.0"
   }
 }
