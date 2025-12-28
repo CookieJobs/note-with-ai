@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # MongoDB 服务
+  mongo:
+    image: mongo:6
+    container_name: note-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: always
+
+  # 后端服务
+  backend:
+    build: ./backend
+    container_name: note-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - MONGODB_URI=mongodb://mongo:27017/note-with-ai
+      # 这里使用变量，部署时通过 .env 文件或命令行传入
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+    depends_on:
+      - mongo
+    restart: always
+
+  # 前端服务
+  frontend:
+    build: ./frontend
+    container_name: note-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # 指向后端容器的服务名
+      - BACKEND_URL=http://backend:3001
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  mongo-data:

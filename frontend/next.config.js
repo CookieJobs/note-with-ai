@@ -13,11 +13,12 @@ const nextConfig = {
       ignoreDuringBuilds: true,
     },
     async rewrites() {
-      console.log('🛠️ 代理规则加载中...');
+      const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+      console.log(`🛠️ 代理规则加载中... 目标后端: ${backendUrl}`);
       return [
         {
           source: '/api/:path*',
-          destination: 'http://localhost:3001/api/:path*' // 将前端 /api 路由代理到后端服务
+          destination: `${backendUrl}/api/:path*` // 将前端 /api 路由代理到后端服务
         },
       ];
     },
