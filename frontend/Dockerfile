@@ -13,6 +13,10 @@ RUN npm install
 # 复制源代码
 COPY . .
 
+# 新增这两行，接收构建参数
+ARG BACKEND_URL
+ENV BACKEND_URL=$BACKEND_URL
+
 # 构建 Next.js 应用
 RUN npm run build
 

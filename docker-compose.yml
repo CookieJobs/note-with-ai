@@ -27,14 +27,17 @@ services:
     restart: always
 
   # 前端服务
+  # 前端服务
   frontend:
-    build: ./frontend
+    build: 
+      context: ./frontend
+      args:
+        - BACKEND_URL=http://backend:3001
     container_name: note-frontend
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      # 指向后端容器的服务名
       - BACKEND_URL=http://backend:3001
     depends_on:
       - backend
