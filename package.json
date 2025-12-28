@@ -1,6 +1,8 @@
 {
   "scripts": {
     "build": "echo 'No build step for root'",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "build:all": "cd frontend && npm run build && cd ../backend && npm run build",
     "doc:scan": "node scripts/doc-tools/scan.js",
     "doc:inject": "node scripts/doc-tools/inject.js",
     "doc:check": "node scripts/doc-tools/check.js",

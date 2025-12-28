@@ -1,0 +1,22 @@
+FROM node:20-alpine
+
+# 1. 设置工作目录
+WORKDIR /app
+
+# 2. 先拷贝 backend 的 package 文件
+COPY backend/package*.json ./backend/
+
+# 3. 安装 backend 依赖
+RUN cd backend && npm install
+
+# 4. 拷贝 backend 源码
+COPY backend ./backend
+
+# 5. 构建 TS
+RUN cd backend && npm run build
+
+# 6. 对外暴露端口
+EXPOSE 3001
+
+# 7. 启动 backend
+CMD ["node", "backend/dist/index.js"]
