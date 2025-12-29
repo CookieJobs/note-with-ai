@@ -10,7 +10,7 @@ export function getOrCreateUUID(): string | null {
 
   let uuid = localStorage.getItem('user_uuid');
   if (!uuid) {
-    uuid = crypto.randomUUID();
+    uuid = generateUUID();
     localStorage.setItem('user_uuid', uuid);
     console.log('🚀 新用户生成 UUID:', uuid);
   }
@@ -44,7 +44,7 @@ export async function getOrCreateUserIdFromDB(): Promise<string | null> {
 
 // 生成随机UUID
 export function generateUUID(): string {
-  if (typeof window !== 'undefined' && window.crypto) {
+  if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
   // 备用方案，用于不支持crypto.randomUUID()的环境

@@ -961,7 +961,6 @@ function NotesContent() {
                 {isComposing && (
                   <button
                     className={styles.cancelButton}
-                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => { setIsComposing(false); setNewContent(''); const st = notesScrollRef.current?.scrollTop || 0; setComposeCollapsed(st > 80); }}
                     disabled={loading}
                   >
@@ -970,7 +969,6 @@ function NotesContent() {
                 )}
                 <button
                   className={styles.submitButton}
-                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleSubmit}
                   disabled={loading || newContent.trim().length === 0}
                 >
