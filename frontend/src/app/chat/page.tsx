@@ -196,10 +196,18 @@ export default function ChatPage() {
 // 使用 Hook 中的 searchRelatedNotesAsync 函数
 
   const handleSend = async () => {
-    if (user?.id && currentSession) {
+    if (!user?.id) return;
+    
+    let session = currentSession;
+    if (!session) {
+      console.log('⚠️ 当前无会话，自动创建新会话...');
+      session = await startNewSessionHook(user.id);
+    }
+
+    if (session) {
       await sendMessageHook(
         input,
-        currentSession,
+        session,
         user.id,
         updateSessionMessages,
         saveSessionToDBHook,

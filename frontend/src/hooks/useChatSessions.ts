@@ -39,7 +39,7 @@ interface UseChatSessionsReturn {
   setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   setCurrentSessionId: React.Dispatch<React.SetStateAction<string>>;
   loadSessionsFromDB: (userId: string, localSessions: ChatSession[]) => Promise<void>;
-  startNewSession: (userId: string) => Promise<void>;
+  startNewSession: (userId: string) => Promise<ChatSession>;
   deleteSession: (sessionId: string) => Promise<void>;
   updateSessionMessages: (sessionId: string, newMessages: Message[], userId?: string) => void;
   saveSessionToDB: (userId: string, session: ChatSession) => Promise<string>;
@@ -133,7 +133,7 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
     }
   };
 
-  const startNewSession = async (userId: string) => {
+  const startNewSession = async (userId: string): Promise<ChatSession> => {
     // 使用本地ID前缀，以便识别正在创建的新会话
     const localId = `local_${generateUUID()}`;
     console.log('🔵 startNewSession 生成本地ID:', localId);
@@ -167,10 +167,14 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
           s.id === localId ? { ...s, id: savedId } : s
         );
         localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updatedSessions));
+        
+        return { ...newSession, id: savedId };
       }
     } catch (error) {
       console.error('❌ 创建新会话失败:', error);
     }
+    
+    return newSession;
   };
 
   const saveSessionToDB = async (userId: string, session: ChatSession): Promise<string> => {
