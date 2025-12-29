@@ -166,9 +166,39 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
   // 可选：自动摘要与关键词重生成（基于正文变更）
   if (autoSummarize === true && contentChanged) {
     try {
+      // 这里的 summarizeNote 比较耗时，这期间 note 可能已经被其他请求（如 embed）更新
       const summary = await summarizeNote(note.content);
-      if (summary?.title) note.title = summary.title;
-      if (Array.isArray(summary?.keywords)) note.keywords = summary.keywords;
+      
+      // 重新获取最新的 note，避免版本冲突 (VersionError)
+      const freshNote = await Note.findById(id);
+      if (freshNote) {
+        // 使用最新的 note 对象来保存
+        if (summary?.title) freshNote.title = summary.title;
+        if (Array.isArray(summary?.keywords)) freshNote.keywords = summary.keywords;
+        
+        // 确保我们也应用了刚才用户提交的变更（如果刚才的 save 成功了，这里其实已经有了，
+        // 但为了保险起见，或者如果我们在上面没有先 save，这里应该合并）
+        // 在当前的逻辑流中，我们上面还没有 save。
+        // 所以我们需要把用户提交的变更也应用到 freshNote 上
+        
+        // 重新应用用户提交的变更到 freshNote (因为 freshNote 是从 DB 读的，可能还没包含本次请求的变更)
+        if (title !== undefined) freshNote.title = title.trim();
+        if (content !== undefined) freshNote.content = content;
+        if (keywords !== undefined) freshNote.keywords = keywords;
+        
+        // 如果 AI 生成了标题且用户没有显式提交标题，则使用 AI 的
+        if (summary?.title && title === undefined) freshNote.title = summary.title;
+        // 如果 AI 生成了关键词且用户没有显式提交关键词，则使用 AI 的
+        if (Array.isArray(summary?.keywords) && keywords === undefined) freshNote.keywords = summary.keywords;
+
+        await freshNote.save();
+        
+        // 更新响应中的 note 对象，以便返回最新数据
+        // 注意：这里我们替换了原本的 note 引用
+        // 这是一个局部变量的重新赋值，不影响外面的逻辑，但为了响应一致性，我们手动构造返回数据
+        ResponseHandler.success(res, { note: freshNote }, '笔记更新成功（含自动摘要）');
+        return;
+      }
     } catch (e) {
       console.warn('自动摘要失败，忽略：', e);
     }
