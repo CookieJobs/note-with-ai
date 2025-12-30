@@ -1,9 +1,11 @@
 name: Deploy to Server
 
 on:
-  push:
-    branches:
-      - main
+  # 暂时禁用自动部署，等环境配置好后再开启
+  # push:
+  #   branches:
+  #     - main
+  workflow_dispatch: # 允许手动触发部署
 
 jobs:
   deploy:
