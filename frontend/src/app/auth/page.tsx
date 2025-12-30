@@ -49,12 +49,24 @@ export default function AuthPage() {
         setError('两次输入的密码不一致');
         return false;
       }
-      if (formData.password.length < 6) {
-        setError('密码长度至少为6位');
+      if (formData.password.length < 8) {
+        setError('密码长度至少为8位');
+        return false;
+      }
+      if (!/(?=.*[A-Za-z])(?=.*\d)/.test(formData.password)) {
+        setError('密码必须包含字母和数字');
         return false;
       }
       if (!formData.email.includes('@')) {
         setError('请输入有效的邮箱地址');
+        return false;
+      }
+      if (formData.username.length < 2) {
+        setError('用户名长度至少为2位');
+        return false;
+      }
+      if (!/^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$/.test(formData.username)) {
+        setError('用户名包含非法字符');
         return false;
       }
     }
@@ -74,7 +86,7 @@ export default function AuthPage() {
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
       const payload = isLogin 
-        ? { username: formData.username, password: formData.password }
+        ? { email: formData.email, password: formData.password }
         : { username: formData.username, email: formData.email, password: formData.password };
 
       const response = await fetch(endpoint, {
@@ -168,33 +180,34 @@ export default function AuthPage() {
           </div>
 
           <form className={styles.authForm} onSubmit={handleSubmit}>
+            {!isLogin && (
+              <div className={styles.inputGroup}>
+                <label className={styles.label}>用户名</label>
+                <input
+                  type="text"
+                  name="username"
+                  className={styles.input}
+                  placeholder="请输入用户名"
+                  value={formData.username}
+                  onChange={handleChange}
+                  required
+                  minLength={2}
+                />
+              </div>
+            )}
+
             <div className={styles.inputGroup}>
-              <label className={styles.label}>用户名</label>
+              <label className={styles.label}>邮箱</label>
               <input
-                type="text"
-                name="username"
+                type="email"
+                name="email"
                 className={styles.input}
-                placeholder="请输入用户名"
-                value={formData.username}
+                placeholder="请输入邮箱地址"
+                value={formData.email}
                 onChange={handleChange}
                 required
               />
             </div>
-
-            {!isLogin && (
-              <div className={styles.inputGroup}>
-                <label className={styles.label}>邮箱</label>
-                <input
-                  type="email"
-                  name="email"
-                  className={styles.input}
-                  placeholder="请输入邮箱地址"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-            )}
 
             <div className={styles.inputGroup}>
               <label className={styles.label}>密码</label>

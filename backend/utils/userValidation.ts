@@ -119,14 +119,13 @@ export class UserValidator {
    * 验证密码强度
    */
   static validatePasswordStrength(password: string): void {
-    if (password.length < 6) {
-      throw ErrorHandler.createValidationError('密码长度至少6位');
+    if (password.length < 8) {
+      throw ErrorHandler.createValidationError('密码长度至少8位');
     }
     
-    // 可以添加更多密码强度验证规则
-    // if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
-    //   throw ErrorHandler.createValidationError('密码必须包含大小写字母和数字');
-    // }
+    if (!/(?=.*[A-Za-z])(?=.*\d)/.test(password)) {
+      throw ErrorHandler.createValidationError('密码必须包含字母和数字');
+    }
   }
 
   /**
@@ -143,12 +142,12 @@ export class UserValidator {
    * 验证用户名格式
    */
   static validateUsernameFormat(username: string): void {
-    if (username.length < 3 || username.length > 20) {
-      throw ErrorHandler.createValidationError('用户名长度必须在3-20字符之间');
+    if (username.length < 2 || username.length > 20) {
+      throw ErrorHandler.createValidationError('用户名长度必须在2-20字符之间');
     }
     
-    if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]+$/.test(username)) {
-      throw ErrorHandler.createValidationError('用户名只能包含字母、数字、下划线和中文');
+    if (!/^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$/.test(username)) {
+      throw ErrorHandler.createValidationError('用户名只能包含字母、数字、下划线、中划线和中文');
     }
   }
 }

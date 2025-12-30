@@ -54,24 +54,22 @@ export const register = async (req: Request, res: Response) => {
 // 用户登录
 export const login = async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
     // 验证必填字段
-    UserValidator.validateUserInput(req.body, ['username', 'password']);
+    UserValidator.validateUserInput(req.body, ['email', 'password']);
 
-    // 查找用户（支持用户名或邮箱登录）
-    const user = await User.findOne({
-      $or: [{ username }, { email: username }]
-    });
+    // 查找用户（仅支持邮箱登录）
+    const user = await User.findOne({ email });
 
     if (!user) {
-      throw ErrorHandler.createAuthenticationError('用户名或密码错误');
+      throw ErrorHandler.createAuthenticationError('邮箱或密码错误');
     }
 
     // 验证密码
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
-      throw ErrorHandler.createAuthenticationError('用户名或密码错误');
+      throw ErrorHandler.createAuthenticationError('邮箱或密码错误');
     }
 
     // 检查用户是否被禁用
