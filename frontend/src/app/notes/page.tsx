@@ -578,6 +578,17 @@ function NotesContent() {
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [noRelatedFound, setNoRelatedFound] = useState(false);
 
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    if (!composeCollapsed) {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    } else {
+      el.style.height = '';
+    }
+  }, [newContent, composeCollapsed]);
+
   // 更新笔记标题
   const handleUpdateTitle = (id: string, newTitle: string) => {
     setNotes(prevNotes => 
