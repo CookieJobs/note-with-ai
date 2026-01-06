@@ -32,7 +32,7 @@ interface Note {
 // 现代化的笔记卡片组件
 interface NoteCardProps {
   note: Note;
-  onDelete: (id: string) => void;
+  onRequestDelete: (id: string) => void;
   isHighlighted?: boolean;
   onUpdateTitle: (id: string, newTitle: string) => void;
   onUpdateContent?: (id: string, newContent: string, updatedAt?: string) => void;
@@ -40,9 +40,8 @@ interface NoteCardProps {
   cardRef?: (el: HTMLDivElement | null) => void;
 }
 
-const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdateContent, onUpdateKeywords, cardRef }: NoteCardProps) => {
+const ModernNoteCard = ({ note, onRequestDelete, isHighlighted, onUpdateTitle, onUpdateContent, onUpdateKeywords, cardRef }: NoteCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAllKeywords, setShowAllKeywords] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(note.title || '');
@@ -368,7 +367,7 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdate
           <span className={styles.noteDate}>{formatDate(note.createdAt)}</span>
           <button className={styles.deleteButton} onClick={(e) => {
                 e.stopPropagation();
-                setShowDeleteConfirm(true);
+                onRequestDelete(note._id);
               }}>
             <TrashIcon />
           </button>
@@ -518,37 +517,6 @@ const ModernNoteCard = ({ note, onDelete, isHighlighted, onUpdateTitle, onUpdate
       </div>
     
 
-    {showDeleteConfirm && (
-      <div className={styles.confirmDialog} onClick={() => setShowDeleteConfirm(false)}>
-        <div className={styles.confirmDialogContent} onClick={(e) => e.stopPropagation()}>
-          <div className={styles.confirmIcon}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2"/>
-              <path d="M15 9l-6 6M9 9l6 6" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <h3 className={styles.confirmTitle}>删除笔记</h3>
-          <p className={styles.confirmMessage}>确定要删除这条笔记吗？此操作无法撤销。</p>
-          <div className={styles.confirmActions}>
-            <button 
-              className={styles.cancelButton} 
-              onClick={() => setShowDeleteConfirm(false)}
-            >
-              取消
-            </button>
-            <button 
-              className={styles.confirmButton} 
-              onClick={() => {
-                onDelete(note._id);
-                setShowDeleteConfirm(false);
-              }}
-            >
-              删除
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
     </div>
   );
 };
@@ -577,6 +545,9 @@ function NotesContent() {
   const [relatedNotes, setRelatedNotes] = useState<RelatedNote[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [noRelatedFound, setNoRelatedFound] = useState(false);
+
+  // 删除确认弹窗：提升到页面级，避免被单条卡片的 transform/overflow 影响层级
+  const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -1005,7 +976,7 @@ function NotesContent() {
                   <div key={note._id} id={`note-${note._id}`} className={styles.noteItemWrapper}>
                     <ModernNoteCard
                       note={note}
-                      onDelete={handleDelete}
+                      onRequestDelete={setPendingDeleteNoteId}
                       onUpdateTitle={handleUpdateTitle}
                       onUpdateContent={handleUpdateContent}
                       onUpdateKeywords={handleUpdateKeywords}
@@ -1048,6 +1019,41 @@ function NotesContent() {
               </div>
             </div>
           </div>
+
+          {/* 删除确认弹窗（页面级） */}
+          {pendingDeleteNoteId && (
+            <div className={styles.confirmDialog} onClick={() => setPendingDeleteNoteId(null)}>
+              <div className={styles.confirmDialogContent} onClick={(e) => e.stopPropagation()}>
+                <div className={styles.confirmIcon}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2"/>
+                    <path d="M15 9l-6 6M9 9l6 6" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </div>
+                <h3 className={styles.confirmTitle}>删除笔记</h3>
+                <p className={styles.confirmMessage}>确定要删除这条笔记吗？此操作无法撤销。</p>
+                <div className={styles.confirmActions}>
+                  <button
+                    className={styles.cancelButton}
+                    onClick={() => setPendingDeleteNoteId(null)}
+                  >
+                    取消
+                  </button>
+                  <button
+                    className={styles.confirmButton}
+                    onClick={async () => {
+                      const id = pendingDeleteNoteId;
+                      if (!id) return;
+                      await handleDelete(id);
+                      setPendingDeleteNoteId(null);
+                    }}
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

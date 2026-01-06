@@ -1,6 +1,10 @@
 # 忽略 Node 模块
 node_modules/
 
+# 忽略工具/平台本地目录（不应入库）
+.trae/
+.vercel/
+
 # 忽略构建产物
 .next/
 dist/

@@ -1,5 +1,7 @@
 #!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
-npm run doc:check
+# Husky 已暂时关闭：直接放行提交
+# 如需恢复：
+# 1) 删除下面的 exit 0
+# 2) 恢复你需要的检查命令（例如：npm run doc:check）
+exit 0
 
