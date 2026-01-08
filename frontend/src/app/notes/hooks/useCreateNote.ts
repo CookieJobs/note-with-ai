@@ -6,16 +6,16 @@ import type { RelatedNote } from '../../../components/RelatedNoteCard';
 
 type UseCreateNoteOptions = {
   onError?: (message: string) => void;
-  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
 };
 
 export function useCreateNote(
   setNotes: React.Dispatch<React.SetStateAction<Note[]>>,
   options: UseCreateNoteOptions = {}
 ) {
-  const { onError, textareaRef } = options;
+  const { onError } = options;
 
-  const [newContent, setNewContent] = useState('');
+  const [newContentText, setNewContentText] = useState('');
+  const [newContentJson, setNewContentJson] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
 
@@ -38,8 +38,8 @@ export function useCreateNote(
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    const content = newContent.trim();
-    if (!content || loading) return;
+    const contentText = (newContentText || '').trim();
+    if (!contentText || loading) return;
 
     setLoading(true);
     onError?.('');
@@ -49,7 +49,9 @@ export function useCreateNote(
     const tempNote: Note = {
       _id: tempId,
       title: '',
-      content,
+      content: contentText,
+      contentText: contentText,
+      contentJson: newContentJson ?? undefined,
       keywords: [],
       createdAt: new Date().toISOString(),
       enriching: true,
@@ -60,7 +62,7 @@ export function useCreateNote(
       const res = await authFetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ contentText, contentJson: newContentJson }),
       });
 
       if (!res.ok) {
@@ -73,7 +75,8 @@ export function useCreateNote(
 
       if (created && created._id) {
         setNotes((prev) => prev.map((n) => (n._id === tempId ? ({ ...created, enriching: true } as Note) : n)));
-        setNewContent('');
+        setNewContentText('');
+        setNewContentJson(null);
         setIsComposing(false);
 
         // 获取相关笔记
@@ -89,7 +92,7 @@ export function useCreateNote(
         authFetch(`/api/notes/${created._id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: created.content, autoSummarize: true }),
+          body: JSON.stringify({ contentText: created.contentText || created.content, autoSummarize: true }),
         })
           .then((r) => r.json())
           .then((patchData) => {
@@ -121,7 +124,7 @@ export function useCreateNote(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: created.content,
+            message: created.contentText || created.content,
             excludeNoteId: created._id,
             limit: 3,
             threshold: 0.3, // 显式降低阈值
@@ -153,10 +156,6 @@ export function useCreateNote(
           })
           .finally(() => setRelatedLoading(false));
 
-        // 聚焦输入框，便于继续记录
-        if (textareaRef?.current) {
-          requestAnimationFrame(() => textareaRef.current?.focus());
-        }
       } else {
         console.warn('未知的创建返回结构:', data);
       }
@@ -168,27 +167,18 @@ export function useCreateNote(
     } finally {
       setLoading(false);
     }
-  }, [newContent, loading, onError, setNotes, textareaRef, clearRelatedSoon]);
+  }, [newContentJson, newContentText, loading, onError, setNotes, clearRelatedSoon]);
 
   // 键盘快捷键 Cmd/Ctrl + Enter 提交
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault();
-        handleSubmit();
-      }
-    },
-    [handleSubmit]
-  );
-
   return {
-    newContent,
-    setNewContent,
+    newContentText,
+    setNewContentText,
+    newContentJson,
+    setNewContentJson,
     loading,
     isComposing,
     setIsComposing,
     handleSubmit,
-    handleKeyDown,
     // related notes
     activeRelatedNoteId,
     relatedNotes,

@@ -5,13 +5,15 @@ import styles from '../notes.module.scss';
 import TrashIcon from '../../../components/icons/TrashIcon';
 import { authFetch } from '../../../utils/auth';
 import type { Note } from '../types';
+import RichTextEditor from './RichTextEditor';
+import RichTextViewer from './RichTextViewer';
 
 interface NoteCardProps {
   note: Note;
   onRequestDelete: (id: string) => void;
   isHighlighted?: boolean;
   onUpdateTitle: (id: string, newTitle: string) => void;
-  onUpdateContent?: (id: string, newContent: string, updatedAt?: string) => void;
+  onUpdateContent?: (id: string, newContent: string, updatedAt?: string, contentJson?: any, contentText?: string) => void;
   onUpdateKeywords?: (id: string, newKeywords: string[], updatedAt?: string) => void;
   cardRef?: (el: HTMLDivElement | null) => void;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
@@ -210,7 +212,7 @@ export default function ModernNoteCard({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const contentAreaRef = useRef<HTMLDivElement | null>(null);
-  const contentTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const contentEditActionsRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLParagraphElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const anchorRef = useRef<'top' | 'bottom'>('top');
@@ -219,15 +221,113 @@ export default function ModernNoteCard({
   const [activeKeywordIndex, setActiveKeywordIndex] = useState<number | null>(null);
   const [tagEditValue, setTagEditValue] = useState<string>('');
 
+  const [contentJsonDraft, setContentJsonDraft] = useState<any | null>(null);
+  const [contentTextDraft, setContentTextDraft] = useState<string>('');
+  const draftMetaRef = useRef<{ noteId: string | null; dirty: boolean }>({ noteId: null, dirty: false });
+  const contentEditBaselineRef = useRef<{ noteId: string | null; jsonStr: string; text: string } | null>(null);
+  const contentEditIgnoreFirstChangeRef = useRef<{ noteId: string | null; ignore: boolean }>({ noteId: null, ignore: false });
+  const [contentSavedFlash, setContentSavedFlash] = useState(false);
+  const contentSavedTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
+    };
+  }, []);
+
+  const getNotePlainText = () => {
+    const t = note.contentText;
+    if (typeof t === 'string' && t.trim().length > 0) return t;
+    return note.content || '';
+  };
+
+  const buildJsonFromPlain = (text: string) => ({
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: text ? [{ type: 'text', text }] : [],
+      },
+    ],
+  });
+
+  const safeStringify = (v: any) => {
+    try {
+      return JSON.stringify(v ?? null);
+    } catch {
+      return '';
+    }
+  };
+
+  const extractPlainTextFromJson = (doc: any): string => {
+    // 与 RichTextEditor 的提取规则一致：image => "[图片]"
+    const out: string[] = [];
+    const walk = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+      const type = node.type;
+      if (type === 'text' && typeof node.text === 'string') {
+        out.push(node.text);
+        return;
+      }
+      if (type === 'image') {
+        if (out.length > 0 && !out[out.length - 1].endsWith('\n')) out.push('\n');
+        out.push('[图片]');
+        out.push('\n');
+        return;
+      }
+      if (type === 'hardBreak') {
+        out.push('\n');
+        return;
+      }
+      const content = Array.isArray(node.content) ? node.content : [];
+      for (const c of content) walk(c);
+      if (type === 'paragraph' || type === 'heading' || type === 'blockquote' || type === 'listItem') {
+        if (out.length > 0 && !out[out.length - 1].endsWith('\n')) out.push('\n');
+      }
+    };
+    walk(doc);
+    return out.join('').replace(/\n{3,}/g, '\n\n').trim();
+  };
+
+  const getNoteTextForEditor = () => {
+    // 解决“只有图片但 contentText 为空”的情况：进入编辑态用 contentJson 推导文本
+    if (note.contentJson) {
+      const t = extractPlainTextFromJson(note.contentJson);
+      if (t) return t;
+    }
+    return getNotePlainText();
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 1) return '今天';
-    if (diffDays === 2) return '昨天';
-    if (diffDays <= 7) return `${diffDays - 1} 天前`;
+    // 按“日历日期”判断（本地 00:00），避免用时间戳差导致跨天显示不准
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const deltaDays = Math.floor((startOfDay(now) - startOfDay(date)) / (1000 * 60 * 60 * 24));
+
+    if (deltaDays <= 0) return '今天';
+    if (deltaDays === 1) return '昨天';
+    if (deltaDays <= 29) return `${deltaDays} 天前`;
+
+    // 更远：显示 N 月前 / N 年前（按“满月/满年”计算，避免 0 月前/0 年前）
+    let monthsDiff = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
+    if (now.getDate() < date.getDate()) monthsDiff -= 1; // 未满一月不算
+    monthsDiff = Math.max(0, monthsDiff);
+
+    let yearsDiff = now.getFullYear() - date.getFullYear();
+    if (
+      now.getMonth() < date.getMonth() ||
+      (now.getMonth() === date.getMonth() && now.getDate() < date.getDate())
+    ) {
+      yearsDiff -= 1; // 未满一年不算
+    }
+    yearsDiff = Math.max(0, yearsDiff);
+
+    if (yearsDiff >= 1) return `${yearsDiff} 年前`;
+    if (monthsDiff >= 1) return `${monthsDiff} 月前`;
+
+    // 兜底：避免出现“0 月前”，回退到日期显示
     return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
   };
 
@@ -241,7 +341,6 @@ export default function ModernNoteCard({
 
   // 进入编辑态：自动聚焦并把光标放到末尾（标题/正文复用同一逻辑）
   useFocusCursorToEnd(state.title.isEditing, titleInputRef);
-  useFocusCursorToEnd(state.content.isEditing, contentTextareaRef);
 
   // 正文编辑态：通知页面（用于强制收缩快速记录）
   useEffect(() => {
@@ -262,8 +361,10 @@ export default function ModernNoteCard({
 
   const applyTextareaSize = (opts: { align: boolean }) => {
     const card = rootRef.current;
-    const ta = contentTextareaRef.current;
-    if (!card || !ta) return;
+    if (!card) return;
+    // TipTap：操作 ProseMirror DOM（class = styles.richEditorContent）
+    const el = card.querySelector(`.${styles.richEditorContent}`) as HTMLElement | null;
+    if (!el) return;
     const scroller = findScrollParent(card);
     if (!scroller) return;
 
@@ -273,25 +374,25 @@ export default function ModernNoteCard({
 
     const sr = scroller.getBoundingClientRect();
 
-    const prevMinH = ta.style.minHeight;
-    const prevH = ta.style.height;
-    const prevMaxH = ta.style.maxHeight;
-    const prevOverflowY = ta.style.overflowY;
-    const prevResize = ta.style.resize;
+    const prevMinH = el.style.minHeight;
+    const prevH = el.style.height;
+    const prevMaxH = el.style.maxHeight;
+    const prevOverflowY = el.style.overflowY;
+    // TipTap 的内容区是 div，不需要/不支持 resize
 
     // fixedH：卡片中“除 textarea 外”的固定高度
-    ta.style.minHeight = '0px';
-    ta.style.height = '0px';
-    ta.style.maxHeight = 'none';
-    ta.style.overflowY = 'hidden';
+    el.style.minHeight = '0px';
+    el.style.height = '0px';
+    el.style.maxHeight = 'none';
+    el.style.overflowY = 'hidden';
     const cardH0 = card.getBoundingClientRect().height;
-    const taH0 = ta.getBoundingClientRect().height;
+    const taH0 = el.getBoundingClientRect().height;
     const fixedH = Math.max(0, cardH0 - taH0);
 
     // fullH：正文全部展开需要的高度
-    ta.style.height = 'auto';
-    ta.style.maxHeight = 'none';
-    const fullH = ta.scrollHeight;
+    el.style.height = 'auto';
+    el.style.maxHeight = 'none';
+    const fullH = (el as any).scrollHeight as number;
 
     // 关键约束：卡片高度不能超过滚动容器可视高度（避免被上方快速记录挡住）
     // => textarea 最大高度 = sr.height - fixedH
@@ -299,35 +400,33 @@ export default function ModernNoteCard({
     const minTaH = Math.min(defaultMinH, maxTaH);
     const nextH = Math.max(minTaH, Math.min(fullH, maxTaH));
 
-    ta.style.maxHeight = `${maxTaH}px`;
-    ta.style.height = `${nextH}px`;
-    ta.style.overflowY = fullH > maxTaH ? 'auto' : 'hidden';
-    ta.style.resize = 'none';
+    el.style.maxHeight = `${maxTaH}px`;
+    el.style.height = `${nextH}px`;
+    el.style.overflowY = fullH > maxTaH ? 'auto' : 'hidden';
 
     // 恢复 min-height（默认外观仍由 CSS 控制）
-    ta.style.minHeight = prevMinH;
+    el.style.minHeight = prevMinH;
 
     if (opts.align) alignTo(anchorRef.current);
 
     // 防御：极端情况下回滚
     if (!Number.isFinite(fullH) || !Number.isFinite(fixedH)) {
-      ta.style.minHeight = prevMinH;
-      ta.style.height = prevH;
-      ta.style.maxHeight = prevMaxH;
-      ta.style.overflowY = prevOverflowY;
-      ta.style.resize = prevResize;
+      el.style.minHeight = prevMinH;
+      el.style.height = prevH;
+      el.style.maxHeight = prevMaxH;
+      el.style.overflowY = prevOverflowY;
     }
   };
 
   useEffect(() => {
     if (!state.content.isEditing) {
       didEnterLayoutRef.current = false;
-      const ta = contentTextareaRef.current;
-      if (ta) {
-        ta.style.height = '';
-        ta.style.maxHeight = '';
-        ta.style.overflowY = '';
-        ta.style.resize = '';
+      const card = rootRef.current;
+      const el = card ? (card.querySelector(`.${styles.richEditorContent}`) as HTMLElement | null) : null;
+      if (el) {
+        el.style.height = '';
+        el.style.maxHeight = '';
+        el.style.overflowY = '';
       }
       return;
     }
@@ -408,12 +507,72 @@ export default function ModernNoteCard({
     const lineHeight = parseFloat(lineHeightStr || '22');
     const collapsedH = Math.max(0, Math.round(lineHeight * 6));
 
-    if (state.expanded) {
-      dispatch({ type: 'SET_MAX_HEIGHT', value: p.scrollHeight + 'px' });
-    } else {
-      dispatch({ type: 'SET_MAX_HEIGHT', value: collapsedH + 'px' });
+    const update = () => {
+      if (!textRef.current) return;
+      if (state.expanded) {
+        dispatch({ type: 'SET_MAX_HEIGHT', value: textRef.current.scrollHeight + 'px' });
+      } else {
+        dispatch({ type: 'SET_MAX_HEIGHT', value: collapsedH + 'px' });
+      }
+    };
+
+    // 先更新一次
+    update();
+
+    // expanded=true 时：图片/富文本可能异步加载，scrollHeight 会变；需要持续修正 maxHeight
+    if (!state.expanded) return;
+
+    // 1) 下一帧再测一次（避免首帧 scrollHeight 过小）
+    const raf1 = requestAnimationFrame(update);
+    const raf2 = requestAnimationFrame(update);
+
+    // 2) 监听图片 load/error
+    const imgs = Array.from(p.querySelectorAll('img'));
+    const onImg = () => update();
+    for (const img of imgs) {
+      if (!img.complete) {
+        img.addEventListener('load', onImg, { once: true });
+        img.addEventListener('error', onImg, { once: true });
+      }
     }
-  }, [state.expanded, note.content, state.content.isEditing]);
+
+    // 3) 监听 DOM 变化（例如新增图片节点），并为新图片补上 load 监听
+    let mo: MutationObserver | null = null;
+    if (typeof MutationObserver !== 'undefined') {
+      mo = new MutationObserver(() => {
+        update();
+        const nextImgs = Array.from((textRef.current || p).querySelectorAll('img'));
+        for (const img of nextImgs) {
+          if (!img.complete) {
+            img.addEventListener('load', onImg, { once: true });
+            img.addEventListener('error', onImg, { once: true });
+          }
+        }
+      });
+      mo.observe(p, { childList: true, subtree: true });
+    }
+
+    // 4) 监听尺寸变化（文字换行/字体变化等）
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => update());
+      ro.observe(p);
+    }
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      if (mo) mo.disconnect();
+      if (ro) ro.disconnect();
+    };
+  }, [
+    state.expanded,
+    state.content.isEditing,
+    // 富文本内容变化可能不体现在 note.content 上
+    note.content,
+    note.contentText,
+    note.contentJson,
+  ]);
 
   const handleSaveTitle = async () => {
     const next = state.title.value.trim();
@@ -445,8 +604,16 @@ export default function ModernNoteCard({
       return;
     }
 
-    const val = state.content.value;
-    if (val.trim() === (note.content || '')) {
+    const valText = (contentTextDraft || '').trim();
+    const prevText = getNotePlainText().trim();
+
+    // TipTap：格式化可能不改变纯文本（getText 不变），但 JSON 会变
+    const prevJson = note.contentJson ?? buildJsonFromPlain(getNotePlainText());
+    const nextJson = contentJsonDraft ?? buildJsonFromPlain(contentTextDraft || '');
+    const prevJsonStr = safeStringify(prevJson);
+    const nextJsonStr = safeStringify(nextJson);
+
+    if (valText === prevText && prevJsonStr === nextJsonStr) {
       dispatch({ type: 'BLUR_CONTENT_EXIT' });
       return;
     }
@@ -456,17 +623,24 @@ export default function ModernNoteCard({
       const response = await authFetch(`/api/notes/${note._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: val, updatedAt: note.updatedAt }),
+        body: JSON.stringify({
+          contentText: contentTextDraft,
+          contentJson: nextJson,
+          updatedAt: note.updatedAt,
+        }),
       });
       const data = await response.json();
 
       if (!response.ok) {
         if (response.status === 409) {
           const serverNote = data?.data?.note;
-          const serverContent = serverNote?.content;
-          if (typeof serverContent === 'string') {
-            onUpdateContent(note._id, serverContent, serverNote?.updatedAt);
-            dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: serverContent });
+          const serverText = (serverNote?.contentText ?? serverNote?.content) as string | undefined;
+          const serverJson = serverNote?.contentJson;
+          if (typeof serverText === 'string') {
+            onUpdateContent(note._id, serverText, serverNote?.updatedAt, serverJson, serverNote?.contentText);
+            setContentTextDraft(serverText);
+            setContentJsonDraft(serverJson ?? null);
+            dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: serverText });
           } else {
             throw new Error('保存失败');
           }
@@ -475,10 +649,19 @@ export default function ModernNoteCard({
         }
       } else {
         const updated = data?.data?.note || {};
-        const nextContent = updated.content || val;
-        onUpdateContent(note._id, nextContent, updated.updatedAt);
+        const nextText = (updated.contentText ?? updated.content ?? contentTextDraft) as string;
+        const nextJson = updated.contentJson ?? contentJsonDraft;
+        onUpdateContent(note._id, nextText, updated.updatedAt, nextJson, updated.contentText);
         authFetch(`/api/notes/${note._id}/embed`, { method: 'POST' }).catch(() => {});
-        dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: nextContent });
+        dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: nextText });
+
+        // 保存成功：草稿归零（后续再进入编辑就用最新数据）
+        draftMetaRef.current = { noteId: note._id, dirty: false };
+
+        // 保存成功提示（2s 自动消失）
+        setContentSavedFlash(true);
+        if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
+        contentSavedTimerRef.current = window.setTimeout(() => setContentSavedFlash(false), 2000);
       }
     } catch (e: any) {
       dispatch({ type: 'SAVE_CONTENT_FAIL', error: e?.message || '保存失败' });
@@ -495,7 +678,66 @@ export default function ModernNoteCard({
     }
   };
 
+  const deleteKeywordAt = async (idx: number) => {
+    if (!onUpdateKeywords) return;
+    const arr = [...(note.keywords || [])];
+    if (idx < 0 || idx >= arr.length) return;
+    arr.splice(idx, 1);
+
+    try {
+      const response = await authFetch(`/api/notes/${note._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
+      });
+      const data = await response.json();
+      const updated = data?.data?.note;
+      const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
+      onUpdateKeywords(note._id, next, updated?.updatedAt);
+    } catch {
+      // 静默失败：避免打断编辑；如需提示可后续加 toast
+    } finally {
+      // 如果刚好在编辑这个 tag，退出编辑态
+      setActiveKeywordIndex(null);
+      setTagEditValue('');
+    }
+  };
+
+  const commitKeywordAt = async (idx: number) => {
+    if (!onUpdateKeywords) {
+      setActiveKeywordIndex(null);
+      setTagEditValue('');
+      return;
+    }
+    const arr = [...(note.keywords || [])];
+    const v = tagEditValue.trim();
+    if (v) arr[idx] = v;
+    else if (idx < arr.length) arr.splice(idx, 1);
+    else {
+      // 添加态且为空：直接取消
+      setActiveKeywordIndex(null);
+      setTagEditValue('');
+      return;
+    }
+
+    try {
+      const response = await authFetch(`/api/notes/${note._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
+      });
+      const data = await response.json();
+      const updated = data?.data?.note;
+      const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
+      onUpdateKeywords(note._id, next, updated?.updatedAt);
+    } finally {
+      setActiveKeywordIndex(null);
+      setTagEditValue('');
+    }
+  };
+
   const cardClassName = `${styles.noteCard} ${isHighlighted ? styles.noteCardHighlight : ''} ${state.content.isEditing ? styles.noteCardEditing : ''}`;
+  const hasUnsavedDraft = draftMetaRef.current.noteId === note._id && draftMetaRef.current.dirty;
 
   return (
     <div
@@ -571,34 +813,93 @@ export default function ModernNoteCard({
           style={{ maxHeight: state.content.isEditing ? undefined : state.layout.maxHeight }}
         >
           {state.content.isEditing ? (
-            <textarea
-              ref={contentTextareaRef}
-              className={styles.noteContentInput}
-              value={state.content.value}
-              onChange={(e) => {
-                dispatch({ type: 'CHANGE_CONTENT', value: e.target.value });
-              }}
-              onBlur={(e) => {
-                const next = e.relatedTarget as Node | null;
-                if (contentAreaRef.current && next && contentAreaRef.current.contains(next)) return;
-                dispatch({ type: 'BLUR_CONTENT_EXIT' });
-              }}
-              rows={6}
-            />
+            <div className={styles.noteContentInput}>
+              <RichTextEditor
+                value={contentJsonDraft}
+                onChange={({ json, text }) => {
+                  const jsonStr = safeStringify(json);
+                  const baseline = contentEditBaselineRef.current;
+                  // TipTap 初始化/同步也会触发一次 update：如果内容与 baseline 完全一致，不应标记为“草稿未保存”
+                  if (
+                    baseline &&
+                    baseline.noteId === note._id &&
+                    baseline.jsonStr === jsonStr &&
+                    baseline.text === text
+                  ) {
+                    setContentJsonDraft(json);
+                    setContentTextDraft(text);
+                    return;
+                  }
+
+                  // 更强的防抖：进入编辑态后的第一次 onChange，常常来自 ProseMirror 的“结构规范化”
+                  //（例如给只有图片的 doc 自动补一个空段落）。这不应算用户修改。
+                  const ig = contentEditIgnoreFirstChangeRef.current;
+                  if (ig && ig.noteId === note._id && ig.ignore) {
+                    ig.ignore = false;
+                    setContentJsonDraft(json);
+                    setContentTextDraft(text);
+                    contentEditBaselineRef.current = { noteId: note._id, jsonStr, text };
+                    return;
+                  }
+
+                  setContentJsonDraft(json);
+                  setContentTextDraft(text);
+                  draftMetaRef.current = { noteId: note._id, dirty: true };
+                  if (contentSavedFlash) setContentSavedFlash(false);
+                  if (contentSavedTimerRef.current) {
+                    window.clearTimeout(contentSavedTimerRef.current);
+                    contentSavedTimerRef.current = null;
+                  }
+                  dispatch({ type: 'CHANGE_CONTENT', value: text });
+                }}
+                onBlur={() => {
+                  dispatch({ type: 'BLUR_CONTENT_EXIT' });
+                }}
+                insideRefs={[contentEditActionsRef]}
+              />
+            </div>
           ) : (
-            <p
-              ref={textRef}
+            <div
+              ref={textRef as any}
               className={styles.noteText}
               onClick={() => {
+                // 如果有未保存草稿且属于当前 note，则继续用草稿；否则用服务端内容初始化
+                if (draftMetaRef.current.noteId === note._id && draftMetaRef.current.dirty && contentJsonDraft) {
+                  // keep draft
+                } else {
+                  const baseJson = note.contentJson ?? buildJsonFromPlain(getNotePlainText());
+                  const baseText = extractPlainTextFromJson(baseJson) || getNoteTextForEditor();
+                  setContentJsonDraft(baseJson);
+                  setContentTextDraft(baseText);
+                  draftMetaRef.current = { noteId: note._id, dirty: false };
+                  contentEditBaselineRef.current = {
+                    noteId: note._id,
+                    jsonStr: safeStringify(baseJson),
+                    text: baseText,
+                  };
+                  // 进入编辑态后忽略第一次 TipTap onChange（结构规范化）
+                  contentEditIgnoreFirstChangeRef.current = { noteId: note._id, ignore: true };
+                }
                 dispatch({
                   type: 'ENTER_CONTENT_EDIT',
-                  original: note.content || '',
-                  value: state.content.draft !== null ? state.content.draft : (note.content || ''),
+                  original: getNoteTextForEditor(),
+                  value: getNoteTextForEditor(),
                 });
               }}
             >
-              {note.content}
-            </p>
+              {(() => {
+                const hasDraft =
+                  draftMetaRef.current.noteId === note._id &&
+                  draftMetaRef.current.dirty &&
+                  !!contentJsonDraft;
+
+                if (hasDraft) {
+                  return <RichTextViewer value={contentJsonDraft} />;
+                }
+
+                return note.contentJson ? <RichTextViewer value={note.contentJson} /> : getNotePlainText();
+              })()}
+            </div>
           )}
         </div>
         {!state.content.isEditing && state.layout.canExpand && (
@@ -606,12 +907,24 @@ export default function ModernNoteCard({
         )}
         <div className={styles.noteEditBar}>
           {state.content.isEditing && (
-            <div className={styles.noteEditActions}>
+            <div className={styles.noteEditActions} ref={contentEditActionsRef}>
               <button
                 type="button"
                 className={styles.noteEditCancel}
                 onClick={() => {
                   dispatch({ type: 'CANCEL_CONTENT_EDIT', value: state.content.original });
+                  // 取消：丢弃草稿，回到服务端内容
+                  const plain = getNotePlainText();
+                  const baseJson = note.contentJson ?? buildJsonFromPlain(plain);
+                  const baseText = extractPlainTextFromJson(baseJson) || getNoteTextForEditor();
+                  setContentJsonDraft(baseJson);
+                  setContentTextDraft(baseText);
+                  draftMetaRef.current = { noteId: note._id, dirty: false };
+                  contentEditBaselineRef.current = {
+                    noteId: note._id,
+                    jsonStr: safeStringify(baseJson),
+                    text: baseText,
+                  };
                 }}
                 disabled={state.content.saving}
               >
@@ -634,9 +947,11 @@ export default function ModernNoteCard({
             {state.expanded ? '收起' : '展开'}
           </button>
         )}
+
       </div>
 
       <div className={styles.noteKeywords}>
+        <div className={styles.keywordsWrap}>
         {note.enriching && (!(note.keywords && note.keywords.length)) ? (
           <>
             <span className={styles.chipSkeleton} />
@@ -645,8 +960,13 @@ export default function ModernNoteCard({
           </>
         ) : (
           <>
-            {(note.keywords && note.keywords.length > 0) ? (
-              (note.keywords || []).map((kw, idx) => (
+            {(() => {
+              const kws = note.keywords || [];
+              const addingIndex = kws.length;
+              return (
+                <>
+                  {kws.length > 0 ? (
+                    kws.map((kw, idx) => (
                 activeKeywordIndex === idx ? (
                   <input
                     key={idx}
@@ -657,44 +977,14 @@ export default function ModernNoteCard({
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
-                        const arr = [...(note.keywords || [])];
-                        const v = tagEditValue.trim();
-                        if (v) arr[idx] = v; else arr.splice(idx, 1);
-                        authFetch(`/api/notes/${note._id}`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
-                        })
-                          .then((r) => r.json())
-                          .then((data) => {
-                            const updated = data?.data?.note;
-                            const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
-                            onUpdateKeywords && onUpdateKeywords(note._id, next, updated?.updatedAt);
-                            setActiveKeywordIndex(null);
-                            setTagEditValue('');
-                          })
-                          .catch(() => { setActiveKeywordIndex(null); setTagEditValue(''); });
+                        commitKeywordAt(idx);
                       } else if (e.key === 'Escape') {
                         setActiveKeywordIndex(null);
                         setTagEditValue('');
                       }
                     }}
                     onBlur={() => {
-                      const arr = [...(note.keywords || [])];
-                      const v = tagEditValue.trim();
-                      if (v) arr[idx] = v; else arr.splice(idx, 1);
-                      authFetch(`/api/notes/${note._id}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
-                      })
-                        .then((r) => r.json())
-                        .then((data) => {
-                          const updated = data?.data?.note;
-                          const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
-                          onUpdateKeywords && onUpdateKeywords(note._id, next, updated?.updatedAt);
-                        })
-                        .finally(() => { setActiveKeywordIndex(null); setTagEditValue(''); });
+                      commitKeywordAt(idx);
                     }}
                   />
                 ) : (
@@ -707,21 +997,71 @@ export default function ModernNoteCard({
                     onKeyDown={(e) => { if (e.key === 'Enter') { setActiveKeywordIndex(idx); setTagEditValue(kw); } }}
                   >
                     {kw}
+                    <button
+                      type="button"
+                      className={styles.keywordDeleteBtn}
+                      aria-label="删除关键词"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteKeywordAt(idx);
+                      }}
+                    >
+                      ×
+                    </button>
                   </span>
                 )
               ))
-            ) : (
-              <span
-                className={styles.keyword}
-                role="button"
-                tabIndex={0}
-                onClick={() => { setActiveKeywordIndex(0); setTagEditValue(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { setActiveKeywordIndex(0); setTagEditValue(''); } }}
-              >
-                点击添加关键词
-              </span>
-            )}
+                  ) : null}
+
+                  {/* 添加态输入框：idx === keywords.length（即新增） */}
+                  {activeKeywordIndex === addingIndex && (
+                    <input
+                      key="__add_keyword__"
+                      className={styles.keywordEditInput}
+                      value={tagEditValue}
+                      autoFocus
+                      onChange={(e) => setTagEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitKeywordAt(addingIndex);
+                        } else if (e.key === 'Escape') {
+                          setActiveKeywordIndex(null);
+                          setTagEditValue('');
+                        }
+                      }}
+                      onBlur={() => commitKeywordAt(addingIndex)}
+                      placeholder="新增关键词"
+                    />
+                  )}
+
+                  {/* 常驻添加按钮 */}
+                  {activeKeywordIndex !== addingIndex && (
+                    <button
+                      type="button"
+                      className={styles.keywordAddBtn}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveKeywordIndex(addingIndex);
+                        setTagEditValue('');
+                      }}
+                      aria-label="添加关键词"
+                    >
+                      <span className={styles.keywordAddIcon}>+</span>
+                    </button>
+                  )}
+                </>
+              );
+            })()}
           </>
+        )}
+        </div>
+
+        {/* 草稿提示：固定在 keywords 行尾（编辑/非编辑都显示） */}
+        {contentSavedFlash ? (
+          <div className={styles.draftSavedInline}>修改已提交 ✔</div>
+        ) : (
+          hasUnsavedDraft && <div className={styles.draftUnsavedInline}>草稿未保存 ！</div>
         )}
       </div>
     </div>

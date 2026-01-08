@@ -166,7 +166,7 @@
 /* 收缩态：滚动时为列表留出更多空间 */
 .composeAreaCollapsed {
   padding: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 32px; /* 与非折叠态保持一致，避免和历史笔记贴太近 */
   transition: none;
 }
 
@@ -182,6 +182,16 @@
   opacity: 0;
   max-height: 0;
   pointer-events: none;
+}
+
+/* 快速记录：折叠态下让富文本编辑器更“扁”一些，并隐藏 toolbar，贴近原 textarea 的体验 */
+.composeAreaCollapsed .richToolbar {
+  display: none;
+}
+.composeAreaCollapsed .richEditorContent {
+  min-height: 32px;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .composeHeader {
@@ -612,6 +622,31 @@
   position: relative;
 }
 
+/* keywords 行尾草稿标记 */
+.draftUnsavedInline {
+  flex: none;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f97316; /* 橙色 */
+}
+
+.draftSavedInline {
+  flex: none;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: #22c55e; /* 绿色 */
+}
+
+.keywordsWrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
 .fadeOverlay {
   position: absolute;
   left: 0;
@@ -631,7 +666,6 @@
 
 .noteContentInput {
   width: 100%;
-  min-height: 120px;
   border: 2px solid rgb(23,112,232);
   border-radius: 8px;
   padding: 8px 10px;
@@ -639,9 +673,277 @@
   line-height: 1.6;
   color: #1f2937;
   font-family: inherit;
-  resize: vertical;
   box-sizing: border-box;
   background: white;
+}
+
+.richEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.richToolbar {
+  display: flex;
+  gap: 0; /* 按钮之间不留缝 */
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start; /* 靠左自然排列 */
+  padding: 6px 0 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08); /* 浅色分割线（按钮在上，线在下） */
+}
+
+.richToolbarBtn {
+  width: 28px;
+  height: 28px;
+  padding: 0; /* 按钮内部不留 padding */
+  margin: 0;  /* 按钮之间不留 margin */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none; /* 无边框 */
+  background: transparent; /* 默认无底色 */
+  color: rgba(15, 23, 42, 0.78);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(15, 23, 42, 0.08); /* hover 深色底 */
+    color: rgba(15, 23, 42, 0.9);
+  }
+
+  &:active:not(:disabled) {
+    background: rgba(15, 23, 42, 0.12);
+    transform: scale(0.98);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(23, 112, 232, 0.25);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.richToolbarBtnActive {
+  color: rgb(23,112,232);
+  background: rgba(23, 112, 232, 0.14);
+}
+
+.richEditorContent {
+  min-height: 120px;
+  overflow-y: auto; /* 让“高度计算”生效后，内容在编辑器内部滚动 */
+  outline: none;
+  white-space: pre-wrap;
+}
+
+/* TipTap Placeholder（空编辑器时显示） */
+.richEditorContent :global(p.is-editor-empty:first-child)::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: #9ca3af;
+}
+
+/* 图片上传占位块（插入图片时先占位，支持拖拽/点击上传） */
+.imageUploadPlaceholder {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  background: rgba(15, 23, 42, 0.02);
+  padding: 14px 12px;
+  margin: 8px 0;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.imageUploadPlaceholder:hover {
+  background: rgba(15, 23, 42, 0.05);
+  border-color: rgba(15, 23, 42, 0.28);
+}
+
+.imageUploadPlaceholder.isDragOver {
+  background: rgba(23, 112, 232, 0.06);
+  border-color: rgba(23, 112, 232, 0.35);
+}
+
+.imageUploadPlaceholder :global(.imageUploadInner) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 84px;
+}
+
+.imageUploadPlaceholder :global(.imageUploadIcon) {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(15, 23, 42, 0.72);
+}
+
+.imageUploadPlaceholder :global(.imageUploadHint) {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.58);
+}
+
+/* 可缩放图片节点 */
+.resizableImage {
+  max-width: 100%;
+}
+
+.resizableImage :global(.imgFrame) {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 2px; /* padding 区域承载：边框 + resize 手柄（不压到图片本体） */
+  border-radius: 12px;
+  transition: box-shadow 0.12s ease;
+}
+
+.resizableImage img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+/* hover/选中时显示项目主蓝色边框：画在外层 frame 上，避免被图片遮挡 */
+.resizableImageSelected :global(.imgFrame) {
+  /* 选中态：更深、更“长亮” */
+  box-shadow: inset 0 0 0 4px rgba(23, 112, 232, 0.70);
+}
+
+/* hover 蓝边只在编辑态出现，避免退出编辑后 hover 看起来像“仍选中” */
+.resizableImageEditable:hover:not(.resizableImageSelected) :global(.imgFrame) {
+  box-shadow: inset 0 0 0 2px rgba(23, 112, 232, 0.35);
+}
+
+.resizableImage :global(.resizeHandle) {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: white; /* 白色背景 */
+  border: 2px solid rgb(23,112,232); /* 蓝色边缘 */
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+/* 手柄放在 padding 区域里（不压到图片上，也不会溢出） */
+.resizableImage :global(.resizeHandle.nw) { top: 1px; left: 1px; cursor: nwse-resize; }
+.resizableImage :global(.resizeHandle.ne) { top: 1px; right: 1px; cursor: nesw-resize; }
+.resizableImage :global(.resizeHandle.sw) { bottom: 1px; left: 1px; cursor: nesw-resize; }
+.resizableImage :global(.resizeHandle.se) { bottom: 1px; right: 1px; cursor: nwse-resize; }
+
+/* 双击弹窗：图片尺寸设置 */
+.resizableImage :global(.imageSizeModalOverlay) {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resizableImage :global(.imageSizeModal) {
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  background: white;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.18);
+}
+
+.resizableImage :global(.imageSizeModalTitle) {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+.resizableImage :global(.imageSizeModalRow) {
+  display: flex;
+  gap: 10px;
+}
+
+.resizableImage :global(.imageSizeModalRow label) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.resizableImage :global(.imageSizeModalRow input) {
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  padding: 0 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.resizableImage :global(.imageSizeModalRow input:focus) {
+  border-color: rgba(23, 112, 232, 0.6);
+  box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.12);
+}
+
+.resizableImage :global(.imageSizeModalCheck) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.resizableImage :global(.imageSizeModalActions) {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.resizableImage :global(.imageSizeModalActions .btnCancel) {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  background: white;
+  color: #374151;
+  cursor: pointer;
+}
+
+.resizableImage :global(.imageSizeModalActions .btnOk) {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: none;
+  background: rgb(23,112,232);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.richViewerContent {
+  white-space: pre-wrap;
 }
 
 .noteEditBar {
@@ -714,13 +1016,14 @@
   position: absolute;
   right: 12px;
   bottom: 12px;
-  padding: 6px 12px;
+  padding: 4px 10px;
   background: white;
   color: rgb(23,112,232);
   border: 1px solid rgba(23, 112, 232, 0.2);
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
   user-select: none;
   transition: all 0.2s ease;
@@ -741,8 +1044,8 @@
 }
 .noteKeywords {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
@@ -813,18 +1116,52 @@
 .keyword {
   background: rgba(23, 112, 232, 0.1);
   color: rgb(23,112,232);
-  padding: 4px 8px;
+  padding: 6px 8px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
+  line-height: 1; /* 避免字体基线导致“视觉偏下” */
   border: 1px solid rgba(23, 112, 232, 0.2);
   transition: all 0.2s ease;
   cursor: pointer;
+  position: relative;
+  display: inline-flex; /* 用 flex 做垂直居中，比依赖 line-height 更稳 */
+  align-items: center;
 
   &:hover {
     background: rgba(23, 112, 232, 0.15);
     border-color: rgba(23, 112, 232, 0.3);
   }
+}
+
+.keywordDeleteBtn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 112, 232, 0.25);
+  background: white;
+  color: rgba(23, 112, 232, 0.9);
+  font-size: 12px;
+  line-height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.95);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.keyword:hover .keywordDeleteBtn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
 }
 
 .keywordMore {
@@ -851,13 +1188,51 @@
 }
 
 .keywordEditInput {
-  padding: 4px 8px;
-  border: 2px solid rgb(23,112,232);
+  padding: 3px 7px;
+  border: 1px solid rgb(23,112,232);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.6;
   color: #1f2937;
   font-family: inherit;
+}
+
+.keywordAddBtn {
+  /* 让 + 更大但不撑高整行：用固定高度 + flex 居中 */
+  /* 与 .keyword 的视觉高度对齐：11px 字号 + 6px*2 padding + 1px*2 border ≈ 25px */
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+
+  /* 常态也有“很浅”的边框与底色，避免按钮看起来像消失了 */
+  border: 1px dashed rgba(107, 114, 128, 0.28);
+  border-radius: 6px;
+  background: rgba(107, 114, 128, 0.04);
+  color: rgba(107, 114, 128, 0.75);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.keywordAddBtn:hover {
+  background: rgba(107, 114, 128, 0.08);
+  border-color: rgba(107, 114, 128, 0.65);
+  color: rgba(75, 85, 99, 0.95);
+}
+
+.keywordAddIcon {
+  display: inline-block;
+  transform: translateY(0.5px); /* 光学校正：+ 字形略偏上，向下挪一点 */
+}
+
+.keywordAddBtn:active {
+  transform: scale(0.96);
 }
 
 .expandIndicator {

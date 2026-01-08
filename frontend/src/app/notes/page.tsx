@@ -9,6 +9,7 @@ import { getUser, isAuthenticated } from '../../utils/auth';
 
 import DeleteNoteConfirmModal from './components/DeleteNoteConfirmModal';
 import ModernNoteCard from './components/ModernNoteCard';
+import RichTextEditor from './components/RichTextEditor';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useComposeActionsA11y } from './hooks/useComposeActionsA11y';
 import { useComposeCollapse } from './hooks/useComposeCollapse';
@@ -25,7 +26,6 @@ function NotesContent() {
   const searchParams = useSearchParams();
   const [error, setError] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // 新增：compose 区域容器与操作区 refs + 隐藏定时器
   const composeContainerRef = useRef<HTMLDivElement | null>(null);
   const composeActionsRef = useRef<HTMLDivElement | null>(null);
@@ -57,18 +57,19 @@ function NotesContent() {
 
   // 新建笔记（快速记录）逻辑抽成 Hook
   const {
-    newContent,
-    setNewContent,
+      newContentText,
+      setNewContentText,
+      newContentJson,
+      setNewContentJson,
     loading,
     isComposing,
     setIsComposing,
     handleSubmit,
-    handleKeyDown,
     activeRelatedNoteId,
     relatedNotes,
     relatedLoading,
     noRelatedFound,
-  } = useCreateNote(setNotes, { onError: setError, textareaRef });
+    } = useCreateNote(setNotes, { onError: setError });
 
   // 滚动控制“快速记录”收缩态；编辑历史正文时强制收缩
   const { composeCollapsed, setComposeCollapsed } = useComposeCollapse(notesScrollRef, isComposing, 80, !!editingNoteId);
@@ -80,16 +81,16 @@ function NotesContent() {
     onExitComposing: () => setIsComposing(false),
   });
 
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    if (!composeCollapsed) {
-      el.style.height = 'auto';
-      el.style.height = `${el.scrollHeight}px`;
-    } else {
-      el.style.height = '';
-    }
-  }, [newContent, composeCollapsed]);
+    const buildJsonFromPlain = (plainText: string) => {
+      const t = plainText || '';
+      return {
+        type: 'doc',
+        content: t.split('\n').map((p) => ({
+          type: 'paragraph',
+          content: p ? [{ type: 'text', text: p }] : [],
+        })),
+      };
+    };
 
   const highlightId = searchParams.get('highlight') || '';
   const highlightedRef = useRef<HTMLDivElement | null>(null);
@@ -146,17 +147,30 @@ function NotesContent() {
               <div className={styles.composeIcon}>📝</div>
               <div className={styles.composeTitle}>快速记录</div>
             </div>
-            <textarea
-              ref={textareaRef}
-              className={styles.composeInput}
-              placeholder="此刻的想法、待办或总结... 支持 Cmd/Ctrl + Enter 快速保存"
-              value={newContent}
-              onChange={e => setNewContent(e.target.value)}
-              onFocus={() => { setIsComposing(true); setComposeCollapsed(false); }}
-              onKeyDown={handleKeyDown}
-              rows={composeCollapsed ? 1 : 3}
-              disabled={loading}
-            />
+            <div className={styles.composeInput}>
+              <RichTextEditor
+                value={newContentJson ?? buildJsonFromPlain(newContentText)}
+                onChange={({ json, text }) => {
+                  setNewContentJson(json);
+                  setNewContentText(text);
+                }}
+                placeholder="此刻的想法、待办或总结... 支持 Cmd/Ctrl + Enter 快速保存"
+                onFocus={() => {
+                  setIsComposing(true);
+                  setComposeCollapsed(false);
+                }}
+                onBlur={() => {
+                  // 退出 composing（草稿仍保留，除非用户点“取消”）
+                  setIsComposing(false);
+                }}
+                onModEnter={() => {
+                  // 保持原来的快捷键：Cmd/Ctrl + Enter 保存
+                  handleSubmit();
+                }}
+                showToolbar={isComposing && !composeCollapsed}
+                insideRefs={[composeActionsRef]}
+              />
+            </div>
             <div className={styles.composeActions} ref={composeActionsRef} aria-hidden="true">
               <div className={styles.composeHint}>
                 <span>按</span>
@@ -171,7 +185,11 @@ function NotesContent() {
                 {isComposing && (
                   <button
                     className={styles.cancelButton}
-                        onClick={() => { setIsComposing(false); setNewContent(''); notesScrollRef.current?.scrollTop; }}
+                    onClick={() => {
+                      setIsComposing(false);
+                      setNewContentText('');
+                      setNewContentJson(null);
+                    }}
                     disabled={loading}
                   >
                     取消
@@ -180,7 +198,7 @@ function NotesContent() {
                 <button
                   className={styles.submitButton}
                   onClick={handleSubmit}
-                  disabled={loading || newContent.trim().length === 0}
+                  disabled={loading || newContentText.trim().length === 0}
                 >
                   {loading ? (
                     <span className={styles.buttonSpinner} />
