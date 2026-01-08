@@ -25,19 +25,41 @@ router.get('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
   const user = await UserValidator.authenticateUser(req);
   
   const notes = await Note.find({ userId: user._id }).sort({ createdAt: -1 });
-  ResponseHandler.success(res, { notes }, '获取笔记成功');
+
+  // 兼容旧数据：历史记录可能没有 contentText（或为空字符串），前端富文本/展示需要一个可用的纯文本字段
+  const safeNotes = notes.map((n: any) => {
+    const obj = typeof n.toObject === 'function' ? n.toObject() : n;
+    if (typeof obj.contentText !== 'string' || obj.contentText.trim().length === 0) {
+      obj.contentText = obj.content || '';
+    }
+    return obj;
+  });
+
+  ResponseHandler.success(res, { notes: safeNotes }, '获取笔记成功');
 }));
 
 // 添加笔记
 router.post('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
-  const { content } = req.body;
-  if (!content || typeof content !== 'string') {
-    throw ErrorHandler.createValidationError('内容不能为空，且必须是字符串类型');
+  const { content, contentJson, contentText } = req.body || {};
+  const plain = (typeof contentText === 'string' ? contentText : (typeof content === 'string' ? content : '')).trim();
+  if (!plain) {
+    throw ErrorHandler.createValidationError('内容不能为空');
+  }
+  if (contentJson !== undefined && (typeof contentJson !== 'object' || contentJson === null)) {
+    throw ErrorHandler.createValidationError('contentJson 必须是对象类型');
   }
   const user = await UserValidator.authenticateUser(req);
-  const firstLine = (content || '').split('\n')[0].trim();
+  const firstLine = (plain || '').split('\n')[0].trim();
   const fallbackTitle = firstLine.length > 0 ? firstLine.slice(0, 100) : '';
-  const note = new Note({ content, title: fallbackTitle, keywords: [], userId: user._id });
+  const note = new Note({
+    // 兼容字段：content 仍保存纯文本（用于旧逻辑/兜底展示）
+    content: plain,
+    contentText: plain,
+    contentJson: contentJson,
+    title: fallbackTitle,
+    keywords: [],
+    userId: user._id,
+  });
   const savedNote = await note.save();
   ResponseHandler.success(res, savedNote, '笔记创建成功', 201);
 }));
@@ -121,9 +143,9 @@ router.post('/:id', authenticateToken, asyncHandler(async (req: any, res: any) =
 // 局部更新笔记（正文/标题/关键词），支持乐观并发控制
 router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) => {
   const { id } = req.params;
-  const { title, content, keywords, updatedAt, autoSummarize } = req.body || {};
+  const { title, content, contentJson, contentText, keywords, updatedAt, autoSummarize } = req.body || {};
   const user = await UserValidator.authenticateUser(req);
-  console.log('收到笔记局部更新请求，ID:', id, 'payload:', { title, content, keywords, updatedAt, autoSummarize });
+  console.log('收到笔记局部更新请求，ID:', id, 'payload:', { title, content, contentText, keywords, updatedAt, autoSummarize });
 
   // 验证资源所有权
   const note = await ResourceValidator.validateOwnership(Note, id, user._id.toString(), '笔记');
@@ -148,6 +170,12 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
   if (content !== undefined && typeof content !== 'string') {
     throw ErrorHandler.createValidationError('内容必须是字符串类型');
   }
+  if (contentText !== undefined && typeof contentText !== 'string') {
+    throw ErrorHandler.createValidationError('contentText 必须是字符串类型');
+  }
+  if (contentJson !== undefined && typeof contentJson !== 'object') {
+    throw ErrorHandler.createValidationError('contentJson 必须是 JSON 对象');
+  }
   if (keywords !== undefined) {
     if (!Array.isArray(keywords) || !keywords.every((k) => typeof k === 'string')) {
       throw ErrorHandler.createValidationError('关键词必须是字符串数组');
@@ -157,9 +185,19 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
   // 应用更新
   let contentChanged = false;
   if (title !== undefined) note.title = title.trim();
-  if (content !== undefined) {
-    note.content = content;
+  // contentText/contentJson（富文本）
+  if (contentText !== undefined) {
+    note.contentText = contentText;
+    note.content = contentText; // 兼容旧逻辑：搜索/摘要/embedding 默认仍读 content
     contentChanged = true;
+  } else if (content !== undefined) {
+    note.content = content;
+    note.contentText = content;
+    note.contentJson = null;
+    contentChanged = true;
+  }
+  if (contentJson !== undefined) {
+    note.contentJson = contentJson;
   }
   if (keywords !== undefined) note.keywords = keywords;
 
@@ -183,7 +221,17 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
         
         // 重新应用用户提交的变更到 freshNote (因为 freshNote 是从 DB 读的，可能还没包含本次请求的变更)
         if (title !== undefined) freshNote.title = title.trim();
-        if (content !== undefined) freshNote.content = content;
+        if (contentText !== undefined) {
+          freshNote.contentText = contentText;
+          freshNote.content = contentText;
+        } else if (content !== undefined) {
+          freshNote.content = content;
+          freshNote.contentText = content;
+          freshNote.contentJson = null;
+        }
+        if (contentJson !== undefined) {
+          freshNote.contentJson = contentJson;
+        }
         if (keywords !== undefined) freshNote.keywords = keywords;
         
         // 如果 AI 生成了标题且用户没有显式提交标题，则使用 AI 的

@@ -11,6 +11,10 @@ const NoteSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     content: { type: String, required: true },
+    // 富文本：TipTap/ProseMirror JSON（可选）
+    contentJson: { type: mongoose.Schema.Types.Mixed, default: null },
+    // 富文本派生：用于搜索/embedding 的纯文本（可选，建议与 content 保持一致）
+    contentText: { type: String, default: '' },
     title: { type: String },
     keywords: [{ type: String }],
     embedding: [{ type: Number }], // 可选字段，可后续异步填充
@@ -28,8 +32,8 @@ NoteSchema.index({ userId: 1, embedding: 1 });
 // 3. 时间索引 - 提升按时间排序的查询性能
 NoteSchema.index({ createdAt: -1 });
 
-// 4. 文本索引 - 支持全文搜索
-NoteSchema.index({ title: 'text', content: 'text' });
+// 4. 文本索引 - 支持全文搜索（富文本场景用 contentText）
+NoteSchema.index({ title: 'text', content: 'text', contentText: 'text' });
 
 // 5. 关键词索引 - 提升关键词搜索性能
 NoteSchema.index({ keywords: 1 });
