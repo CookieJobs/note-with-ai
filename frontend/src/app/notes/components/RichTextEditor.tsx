@@ -183,7 +183,7 @@ export default function RichTextEditor({
     if (!editor) return;
     if (!value) return;
     try {
-      editor.commands.setContent(value, false);
+      editor.commands.setContent(value, { emitUpdate: false });
     } catch {
       // ignore
     }
