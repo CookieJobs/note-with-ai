@@ -9,10 +9,8 @@ import { getUser, isAuthenticated } from '../../utils/auth';
 
 import DeleteNoteConfirmModal from './components/DeleteNoteConfirmModal';
 import ModernNoteCard from './components/ModernNoteCard';
-import RichTextEditor from './components/RichTextEditor';
+import FloatingQuickCompose from './components/FloatingQuickCompose';
 import { useAuthGuard } from './hooks/useAuthGuard';
-import { useComposeActionsA11y } from './hooks/useComposeActionsA11y';
-import { useComposeCollapse } from './hooks/useComposeCollapse';
 import { useCreateNote } from './hooks/useCreateNote';
 import { useNotes } from './hooks/useNotes';
 import styles from './notes.module.scss';
@@ -24,17 +22,17 @@ export const dynamic = 'force-dynamic';
 function NotesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // 临时：隐藏页面内的“快速记录”块，只保留底部悬浮版本
+  const showInlineCompose = false;
   const [error, setError] = useState('');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  // 新增：compose 区域容器与操作区 refs + 隐藏定时器
-  const composeContainerRef = useRef<HTMLDivElement | null>(null);
-  const composeActionsRef = useRef<HTMLDivElement | null>(null);
-  // 新增：滚动容器 ref 与收缩状态
-  const notesScrollRef = useRef<HTMLDivElement | null>(null);
+  // 预留：移动端菜单（当前未用到）
+  // const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const historyScrollRef = useRef<HTMLDivElement | null>(null);
   
   // 删除确认弹窗：提升到页面级，避免被单条卡片的 transform/overflow 影响层级
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
   // 历史正文编辑态：用于强制收缩“快速记录”（不锁列表滚动）
+  // 预留：正文编辑态（当前仅用于后续可能的“锁定右侧/收起浮层”等交互）
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
   // 鉴权守卫：未登录自动跳转到 /auth
@@ -71,16 +69,6 @@ function NotesContent() {
     noRelatedFound,
     } = useCreateNote(setNotes, { onError: setError });
 
-  // 滚动控制“快速记录”收缩态；编辑历史正文时强制收缩
-  const { composeCollapsed, setComposeCollapsed } = useComposeCollapse(notesScrollRef, isComposing, 80, !!editingNoteId);
-
-  // compose actions 的可访问性与防闪烁（focus/blur capture）
-  const { handleComposeFocusCapture, handleComposeBlurCapture } = useComposeActionsA11y({
-    composeContainerRef,
-    composeActionsRef,
-    onExitComposing: () => setIsComposing(false),
-  });
-
     const buildJsonFromPlain = (plainText: string) => {
       const t = plainText || '';
       return {
@@ -94,6 +82,13 @@ function NotesContent() {
 
   const highlightId = searchParams.get('highlight') || '';
   const highlightedRef = useRef<HTMLDivElement | null>(null);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+
+  // highlight 参数：优先选中并滚动到左侧列表项
+  useEffect(() => {
+    if (!highlightId) return;
+    setSelectedNoteId(highlightId);
+  }, [highlightId]);
 
   // 首次加载后滚动并高亮
   useEffect(() => {
@@ -113,13 +108,15 @@ function NotesContent() {
       highlightedRef.current = el;
       // 临时添加动画类，3秒后移除高亮（通过 CSS 动画淡出）
       if (el) {
-        el.classList.add(styles.noteCardHighlight);
+        el.classList.add(styles.historyItemHighlight);
         setTimeout(() => {
-          el && el.classList.remove(styles.noteCardHighlight);
+          el && el.classList.remove(styles.historyItemHighlight);
         }, 3000);
       }
     }
   };
+
+  const selectedNote = selectedNoteId ? notes.find((n) => n._id === selectedNoteId) : null;
 
   return (
     <div className={styles.container}>
@@ -136,104 +133,81 @@ function NotesContent() {
             </div>
           )}
 
-          {/* 写作输入区域（恢复） */}
-          <div
-            ref={composeContainerRef}
-            className={`${styles.composeArea} ${isComposing ? styles.composing : ''} ${composeCollapsed ? styles.composeAreaCollapsed : ''}`}
-            onFocusCapture={handleComposeFocusCapture}
-            onBlurCapture={handleComposeBlurCapture}
-          >
-            <div className={styles.composeHeader}>
-              <div className={styles.composeIcon}>📝</div>
-              <div className={styles.composeTitle}>快速记录</div>
-            </div>
-            <div className={styles.composeInput}>
-              <RichTextEditor
-                value={newContentJson ?? buildJsonFromPlain(newContentText)}
-                onChange={({ json, text }) => {
-                  setNewContentJson(json);
-                  setNewContentText(text);
-                }}
-                placeholder="此刻的想法、待办或总结... 支持 Cmd/Ctrl + Enter 快速保存"
-                onFocus={() => {
-                  setIsComposing(true);
-                  setComposeCollapsed(false);
-                }}
-                onBlur={() => {
-                  // 退出 composing（草稿仍保留，除非用户点“取消”）
-                  setIsComposing(false);
-                }}
-                onModEnter={() => {
-                  // 保持原来的快捷键：Cmd/Ctrl + Enter 保存
-                  handleSubmit();
-                }}
-                showToolbar={isComposing && !composeCollapsed}
-                insideRefs={[composeActionsRef]}
-              />
-            </div>
-            <div className={styles.composeActions} ref={composeActionsRef} aria-hidden="true">
-              <div className={styles.composeHint}>
-                <span>按</span>
-                <kbd>Cmd</kbd>
-                <span>/</span>
-                <kbd>Ctrl</kbd>
-                <span> + </span>
-                <kbd>Enter</kbd>
-                <span> 快速保存</span>
-              </div>
-              <div className={styles.composeButtons}>
-                {isComposing && (
-                  <button
-                    className={styles.cancelButton}
-                    onClick={() => {
-                      setIsComposing(false);
-                      setNewContentText('');
-                      setNewContentJson(null);
-                    }}
-                    disabled={loading}
-                  >
-                    取消
-                  </button>
-                )}
-                <button
-                  className={styles.submitButton}
-                  onClick={handleSubmit}
-                  disabled={loading || newContentText.trim().length === 0}
-                >
-                  {loading ? (
-                    <span className={styles.buttonSpinner} />
-                  ) : (
-                    <>
-                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      保存
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
+          {/* 写作输入区域（目前隐藏：保留底部悬浮快速记录） */}
+          {showInlineCompose && null}
 
-          <div className={styles.notesContainer}>
-            <div className={styles.notesScrollContainer} ref={notesScrollRef}>
-              <div className={styles.notesList}>
-                {notes.map((note) => (
-                  <div key={note._id} id={`note-${note._id}`} className={styles.noteItemWrapper}>
-                    <ModernNoteCard
-                      note={note}
-                      onRequestDelete={setPendingDeleteNoteId}
-                      onUpdateTitle={handleUpdateTitle}
-                      onUpdateContent={handleUpdateContent}
-                      onUpdateKeywords={handleUpdateKeywords}
-                      isHighlighted={!!highlightId && note._id === highlightId}
-                      cardRef={attachRefIfHighlighted(note._id)}
-                      onContentEditingChange={(id, isEditing) => {
-                        if (isEditing) setEditingNoteId(id);
-                        else setEditingNoteId((cur) => (cur === id ? null : cur));
+          {/* 聊天式双栏：左侧历史列表（紧凑可滚动） + 右侧工作台编辑区（默认空） */}
+          <div className={styles.splitLayout}>
+            <aside className={styles.historyPane} aria-label="历史笔记列表">
+              <div className={styles.historyPaneHeader}>
+                <div className={styles.historyPaneTitle}>历史笔记</div>
+                <div className={styles.historyPaneCount}>{notes.length}</div>
+              </div>
+
+              <div className={styles.historyScroll} ref={historyScrollRef}>
+                {notes.map((note) => {
+                  const isSelected = selectedNoteId === note._id;
+                  const title = (note.title || '').trim() || '未命名';
+                  const preview = (note.contentText || note.content || '').trim().replace(/\s+/g, ' ').slice(0, 56);
+
+                  return (
+                    <div
+                      key={note._id}
+                      id={`history-${note._id}`}
+                      ref={attachRefIfHighlighted(note._id)}
+                      className={`${styles.historyItem} ${isSelected ? styles.historyItemSelected : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        setSelectedNoteId((cur) => {
+                          const next = cur === note._id ? null : note._id;
+                          if (next === null) setEditingNoteId(null);
+                          return next;
+                        });
                       }}
-                    />
-                    {note._id === activeRelatedNoteId && (relatedNotes.length > 0 || relatedLoading || noRelatedFound) && (
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setSelectedNoteId((cur) => {
+                            const next = cur === note._id ? null : note._id;
+                            if (next === null) setEditingNoteId(null);
+                            return next;
+                          });
+                        }
+                      }}
+                      title={title}
+                    >
+                      <div className={styles.historyItemTitleRow}>
+                        <div className={styles.historyItemTitle}>{title}</div>
+                        {note.enriching && <div className={styles.historyItemDot} title="AI 处理中" />}
+                      </div>
+                      <div className={styles.historyItemPreview}>{preview || '（空）'}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </aside>
+
+            <section className={styles.detailSlot} aria-label="笔记工作台">
+              {!selectedNote ? null : (
+                <>
+                  <ModernNoteCard
+                    note={selectedNote}
+                    onRequestDelete={(id) => {
+                      setPendingDeleteNoteId(id);
+                    }}
+                    onUpdateTitle={handleUpdateTitle}
+                    onUpdateContent={handleUpdateContent}
+                    onUpdateKeywords={handleUpdateKeywords}
+                    isHighlighted={false}
+                    layoutVariant="detail"
+                    onContentEditingChange={(id, isEditing) => {
+                      if (isEditing) setEditingNoteId(id);
+                      else setEditingNoteId((cur) => (cur === id ? null : cur));
+                    }}
+                  />
+
+                  {selectedNote._id === activeRelatedNoteId &&
+                    (relatedNotes.length > 0 || relatedLoading || noRelatedFound) && (
                       <div className={styles.relatedNotesSection}>
                         <div className={styles.relatedHeader}>
                           <span className={styles.relatedIcon}>🔗</span>
@@ -241,33 +215,29 @@ function NotesContent() {
                           {relatedLoading && <span className={styles.relatedLoading}>查找中...</span>}
                         </div>
                         <div className={styles.relatedList}>
-                          {!relatedLoading && relatedNotes.length > 0 && relatedNotes.map(rn => (
-                            <RelatedNoteCard 
-                              key={rn._id} 
-                              note={rn} 
-                              onExpand={(id) => {
-                                const el = document.getElementById(`note-${id}`);
-                                if (el) {
-                                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                  // 添加高亮动画
-                                  el.classList.add(styles.noteCardHighlight);
-                                  setTimeout(() => el.classList.remove(styles.noteCardHighlight), 2000);
-                                }
-                              }}
-                            />
-                          ))}
+                          {!relatedLoading &&
+                            relatedNotes.length > 0 &&
+                            relatedNotes.map((rn) => (
+                              <RelatedNoteCard
+                                key={rn._id}
+                                note={rn}
+                                onExpand={(id) => {
+                                  setSelectedNoteId(id);
+                                  // 选中后滚动到对应左侧项
+                                  const el = document.getElementById(`history-${id}`);
+                                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                }}
+                              />
+                            ))}
                           {!relatedLoading && noRelatedFound && (
-                            <div className={styles.emptyRelated}>
-                              未找到相关笔记
-                            </div>
+                            <div className={styles.emptyRelated}>未找到相关笔记</div>
                           )}
                         </div>
                       </div>
                     )}
-                  </div>
-                ))}
-              </div>
-            </div>
+                </>
+              )}
+            </section>
           </div>
 
           <DeleteNoteConfirmModal
@@ -278,8 +248,25 @@ function NotesContent() {
               if (!id) return;
               await deleteNote(id);
               setPendingDeleteNoteId(null);
+              setSelectedNoteId((cur) => (cur === id ? null : cur));
             }}
           />
+
+                {/* 底部悬浮快速记录 */}
+                <FloatingQuickCompose
+                  valueJson={newContentJson ?? buildJsonFromPlain(newContentText)}
+                  valueText={newContentText}
+                  onChange={({ json, text }) => {
+                    setNewContentJson(json);
+                    setNewContentText(text);
+                  }}
+                  onSubmit={handleSubmit}
+                  onCancel={() => {
+                    setNewContentText('');
+                    setNewContentJson(null);
+                  }}
+                  loading={loading}
+                />
         </div>
       </main>
     </div>

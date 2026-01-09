@@ -17,6 +17,8 @@ interface NoteCardProps {
   onUpdateKeywords?: (id: string, newKeywords: string[], updatedAt?: string) => void;
   cardRef?: (el: HTMLDivElement | null) => void;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
+  /** detail: 右侧工作台放大展示（默认展开、禁用“展开/收起”交互） */
+  layoutVariant?: 'list' | 'detail';
 }
 
 type State = {
@@ -42,6 +44,7 @@ type State = {
 
 type Action =
   | { type: 'TOGGLE_EXPANDED' }
+  | { type: 'SET_EXPANDED'; value: boolean }
   | { type: 'ENTER_TITLE_EDIT'; value: string }
   | { type: 'CHANGE_TITLE'; value: string }
   | { type: 'CANCEL_TITLE_EDIT'; value: string }
@@ -64,6 +67,9 @@ function reducer(state: State, action: Action): State {
   switch (action.type) {
     case 'TOGGLE_EXPANDED':
       return { ...state, expanded: !state.expanded };
+
+    case 'SET_EXPANDED':
+      return { ...state, expanded: action.value };
 
     case 'ENTER_TITLE_EDIT':
       return {
@@ -206,6 +212,7 @@ export default function ModernNoteCard({
   onUpdateKeywords,
   cardRef,
   onContentEditingChange,
+  layoutVariant = 'list',
 }: NoteCardProps) {
   const [state, dispatch] = useReducer(reducer, note, initState);
 
@@ -339,6 +346,13 @@ export default function ModernNoteCard({
     dispatch({ type: 'SYNC_CONTENT_FROM_NOTE', value: note.content || '' });
   }, [note.content]);
 
+  // detail 模式：默认展开，且不展示“展开/收起”控件
+  useEffect(() => {
+    if (layoutVariant !== 'detail') return;
+    if (!state.expanded) dispatch({ type: 'SET_EXPANDED', value: true });
+    dispatch({ type: 'SET_CAN_EXPAND', value: false });
+  }, [layoutVariant, state.expanded]);
+
   // 进入编辑态：自动聚焦并把光标放到末尾（标题/正文复用同一逻辑）
   useFocusCursorToEnd(state.title.isEditing, titleInputRef);
 
@@ -360,6 +374,9 @@ export default function ModernNoteCard({
   };
 
   const applyTextareaSize = (opts: { align: boolean }) => {
+    // 右侧 detail 工作台：不做“吸顶/吸底 + 强行计算高度”
+    // 这里让编辑器用 CSS flex 自然铺满剩余空间，避免看起来“宽高固定”
+    if (layoutVariant === 'detail') return;
     const card = rootRef.current;
     if (!card) return;
     // TipTap：操作 ProseMirror DOM（class = styles.richEditorContent）
@@ -419,6 +436,17 @@ export default function ModernNoteCard({
   };
 
   useEffect(() => {
+    if (layoutVariant === 'detail') {
+      // detail 模式：清理可能残留的行内高度，交给 CSS 控制
+      const card = rootRef.current;
+      const el = card ? (card.querySelector(`.${styles.richEditorContent}`) as HTMLElement | null) : null;
+      if (el) {
+        el.style.height = '';
+        el.style.maxHeight = '';
+        el.style.overflowY = '';
+      }
+      return;
+    }
     if (!state.content.isEditing) {
       didEnterLayoutRef.current = false;
       const card = rootRef.current;
@@ -448,14 +476,15 @@ export default function ModernNoteCard({
       requestAnimationFrame(() => applyTextareaSize({ align: true }));
       didEnterLayoutRef.current = true;
     });
-  }, [state.content.isEditing]);
+  }, [layoutVariant, state.content.isEditing]);
 
   useEffect(() => {
+    if (layoutVariant === 'detail') return;
     if (!state.content.isEditing) return;
     if (!didEnterLayoutRef.current) return;
     // 输入/内容变化时：只更新高度与内部滚动，不再做“吸顶/吸底”对齐（避免用户滚动时被强行拉回）
     requestAnimationFrame(() => applyTextareaSize({ align: false }));
-  }, [state.content.value, state.content.isEditing]);
+  }, [layoutVariant, state.content.value, state.content.isEditing]);
 
   // 仅依据“内容的总高度”和“6行高度”判断是否可展开（编辑态不展示）
   useEffect(() => {
@@ -736,7 +765,7 @@ export default function ModernNoteCard({
     }
   };
 
-  const cardClassName = `${styles.noteCard} ${isHighlighted ? styles.noteCardHighlight : ''} ${state.content.isEditing ? styles.noteCardEditing : ''}`;
+  const cardClassName = `${styles.noteCard} ${layoutVariant === 'detail' ? styles.noteCardDetail : ''} ${isHighlighted ? styles.noteCardHighlight : ''} ${state.content.isEditing ? styles.noteCardEditing : ''}`;
   const hasUnsavedDraft = draftMetaRef.current.noteId === note._id && draftMetaRef.current.dirty;
 
   return (
@@ -748,7 +777,10 @@ export default function ModernNoteCard({
       className={cardClassName}
     >
       {/* 其余渲染保持不变 */}
-      <div className={styles.noteHeader} onClick={() => dispatch({ type: 'TOGGLE_EXPANDED' })}>
+      <div
+        className={styles.noteHeader}
+        onClick={layoutVariant === 'detail' ? undefined : () => dispatch({ type: 'TOGGLE_EXPANDED' })}
+      >
         {state.title.isEditing ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
             <input
@@ -810,7 +842,14 @@ export default function ModernNoteCard({
         <div
           ref={wrapperRef}
           className={state.content.isEditing ? styles.noteTextWrapperEditing : styles.noteTextWrapper}
-          style={{ maxHeight: state.content.isEditing ? undefined : state.layout.maxHeight }}
+          style={{
+            maxHeight:
+              state.content.isEditing
+                ? undefined
+                : layoutVariant === 'detail'
+                  ? undefined
+                  : state.layout.maxHeight,
+          }}
         >
           {state.content.isEditing ? (
             <div className={styles.noteContentInput}>
@@ -902,7 +941,7 @@ export default function ModernNoteCard({
             </div>
           )}
         </div>
-        {!state.content.isEditing && state.layout.canExpand && (
+        {layoutVariant !== 'detail' && !state.content.isEditing && state.layout.canExpand && (
           <div className={`${styles.fadeOverlay} ${!state.expanded ? styles.fadeOverlayVisible : ''}`} />
         )}
         <div className={styles.noteEditBar}>
@@ -942,7 +981,7 @@ export default function ModernNoteCard({
             </div>
           )}
         </div>
-        {state.layout.canExpand && !state.content.isEditing && (
+        {layoutVariant !== 'detail' && state.layout.canExpand && !state.content.isEditing && (
           <button type="button" className={styles.expandPill} onClick={() => dispatch({ type: 'TOGGLE_EXPANDED' })}>
             {state.expanded ? '收起' : '展开'}
           </button>

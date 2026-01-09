@@ -27,7 +27,10 @@ const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-with-ai';
 
 app.use(cors());
-app.use(express.json());
+// TipTap 图片以 base64 写入 contentJson 时，请求体会显著变大。
+// 默认 json limit 很小，容易触发 "request entity too large"（413）。
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_BODY_LIMIT || '25mb' }));
 
 // 添加请求日志中间件
 app.use((req, res, next) => {

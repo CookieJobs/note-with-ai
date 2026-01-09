@@ -16,6 +16,7 @@ export enum ErrorType {
   NOT_FOUND = 'NOT_FOUND_ERROR',
   DATABASE = 'DATABASE_ERROR',
   EXTERNAL_API = 'EXTERNAL_API_ERROR',
+  PAYLOAD_TOO_LARGE = 'PAYLOAD_TOO_LARGE',
   INTERNAL = 'INTERNAL_SERVER_ERROR'
 }
 
@@ -84,6 +85,17 @@ export class ErrorHandler {
       502,
       true,
       { service, originalError: originalError?.message }
+    );
+  }
+
+  // 请求体过大（常见于富文本 base64 图片）
+  static createPayloadTooLargeError(message: string = '请求体过大，请压缩图片或减少内容后重试', originalError?: any): AppError {
+    return new AppError(
+      message,
+      ErrorType.PAYLOAD_TOO_LARGE,
+      413,
+      true,
+      { originalError: originalError?.message || originalError?.type }
     );
   }
 
@@ -160,10 +172,21 @@ export const globalErrorHandler = (
 
   // 如果不是AppError，转换为AppError
   if (!(error instanceof AppError)) {
+    // body-parser / express.json 的 payload-too-large
+    const anyErr = error as any;
+    const isTooLarge =
+      anyErr?.type === 'entity.too.large' ||
+      anyErr?.status === 413 ||
+      anyErr?.statusCode === 413 ||
+      String(anyErr?.message || '').toLowerCase().includes('request entity too large');
+    if (isTooLarge) {
+      appError = ErrorHandler.createPayloadTooLargeError('请求体过大：图片/内容太大，请压缩图片或改为外链图片', anyErr);
+    } else {
     appError = ErrorHandler.createInternalError(
       '服务器内部错误',
       error
     );
+    }
   } else {
     appError = error;
   }
