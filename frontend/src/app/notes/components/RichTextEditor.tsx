@@ -306,8 +306,7 @@ export default function RichTextEditor({
       // ignore
     }
     try {
-      editor.commands.setContent(value, false);
-      lastSelfUpdateJsonStrRef.current = nextStr;
+      editor.commands.setContent(value, { emitUpdate: false });
     } catch {
       // ignore
     }
