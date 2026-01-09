@@ -88,11 +88,23 @@ router.post('/:id/embed', authenticateToken, asyncHandler(async (req: any, res: 
   // 验证资源所有权
   const note = await ResourceValidator.validateOwnership(Note, id, user._id.toString(), '笔记');
 
-  const embedding = await generateQwenEmbedding(note.content);
-  note.embedding = embedding;
-  await note.save();
-  console.log('✅ embedding 保存成功');
+  // 重要：这里不要用 note.save()，否则在“正文刚更新/AI 异步更新”等并发场景下容易触发 VersionError
+  // 用原子更新写入 embedding，避免版本冲突
+  const baseText = (note as any).contentText || note.content || '';
+  const embedding = await generateQwenEmbedding(baseText);
 
+  // 进一步：避免“生成 embedding 期间正文又被修改”，导致写入旧内容的 embedding
+  // 只有当 updatedAt 未变化（仍是我们刚读到的版本）才写入；否则跳过，等待下一次保存再触发 embed
+  const result = await Note.updateOne(
+    { _id: id, userId: user._id, updatedAt: (note as any).updatedAt },
+    { $set: { embedding } }
+  );
+  if (!result || (result as any).matchedCount === 0) {
+    ResponseHandler.success(res, { skipped: true }, '笔记已更新，跳过写入旧 embedding');
+    return;
+  }
+
+  console.log('✅ embedding 保存成功');
   ResponseHandler.success(res, { embedding }, 'embedding 生成成功');
 }));
 

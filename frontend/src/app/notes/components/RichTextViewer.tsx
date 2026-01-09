@@ -7,6 +7,9 @@ import Link from '@tiptap/extension-link';
 import styles from '../notes.module.scss';
 import { ImageUpload } from './tiptap/ImageUpload';
 import { ResizableImage } from './tiptap/ResizableImage';
+import { ListItemWithEmptyParent } from './tiptap/ListItemWithEmptyParent';
+import { BulletListWithIndent } from './tiptap/BulletListWithIndent';
+import { OrderedListWithIndent } from './tiptap/OrderedListWithIndent';
 
 export default function RichTextViewer({ value }: { value: any }) {
   const editor = useEditor({
@@ -14,7 +17,10 @@ export default function RichTextViewer({ value }: { value: any }) {
     immediatelyRender: false,
     editable: false,
     extensions: [
-      StarterKit,
+      StarterKit.configure({ listItem: false, bulletList: false, orderedList: false }),
+      BulletListWithIndent,
+      OrderedListWithIndent,
+      ListItemWithEmptyParent,
       Link.configure({ openOnClick: true }),
       ResizableImage.configure({
         wrapperClassName: styles.resizableImage,

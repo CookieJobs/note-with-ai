@@ -739,6 +739,77 @@
   overflow-y: auto; /* 让“高度计算”生效后，内容在编辑器内部滚动 */
   outline: none;
   white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+/* 块级“单元”间距：单元之间略大于单元内部 */
+.richEditorContent :global(> * + *) {
+  margin-top: 10px;
+}
+
+.richEditorContent :global(p) {
+  margin: 0;
+}
+
+/* 列表更紧凑（编辑态） */
+.richEditorContent :global(ul),
+.richEditorContent :global(ol) {
+  margin: 0;
+  padding-left: 20px;
+}
+.richEditorContent :global(li) {
+  margin: 2px 0;
+}
+.richEditorContent :global(li p) {
+  margin: 0;
+}
+.richEditorContent :global(ul ul),
+.richEditorContent :global(ol ol),
+.richEditorContent :global(ul ol),
+.richEditorContent :global(ol ul) {
+  margin: 4px 0 0;
+}
+
+/* 列表整体缩进（Tab 在空列表项上触发）：最多 6 级 */
+.richEditorContent :global(ul[data-list-indent="1"]),
+.richEditorContent :global(ol[data-list-indent="1"]) { margin-left: 12px; }
+.richEditorContent :global(ul[data-list-indent="2"]),
+.richEditorContent :global(ol[data-list-indent="2"]) { margin-left: 24px; }
+.richEditorContent :global(ul[data-list-indent="3"]),
+.richEditorContent :global(ol[data-list-indent="3"]) { margin-left: 36px; }
+.richEditorContent :global(ul[data-list-indent="4"]),
+.richEditorContent :global(ol[data-list-indent="4"]) { margin-left: 48px; }
+.richEditorContent :global(ul[data-list-indent="5"]),
+.richEditorContent :global(ol[data-list-indent="5"]) { margin-left: 60px; }
+.richEditorContent :global(ul[data-list-indent="6"]),
+.richEditorContent :global(ol[data-list-indent="6"]) { margin-left: 72px; }
+
+/* 引用（blockquote）：左侧竖线 + 深灰文字，作用于选中多行/多段落 */
+.richEditorContent :global(blockquote) {
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-left: 3px solid rgba(107, 114, 128, 0.45);
+  background: transparent;
+  border-radius: 0;
+  color: #1f2937e5; /* 更深的灰 */
+}
+.richEditorContent :global(blockquote p) {
+  margin: 0;
+}
+
+/* “从二级列表开始”的视觉实现：隐藏空的一级父 listItem（只保留其子列表显示） */
+.richEditorContent :global(li[data-empty-parent="true"])::marker {
+  content: '';
+}
+.richEditorContent :global(li[data-empty-parent="true"] > p) {
+  margin: 0;
+  padding: 0;
+  height: 0;
+  overflow: hidden;
+}
+.richEditorContent :global(li[data-empty-parent="true"] > ul),
+.richEditorContent :global(li[data-empty-parent="true"] > ol) {
+  margin-top: 0;
 }
 
 /* TipTap Placeholder（空编辑器时显示） */
@@ -944,6 +1015,73 @@
 
 .richViewerContent {
   white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+/* 块级“单元”间距（展示态） */
+.richViewerContent :global(> * + *) {
+  margin-top: 10px;
+}
+.richViewerContent :global(p) {
+  margin: 0;
+}
+
+/* 列表更紧凑（展示态） */
+.richViewerContent :global(ul),
+.richViewerContent :global(ol) {
+  margin: 0;
+  padding-left: 20px;
+}
+.richViewerContent :global(li) {
+  margin: 2px 0;
+}
+.richViewerContent :global(li p) {
+  margin: 0;
+}
+.richViewerContent :global(ul ul),
+.richViewerContent :global(ol ol),
+.richViewerContent :global(ul ol),
+.richViewerContent :global(ol ul) {
+  margin: 4px 0 0;
+}
+
+.richViewerContent :global(ul[data-list-indent="1"]),
+.richViewerContent :global(ol[data-list-indent="1"]) { margin-left: 12px; }
+.richViewerContent :global(ul[data-list-indent="2"]),
+.richViewerContent :global(ol[data-list-indent="2"]) { margin-left: 24px; }
+.richViewerContent :global(ul[data-list-indent="3"]),
+.richViewerContent :global(ol[data-list-indent="3"]) { margin-left: 36px; }
+.richViewerContent :global(ul[data-list-indent="4"]),
+.richViewerContent :global(ol[data-list-indent="4"]) { margin-left: 48px; }
+.richViewerContent :global(ul[data-list-indent="5"]),
+.richViewerContent :global(ol[data-list-indent="5"]) { margin-left: 60px; }
+.richViewerContent :global(ul[data-list-indent="6"]),
+.richViewerContent :global(ol[data-list-indent="6"]) { margin-left: 72px; }
+
+.richViewerContent :global(blockquote) {
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-left: 3px solid rgba(107, 114, 128, 0.45);
+  background: transparent;
+  border-radius: 0;
+  color: #1f2937;
+}
+.richViewerContent :global(blockquote p) {
+  margin: 0;
+}
+
+.richViewerContent :global(li[data-empty-parent="true"])::marker {
+  content: '';
+}
+.richViewerContent :global(li[data-empty-parent="true"] > p) {
+  margin: 0;
+  padding: 0;
+  height: 0;
+  overflow: hidden;
+}
+.richViewerContent :global(li[data-empty-parent="true"] > ul),
+.richViewerContent :global(li[data-empty-parent="true"] > ol) {
+  margin-top: 0;
 }
 
 .noteEditBar {
