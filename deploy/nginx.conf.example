@@ -1,0 +1,41 @@
+server {
+    listen 80;
+    server_name bloomy16.com;
+
+    # 前端代理 (Next.js)
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # 后端 API 代理
+    # 选项 1: 让 Next.js 处理 (推荐)
+    # 如果你完全删除这个 location 块，Nginx 会将 /api 请求也转发到 3000 端口，
+    # 然后由 Next.js 的 rewrites 规则转发到 3001。这是最简单的配置。
+    
+    # 选项 2: 直接代理到后端 (更高效)
+    # 如果你想让 Nginx 直接将 /api 请求转发给后端 (绕过 Next.js)：
+    location /api/ {
+        # 重要提示：注意 location 和 proxy_pass 结尾斜杠的匹配规则
+        
+        # ✅ 正确配置：
+        # 将 /api/xxx 转发到 http://localhost:3001/api/xxx
+        proxy_pass http://localhost:3001/api/;
+        
+        # ✅ 另一种正确配置：
+        # proxy_pass http://localhost:3001; 
+        
+        # ❌ 错误配置 (这很可能是你当前遇到的问题)：
+        # proxy_pass http://localhost:3001/;  <-- 这会移除 /api 前缀！导致后端收到 /auth/login 而不是 /api/auth/login
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
