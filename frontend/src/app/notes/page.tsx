@@ -77,7 +77,7 @@ function NotesContent() {
           type: 'paragraph',
           content: p ? [{ type: 'text', text: p }] : [],
         })),
-      };
+    };
     };
 
   const highlightId = searchParams.get('highlight') || '';
@@ -175,13 +175,13 @@ function NotesContent() {
                         }
                       }}
                       title={title}
-                    >
+          >
                       <div className={styles.historyItemTitleRow}>
                         <div className={styles.historyItemTitle}>{title}</div>
                         {note.enriching && <div className={styles.historyItemDot} title="AI 处理中" />}
-                      </div>
+            </div>
                       <div className={styles.historyItemPreview}>{preview || '（空）'}</div>
-                    </div>
+              </div>
                   );
                 })}
               </div>
@@ -190,21 +190,21 @@ function NotesContent() {
             <section className={styles.detailSlot} aria-label="笔记工作台">
               {!selectedNote ? null : (
                 <>
-                  <ModernNoteCard
+                    <ModernNoteCard
                     note={selectedNote}
                     onRequestDelete={(id) => {
                       setPendingDeleteNoteId(id);
                     }}
-                    onUpdateTitle={handleUpdateTitle}
-                    onUpdateContent={handleUpdateContent}
-                    onUpdateKeywords={handleUpdateKeywords}
+                      onUpdateTitle={handleUpdateTitle}
+                      onUpdateContent={handleUpdateContent}
+                      onUpdateKeywords={handleUpdateKeywords}
                     isHighlighted={false}
                     layoutVariant="detail"
                     onContentEditingChange={(id, isEditing) => {
                       if (isEditing) setEditingNoteId(id);
                       else setEditingNoteId((cur) => (cur === id ? null : cur));
                     }}
-                  />
+                    />
 
                   {selectedNote._id === activeRelatedNoteId &&
                     (relatedNotes.length > 0 || relatedLoading || noRelatedFound) && (
@@ -218,17 +218,17 @@ function NotesContent() {
                           {!relatedLoading &&
                             relatedNotes.length > 0 &&
                             relatedNotes.map((rn) => (
-                              <RelatedNoteCard
-                                key={rn._id}
-                                note={rn}
-                                onExpand={(id) => {
+                            <RelatedNoteCard 
+                              key={rn._id} 
+                              note={rn} 
+                              onExpand={(id) => {
                                   setSelectedNoteId(id);
                                   // 选中后滚动到对应左侧项
                                   const el = document.getElementById(`history-${id}`);
                                   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                                }}
-                              />
-                            ))}
+                              }}
+                            />
+                          ))}
                           {!relatedLoading && noRelatedFound && (
                             <div className={styles.emptyRelated}>未找到相关笔记</div>
                           )}
@@ -238,7 +238,7 @@ function NotesContent() {
                 </>
               )}
             </section>
-          </div>
+                  </div>
 
           <DeleteNoteConfirmModal
             open={!!pendingDeleteNoteId}

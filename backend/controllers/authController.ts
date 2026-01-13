@@ -9,7 +9,8 @@ import { Request, Response } from 'express';
 import User from '../models/User';
 import { generateToken } from '../utils/jwt';
 import { UserValidator } from '../utils/userValidation';
-import { ResponseHandler, ErrorHandler } from '../utils/errorHandler';
+import { ResponseHandler, ErrorHandler, AppError } from '../utils/errorHandler';
+import mongoose from 'mongoose';
 
 // 用户注册
 export const register = async (req: Request, res: Response) => {
@@ -43,6 +44,10 @@ export const register = async (req: Request, res: Response) => {
       user: UserValidator.formatUserResponse(user)
     }, '注册成功', 201);
   } catch (error) {
+    // 已经是业务错误（如 400/401/403/404）则直接抛出，避免被错误包装成 500
+    if (error instanceof AppError) {
+      throw error;
+    }
     if (error instanceof Error && error.message.includes('已存在')) {
       throw ErrorHandler.createValidationError(error.message);
     }
@@ -54,21 +59,37 @@ export const register = async (req: Request, res: Response) => {
 // 用户登录
 export const login = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const rawEmail = req.body?.email;
+    const password = req.body?.password;
 
     // 验证必填字段
     UserValidator.validateUserInput(req.body, ['email', 'password']);
 
     // 查找用户（仅支持邮箱登录）
+    const email = String(rawEmail ?? '').trim().toLowerCase();
     const user = await User.findOne({ email });
 
     if (!user) {
+      if (process.env.NODE_ENV !== 'production') {
+        // 这里就是“查不到用户”的唯一入口：把运行时连接的库信息打出来，避免你再手动比对配置
+        const mongo = {
+          host: mongoose.connection.host,
+          db: mongoose.connection.name,
+          readyState: mongoose.connection.readyState,
+          hasMongoUri: !!process.env.MONGODB_URI,
+        };
+        const totalUsers = await User.countDocuments({});
+        console.warn('⚠️ 登录失败：邮箱不存在', { email, mongo, totalUsers });
+      }
       throw ErrorHandler.createAuthenticationError('邮箱或密码错误');
     }
 
     // 验证密码
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('⚠️ 登录失败：密码不匹配', { email, userId: user._id?.toString?.() });
+      }
       throw ErrorHandler.createAuthenticationError('邮箱或密码错误');
     }
 
@@ -89,8 +110,12 @@ export const login = async (req: Request, res: Response) => {
       user: UserValidator.formatUserResponse(user)
     }, '登录成功');
   } catch (error) {
+    // 关键修复：不要把“邮箱或密码错误”(401) 这种业务错误包装成 500
+    if (error instanceof AppError) {
+      throw error;
+    }
     console.error('登录失败:', error);
-    throw ErrorHandler.createInternalError('登录失败，请稍后重试');
+    throw ErrorHandler.createInternalError('登录失败，请稍后重试', error);
   }
 };
 

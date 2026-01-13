@@ -40,7 +40,20 @@ app.use((req, res, next) => {
 
 // ✅ 健康检查
 app.get('/api/health', (_, res) => {
-  res.json({ status: 'ok' });
+  // 这里的路由会覆盖 routes/health.ts 里的 /api/health，所以把诊断信息放在这里最直观
+  const isDev = process.env.NODE_ENV !== 'production';
+  const mongo = isDev
+    ? {
+        readyState: mongoose.connection.readyState,
+        host: mongoose.connection.host,
+        db: mongoose.connection.name,
+        hasMongoUri: !!process.env.MONGODB_URI,
+      }
+    : undefined;
+  res.json({
+    status: 'ok',
+    ...(mongo ? { mongo } : {}),
+  });
 });
 
 // ✅ 路由挂载

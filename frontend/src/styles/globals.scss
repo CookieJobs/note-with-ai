@@ -1,0 +1,53 @@
+/*
+Input: 待补充
+Output: 待补充
+Pos: 前端 样式
+Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+*/
+
+/* TipTap UI Components 基础样式（由 @tiptap/cli 安装生成） */
+@import "./_variables.scss";
+@import "./_keyframe-animations.scss";
+
+/* TipTap UI Components - Node styles（需要显式引入，否则只会有组件但没有 node 的排版样式） */
+@import "../components/tiptap-node/paragraph-node/paragraph-node.scss";
+@import "../components/tiptap-node/heading-node/heading-node.scss";
+@import "../components/tiptap-node/list-node/list-node.scss";
+@import "../components/tiptap-node/code-block-node/code-block-node.scss";
+@import "../components/tiptap-node/horizontal-rule-node/horizontal-rule-node.scss";
+@import "../components/tiptap-node/image-node/image-node.scss";
+@import "../components/tiptap-node/image-upload-node/image-upload-node.scss";
+
+/* 全局样式重置 */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Roboto", "Oxygen", "Ubuntu", "Cantarell", sans-serif;
+}
+
+/* 确保容器正确继承宽度 */
+#__next {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* 编辑器里的代码字体统一使用更美观的等宽字体 */
+.tiptap.ProseMirror code,
+.tiptap.ProseMirror pre,
+.tiptap.ProseMirror pre code {
+  font-family: var(--font-mono), "JetBrains Mono NL", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+

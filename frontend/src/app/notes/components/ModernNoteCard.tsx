@@ -944,43 +944,6 @@ export default function ModernNoteCard({
         {layoutVariant !== 'detail' && !state.content.isEditing && state.layout.canExpand && (
           <div className={`${styles.fadeOverlay} ${!state.expanded ? styles.fadeOverlayVisible : ''}`} />
         )}
-        <div className={styles.noteEditBar}>
-          {state.content.isEditing && (
-            <div className={styles.noteEditActions} ref={contentEditActionsRef}>
-              <button
-                type="button"
-                className={styles.noteEditCancel}
-                onClick={() => {
-                  dispatch({ type: 'CANCEL_CONTENT_EDIT', value: state.content.original });
-                  // 取消：丢弃草稿，回到服务端内容
-                  const plain = getNotePlainText();
-                  const baseJson = note.contentJson ?? buildJsonFromPlain(plain);
-                  const baseText = extractPlainTextFromJson(baseJson) || getNoteTextForEditor();
-                  setContentJsonDraft(baseJson);
-                  setContentTextDraft(baseText);
-                  draftMetaRef.current = { noteId: note._id, dirty: false };
-                  contentEditBaselineRef.current = {
-                    noteId: note._id,
-                    jsonStr: safeStringify(baseJson),
-                    text: baseText,
-                  };
-                }}
-                disabled={state.content.saving}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className={styles.noteEditSave}
-                onClick={handleSaveContent}
-                disabled={state.content.saving}
-              >
-                保存
-              </button>
-              {state.content.error && <span className={styles.errorInline}>{state.content.error}</span>}
-            </div>
-          )}
-        </div>
         {layoutVariant !== 'detail' && state.layout.canExpand && !state.content.isEditing && (
           <button type="button" className={styles.expandPill} onClick={() => dispatch({ type: 'TOGGLE_EXPANDED' })}>
             {state.expanded ? '收起' : '展开'}
@@ -1096,12 +1059,51 @@ export default function ModernNoteCard({
         )}
         </div>
 
-        {/* 草稿提示：固定在 keywords 行尾（编辑/非编辑都显示） */}
-        {contentSavedFlash ? (
-          <div className={styles.draftSavedInline}>修改已提交 ✔</div>
-        ) : (
-          hasUnsavedDraft && <div className={styles.draftUnsavedInline}>草稿未保存 ！</div>
-        )}
+        <div className={styles.noteKeywordsRight}>
+          {/* 草稿提示：固定在 keywords 行尾（编辑/非编辑都显示） */}
+          {contentSavedFlash ? (
+            <div className={styles.draftSavedInline}>修改已提交 ✔</div>
+          ) : (
+            hasUnsavedDraft && <div className={styles.draftUnsavedInline}>草稿未保存 ！</div>
+          )}
+
+          {/* 编辑态操作：放在 keywords 行尾（在草稿提示之后），避免占用正文高度 */}
+          {state.content.isEditing && (
+            <div className={styles.noteEditActions} ref={contentEditActionsRef}>
+              <button
+                type="button"
+                className={styles.noteEditCancel}
+                onClick={() => {
+                  dispatch({ type: 'CANCEL_CONTENT_EDIT', value: state.content.original });
+                  // 取消：丢弃草稿，回到服务端内容
+                  const plain = getNotePlainText();
+                  const baseJson = note.contentJson ?? buildJsonFromPlain(plain);
+                  const baseText = extractPlainTextFromJson(baseJson) || getNoteTextForEditor();
+                  setContentJsonDraft(baseJson);
+                  setContentTextDraft(baseText);
+                  draftMetaRef.current = { noteId: note._id, dirty: false };
+                  contentEditBaselineRef.current = {
+                    noteId: note._id,
+                    jsonStr: safeStringify(baseJson),
+                    text: baseText,
+                  };
+                }}
+                disabled={state.content.saving}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className={styles.noteEditSave}
+                onClick={handleSaveContent}
+                disabled={state.content.saving}
+              >
+                保存
+              </button>
+              {state.content.error && <span className={styles.errorInline}>{state.content.error}</span>}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

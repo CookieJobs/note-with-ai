@@ -5,20 +5,24 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { ImageUpload } from './tiptap/ImageUpload';
+import Underline from '@tiptap/extension-underline';
+import Superscript from '@tiptap/extension-superscript';
+import Subscript from '@tiptap/extension-subscript';
+import TextAlign from '@tiptap/extension-text-align';
+import { ImageUploadNode } from '@/components/tiptap-node/image-upload-node/image-upload-node-extension';
 import { ResizableImage } from './tiptap/ResizableImage';
-import { ListItemWithEmptyParent } from './tiptap/ListItemWithEmptyParent';
-import { BulletListWithIndent } from './tiptap/BulletListWithIndent';
-import { OrderedListWithIndent } from './tiptap/OrderedListWithIndent';
-import {
-  Bold,
-  Italic,
-  Strikethrough,
-  List,
-  ListOrdered,
-  Quote,
-  Image as ImageIcon,
-} from 'lucide-react';
+
+// TipTap 官方 UI Components（已通过 @tiptap/cli 安装到 src/components）
+import { MarkButton } from '@/components/tiptap-ui/mark-button';
+import { ListButton } from '@/components/tiptap-ui/list-button';
+import { BlockquoteButton } from '@/components/tiptap-ui/blockquote-button';
+import { CodeBlockButton } from '@/components/tiptap-ui/code-block-button';
+import { LinkPopover } from '@/components/tiptap-ui/link-popover';
+import { TextAlignButton } from '@/components/tiptap-ui/text-align-button';
+import { ImageUploadButton } from '@/components/tiptap-ui/image-upload-button';
+
+import { ButtonGroup } from '@/components/tiptap-ui-primitive/button';
+import { Separator } from '@/components/tiptap-ui-primitive/separator';
 
 import styles from '../notes.module.scss';
 
@@ -43,6 +47,12 @@ function extractPlainTextFromJson(doc: any): string {
     }
     if (type === 'image') {
       // 独立成行更符合阅读/embedding
+      if (out.length > 0 && !out[out.length - 1].endsWith('\n')) out.push('\n');
+      out.push('[图片]');
+      out.push('\n');
+      return;
+    }
+    if (type === 'imageUpload') {
       if (out.length > 0 && !out[out.length - 1].endsWith('\n')) out.push('\n');
       out.push('[图片]');
       out.push('\n');
@@ -91,8 +101,16 @@ export default function RichTextEditor({
   const didInitSelectionRef = useRef(false);
   const suppressBlurUntilRef = useRef(0); // 文件选择器/内部交互会导致 relatedTarget=null 的 blur，短暂抑制退出
   const lastSelfUpdateJsonStrRef = useRef(''); // 避免“受控 value 同步”把 selection 重置
+  const isTiptapOverlay = (node: Node | null) => {
+    // 官方 UI primitives 使用 Radix Portal，把 Popover/Tooltip 渲染到 body 下；
+    // 这些交互不应该触发“编辑器失焦退出编辑态”
+    const el = node as HTMLElement | null;
+    if (!el || typeof (el as any).closest !== 'function') return false;
+    return !!el.closest('.tiptap-popover, .tiptap-tooltip');
+  };
   const isInside = (node: Node | null) => {
     if (!node) return false;
+    if (isTiptapOverlay(node)) return true;
     if (rootRef.current && rootRef.current.contains(node)) return true;
     for (const r of insideRefs) {
       const el = r?.current;
@@ -104,17 +122,41 @@ export default function RichTextEditor({
     // Next.js 下避免 hydration mismatch（TipTap 会检测 SSR 并报错）
     immediatelyRender: false,
     extensions: [
-      StarterKit.configure({ listItem: false, bulletList: false, orderedList: false }),
-      BulletListWithIndent,
-      OrderedListWithIndent,
-      ListItemWithEmptyParent,
+      // 使用官方默认列表（Tab/Shift+Tab 缩进/反缩进行为由 TipTap/ProseMirror 默认处理）
+      StarterKit,
+      Underline,
+      Superscript,
+      Subscript,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Link.configure({ openOnClick: false }),
       ResizableImage.configure({
         wrapperClassName: styles.resizableImage,
         selectedClassName: styles.resizableImageSelected,
         editableClassName: styles.resizableImageEditable,
       }),
-      ImageUpload.configure({ placeholderClassName: styles.imageUploadPlaceholder }),
+      ImageUploadNode.configure({
+        type: 'image',
+        limit: 1,
+        maxSize: 10 * 1024 * 1024,
+        upload: async (file: File, onProgress, abortSignal) => {
+          // 直接转 base64 dataURL（无需后端上传）。注意：大图片会增加 contentJson 体积。
+          if (abortSignal?.aborted) throw new Error('Upload cancelled');
+          const toDataUrl = (f: File) =>
+            new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onerror = () => reject(new Error('读取文件失败'));
+              reader.onload = () => resolve(String(reader.result || ''));
+              reader.readAsDataURL(f);
+            });
+          onProgress?.({ progress: 10 });
+          const url = await toDataUrl(file);
+          onProgress?.({ progress: 100 });
+          return url;
+        },
+        onError: (err: Error) => {
+          console.warn('图片插入失败:', err);
+        },
+      }),
       Placeholder.configure({
         placeholder: placeholder || '',
         emptyEditorClass: 'is-editor-empty',
@@ -123,100 +165,20 @@ export default function RichTextEditor({
     content: value || undefined,
     editorProps: {
       attributes: {
-        class: styles.richEditorContent,
+        // 重要：保留 TipTap UI Components 依赖的 `.tiptap` class（其 node 样式选择器是 `.tiptap.ProseMirror`）
+        class: `tiptap ${styles.richEditorContent}`,
+        // 关闭浏览器拼写检查/自动纠错（去掉红色波浪线）
+        spellcheck: 'false',
+        autocorrect: 'off',
+        autocapitalize: 'off',
+        // 兼容：禁用 Grammarly 等浏览器插件对 contenteditable 的注入
+        'data-gramm': 'false',
+        'data-gramm_editor': 'false',
+        'data-enable-grammarly': 'false',
       },
       handleDOMEvents: {
         keydown: (_view, event) => {
           const e = event as KeyboardEvent;
-          // 列表缩进：Tab / Shift+Tab
-          // - Tab: sinkListItem => 变成二级列表
-          // - Shift+Tab: liftListItem => 回到上一级
-          if (e.key === 'Tab') {
-            // 只在列表语境下处理，避免影响普通 Tab（浏览器焦点切换）
-            const inList = editor?.isActive('bulletList') || editor?.isActive('orderedList') || editor?.isActive('listItem');
-            if (inList) {
-              e.preventDefault();
-              if (e.shiftKey) {
-                // Shift+Tab：优先减少“列表整体缩进”，否则回到上一级列表
-                const didOutdentList = editor
-                  ?.chain()
-                  .focus()
-                  .command(({ tr, state, dispatch }) => {
-                    const { selection, schema } = state;
-                    const $from = selection.$from;
-                    const bulletList = schema.nodes.bulletList;
-                    const orderedList = schema.nodes.orderedList;
-                    let listDepth = -1;
-                    for (let d = $from.depth; d > 0; d -= 1) {
-                      const t = $from.node(d).type;
-                      if (t === bulletList || t === orderedList) {
-                        listDepth = d;
-                        break;
-                      }
-                    }
-                    if (listDepth === -1) return false;
-                    const node = $from.node(listDepth);
-                    const indent = Number((node.attrs as any)?.indent || 0);
-                    if (indent <= 0) return false;
-                    const pos = $from.before(listDepth);
-                    tr.setNodeMarkup(pos, undefined, { ...(node.attrs as any), indent: indent - 1 });
-                    if (dispatch) dispatch(tr);
-                    return true;
-                  })
-                  .run();
-                if (!didOutdentList) {
-                  if (editor?.can().liftListItem('listItem')) editor.chain().focus().liftListItem('listItem').run();
-                }
-              } else {
-                // Tab：如果当前 listItem 是“空行”，则对“整个列表起始位置”做缩进（不创建二级列表）
-                const didIndentList = editor
-                  ?.chain()
-                  .focus()
-                  .command(({ tr, state, dispatch }) => {
-                    const { selection, schema } = state;
-                    const $from = selection.$from;
-                    const listItem = schema.nodes.listItem;
-                    const paragraph = schema.nodes.paragraph;
-                    const bulletList = schema.nodes.bulletList;
-                    const orderedList = schema.nodes.orderedList;
-                    if (!listItem || !paragraph || !bulletList || !orderedList) return false;
-
-                    // 必须在空的 listItem 段落里
-                    if ($from.parent.type !== paragraph) return false;
-                    if ($from.parent.content.size !== 0) return false;
-
-                    // 找到最近的 listItem 与其父 list
-                    let liDepth = -1;
-                    let listDepth = -1;
-                    for (let d = $from.depth; d > 0; d -= 1) {
-                      const t = $from.node(d).type;
-                      if (liDepth === -1 && t === listItem) liDepth = d;
-                      if (t === bulletList || t === orderedList) {
-                        listDepth = d;
-                        break;
-                      }
-                    }
-                    if (liDepth === -1 || listDepth === -1) return false;
-
-                    const listNode = $from.node(listDepth);
-                    const indent = Number((listNode.attrs as any)?.indent || 0);
-                    const nextIndent = Math.min(6, indent + 1);
-                    if (nextIndent === indent) return false;
-                    const pos = $from.before(listDepth);
-                    tr.setNodeMarkup(pos, undefined, { ...(listNode.attrs as any), indent: nextIndent });
-                    if (dispatch) dispatch(tr);
-                    return true;
-                  })
-                  .run();
-
-                if (!didIndentList) {
-                  // 否则才是常规的“二级列表”
-                  if (editor?.can().sinkListItem('listItem')) editor.chain().focus().sinkListItem('listItem').run();
-                }
-              }
-              return true;
-            }
-          }
           if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
             onModEnter?.();
             return true;
@@ -331,93 +293,56 @@ export default function RichTextEditor({
 
   if (!editor) return null;
 
-  const btn = (active: boolean) => `${styles.richToolbarBtn} ${active ? styles.richToolbarBtnActive : ''}`;
-  const keepFocus = (e: React.MouseEvent) => {
-    // 防止按钮抢焦点触发 editor blur（但 click 仍会触发命令）
-    e.preventDefault();
-  };
-
   return (
     <div ref={rootRef} className={styles.richEditor}>
       {showToolbar && (
         <div className={styles.richToolbar}>
-          <button
-            type="button"
-            className={btn(editor.isActive('bold'))}
-            onMouseDown={keepFocus}
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            aria-label="加粗"
-            title="加粗"
-          >
-            <Bold size={16} />
-          </button>
-          <button
-            type="button"
-            className={btn(editor.isActive('italic'))}
-            onMouseDown={keepFocus}
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            aria-label="斜体"
-            title="斜体"
-          >
-            <Italic size={16} />
-          </button>
-          <button
-            type="button"
-            className={btn(editor.isActive('strike'))}
-            onMouseDown={keepFocus}
-            onClick={() => editor.chain().focus().toggleStrike().run()}
-            aria-label="删除线"
-            title="删除线"
-          >
-            <Strikethrough size={16} />
-          </button>
-          <button
-            type="button"
-            className={btn(editor.isActive('bulletList'))}
-            onMouseDown={keepFocus}
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            aria-label="无序列表"
-            title="无序列表"
-          >
-            <List size={16} />
-          </button>
-          <button
-            type="button"
-            className={btn(editor.isActive('orderedList'))}
-            onMouseDown={keepFocus}
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-            aria-label="有序列表"
-            title="有序列表"
-          >
-            <ListOrdered size={16} />
-          </button>
-          <button
-            type="button"
-            className={btn(editor.isActive('blockquote'))}
-            onMouseDown={keepFocus}
-            onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            aria-label="引用"
-            title="引用"
-          >
-            <Quote size={16} />
-          </button>
-          <button
-            type="button"
-            className={styles.richToolbarBtn}
-            onMouseDown={keepFocus}
-            onClick={() => {
-              // 直接插入占位块节点（避免依赖自定义 chain command 在某些场景未注册）
-              editor.chain().focus().insertContent({ type: 'imageUpload' }).run();
-            }}
-            aria-label="插入图片"
-            title="插入图片"
-          >
-            <ImageIcon size={16} />
-          </button>
+          <ButtonGroup orientation="horizontal">
+            <MarkButton editor={editor} type="bold" />
+            <MarkButton editor={editor} type="italic" />
+            <MarkButton editor={editor} type="underline" />
+            <MarkButton editor={editor} type="strike" />
+            <MarkButton editor={editor} type="code" />
+            <MarkButton editor={editor} type="superscript" />
+            <MarkButton editor={editor} type="subscript" />
+          </ButtonGroup>
+
+          <Separator />
+
+          <ButtonGroup orientation="horizontal">
+            <ListButton editor={editor} type="bulletList" />
+            <ListButton editor={editor} type="orderedList" />
+          </ButtonGroup>
+
+          <Separator />
+
+          <ButtonGroup orientation="horizontal">
+            <BlockquoteButton editor={editor} />
+            <CodeBlockButton editor={editor} />
+          </ButtonGroup>
+
+          <Separator />
+
+          <ButtonGroup orientation="horizontal">
+            <TextAlignButton editor={editor} align="left" />
+            <TextAlignButton editor={editor} align="center" />
+            <TextAlignButton editor={editor} align="right" />
+            <TextAlignButton editor={editor} align="justify" />
+          </ButtonGroup>
+
+          <Separator />
+
+          <ButtonGroup orientation="horizontal">
+            <LinkPopover editor={editor} />
+            <ImageUploadButton editor={editor} />
+          </ButtonGroup>
         </div>
       )}
 
-      <EditorContent editor={editor} />
+      {/* 关键：用一个稳定的滚动容器包住 EditorContent，避免编辑态被外层 overflow:hidden 裁剪后无法滚动 */}
+      <div className={styles.richEditorScroller}>
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 }

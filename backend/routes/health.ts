@@ -5,6 +5,7 @@ Pos: 后端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 import express from 'express';
+import mongoose from 'mongoose';
 import { getEmbeddingStats } from '../services/noteEmbedding';
 import { EMBEDDING_CONFIG } from '../config/embedding';
 import { asyncHandler, ResponseHandler } from '../utils/errorHandler';
@@ -16,6 +17,14 @@ const router = express.Router();
  */
 router.get('/health', asyncHandler(async (req, res) => {
   const stats = await getEmbeddingStats();
+  const isDev = process.env.NODE_ENV !== 'production';
+  const mongoInfo = isDev
+    ? {
+        readyState: mongoose.connection.readyState,
+        host: mongoose.connection.host,
+        db: mongoose.connection.name,
+      }
+    : undefined;
   const health = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -35,7 +44,8 @@ router.get('/health', asyncHandler(async (req, res) => {
       nodeEnv: process.env.NODE_ENV,
       hasApiKey: !!process.env.DASHSCOPE_API_KEY,
       hasMongoUri: !!process.env.MONGODB_URI
-    }
+    },
+    ...(mongoInfo ? { mongo: mongoInfo } : {})
   };
 
   return ResponseHandler.success(res, health);

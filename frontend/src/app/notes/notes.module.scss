@@ -207,6 +207,27 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* 滚动条默认隐藏（不滚动/不 hover 时透明），避免视觉噪音 */
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: transparent transparent;
+}
+
+/* WebKit 滚动条：默认透明，hover 才显示 */
+.historyScroll::-webkit-scrollbar {
+  width: 6px;
+}
+.historyScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.historyScroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+.historyScroll:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent; /* Firefox */
+}
+.historyScroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
 }
 
 .historyItem {
@@ -220,9 +241,10 @@
 }
 
 .historyItem:hover {
-  background: rgba(255, 255, 255, 0.98);
-  border-color: rgba(23, 112, 232, 0.14);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  /* hover：与页面渐变背景拉开一档对比（更“亮”一点点） */
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(23, 112, 232, 0.18);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.10);
   transform: translateY(-1px);
 }
 
@@ -287,6 +309,8 @@
   min-height: 0;
   min-width: 0;
   height: 100%;
+  display: flex;
+  flex-direction: column;
   overflow: hidden; /* 工作台本身不滚动：只允许正文区域滚动 */
   padding: 0;
 }
@@ -346,6 +370,11 @@
   min-height: 32px;
   max-height: 120px;
   overflow-y: auto;
+}
+
+/* 折叠态：滚动交给 RichTextEditor 的 scroller（更稳，不依赖 ProseMirror） */
+.composeAreaCollapsed .richEditorScroller {
+  max-height: 120px;
 }
 
 .composeHeader {
@@ -606,8 +635,8 @@
 /* 右侧工作台：彻底取消 hover 视觉（不抬升、不加阴影、不变描边） */
 .noteCard.noteCardDetail:hover {
   transform: none;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
-  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 23, 42, 0.06);
 }
 
 /* detail 模式：让正文区域占满右侧剩余空间 */
@@ -624,15 +653,34 @@
 }
 
 .noteCardDetail .noteContentInput {
-  height: 100%;
+  /* 编辑态容器：用 flex 链条约束出“固定可滚动高度” */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 .noteCard.noteCardDetail {
   /* detail 模式：卡片自身不滚动，避免把按钮滚走 */
+  flex: 1;
+  min-height: 0;
   height: 100%;
   overflow: hidden;
+  /* 工作台整卡更“轻薄”&更高信息密度（你说的“占用率太低”主要来自 padding/外框过重） */
+  /* 左右留白恢复；顶部再收紧一点，让编辑器更靠上 */
+  padding: 12px 16px 10px;
+  border-radius: 18px;
+  border-color: rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
+}
+
+/* 只有在内部有焦点时才给一圈“轻提示”，不靠粗边框刷存在感 */
+.noteCard.noteCardDetail:focus-within {
+  border-color: rgba(23, 112, 232, 0.16);
+  box-shadow:
+    0 12px 34px rgba(15, 23, 42, 0.10),
+    0 0 0 3px rgba(23, 112, 232, 0.12);
 }
 
 /* detail 预览态：正文区域内部滚动（工作台不滚） */
@@ -644,19 +692,51 @@
   max-height: none !important;
 }
 
-.noteCardDetail :global(.richEditor) {
+.noteCardDetail .richEditor {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.noteCardDetail :global(.richEditorContent) {
+/* TipTap EditorContent 结构：.richEditor -> .tiptap(wrapper) -> ProseMirror(.richEditorContent)
+   需要让 wrapper 也成为可伸缩容器，否则正文区拿不到固定高度，滚动不会生效 */
+.noteCardDetail .richEditor :global(.tiptap) {
   flex: 1;
   min-height: 0;
-  height: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.noteCardDetail .richEditorContent {
+  /* 关键：编辑态让 ProseMirror（它自己就是 EditorContent 根节点）吃到 flex 高度 */
+  flex: 1;
+  min-height: 0;
+  height: 100%;
   max-height: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 让 ProseMirror 节点实际填满 wrapper，滚动发生在正文区 */
+.noteCardDetail .richEditor :global(.tiptap) .richEditorContent {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+/* 兜底：直接约束 ProseMirror（TipTap 永远会带这个 class）——编辑态滚动应发生在这里 */
+.noteCardDetail :global(.tiptap) {
+  min-height: 0;
+}
+
+.noteCardDetail :global(.ProseMirror) {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 /* 笔记卡片样式 */
@@ -699,7 +779,7 @@
   padding-top: 10px;
   /* 轻微遮罩，避免内容贴到按钮后面 */
   background: linear-gradient(to bottom, rgba(255,255,255,0.0), rgba(255,255,255,0.96) 45%, rgba(255,255,255,0.98));
-}
+  }
 
 /* 正文编辑态：避免 hover 的 transform 干扰“吸顶/吸底”对齐计算 */
 .noteCardEditing {
@@ -720,6 +800,13 @@
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 12px;
+}
+
+/* detail 工作台：标题/操作区加分隔线，让层次更“高级”且更紧凑 */
+.noteCard.noteCardDetail .noteHeader {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 /* 恢复标题样式 */
@@ -867,6 +954,64 @@
   position: relative;
 }
 
+.noteCard.noteCardDetail .noteContent {
+  margin-bottom: 8px;
+}
+
+/* detail 工作台：让工具栏/关键词区域更紧凑，给正文更多空间 */
+.noteCard.noteCardDetail .richEditor {
+  gap: 6px;
+}
+
+.noteCard.noteCardDetail .richToolbar {
+  /* toolbar 更贴近上边缘，整体更紧凑 */
+  padding: 0 0 1px;
+}
+
+/* detail 工作台：收紧编辑器“内边距/排版密度”，把空间还给正文 */
+.noteCard.noteCardDetail .noteContentInput {
+  /* 上边距再缩一点：让 toolbar 更贴近容器上沿 */
+  padding: 4px 8px 6px;
+  /* 与预览态保持一致，避免切换编辑/预览时布局跳动 */
+  font-size: 14px;
+}
+
+.noteCard.noteCardDetail .richEditorScroller {
+  /* 把“省下来的上边距”还给正文区，避免内容贴得太紧 */
+  padding-top: 4px;
+}
+
+.noteCard.noteCardDetail .richEditorContent {
+  line-height: 1.6;
+}
+
+.noteCard.noteCardDetail .richEditorContent :global(> * + *) {
+  margin-top: 10px;
+}
+
+.noteCard.noteCardDetail .richEditorContent :global(ul),
+.noteCard.noteCardDetail .richEditorContent :global(ol) {
+  padding-left: 20px;
+}
+
+/* detail 工作台：toolbar 按钮/图标再缩小一档（官方 primitives 的 class 名是 .tiptap-button） */
+.noteCard.noteCardDetail .richToolbar :global(.tiptap-button) {
+  height: 1.75rem;
+  min-width: 1.75rem;
+  padding: 0.375rem;
+  border-radius: var(--tt-radius-md, 0.5rem);
+}
+
+.noteCard.noteCardDetail .richToolbar :global(.tiptap-button-icon),
+.noteCard.noteCardDetail .richToolbar :global(.tiptap-button-icon-sub) {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.noteCard.noteCardDetail .richToolbar :global(.tiptap-button-group[data-orientation="horizontal"]) {
+  gap: 0.0625rem;
+}
+
 /* keywords 行尾草稿标记 */
 .draftUnsavedInline {
   flex: none;
@@ -926,6 +1071,16 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0; /* 允许内部 scroller 在 flex 容器中收缩，从而产生滚动 */
+}
+
+/* RichTextEditor 正文滚动容器（编辑态兜底：让正文一定可滚动） */
+.richEditorScroller {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 .richToolbar {
@@ -974,6 +1129,12 @@
   }
 }
 
+/* 兼容：如果按钮逻辑以 class 控制禁用态（同时也会设置 disabled 属性） */
+.richToolbarBtnDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .richToolbarBtnActive {
   color: rgb(23,112,232);
   background: rgba(23, 112, 232, 0.14);
@@ -1015,20 +1176,6 @@
   margin: 4px 0 0;
 }
 
-/* 列表整体缩进（Tab 在空列表项上触发）：最多 6 级 */
-.richEditorContent :global(ul[data-list-indent="1"]),
-.richEditorContent :global(ol[data-list-indent="1"]) { margin-left: 12px; }
-.richEditorContent :global(ul[data-list-indent="2"]),
-.richEditorContent :global(ol[data-list-indent="2"]) { margin-left: 24px; }
-.richEditorContent :global(ul[data-list-indent="3"]),
-.richEditorContent :global(ol[data-list-indent="3"]) { margin-left: 36px; }
-.richEditorContent :global(ul[data-list-indent="4"]),
-.richEditorContent :global(ol[data-list-indent="4"]) { margin-left: 48px; }
-.richEditorContent :global(ul[data-list-indent="5"]),
-.richEditorContent :global(ol[data-list-indent="5"]) { margin-left: 60px; }
-.richEditorContent :global(ul[data-list-indent="6"]),
-.richEditorContent :global(ol[data-list-indent="6"]) { margin-left: 72px; }
-
 /* 引用（blockquote）：左侧竖线 + 深灰文字，作用于选中多行/多段落 */
 .richEditorContent :global(blockquote) {
   margin: 0;
@@ -1043,19 +1190,6 @@
 }
 
 /* “从二级列表开始”的视觉实现：隐藏空的一级父 listItem（只保留其子列表显示） */
-.richEditorContent :global(li[data-empty-parent="true"])::marker {
-  content: '';
-}
-.richEditorContent :global(li[data-empty-parent="true"] > p) {
-  margin: 0;
-  padding: 0;
-  height: 0;
-  overflow: hidden;
-}
-.richEditorContent :global(li[data-empty-parent="true"] > ul),
-.richEditorContent :global(li[data-empty-parent="true"] > ol) {
-  margin-top: 0;
-}
 
 /* TipTap Placeholder（空编辑器时显示） */
 .richEditorContent :global(p.is-editor-empty:first-child)::before {
@@ -1430,6 +1564,20 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
+}
+
+.noteKeywordsRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  white-space: nowrap;
+}
+
+/* detail 工作台：keywords 行是“底部操作行”，不再额外留大空白 */
+.noteCard.noteCardDetail .noteKeywords {
+  margin-bottom: 0;
+  margin-top: 6px;
 }
 
 .chipSkeleton {
@@ -2081,14 +2229,15 @@
   border: 1px solid rgba(23, 112, 232, 0.16);
   /* 默认：更贴合页面（蓝背景+白卡片）的“玻璃白”，只留极淡蓝调 */
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.10) 100%),
-    rgba(23, 112, 232, 0.04); /* 极淡蓝调（更中性） */
+    /* 折叠态需要比页面渐变更“实”一点，避免融在背景里看不清 */
+    linear-gradient(180deg, rgba(255,255,255,0.56) 0%, rgba(255,255,255,0.22) 100%),
+    rgba(23, 112, 232, 0.06); /* 极淡蓝调（更中性） */
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   /* 外发光要非常克制：让它“浮起来”，但不发飘 */
   box-shadow:
-    0 10px 28px rgba(0,0,0,0.10),
-    0 0 0 1px rgba(255,255,255,0.18) inset,
+    0 12px 30px rgba(0,0,0,0.11),
+    0 0 0 1px rgba(255,255,255,0.22) inset,
     0 0 18px rgba(23,112,232,0.08);
   display: flex;
   align-items: center;
@@ -2135,13 +2284,13 @@
 .floatingComposeHover .floatingComposeBar {
   /* hover：仍然偏白雾，但蓝色氛围更明显一点点（不抢卡片白） */
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.10) 100%),
-    rgba(23, 112, 232, 0.08);
-  border-color: rgba(23, 112, 232, 0.22);
+    linear-gradient(180deg, rgba(255,255,255,0.52) 0%, rgba(255,255,255,0.18) 100%),
+    rgba(23, 112, 232, 0.10);
+  border-color: rgba(23, 112, 232, 0.28);
   box-shadow:
-    0 14px 42px rgba(0,0,0,0.12),
-    0 0 0 1px rgba(255,255,255,0.20) inset,
-    0 0 22px rgba(23,112,232,0.10);
+    0 16px 46px rgba(0,0,0,0.14),
+    0 0 0 1px rgba(255,255,255,0.22) inset,
+    0 0 24px rgba(23,112,232,0.12);
 }
 
 .floatingComposeOpen .floatingComposeBar {

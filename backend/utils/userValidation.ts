@@ -31,7 +31,8 @@ export class UserValidator {
     
     const user = await User.findById(userId);
     if (!user) {
-      throw ErrorHandler.createNotFoundError('用户不存在');
+      // token 里带的 userId 在当前数据库中找不到：通常是数据库切换/清库/用户被删除导致的“登录失效”
+      throw ErrorHandler.createAuthenticationError('登录已失效，请重新登录');
     }
     
     if (!user.isActive) {
@@ -96,7 +97,8 @@ export class UserValidator {
     const user = await User.findById(userId).select('-password');
     
     if (!user) {
-      throw ErrorHandler.createNotFoundError('用户不存在');
+      // token 里带的 userId 在当前数据库中找不到：通常是数据库切换/清库/用户被删除导致的“登录失效”
+      throw ErrorHandler.createAuthenticationError('登录已失效，请重新登录');
     }
 
     return user;
