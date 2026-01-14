@@ -16,6 +16,37 @@ import { DeepSeekApiClient } from '../utils/apiClient';
 
 const router = express.Router();
 
+function normalizeForEmbedding(text: string) {
+  return String(text || '').trim();
+}
+
+function scheduleEmbeddingUpdate(params: {
+  noteId: string;
+  userId: string;
+  updatedAt: Date;
+  text: string;
+}) {
+  const { noteId, userId, updatedAt, text } = params;
+  const baseText = normalizeForEmbedding(text);
+  if (!baseText) return;
+
+  // 不阻塞请求；失败/跳过都不影响主流程
+  void (async () => {
+    try {
+      const embedding = await generateQwenEmbedding(baseText);
+      if (!Array.isArray(embedding) || embedding.length === 0) return;
+
+      // 防止“生成过程中内容又被改了”导致写入旧 embedding
+      await Note.updateOne(
+        { _id: noteId, userId, updatedAt },
+        { $set: { embedding } }
+      );
+    } catch (e) {
+      console.warn('⚠️ embedding 异步生成失败（已忽略）:', e);
+    }
+  })();
+}
+
 router.get('/test', (req, res) => {
   res.json({ message: 'notes 路由已挂载' });
 });
@@ -61,6 +92,15 @@ router.post('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
     userId: user._id,
   });
   const savedNote = await note.save();
+
+  // 自动生成 embedding（异步，不阻塞创建）
+  scheduleEmbeddingUpdate({
+    noteId: savedNote._id.toString(),
+    userId: user._id.toString(),
+    updatedAt: (savedNote as any).updatedAt,
+    text: (savedNote as any).contentText || savedNote.content || '',
+  });
+
   ResponseHandler.success(res, savedNote, '笔记创建成功', 201);
 }));
 
@@ -152,6 +192,64 @@ router.post('/:id', authenticateToken, asyncHandler(async (req: any, res: any) =
   ResponseHandler.success(res, { note }, '笔记标题更新成功');
 }));
 
+// 当前用户 embedding 统计（避免用全局 /api/embedding/stats 泄露他人数据）
+router.get('/embedding/stats', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const user = await UserValidator.authenticateUser(req);
+
+  const totalNotes = await Note.countDocuments({ userId: user._id });
+  const notesWithEmbedding = await Note.countDocuments({
+    userId: user._id,
+    embedding: { $exists: true, $ne: null, $not: { $size: 0 } },
+  });
+  const notesWithoutEmbedding = totalNotes - notesWithEmbedding;
+  const coverage = totalNotes > 0 ? Math.round((notesWithEmbedding / totalNotes) * 100) : 0;
+
+  ResponseHandler.success(res, {
+    totalNotes,
+    notesWithEmbedding,
+    notesWithoutEmbedding,
+    coverage,
+    timestamp: new Date().toISOString(),
+  });
+}));
+
+// 当前用户 embedding 补齐（小批量、可重复调用）
+router.post('/embedding/ensure', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const user = await UserValidator.authenticateUser(req);
+  const limit = Math.max(1, Math.min(50, Number(req.body?.limit ?? 20)));
+
+  const pending = await Note.find({
+    userId: user._id,
+    $or: [{ embedding: { $exists: false } }, { embedding: { $size: 0 } }, { embedding: null }],
+  })
+    .select('_id title content contentText updatedAt')
+    .limit(limit);
+
+  if (pending.length === 0) {
+    ResponseHandler.success(res, { processed: 0, success: 0 }, '没有需要补齐 embedding 的笔记');
+    return;
+  }
+
+  // 先把这些笔记的 embedding 清空（避免旧数据误判为已完成）
+  // 注意：这里不强制清空已有 embedding（query 已筛掉），只是兜底保持一致
+  const texts = pending.map((n: any) => `${String(n.title || '').trim()} ${String(n.contentText || n.content || '').trim()}`.trim());
+
+  // 逐条生成（更稳）；后续需要再优化成 batch 再做
+  let success = 0;
+  for (let i = 0; i < pending.length; i++) {
+    const note = pending[i] as any;
+    const embedding = await generateQwenEmbedding(texts[i]);
+    if (!Array.isArray(embedding) || embedding.length === 0) continue;
+    const r = await Note.updateOne(
+      { _id: note._id, userId: user._id, updatedAt: note.updatedAt },
+      { $set: { embedding } }
+    );
+    if (r && (r as any).matchedCount > 0) success++;
+  }
+
+  ResponseHandler.success(res, { processed: pending.length, success }, 'embedding 补齐完成');
+}));
+
 // 局部更新笔记（正文/标题/关键词），支持乐观并发控制
 router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) => {
   const { id } = req.params;
@@ -213,6 +311,11 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
   }
   if (keywords !== undefined) note.keywords = keywords;
 
+  // 正文变更：先清空旧 embedding，避免“内容变了但向量还是旧的”
+  if (contentChanged) {
+    (note as any).embedding = [];
+  }
+
   // 可选：自动摘要与关键词重生成（基于正文变更）
   if (autoSummarize === true && contentChanged) {
     try {
@@ -245,6 +348,9 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
           freshNote.contentJson = contentJson;
         }
         if (keywords !== undefined) freshNote.keywords = keywords;
+
+        // 正文变更：清空旧 embedding（后续异步重算）
+        (freshNote as any).embedding = [];
         
         // 如果 AI 生成了标题且用户没有显式提交标题，则使用 AI 的
         if (summary?.title && title === undefined) freshNote.title = summary.title;
@@ -252,6 +358,13 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
         if (Array.isArray(summary?.keywords) && keywords === undefined) freshNote.keywords = summary.keywords;
 
         await freshNote.save();
+
+        scheduleEmbeddingUpdate({
+          noteId: freshNote._id.toString(),
+          userId: user._id.toString(),
+          updatedAt: (freshNote as any).updatedAt,
+          text: (freshNote as any).contentText || freshNote.content || '',
+        });
         
         // 更新响应中的 note 对象，以便返回最新数据
         // 注意：这里我们替换了原本的 note 引用
@@ -266,6 +379,15 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
 
   await note.save();
   console.log('✅ 笔记局部更新成功');
+
+  if (contentChanged) {
+    scheduleEmbeddingUpdate({
+      noteId: note._id.toString(),
+      userId: user._id.toString(),
+      updatedAt: (note as any).updatedAt,
+      text: (note as any).contentText || note.content || '',
+    });
+  }
 
   ResponseHandler.success(res, { note }, '笔记更新成功');
 }));
