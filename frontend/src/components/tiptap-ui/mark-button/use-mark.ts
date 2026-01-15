@@ -123,7 +123,24 @@ export function shouldShowButton(props: {
  * Gets the formatted mark name
  */
 export function getFormattedMarkName(type: Mark): string {
-  return type.charAt(0).toUpperCase() + type.slice(1)
+  switch (type) {
+    case "bold":
+      return "加粗"
+    case "italic":
+      return "斜体"
+    case "underline":
+      return "下划线"
+    case "strike":
+      return "删除线"
+    case "code":
+      return "行内代码"
+    case "superscript":
+      return "上标"
+    case "subscript":
+      return "下标"
+    default:
+      return type
+  }
 }
 
 /**

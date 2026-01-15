@@ -202,7 +202,8 @@ export const TooltipTrigger = forwardRef<HTMLElement, TooltipTriggerProps>(
 
 export const TooltipContent = forwardRef<HTMLDivElement, TooltipContentProps>(
   function TooltipContent(
-    { style, children, portal = true, portalProps = {}, ...props },
+    // 默认不使用 Portal：避免在路由切换/卸载时触发底层 portal 清理导致的 removeChild 空引用
+    { style, children, portal = false, portalProps = {}, ...props },
     propRef
   ) {
     const context = useTooltipContext()

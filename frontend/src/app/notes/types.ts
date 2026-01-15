@@ -5,6 +5,7 @@ export interface Note {
   contentJson?: any;
   contentText?: string;
   keywords: string[];
+  embedding?: number[];
   createdAt: string;
   updatedAt?: string;
   enriching?: boolean;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -84,6 +84,7 @@ type Props = {
   placeholder?: string;
   showToolbar?: boolean; // 展示态可隐藏 toolbar（例如快速记录未 composing 时）
   insideRefs?: Array<React.RefObject<HTMLElement | null>>;
+  toolbarRight?: ReactNode;
 };
 
 export default function RichTextEditor({
@@ -95,6 +96,7 @@ export default function RichTextEditor({
   placeholder,
   showToolbar = true,
   insideRefs = [],
+  toolbarRight,
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const blurGuardRef = useRef(false);
@@ -336,6 +338,12 @@ export default function RichTextEditor({
             <LinkPopover editor={editor} />
             <ImageUploadButton editor={editor} />
           </ButtonGroup>
+          {toolbarRight ? (
+            <>
+              <span className={styles.richToolbarSpacer} />
+              <span className={styles.richToolbarRight}>{toolbarRight}</span>
+            </>
+          ) : null}
         </div>
       )}
 

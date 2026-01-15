@@ -10,6 +10,7 @@ import { getUser, isAuthenticated } from '../../utils/auth';
 import DeleteNoteConfirmModal from './components/DeleteNoteConfirmModal';
 import ModernNoteCard from './components/ModernNoteCard';
 import FloatingQuickCompose from './components/FloatingQuickCompose';
+import WorkspaceGrid from './components/WorkspaceGrid';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
 import { useNotes } from './hooks/useNotes';
@@ -28,6 +29,7 @@ function NotesContent() {
   // 预留：移动端菜单（当前未用到）
   // const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const historyScrollRef = useRef<HTMLDivElement | null>(null);
+  const historyBounceLockRef = useRef(false);
   
   // 删除确认弹窗：提升到页面级，避免被单条卡片的 transform/overflow 影响层级
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
@@ -83,6 +85,49 @@ function NotesContent() {
   const highlightId = searchParams.get('highlight') || '';
   const highlightedRef = useRef<HTMLDivElement | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [hoveredNoteId, setHoveredNoteId] = useState<string | null>(null);
+  const [historyColorMap, setHistoryColorMap] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, { json: any; text: string; dirty: boolean }>>({});
+  const [exitEditSignal, setExitEditSignal] = useState(0);
+  const hasAnyDraft = Object.values(drafts).some((d) => d?.dirty);
+
+  const handleDraftChange = (id: string, draft: { json: any; text: string; dirty: boolean }) => {
+    setDrafts((prev) => {
+      if (!draft.dirty) {
+        if (!prev[id]) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+      return { ...prev, [id]: draft };
+    });
+  };
+
+  // 详情浮层：点击“外部”关闭（但不要影响：快速记录、点击历史条目切换、点击方块切换）
+  useEffect(() => {
+    if (!selectedNoteId) return;
+    const onPointerDown = (e: PointerEvent) => {
+      // 编辑态防误触：避免丢失输入
+      if (editingNoteId) return;
+
+      const t = e.target as Element | null;
+      if (!t) return;
+
+      // 点在详情卡片内部：不关闭
+      if (t.closest(`.${styles.workspaceOverlayPanel}`)) return;
+      // 点在快速记录内部：不关闭（且允许继续交互）
+      if (t.closest(`.${styles.floatingCompose}`)) return;
+      // 点在历史条目：交给 onClick 切换选中，不在这里关闭
+      if (t.closest(`.${styles.historyItem}`)) return;
+      // 点在工作区方块：交给 onSelect 切换选中，不在这里关闭
+      if (t.closest(`.${styles.workspaceCell}`)) return;
+
+      setSelectedNoteId(null);
+      setEditingNoteId(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [selectedNoteId, editingNoteId]);
 
   // highlight 参数：优先选中并滚动到左侧列表项
   useEffect(() => {
@@ -102,6 +147,66 @@ function NotesContent() {
     return () => clearTimeout(timer);
   }, [highlightId, notes]);
 
+  // 历史列表“回弹”：顶部/底部拉伸后弹回
+  useEffect(() => {
+    const el = historyScrollRef.current;
+    if (!el) return;
+    let offset = 0;
+    let rafId: number | null = null;
+    let bounceTimer: number | null = null;
+    const applyTransform = () => {
+      el.style.transform = Math.abs(offset) > 0.5 ? `translateY(${offset}px)` : '';
+    };
+
+    const release = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      const from = offset;
+      const start = performance.now();
+      const dur = 220;
+      const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+      const step = (now: number) => {
+        const p = Math.min(1, (now - start) / dur);
+        offset = from * (1 - easeOut(p));
+        applyTransform();
+        if (p < 1) {
+          rafId = requestAnimationFrame(step);
+        } else {
+          offset = 0;
+          applyTransform();
+          rafId = null;
+          historyBounceLockRef.current = false;
+        }
+      };
+      rafId = requestAnimationFrame(step);
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      const nextScroll = el.scrollTop + e.deltaY;
+      const overscrollTop = nextScroll < 0;
+      const overscrollBottom = nextScroll > maxScroll;
+      if (overscrollTop || overscrollBottom) {
+        e.preventDefault();
+        const dir = overscrollBottom ? -1 : 1;
+        const next = offset + Math.abs(e.deltaY) * 0.08 * dir;
+        offset = Math.max(-18, Math.min(18, next));
+        applyTransform();
+        historyBounceLockRef.current = true;
+        if (bounceTimer) window.clearTimeout(bounceTimer);
+        bounceTimer = window.setTimeout(() => release(), 50);
+      }
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      if (rafId) cancelAnimationFrame(rafId);
+      if (bounceTimer) window.clearTimeout(bounceTimer);
+      el.style.transform = '';
+      historyBounceLockRef.current = false;
+    };
+  }, []);
+
   const attachRefIfHighlighted = (id: string) => (el: HTMLDivElement | null) => {
     if (!highlightId) return;
     if (id === highlightId) {
@@ -117,6 +222,13 @@ function NotesContent() {
   };
 
   const selectedNote = selectedNoteId ? notes.find((n) => n._id === selectedNoteId) : null;
+
+  // 选择变化时：左侧历史列表自动滚动到对应项（无论来自方块/联想/列表）
+  useEffect(() => {
+    if (!selectedNoteId) return;
+    const el = document.getElementById(`history-${selectedNoteId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [selectedNoteId]);
 
   return (
     <div className={styles.container}>
@@ -138,9 +250,12 @@ function NotesContent() {
 
           {/* 聊天式双栏：左侧历史列表（紧凑可滚动） + 右侧工作台编辑区（默认空） */}
           <div className={styles.splitLayout}>
-            <aside className={styles.historyPane} aria-label="历史笔记列表">
+            <aside className={`${styles.historyPane} ${styles.historyPaneFrozen}`} aria-label="历史笔记列表">
               <div className={styles.historyPaneHeader}>
-                <div className={styles.historyPaneTitle}>历史笔记</div>
+                <div className={styles.historyPaneTitle}>
+                  历史笔记
+                  {hasAnyDraft && <span className={styles.historyPaneDraftDot} aria-label="有草稿" />}
+                </div>
                 <div className={styles.historyPaneCount}>{notes.length}</div>
               </div>
 
@@ -148,16 +263,33 @@ function NotesContent() {
                 {notes.map((note) => {
                   const isSelected = selectedNoteId === note._id;
                   const title = (note.title || '').trim() || '未命名';
-                  const preview = (note.contentText || note.content || '').trim().replace(/\s+/g, ' ').slice(0, 56);
+                  const draft = drafts[note._id];
+                  const previewSource = draft?.dirty ? (draft.text || '') : (note.contentText || note.content || '');
+                  const preview = previewSource.trim().replace(/\s+/g, ' ').slice(0, 56);
+                  const hasDraft = !!drafts[note._id]?.dirty;
 
                   return (
                     <div
                       key={note._id}
                       id={`history-${note._id}`}
                       ref={attachRefIfHighlighted(note._id)}
-                      className={`${styles.historyItem} ${isSelected ? styles.historyItemSelected : ''}`}
+                      className={`${styles.historyItem} ${isSelected ? styles.historyItemSelected : ''} ${hoveredNoteId === note._id ? styles.historyItemHovered : ''}`}
+                      data-selected={isSelected ? 'true' : undefined}
+                      style={
+                        historyColorMap[note._id]
+                          ? ({ ['--history-accent' as any]: historyColorMap[note._id] } as any)
+                          : undefined
+                      }
                       role="button"
                       tabIndex={0}
+                      onMouseEnter={() => {
+                        if (historyBounceLockRef.current) return;
+                        setHoveredNoteId(note._id);
+                      }}
+                      onMouseLeave={() => {
+                        if (historyBounceLockRef.current) return;
+                        setHoveredNoteId((cur) => (cur === note._id ? null : cur));
+                      }}
                       onClick={() => {
                         setSelectedNoteId((cur) => {
                           const next = cur === note._id ? null : note._id;
@@ -178,6 +310,7 @@ function NotesContent() {
           >
                       <div className={styles.historyItemTitleRow}>
                         <div className={styles.historyItemTitle}>{title}</div>
+                        {hasDraft && <div className={styles.historyItemDraft}>草稿未保存</div>}
                         {note.enriching && <div className={styles.historyItemDot} title="AI 处理中" />}
             </div>
                       <div className={styles.historyItemPreview}>{preview || '（空）'}</div>
@@ -188,26 +321,75 @@ function NotesContent() {
             </aside>
 
             <section className={styles.detailSlot} aria-label="笔记工作台">
-              {!selectedNote ? null : (
-                <>
+              <div className={styles.workspacePane}>
+                <WorkspaceGrid
+                  notes={notes}
+                  selectedNoteId={selectedNoteId}
+                  hoveredNoteId={hoveredNoteId}
+                  onSelect={(id) => {
+                    setSelectedNoteId(id);
+                    const el = document.getElementById(`history-${id}`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  }}
+                  onHover={(id) => setHoveredNoteId(id)}
+                  onColorMapChange={setHistoryColorMap}
+                />
+
+                {selectedNote && (
+                  <div className={styles.workspaceOverlay}>
+                    <button
+                      type="button"
+                      className={styles.workspaceOverlayBackdrop}
+                      aria-label="关闭详情"
+                      onClick={() => {
+                        // 编辑态：点击背板先退出编辑，不关闭详情
+                        if (editingNoteId) {
+                          setExitEditSignal((v) => v + 1);
+                          setEditingNoteId(null);
+                          return;
+                        }
+                        setSelectedNoteId(null);
+                      }}
+                    />
+                    <div
+                      className={`${styles.workspaceOverlayPanel} dark`}
+                      onPointerDownCapture={(e) => {
+                        if (!editingNoteId) return;
+                        const t = e.target as Element | null;
+                        if (!t) return;
+                        if (
+                          t.closest(`.${styles.noteContentInput}`) ||
+                          t.closest(`.${styles.richToolbar}`) ||
+                          t.closest(`.${styles.noteEditActions}`)
+                        ) {
+                          return;
+                        }
+                        setExitEditSignal((v) => v + 1);
+                        setEditingNoteId(null);
+                      }}
+                    >
                     <ModernNoteCard
-                    note={selectedNote}
-                    onRequestDelete={(id) => {
-                      setPendingDeleteNoteId(id);
-                    }}
+                        key={selectedNote._id}
+                        note={selectedNote}
+                        onRequestDelete={(id) => {
+                          setPendingDeleteNoteId(id);
+                        }}
                       onUpdateTitle={handleUpdateTitle}
                       onUpdateContent={handleUpdateContent}
                       onUpdateKeywords={handleUpdateKeywords}
-                    isHighlighted={false}
-                    layoutVariant="detail"
-                    onContentEditingChange={(id, isEditing) => {
-                      if (isEditing) setEditingNoteId(id);
-                      else setEditingNoteId((cur) => (cur === id ? null : cur));
-                    }}
+                      draft={drafts[selectedNote._id]}
+                      onDraftChange={handleDraftChange}
+                      exitEditSignal={exitEditSignal}
+                        isHighlighted={false}
+                        layoutVariant="detail"
+                        onContentEditingChange={(id, isEditing) => {
+                          if (isEditing) setEditingNoteId(id);
+                          else setEditingNoteId((cur) => (cur === id ? null : cur));
+                        }}
                     />
 
-                  {selectedNote._id === activeRelatedNoteId &&
-                    (relatedNotes.length > 0 || relatedLoading || noRelatedFound) && (
+                      {selectedNote._id === activeRelatedNoteId &&
+                        (relatedNotes.length > 0 || relatedLoading || noRelatedFound) && (
                       <div className={styles.relatedNotesSection}>
                         <div className={styles.relatedHeader}>
                           <span className={styles.relatedIcon}>🔗</span>
@@ -215,30 +397,31 @@ function NotesContent() {
                           {relatedLoading && <span className={styles.relatedLoading}>查找中...</span>}
                         </div>
                         <div className={styles.relatedList}>
-                          {!relatedLoading &&
-                            relatedNotes.length > 0 &&
-                            relatedNotes.map((rn) => (
+                              {!relatedLoading &&
+                                relatedNotes.length > 0 &&
+                                relatedNotes.map((rn) => (
                             <RelatedNoteCard 
                               key={rn._id} 
                               note={rn} 
                               onExpand={(id) => {
-                                  setSelectedNoteId(id);
-                                  // 选中后滚动到对应左侧项
-                                  const el = document.getElementById(`history-${id}`);
-                                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                      setSelectedNoteId(id);
+                                      const el = document.getElementById(`history-${id}`);
+                                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                               }}
                             />
                           ))}
                           {!relatedLoading && noRelatedFound && (
-                            <div className={styles.emptyRelated}>未找到相关笔记</div>
+                                <div className={styles.emptyRelated}>未找到相关笔记</div>
+                              )}
+                            </div>
+                            </div>
                           )}
                         </div>
                       </div>
                     )}
-                </>
-              )}
-            </section>
                   </div>
+            </section>
+              </div>
 
           <DeleteNoteConfirmModal
             open={!!pendingDeleteNoteId}
@@ -256,6 +439,12 @@ function NotesContent() {
                 <FloatingQuickCompose
                   valueJson={newContentJson ?? buildJsonFromPlain(newContentText)}
                   valueText={newContentText}
+                  allNotes={notes}
+                  onSelectNote={(id) => {
+                    setSelectedNoteId(id);
+                    const el = document.getElementById(`history-${id}`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  }}
                   onChange={({ json, text }) => {
                     setNewContentJson(json);
                     setNewContentText(text);

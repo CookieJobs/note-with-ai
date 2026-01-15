@@ -20,16 +20,24 @@ function PopoverContent({
   className,
   align = "center",
   sideOffset = 4,
+  // 默认不使用 Portal：避免在路由切换/卸载时触发底层 portal 清理导致的 removeChild 空引用
+  portal = false,
   ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
-  return (
-    <PopoverPrimitive.Portal>
+}: React.ComponentProps<typeof PopoverPrimitive.Content> & { portal?: boolean }) {
+  const content = (
       <PopoverPrimitive.Content
         align={align}
         sideOffset={sideOffset}
         className={cn("tiptap-popover", className)}
         {...props}
       />
+  )
+
+  if (!portal) return content
+
+  return (
+    <PopoverPrimitive.Portal>
+      {content}
     </PopoverPrimitive.Portal>
   )
 }

@@ -86,7 +86,15 @@ export function useCreateNote(
         setRelatedLoading(true);
 
         // 1. 异步生成 embedding，不阻塞相关笔记查询（因为查询用的是文本）
-        authFetch(`/api/notes/${created._id}/embed`, { method: 'POST' }).catch(console.error);
+        authFetch(`/api/notes/${created._id}/embed`, { method: 'POST' })
+          .then((r) => r.json())
+          .then((embedData) => {
+            const emb = embedData?.data?.embedding;
+            if (Array.isArray(emb) && emb.length > 0) {
+              setNotes((prev) => prev.map((n) => (n._id === created._id ? ({ ...n, embedding: emb } as Note) : n)));
+            }
+          })
+          .catch(console.error);
 
         // 1.5 异步生成标题与关键词（内容不变也触发）
         authFetch(`/api/notes/${created._id}`, {

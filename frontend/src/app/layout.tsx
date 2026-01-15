@@ -31,7 +31,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className={`${inter.variable} ${jetbrainsMono.variable} bg-gray-50 text-gray-900`}>
+      {/* 主题背景/文字由 globals.scss 控制，避免被固定的 tailwind 背景色“压成纯色” */}
+      <body className={`${inter.variable} ${jetbrainsMono.variable}`}>
         <UUIDPolyfill />
         <GlobalKeybindings />
         {children}

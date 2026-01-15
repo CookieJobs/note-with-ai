@@ -53,9 +53,9 @@ export const listIcons = {
 }
 
 export const listLabels: Record<ListType, string> = {
-  bulletList: "Bullet List",
-  orderedList: "Ordered List",
-  taskList: "Task List",
+  bulletList: "无序列表",
+  orderedList: "有序列表",
+  taskList: "任务列表",
 }
 
 export const LIST_SHORTCUT_KEYS: Record<ListType, string> = {
@@ -188,25 +188,29 @@ export function toggleList(editor: Editor | null, type: ListType): boolean {
         .clearNodes()
     }
 
+    const listItemType: Record<ListType, "listItem" | "taskItem"> = {
+      bulletList: "listItem",
+      orderedList: "listItem",
+      taskList: "taskItem",
+    }
+
     if (editor.isActive(type)) {
-      // Unwrap list
-      chain
-        .liftListItem("listItem")
-        .lift("bulletList")
-        .lift("orderedList")
-        .lift("taskList")
-        .run()
+      const itemType = listItemType[type]
+      // 先尝试官方 toggleList 退回
+      editor.chain().focus().toggleList(type, itemType).run()
+      // 若仍处于 list，强制 lift + 段落兜底
+      if (editor.isActive(type)) {
+        editor.chain().focus().liftListItem(itemType).run()
+        editor.chain().focus().setParagraph().run()
+      }
     } else {
-      // Wrap in specific list type
       const toggleMap: Record<ListType, () => typeof chain> = {
         bulletList: () => chain.toggleBulletList(),
         orderedList: () => chain.toggleOrderedList(),
         taskList: () => chain.toggleList("taskList", "taskItem"),
       }
-
       const toggle = toggleMap[type]
       if (!toggle) return false
-
       toggle().run()
     }
 

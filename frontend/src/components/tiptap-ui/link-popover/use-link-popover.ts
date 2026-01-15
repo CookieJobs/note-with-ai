@@ -279,7 +279,7 @@ export function useLinkPopover(config?: UseLinkPopoverConfig) {
     isVisible,
     canSet,
     isActive,
-    label: "Link",
+    label: "链接",
     Icon: LinkIcon,
     ...linkHandler,
   }
