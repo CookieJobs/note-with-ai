@@ -21,6 +21,7 @@ export default function TopNavigation() {
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const activeIndex = pathname.startsWith('/chat') ? 1 : 0;
 
   useEffect(() => {
     const userData = getUser();
@@ -42,7 +43,13 @@ export default function TopNavigation() {
 
         {/* 中间导航菜单 */}
         <div className={styles.middleSection}>
-          <nav className={styles.nav}>
+          <nav
+            className={`${styles.nav} ${activeIndex === 0 ? styles.navActiveLeft : styles.navActiveRight}`}
+            data-active-index={activeIndex}
+            aria-label="主导航"
+          >
+            {/* 常驻“滑动高光底板”：默认停在当前激活项上，hover 另一项时滑过去 */}
+            <span className={styles.navHoverPill} aria-hidden="true" />
             {menuItems.map(({ label, href }) => {
               const isActive = pathname === href;
               return (
@@ -66,9 +73,6 @@ export default function TopNavigation() {
                 className={styles.userInfo}
                 onClick={() => setShowUserMenu(!showUserMenu)}
               >
-                <div className={styles.userAvatar}>
-                  {user.username.charAt(0).toUpperCase()}
-                </div>
                 <span className={styles.userName}>{user.username}</span>
                 <svg 
                   className={`${styles.chevron} ${showUserMenu ? styles.chevronUp : ''}`}
@@ -90,9 +94,6 @@ export default function TopNavigation() {
               {showUserMenu && (
                 <div className={styles.userMenu}>
                   <div className={styles.userMenuHeader}>
-                    <div className={styles.userAvatarLarge}>
-                      {user.username.charAt(0).toUpperCase()}
-                    </div>
                     <div className={styles.userDetails}>
                       <span className={styles.userNameLarge}>{user.username}</span>
                       <span className={styles.userEmail}>{user.email}</span>

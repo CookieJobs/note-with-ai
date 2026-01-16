@@ -233,10 +233,10 @@
   &[data-active-state="on"]:not([disabled]),
   &[data-state="open"]:not([disabled]) {
     background-color: var(--tt-button-active-bg-color);
-    color: var(--tt-button-active-text-color);
+    color: #fff;
 
     .tiptap-button-icon {
-      color: var(--tt-button-active-icon-color);
+      color: #fff;
     }
 
     .tiptap-button-icon-sub {
@@ -255,10 +255,10 @@
     /* Emphasized */
     &[data-appearance="emphasized"] {
       background-color: var(--tt-button-active-bg-color-emphasized);
-      color: var(--tt-button-active-text-color-emphasized);
+      color: #fff;
 
       .tiptap-button-icon {
-        color: var(--tt-button-active-icon-color-emphasized);
+        color: #fff;
       }
 
       .tiptap-button-icon-sub {
