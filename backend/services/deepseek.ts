@@ -94,6 +94,235 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
   }
 
 /**
+ * 为笔记生成：标题 + 关键词 + 语义摘要（summary）
+ * - summary 用于联想/重排输入，建议 1-2 句、<=120字
+ */
+export async function summarizeNoteMeta(
+  content: string
+): Promise<{ title: string; keywords: string[]; summary: string }> {
+  try {
+    const messages = [
+      {
+        role: 'system',
+        content: `作为文本处理专家，请严格遵循以下规则：
+1. 为用户提供的文本生成一个简洁准确的中文标题（严格≤15字）
+2. 提取1-5个最能代表文本核心内容的中文关键词
+3. 生成一段语义摘要 summary（1-2句，尽量≤120字），用于“语义联想/重排”，不得编造原文没有的信息
+4. 输出格式必须是纯JSON：{ "title": "标题", "keywords": ["词1"], "summary": "摘要" }
+5. 除了JSON格式的结果外，不要包含任何其他内容或解释`,
+      },
+      { role: 'user', content },
+    ];
+
+    const text = await deepSeekClient.chatCompletion(messages, {
+      max_tokens: 600,
+      temperature: 0.1,
+      response_format: { type: 'json_object' },
+    });
+    console.log('🧠 AI原始返回(meta):', text);
+    const parsed = JSON.parse(text);
+    const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+    return {
+      title: parsed.title || '未命名笔记',
+      keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 5) : [],
+      summary,
+    };
+  } catch (error: any) {
+    console.error('❌ summarizeNoteMeta 解析失败：', error.message || error);
+    return { title: '未命名笔记', keywords: [], summary: '' };
+  }
+}
+
+/**
+ * 仅生成语义摘要 summary（用于联想/重排输入）
+ * - 1-2句，尽量≤120字
+ * - 严禁编造原文没有的信息
+ */
+export async function summarizeNoteSummary(content: string): Promise<string> {
+  try {
+    const messages = [
+      {
+        role: 'system',
+        content: `你是一个笔记摘要助手。请将用户提供的笔记内容压缩为1-2句中文摘要（尽量≤120字），用于语义检索/重排输入。
+要求：
+1) 不得编造原文没有的信息
+2) 不要输出标题、不要输出关键词
+3) 只返回摘要文本本身，不要包含任何解释`,
+      },
+      { role: 'user', content },
+    ];
+    const text = await deepSeekClient.chatCompletion(messages, {
+      max_tokens: 200,
+      temperature: 0.1,
+      stream: false,
+    });
+    return String(text || '').trim();
+  } catch (error: any) {
+    console.error('❌ summarizeNoteSummary 调用失败：', error.message || error);
+    return '';
+  }
+}
+
+/**
+ * 为“语义联想”做概念扩展：输出 8-12 个概念/主题词（不是 n-gram）
+ */
+export async function expandNoteConcepts(content: string): Promise<string[]> {
+  try {
+    const messages = [
+      {
+        role: 'system',
+        content: `你是一个概念扩展助手。请根据用户提供的笔记内容，提取8-12个“概念/主题/关系词”，用于语义检索召回弱关联笔记。
+要求：
+1) 词语应是抽象概念、主题、关系或场景词（例如：择友、关系建立、初见、期待与现实、情绪投射…）
+2) 不要逐字拆分、不要 n-gram、不要无意义的片段
+3) 输出格式必须是纯JSON数组：["概念1","概念2",...]
+4) 除JSON外不要输出任何解释`,
+      },
+      { role: 'user', content },
+    ];
+    const text = await deepSeekClient.chatCompletion(messages, {
+      max_tokens: 300,
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+    });
+    // 兼容：有些模型会返回 { concepts: [...] } 或直接返回数组
+    let arr: any = null;
+    try {
+      arr = JSON.parse(text);
+    } catch {
+      arr = null;
+    }
+    const concepts = Array.isArray(arr) ? arr : Array.isArray(arr?.concepts) ? arr.concepts : [];
+    return concepts.filter((x: any) => typeof x === 'string' && x.trim()).map((s: string) => s.trim()).slice(0, 12);
+  } catch (error: any) {
+    console.error('❌ expandNoteConcepts 调用失败：', error.message || error);
+    return [];
+  }
+}
+
+/**
+ * 语义联想：对候选笔记做重排并生成理由
+ * - 输入不包含外部信息，禁止编造
+ * - 输出结构化 JSON，便于服务端融合阈值
+ */
+export async function rerankRecommendedNotes(params: {
+  current: { id: string; title: string; summary: string; content: string };
+  candidates: Array<{ id: string; title: string; summary: string; excerpt: string }>;
+}): Promise<Array<{ id: string; s2: number; type: string; reason: string }>> {
+  const { current, candidates } = params;
+  try {
+    const payload = {
+      current,
+      candidates,
+      rules: {
+        scoreRange: 's2 in [0,1]',
+        reason: '只能一句中文，尽量≤15字，必须指出当前笔记与候选笔记之间的概念连接点；不得编造',
+        output: 'JSON: { "results": [ { "id": "...", "s2": 0.0-1.0, "type": "...", "reason": "..." } ] }',
+      },
+    };
+
+    const messages = [
+      {
+        role: 'system',
+        content:
+          `你是“笔记语义联想”重排器。你的任务：根据当前笔记与候选笔记的标题/摘要/片段，判断语义关联强弱并生成简短理由。
+严格要求：
+1) 只能基于输入内容判断，不得引入外部事实
+2) s2越大越相关（0~1）
+3) type 从以下中选一个：强相关/补充背景/延伸阅读/类比/因果/反例/弱关联
+4) reason 只能一句中文，尽量≤15字（最多不超过20字），必须明确“连接桥梁”（概念/主题/关系/场景）
+5) “同义/翻译等价”必须高相关：如果两边出现明显的中英文同义（例如 测试≈test、AI≈人工智能 等），应判为强相关，且 s2 不得低于 0.75；reason 可直接说明“同义/翻译等价”
+6) 只输出 JSON 对象（包含 results 数组），不要输出多余文本`,
+      },
+      { role: 'user', content: JSON.stringify(payload) },
+    ];
+
+    const text = await deepSeekClient.chatCompletion(messages, {
+      max_tokens: 900,
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+    });
+    const parsed = JSON.parse(text);
+    const results = Array.isArray(parsed?.results) ? parsed.results : [];
+    return results
+      .map((r: any) => ({
+        id: String(r.id || ''),
+        s2: Number.isFinite(Number(r.s2)) ? Math.max(0, Math.min(1, Number(r.s2))) : 0,
+        type: typeof r.type === 'string' ? r.type : '弱关联',
+        // 兜底：强制单句短理由（尽量≤15字，最多20字）
+        reason:
+          typeof r.reason === 'string'
+            ? r.reason
+                .trim()
+                .replace(/[\r\n]+/g, ' ')
+                .replace(/[。！？!?.]+/g, '。')
+                .split('。')[0]
+                .slice(0, 20)
+            : '',
+      }))
+      .filter((r: any) => r.id);
+  } catch (error: any) {
+    console.error('❌ rerankRecommendedNotes 解析失败：', error.message || error);
+    return [];
+  }
+}
+
+/**
+ * 保存时校验旧 summary/concepts 是否仍然适配新正文：
+ * - 如果仍适配：is_ok=true，不更新
+ * - 如果不适配：is_ok=false，同时返回新的 summary + concepts
+ */
+export async function checkOrUpdateSummaryConcepts(params: {
+  text: string;
+  oldSummary: string;
+  oldConcepts: string[];
+}): Promise<{ is_ok: boolean; summary: string; concepts: string[] }> {
+  const { text, oldSummary, oldConcepts } = params;
+  try {
+    const payload = {
+      text,
+      oldSummary: oldSummary || '',
+      oldConcepts: Array.isArray(oldConcepts) ? oldConcepts : [],
+      constraints: {
+        summary: '1-2句中文，尽量≤120字，不得编造',
+        concepts: '8-12个概念/主题/关系词，非n-gram',
+      },
+    };
+    const messages = [
+      {
+        role: 'system',
+        content: `你是“笔记摘要缓存校验器”。给你：最新正文 text、旧 summary、旧 concepts。
+你的任务：判断旧 summary/concepts 是否仍然足够代表 text 的核心语义（用于语义检索/联想召回）。
+规则：
+1) 只基于输入判断，不得引入外部信息
+2) 如果旧 summary/concepts 仍然合格：输出 { "is_ok": true }
+3) 如果不合格：输出 { "is_ok": false, "summary": "...", "concepts": [".."] }
+4) summary 1-2句中文（尽量≤120字），不得编造；concepts 8-12个概念词（不是逐字拆分/不是n-gram）
+5) 只输出 JSON 对象，不要额外解释`,
+      },
+      { role: 'user', content: JSON.stringify(payload) },
+    ];
+
+    const textOut = await deepSeekClient.chatCompletion(messages, {
+      max_tokens: 600,
+      temperature: 0.1,
+      response_format: { type: 'json_object' },
+    });
+    const parsed = JSON.parse(textOut);
+    const is_ok = Boolean(parsed?.is_ok);
+    if (is_ok) return { is_ok: true, summary: '', concepts: [] };
+    const summary = typeof parsed?.summary === 'string' ? parsed.summary.trim() : '';
+    const concepts = Array.isArray(parsed?.concepts)
+      ? parsed.concepts.filter((x: any) => typeof x === 'string' && x.trim()).map((s: string) => s.trim()).slice(0, 12)
+      : [];
+    return { is_ok: false, summary, concepts };
+  } catch (error: any) {
+    console.error('❌ checkOrUpdateSummaryConcepts 解析失败：', error.message || error);
+    return { is_ok: true, summary: '', concepts: [] }; // 失败时不更新，避免影响保存
+  }
+}
+
+/**
  * 专门为 For Me 页面提取搜索关键词
  */
 export async function extractSearchKeywords(content: string): Promise<string[]> {

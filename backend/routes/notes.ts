@@ -7,7 +7,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 // backend/routes/notes.ts
 import express from 'express';
 import { Note } from '../models/Note';
-import { summarizeNote } from '../services/deepseek';
+import { summarizeNote, summarizeNoteMeta, summarizeNoteSummary, checkOrUpdateSummaryConcepts } from '../services/deepseek';
 import { generateQwenEmbedding } from '../utils/embedding';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandler';
@@ -88,6 +88,8 @@ router.post('/', authenticateToken, asyncHandler(async (req: any, res: any) => {
     contentText: plain,
     contentJson: contentJson,
     title: fallbackTitle,
+    summary: '',
+    concepts: [],
     keywords: [],
     userId: user._id,
   });
@@ -250,12 +252,58 @@ router.post('/embedding/ensure', authenticateToken, asyncHandler(async (req: any
   ResponseHandler.success(res, { processed: pending.length, success }, 'embedding 补齐完成');
 }));
 
+// 当前用户 summary 补齐（小批量、可重复调用）
+router.post('/summary/ensure', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const user = await UserValidator.authenticateUser(req);
+  const limit = Math.max(1, Math.min(50, Number(req.body?.limit ?? 20)));
+
+  const pending = await Note.find({
+    userId: user._id,
+    $or: [{ summary: { $exists: false } }, { summary: null }, { summary: '' }],
+  })
+    .select('_id content contentText updatedAt')
+    .limit(limit);
+
+  if (pending.length === 0) {
+    ResponseHandler.success(res, { processed: 0, success: 0 }, '没有需要补齐 summary 的笔记');
+    return;
+  }
+
+  let success = 0;
+  for (let i = 0; i < pending.length; i++) {
+    const note = pending[i] as any;
+    const baseText = String(note.contentText || note.content || '').trim();
+    if (!baseText) continue;
+    const summary = await summarizeNoteSummary(baseText);
+    if (!summary) continue;
+    const r = await Note.updateOne(
+      { _id: note._id, userId: user._id, updatedAt: note.updatedAt },
+      { $set: { summary } }
+    );
+    if (r && (r as any).matchedCount > 0) success++;
+  }
+
+  ResponseHandler.success(res, { processed: pending.length, success }, 'summary 补齐完成');
+}));
+
+// 单条笔记 summary 重生成（调试/手动触发）
+router.post('/:id/summary', authenticateToken, asyncHandler(async (req: any, res: any) => {
+  const { id } = req.params;
+  const user = await UserValidator.authenticateUser(req);
+  const note = await ResourceValidator.validateOwnership(Note, id, user._id.toString(), '笔记');
+  const baseText = String((note as any).contentText || (note as any).content || '').trim();
+  if (!baseText) throw ErrorHandler.createValidationError('内容不能为空');
+  const summary = await summarizeNoteSummary(baseText);
+  await Note.updateOne({ _id: id, userId: user._id }, { $set: { summary } });
+  ResponseHandler.success(res, { summary }, 'summary 生成成功');
+}));
+
 // 局部更新笔记（正文/标题/关键词），支持乐观并发控制
 router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) => {
   const { id } = req.params;
-  const { title, content, contentJson, contentText, keywords, updatedAt, autoSummarize } = req.body || {};
+  const { title, content, contentJson, contentText, keywords, updatedAt, autoSummarize, summaryCheck } = req.body || {};
   const user = await UserValidator.authenticateUser(req);
-  console.log('收到笔记局部更新请求，ID:', id, 'payload:', { title, content, contentText, keywords, updatedAt, autoSummarize });
+  console.log('收到笔记局部更新请求，ID:', id, 'payload:', { title, content, contentText, keywords, updatedAt, autoSummarize, summaryCheck });
 
   // 验证资源所有权
   const note = await ResourceValidator.validateOwnership(Note, id, user._id.toString(), '笔记');
@@ -291,6 +339,9 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
       throw ErrorHandler.createValidationError('关键词必须是字符串数组');
     }
   }
+  if (summaryCheck !== undefined && typeof summaryCheck !== 'boolean') {
+    throw ErrorHandler.createValidationError('summaryCheck 必须是 boolean');
+  }
 
   // 应用更新
   let contentChanged = false;
@@ -314,13 +365,70 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
   // 正文变更：先清空旧 embedding，避免“内容变了但向量还是旧的”
   if (contentChanged) {
     (note as any).embedding = [];
+    // 正文变更：联想缓存失效（避免占用空间/避免返回过期结果）
+    (note as any).recommendCache = null;
+  }
+
+  // 保存时：按需校验并更新 summary/concepts（不改标题/关键词）
+  // 前端策略：仅当“长度变化>30%”时传 summaryCheck=true，否则不触发 LLM
+  if (summaryCheck === true && contentChanged) {
+    try {
+      const oldSummary = String((note as any).summary || '').trim();
+      const oldConcepts = Array.isArray((note as any).concepts) ? (note as any).concepts : [];
+      const baseText = String(note.contentText || note.content || '').trim();
+      const check = await checkOrUpdateSummaryConcepts({ text: baseText, oldSummary, oldConcepts });
+
+      // 重新获取最新的 note，避免版本冲突 (VersionError)
+      const freshNote = await Note.findById(id);
+      if (freshNote) {
+        // 重新应用用户提交的变更到 freshNote
+        if (title !== undefined) freshNote.title = title.trim();
+        if (contentText !== undefined) {
+          freshNote.contentText = contentText;
+          freshNote.content = contentText;
+        } else if (content !== undefined) {
+          freshNote.content = content;
+          freshNote.contentText = content;
+          freshNote.contentJson = null;
+        }
+        if (contentJson !== undefined) {
+          freshNote.contentJson = contentJson;
+        }
+        if (keywords !== undefined) freshNote.keywords = keywords;
+
+        // 正文变更：清空旧 embedding（后续异步重算）
+        (freshNote as any).embedding = [];
+        (freshNote as any).recommendCache = null;
+
+        // 仅当不合格时才更新 summary/concepts
+        if (check && check.is_ok === false) {
+          if (typeof check.summary === 'string') (freshNote as any).summary = check.summary;
+          if (Array.isArray(check.concepts)) (freshNote as any).concepts = check.concepts;
+        }
+
+        await freshNote.save();
+
+        scheduleEmbeddingUpdate({
+          noteId: freshNote._id.toString(),
+          userId: user._id.toString(),
+          updatedAt: (freshNote as any).updatedAt,
+          text: (freshNote as any).contentText || freshNote.content || '',
+        });
+
+        ResponseHandler.success(res, { note: freshNote }, '笔记更新成功');
+        return;
+      }
+    } catch (e) {
+      console.warn('summaryCheck 失败，忽略：', e);
+      // 失败不阻塞保存，走普通保存流程
+    }
   }
 
   // 可选：自动摘要与关键词重生成（基于正文变更）
   if (autoSummarize === true && contentChanged) {
     try {
-      // 这里的 summarizeNote 比较耗时，这期间 note 可能已经被其他请求（如 embed）更新
-      const summary = await summarizeNote(note.content);
+      // 这里的 summarizeNoteMeta 比较耗时，这期间 note 可能已经被其他请求（如 embed）更新
+      const summary = await summarizeNoteMeta(note.content);
       
       // 重新获取最新的 note，避免版本冲突 (VersionError)
       const freshNote = await Note.findById(id);
@@ -328,6 +436,7 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
         // 使用最新的 note 对象来保存
         if (summary?.title) freshNote.title = summary.title;
         if (Array.isArray(summary?.keywords)) freshNote.keywords = summary.keywords;
+        if (typeof summary?.summary === 'string') freshNote.summary = summary.summary;
         
         // 确保我们也应用了刚才用户提交的变更（如果刚才的 save 成功了，这里其实已经有了，
         // 但为了保险起见，或者如果我们在上面没有先 save，这里应该合并）
@@ -351,11 +460,14 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
 
         // 正文变更：清空旧 embedding（后续异步重算）
         (freshNote as any).embedding = [];
+        (freshNote as any).recommendCache = null;
         
         // 如果 AI 生成了标题且用户没有显式提交标题，则使用 AI 的
         if (summary?.title && title === undefined) freshNote.title = summary.title;
         // 如果 AI 生成了关键词且用户没有显式提交关键词，则使用 AI 的
         if (Array.isArray(summary?.keywords) && keywords === undefined) freshNote.keywords = summary.keywords;
+        // summary 始终由 AI 生成（用户不编辑），直接覆盖
+        if (typeof summary?.summary === 'string') freshNote.summary = summary.summary;
 
         await freshNote.save();
 

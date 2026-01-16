@@ -6,6 +6,8 @@ export interface Note {
   contentText?: string;
   keywords: string[];
   embedding?: number[];
+  summary?: string;
+  concepts?: string[];
   createdAt: string;
   updatedAt?: string;
   enriching?: boolean;

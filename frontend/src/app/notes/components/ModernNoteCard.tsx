@@ -670,6 +670,10 @@ export default function ModernNoteCard({
 
     const valText = (contentTextDraft || '').trim();
     const prevText = getNotePlainText().trim();
+    const prevLen = prevText.length;
+    const nextLen = valText.length;
+    const deltaRatio = Math.abs(nextLen - prevLen) / Math.max(prevLen, 1);
+    const shouldSummaryCheck = deltaRatio > 0.3;
 
     // TipTap：格式化可能不改变纯文本（getText 不变），但 JSON 会变
     const prevJson = note.contentJson ?? buildJsonFromPlain(getNotePlainText());
@@ -691,6 +695,8 @@ export default function ModernNoteCard({
           contentText: contentTextDraft,
           contentJson: nextJson,
           updatedAt: note.updatedAt,
+          // 保存策略：纯文本长度变化超过原长度30%才触发 LLM 校验/更新 summary+concepts
+          ...(shouldSummaryCheck ? { summaryCheck: true } : {}),
         }),
       });
       const data = await response.json();

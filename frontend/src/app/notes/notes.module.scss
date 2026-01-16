@@ -22,6 +22,10 @@
   flex-direction: column;
 }
 
+.containerOverflowVisible {
+  overflow: visible;
+}
+
 /* 仅工作台允许选中文本（预览 + 编辑） */
 .workspaceOverlayPanel,
 .workspaceOverlayPanel * {
@@ -42,6 +46,14 @@
   box-sizing: border-box; /* 包含padding在宽度内 */
   overflow: hidden;
   min-height: 0; /* 确保flex子元素可以收缩 */
+}
+
+.mainContentCollapsed {
+  padding-left: 6px;
+}
+
+.mainContentOverflowVisible {
+  overflow: visible;
 }
 
 /* 顶部导航栏 */
@@ -167,12 +179,17 @@
   min-width: 0;
   display: grid;
   /* 页面只由两块组成：左历史栏(固定窄) + 右工作区(自然扩张) */
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 18px; /* 两栏之间的固定间距 */
   /* 顶部留白已经在 mainContent 里处理，这里不要再叠一层固定间距 */
   margin-top: 0;
   height: 100%;
-  overflow: hidden; /* 关键：左右两列共享同一“展示窗口高度”，各自内部滚动 */
+  overflow: hidden; /* 关键：左右两列共享同一"展示窗口高度"，各自内部滚动 */
+}
+
+.splitLayoutCollapsed {
+  grid-template-columns: 56px minmax(0, 1fr);
+  overflow: visible;
 }
 
 .historyPane {
@@ -182,9 +199,9 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: 16px;
-  /* Liquid glass：更“液态”的折射/高光（不做颗粒/纹理） */
+  /* Liquid glass：更"液态"的折射/高光（不做颗粒/纹理） */
   position: relative;
-  /* 修复：Windows/Chrome 下 backdrop-filter + blend 偶发“竖线反光/接缝” */
+  /* 修复：Windows/Chrome 下 backdrop-filter + blend 偶发"竖线反光/接缝" */
   isolation: isolate;
   transform: translateZ(0);
   contain: paint;
@@ -193,6 +210,17 @@
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;
+}
+
+.historyPaneCollapsed {
+  width: 56px;
+  min-width: 56px;
+  border-radius: 12px;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+  contain: none;
+  transform: none;
 }
 
 .historyPane::before {
@@ -253,6 +281,10 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.historyPaneCollapsed .historyPaneHeader {
+  display: none;
+}
+
 .historyPaneTitle {
   font-size: 13px;
   font-weight: 800;
@@ -287,6 +319,13 @@
   scrollbar-color: transparent transparent;
 }
 
+.historyPaneCollapsed .historyScroll {
+  padding: 8px 6px;
+  gap: 8px;
+  align-items: center;
+  overflow: visible !important;
+}
+
 /* WebKit 滚动条：默认透明，hover 才显示 */
 .historyScroll::-webkit-scrollbar {
   width: 0px;
@@ -304,15 +343,12 @@
   /* Liquid glass：卡片级折射 + 更柔和边缘 */
   position: relative;
   overflow: hidden;
-  /* 修复：Windows/Chrome 下 backdrop-filter 在交互重绘时偶发“竖线反光/接缝” */
+  /* 修复：Windows/Chrome 下 backdrop-filter 在交互重绘时偶发"竖线反光/接缝" */
   isolation: isolate;
   contain: paint;
   transform: translateZ(0);
   backface-visibility: hidden;
   will-change: transform;
-  /* 关键：用 mask 强制正确裁剪合成层，避免出现 1px 竖向亮缝 */
-  -webkit-mask-image: -webkit-radial-gradient(white, black);
-  mask-image: radial-gradient(white, black);
   background-clip: padding-box;
   outline: none;
   border: none;
@@ -330,6 +366,25 @@
     inset 0 -2px 4px rgba(0, 0, 0, 0.18); /* 更明显的边缘光效 */
   /* 修复高度：标题 + 1 行预览（更紧凑） */
   min-height: 60px;
+}
+
+.historyPaneCollapsed .historyItem {
+  width: 10px;
+  height: 30px;
+  padding: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible !important;
+  z-index: 2;
+  contain: none !important;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  clip-path: none !important;
 }
 
 .historyItem::before {
@@ -446,6 +501,105 @@
   overflow: hidden;
 }
 
+.historyItemHoverLabel {
+  position: absolute;
+  left: 44px;
+  top: 50%;
+  transform: translateY(-50%) translateX(-6px);
+  opacity: 0;
+  pointer-events: none;
+  padding: 6px 8px;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.9);
+  background: rgba(10, 12, 16, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32);
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 10;
+  white-space: nowrap;
+}
+
+/* 收缩态：隐藏预览、草稿、原标题行 */
+.historyPaneCollapsed .historyItemPreview,
+.historyPaneCollapsed .historyItemDraft,
+.historyPaneCollapsed .historyItemTitleRow {
+  display: none !important;
+}
+
+/* 收缩态：用 hoverLabel 常驻显示标题（灰色），hover 时变亮+光束 */
+.historyPaneCollapsed .historyItemHoverLabel {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  left: 18px !important;
+  transform: translateY(-50%) !important;
+  padding: 0 !important;
+  color: rgba(148, 163, 184, 0.65) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  max-width: 400px !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  transition: color 150ms ease;
+  pointer-events: auto !important;
+  cursor: pointer;
+}
+
+/* 收缩态：hover 时标题变亮（包括直接 hover 文字） */
+.historyPaneCollapsed .historyItem:hover .historyItemHoverLabel,
+.historyPaneCollapsed .historyItemHoverLabel:hover {
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+/* 收缩态：光束（单层渐变），默认隐藏 */
+.historyPaneCollapsed .historyItemHoverLabel::before {
+  content: '';
+  position: absolute;
+  left: -22px;
+  top: -6px;
+  bottom: -6px;
+  width: 180px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  z-index: -1;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--history-accent, rgba(18, 225, 255, 1)) 22%, transparent) 0%,
+    color-mix(in srgb, var(--history-accent, rgba(18, 225, 255, 1)) 12%, transparent) 10%,
+    rgba(255, 255, 255, 0.18) 18%,
+    rgba(255, 255, 255, 0.08) 35%,
+    transparent 75%
+  );
+  filter: blur(5px);
+}
+
+.historyPaneCollapsed .historyItemHoverLabel::after {
+  display: none;
+}
+
+/* 收缩态：hover 时光束显示（包括直接 hover 文字） */
+.historyPaneCollapsed .historyItem:hover .historyItemHoverLabel::before,
+.historyPaneCollapsed .historyItemHoverLabel:hover::before {
+  opacity: 1;
+}
+
+/* 全局浮层（备用，目前不使用） */
+.historyCollapsedLabelWrap {
+  display: none;
+}
+
 /* 右侧工作台 slot：只负责占位与滚动，不做“面板容器”视觉 */
 .detailSlot {
   min-height: 0;
@@ -477,26 +631,217 @@
   inset: 0;
   overflow: auto;
   padding: 18px;
-  /* 与左侧历史栏一致：默认“隐形”，hover 才出现 */
+  /* 与左侧历史栏一致：默认"隐形"，hover 才出现 */
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
 
+/* 注意：网格已经合并成单层（不再有 workspaceGridContainer） */
+
+.workspaceLegendDock {
+  position: fixed;
+  right: 18px; /* fallback：若没有 inline left/width 时仍靠右 */
+  /* 必须高于 TopNavigation(1000)，否则会被顶栏盖住 */
+  z-index: 1200;
+  width: 240px; /* fallback：实际宽度会被 inline style 覆盖 */
+  /* 外层不裁切：让“列表”自己滚动，避免出现半个元素被裁切 */
+  overflow: visible;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  /* 关键：让图例本体贴近右侧（避免 dock 变宽后内容看起来更靠中心） */
+  align-items: flex-end;
+  gap: 10px;
+  /* 底部与历史栏一致：不能低于底部悬浮快速记录的上部（使用页面安全区变量） */
+  bottom: var(--page-bottom-safe, 76px);
+  /* DEBUG（可选）：想看图例面板范围的话打开 */
+  /* border: 1px dashed rgba(255,255,255,0.25); */
+}
+
+/* 联想面板：仅工作台打开时显示（顶部与工作台顶部对齐） */
+.workspaceRecommendDock {
+  position: fixed;
+  z-index: 1200;
+  pointer-events: auto;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  bottom: var(--page-bottom-safe, 76px);
+}
+
+/* ------------------------------------------------------------
+   图例下方：联想笔记容器（占位 debug）
+   - 列表
+   - 背景透明
+   - 底部不低于快速记录：由 workspaceLegendDock 的 bottom 限制
+------------------------------------------------------------- */
+.workspaceRecommendList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.workspaceRecommendList:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
+.workspaceRecommendList::-webkit-scrollbar {
+  width: 6px;
+}
+.workspaceRecommendList::-webkit-scrollbar-track {
+  background: transparent;
+}
+.workspaceRecommendList::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+.workspaceRecommendList:hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+}
+
+.workspaceRecommendItem {
+  width: 100%;
+  background: transparent;
+  /* 让卡片能用 cqw（container query width）来做“最大高度=自身宽度” */
+  container-type: inline-size;
+  /* 新增出现动画（延迟由 inline style 控制） */
+  opacity: 0;
+  transform: translateY(8px);
+  animation: wsRecommendIn 420ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+@keyframes wsRecommendIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspaceRecommendItem {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 联想卡片：磨砂玻璃灰白质感 */
+.workspaceRecommendCard {
+  position: relative;
+  width: 100%;
+  /* 高度随内容变化，但最高不超过“正方形形态”（=自身宽度） */
+  max-height: 100cqw;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 6px 1fr;
+  gap: 10px;
+  align-items: stretch;
+
+  padding: 10px 10px 10px 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(14px) saturate(145%);
+  backdrop-filter: blur(14px) saturate(145%);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+
+  /* 统一高亮色：竖条颜色 = 理由背景颜色 */
+  --ws-recommend-hl: rgba(18, 225, 255, 0.08);
+}
+
+/* 左侧竖向高亮边缘：类似引用效果 */
+.workspaceRecommendAccent {
+  width: 4px;
+  border-radius: 4px;
+  /* 与“联想理由”背景同色 */
+  background: var(--ws-recommend-hl);
+  box-shadow: 0 0 0 1px rgba(18, 225, 255, 0.12);
+}
+
+.workspaceRecommendContent {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workspaceRecommendTitleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workspaceRecommendTitle {
+  font-size: 13px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: rgba(226, 232, 240, 0.88);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspaceRecommendReason {
+  padding: 4px 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: rgba(203, 213, 225, 0.82);
+  /* 背景与文本长度相同：只包住文字，不撑满整行 */
+  display: inline-flex;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 与竖条同色 */
+  background: var(--ws-recommend-hl);
+  border: 1px solid rgba(18, 225, 255, 0.10);
+}
+
+.workspaceRecommendBody {
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(203, 213, 225, 0.72);
+  /* 正文随内容增长，但过长用省略号截断（最多 6 行，结合卡片 max-height 形成“最多不超过正方形”） */
+  line-clamp: 6;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .workspaceLegend {
-  position: sticky;
-  top: 12px;
-  z-index: 3;
-  float: right;
+  position: relative;
   width: 240px;
-  margin: 0 0 10px 12px;
-  padding: 0; /* 嵌入式：不做“卡片容器” */
+  margin: 0;
+  /* 给右上角 hover 文本留出空间（避免它被顶栏或自身上方裁切） */
+  padding-top: 14px; /* 上部留白缩小：只够放一行 hover 文本 */
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
   border-radius: 12px;
   background: transparent;
   border: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;
-  position: sticky;
 }
 
 .workspaceLegendHeader { display: none; }
@@ -512,7 +857,7 @@
   background-image: none; /* 由 inline style 注入 linear-gradient(90deg, ...) */
   background-size: 100% 100%;
   border: none; /* 无明显边框 */
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   cursor: pointer;
   /* 默认状态降低亮度（更“嵌入式”） */
   filter: brightness(0.82) saturate(0.92);
@@ -546,20 +891,20 @@
 
 .workspaceLegendHoverLabel {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: -2px; /* 向上 2px */
+  right: 6px; /* 向左 6px（增大 right 偏移） */
   left: auto;
-  transform: translateY(-120%);
-  padding: 6px 10px;
-  border-radius: 10px;
-  font-size: 12px;
+  transform: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 13px; /* 字体大小 +1 */
   line-height: 1.1;
-  color: rgba(226, 232, 240, 0.88);
-  background: rgba(7, 10, 14, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  color: rgba(226, 232, 240, 0.78);
+  background: transparent; /* 去掉黑色背景 */
+  border: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
   pointer-events: none;
   max-width: 230px;
   white-space: nowrap;
@@ -568,11 +913,30 @@
 }
 
 .workspaceLegendList {
+  /* 目标：正好显示 4 条（且只在列表内部滚动） */
+  --legend-item-h: 28px;
+  --legend-item-half-h: 14px; /* 列表长度减少半个元素高度 */
+  --legend-item-gap: 4px;
   display: flex;
   flex-direction: column;
-  gap: 4px; /* 更紧凑 */
-  max-height: 210px;
-  overflow: auto;
+  gap: var(--legend-item-gap); /* 更紧凑 */
+  /*
+    严格按公式：
+    列表高度 = 4 * itemHeight + 3 * gap
+    注意：calc 里不能写乘法，改用“重复相加”的形式
+  */
+  height: calc(
+    var(--legend-item-h) + var(--legend-item-h) + var(--legend-item-h) + var(--legend-item-h) +
+    var(--legend-item-gap) + var(--legend-item-gap) + var(--legend-item-gap)
+    - var(--legend-item-half-h)
+  );
+  max-height: calc(
+    var(--legend-item-h) + var(--legend-item-h) + var(--legend-item-h) + var(--legend-item-h) +
+    var(--legend-item-gap) + var(--legend-item-gap) + var(--legend-item-gap)
+    - var(--legend-item-half-h)
+  );
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 2px;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -602,6 +966,8 @@
   align-items: center;
   gap: 6px;
   width: 100%;
+  height: var(--legend-item-h);
+  box-sizing: border-box;
   padding: 4px 6px; /* 更紧凑 */
   border-radius: 9px;
   border: 1px solid transparent;
@@ -755,14 +1121,27 @@
 }
 
 .workspaceGrid {
-  --cell-w: 42px;
-  --cell-h: 26px;
+  --cell-w: 44px;
+  --cell-h: 28px;
   --cell-gap: 12px;
+  /* 固定坐标容器 + 网格本体合一：直接在这一层做 fixed 定位与滚动 */
+  position: fixed;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 无描边 */
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+
   display: grid;
+  /* 保持原始：列数由容器宽度决定（不要改数量逻辑），这里只加 debug 虚线 */
   grid-template-columns: repeat(auto-fill, var(--cell-w));
   grid-auto-rows: var(--cell-h);
   gap: var(--cell-gap);
   align-content: start;
+  box-sizing: border-box;
+  /* 不要覆盖容器的 debug 边框（容器本身负责描边） */
 }
 
 .workspaceCell {
@@ -1255,10 +1634,12 @@
 }
 
 .workspaceOverlayPanel {
-  position: relative;
-  height: 100%;
-  /* 外层仅负责定位与留白：不要再做一层“大玻璃长方形” */
-  width: 100%;
+  /* 工作台大小固定：与簇长方块容器完全一致 */
+  position: fixed;
+  left: var(--ws-grid-left, 0px);
+  top: var(--ws-grid-top, 0px);
+  width: var(--ws-grid-width, 0px);
+  height: var(--ws-grid-height, 0px);
   min-width: 0;
   /* 不要用外层 padding 缩小卡片：卡片自己控制布局/留白 */
   padding: 0;
@@ -3311,7 +3692,7 @@
 /* 中等屏幕适配 */
 @media (max-width: 1024px) {
   .splitLayout {
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: 250px 1fr;
     gap: 14px;
   }
 }
@@ -4111,6 +4492,46 @@
   flex: 1;
   min-height: 0;
   max-height: none;
+}
+
+.historyCollapseToggle {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1300;
+  width: 20px;
+  height: 48px;
+  padding: 0;
+  border-radius: 0 6px 6px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: none;
+  background: rgba(8, 12, 16, 0.45);
+  color: rgba(226, 232, 240, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  transition: background 140ms ease, color 140ms ease, width 140ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.historyCollapseToggle:hover {
+  background: rgba(8, 12, 16, 0.65);
+  color: rgba(255, 255, 255, 0.9);
+  width: 24px;
+}
+
+.historyCollapseToggle svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 200ms ease;
+}
+
+.historyCollapseToggleCollapsed svg {
+  transform: rotate(180deg);
 }
 
 .floatingComposeActions {

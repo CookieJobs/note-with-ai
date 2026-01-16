@@ -29,6 +29,8 @@ function NotesContent() {
   // 预留：移动端菜单（当前未用到）
   // const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const historyScrollRef = useRef<HTMLDivElement | null>(null);
+  const historyPaneRef = useRef<HTMLDivElement | null>(null);
+  const [collapsedLabel, setCollapsedLabel] = useState<{ noteId: string; title: string; top: number } | null>(null);
   const historyBounceLockRef = useRef(false);
   
   // 删除确认弹窗：提升到页面级，避免被单条卡片的 transform/overflow 影响层级
@@ -89,6 +91,7 @@ function NotesContent() {
   const [historyColorMap, setHistoryColorMap] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, { json: any; text: string; dirty: boolean }>>({});
   const [exitEditSignal, setExitEditSignal] = useState(0);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const hasAnyDraft = Object.values(drafts).some((d) => d?.dirty);
 
   const handleDraftChange = (id: string, draft: { json: any; text: string; dirty: boolean }) => {
@@ -128,6 +131,44 @@ function NotesContent() {
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [selectedNoteId, editingNoteId]);
+
+  useEffect(() => {
+    if (!historyCollapsed) {
+      setCollapsedLabel(null);
+      return;
+    }
+
+    const fallbackId = notes && notes.length > 0 ? notes[0]._id : null;
+    const targetId = hoveredNoteId || selectedNoteId || fallbackId;
+    if (!targetId) {
+      setCollapsedLabel(null);
+      return;
+    }
+
+    const pane = historyPaneRef.current;
+    const pr = pane?.getBoundingClientRect();
+    const noteIdx = notes ? notes.findIndex((n) => n._id === targetId) : -1;
+    const note = noteIdx >= 0 ? notes[noteIdx] : null;
+    const title = ((note?.title || '').trim() || '未命名').trim();
+
+    const item = document.getElementById(`history-${targetId}`);
+    if (pr && item) {
+      const ir = item.getBoundingClientRect();
+      const top = ir.top - pr.top + ir.height / 2;
+      setCollapsedLabel({ noteId: targetId, title, top });
+      return;
+    }
+
+    // 兜底：DOM 还没渲染到对应条目时，用索引估算位置（收缩态固定高度）
+    // historyScroll: padding-top 8px; gap 8px; item height 30px
+    if (pr && noteIdx >= 0) {
+      const top = 8 + noteIdx * (30 + 8) + 30 / 2;
+      setCollapsedLabel({ noteId: targetId, title, top });
+      return;
+    }
+
+    setCollapsedLabel(null);
+  }, [historyCollapsed, hoveredNoteId, selectedNoteId, notes]);
 
   // highlight 参数：优先选中并滚动到左侧列表项
   useEffect(() => {
@@ -231,9 +272,11 @@ function NotesContent() {
   }, [selectedNoteId]);
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} ${historyCollapsed ? styles.containerOverflowVisible : ''}`}>
       <TopNavigation />
-      <main className={styles.mainContent}>
+      <main
+        className={`${styles.mainContent} ${historyCollapsed ? `${styles.mainContentOverflowVisible} ${styles.mainContentCollapsed}` : ''}`}
+      >
         <div className={styles.contentWrapper}>
           {/* 错误提示 */}
           {error && (
@@ -249,8 +292,14 @@ function NotesContent() {
           {showInlineCompose && null}
 
           {/* 聊天式双栏：左侧历史列表（紧凑可滚动） + 右侧工作台编辑区（默认空） */}
-          <div className={styles.splitLayout}>
-            <aside className={`${styles.historyPane} ${styles.historyPaneFrozen}`} aria-label="历史笔记列表">
+          <div className={`${styles.splitLayout} ${historyCollapsed ? styles.splitLayoutCollapsed : ''}`}>
+            <aside
+              ref={historyPaneRef}
+              className={`${styles.historyPane} ${styles.historyPaneFrozen} ${historyCollapsed ? styles.historyPaneCollapsed : ''} ${
+                historyCollapsed && hoveredNoteId ? styles.historyPaneHovering : ''
+              }`}
+              aria-label="历史笔记列表"
+            >
               <div className={styles.historyPaneHeader}>
                 <div className={styles.historyPaneTitle}>
                   历史笔记
@@ -314,10 +363,25 @@ function NotesContent() {
                         {note.enriching && <div className={styles.historyItemDot} title="AI 处理中" />}
             </div>
                       <div className={styles.historyItemPreview}>{preview || '（空）'}</div>
+                      <div className={styles.historyItemHoverLabel}>{title}</div>
               </div>
                   );
                 })}
               </div>
+              {historyCollapsed && collapsedLabel && collapsedLabel.title && (
+                <div
+                  className={styles.historyCollapsedLabelWrap}
+                  style={{
+                    top: collapsedLabel.top,
+                    ...(collapsedLabel.noteId && historyColorMap[collapsedLabel.noteId]
+                      ? ({ ['--history-accent' as any]: historyColorMap[collapsedLabel.noteId] } as any)
+                      : undefined),
+                  }}
+                >
+                  <span className={styles.historyCollapsedLabelGlow} />
+                  <div className={styles.historyCollapsedLabel}>{collapsedLabel.title}</div>
+                </div>
+              )}
             </aside>
 
             <section className={styles.detailSlot} aria-label="笔记工作台">
@@ -456,6 +520,17 @@ function NotesContent() {
                   }}
                   loading={loading}
                 />
+                <button
+                  type="button"
+                  className={`${styles.historyCollapseToggle} ${historyCollapsed ? styles.historyCollapseToggleCollapsed : ''}`}
+                  onClick={() => setHistoryCollapsed((v) => !v)}
+                  aria-label={historyCollapsed ? '展开历史栏' : '收起历史栏'}
+                  title={historyCollapsed ? '展开历史栏' : '收起历史栏'}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
         </div>
       </main>
     </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import type { Note } from '../types';
 import styles from '../notes.module.scss';
+import { authFetch } from '../../../utils/auth';
 import {
   WORKSPACE_ANIM_DELAY_MS,
   WORKSPACE_DELETE_TOTAL_MS,
@@ -236,12 +237,72 @@ export default function WorkspaceGrid({
   const [legendHoverKey, setLegendHoverKey] = useState<string | null>(null);
   const [externalHoverKey, setExternalHoverKey] = useState<string | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
+  const [topNavBottom, setTopNavBottom] = useState<number>(0);
+  const [viewportW, setViewportW] = useState<number>(0);
+  const [recommendations, setRecommendations] = useState<
+    Array<{
+      note: Pick<Note, '_id' | 'title' | 'content' | 'contentText' | 'summary' | 'updatedAt'>;
+      score: number;
+      s1: number;
+      s2: number;
+      type: string;
+      reason: string;
+    }>
+  >([]);
+  const recAbortRef = useRef<AbortController | null>(null);
+  // 会话内缓存：同一页内重复选中同一笔记时，先秒出缓存，再后台刷新
+  const recCacheRef = useRef<
+    Map<
+      string,
+      {
+        recs: typeof recommendations;
+        sig: string;
+        ts: number;
+      }
+    >
+  >(new Map());
+  const REC_CACHE_PREFIX = 'ws_recommend_cache_v1:'; // 跨刷新：sessionStorage key 前缀
+
+  const readRecCache = (noteId: string) => {
+    const mem = recCacheRef.current.get(noteId);
+    if (mem) return mem;
+    try {
+      const raw = window.sessionStorage.getItem(`${REC_CACHE_PREFIX}${noteId}`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.recs) || typeof parsed.sig !== 'string') return null;
+      const entry = { recs: parsed.recs, sig: parsed.sig, ts: Number(parsed.ts) || 0 };
+      recCacheRef.current.set(noteId, entry);
+      return entry;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeRecCache = (noteId: string, entry: { recs: typeof recommendations; sig: string; ts: number }) => {
+    recCacheRef.current.set(noteId, entry);
+    try {
+      window.sessionStorage.setItem(`${REC_CACHE_PREFIX}${noteId}`, JSON.stringify(entry));
+    } catch {
+      // ignore quota/serialization errors
+    }
+  };
   const legendCloseTimerRef = useRef<number | null>(null);
   const cellRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const prevRectsRef = useRef<Map<string, DOMRect>>(new Map());
   const rafRef = useRef<number | null>(null);
   const gridElRef = useRef<HTMLDivElement | null>(null);
   const [gridCols, setGridCols] = useState<number>(16);
+  // 布局列数：首次稳定测量后冻结，避免任何后续 reflow/ResizeObserver 触发重排
+  const layoutColsRef = useRef<number | null>(null);
+  // 固定容器坐标：页面加载时计算一次，之后固定不变
+  const [fixedContainer, setFixedContainer] = useState<{ 
+    left: number; 
+    top: number; 
+    width: number; 
+    height: number;
+  } | null>(null);
+  const fixedContainerRef = useRef<typeof fixedContainer>(null);
   const [frozenLayout, setFrozenLayout] = useState<null | { clusters: Cluster[]; placed: PlacedItem[] }>(null);
   const releaseFrozenTimerRef = useRef<number | null>(null);
   // 合并提交：computedLayout 变化后，延迟一小段时间再一次性 commit，避免“新增笔记 + 新增关键词”触发两次整体移动
@@ -265,13 +326,92 @@ export default function WorkspaceGrid({
   const deleteAnimTimerRef = useRef<number | null>(null);
   const heldNewIdsRef = useRef<Set<string>>(new Set());
 
-  // 首次加载：延迟开启“新增笔记挤出动画”
+  // 首次加载：延迟开启"新增笔记挤出动画"
   useEffect(() => {
     const t = window.setTimeout(() => {
       allowNewNoteAnimRef.current = true;
     }, 1200);
     return () => window.clearTimeout(t);
   }, []);
+
+  // 首次加载：计算容器的固定坐标（left, top, width, height）
+  // 这些坐标相对于视口，之后永远不变
+  useEffect(() => {
+    if (fixedContainerRef.current !== null) return; // 只计算一次
+
+    let cancelled = false;
+    let raf = 0;
+    let stableCount = 0;
+    let frames = 0;
+    let last: { left: number; top: number; width: number; height: number } | null = null;
+
+    const EPS = 0.5; // px
+    const NEED_STABLE_FRAMES = 6;
+    const MAX_FRAMES = 180; // ~3s @60fps
+
+    const tick = () => {
+      if (cancelled || fixedContainerRef.current !== null) return;
+      frames++;
+
+      const historyPane = document.querySelector('[aria-label="历史笔记列表"]') as HTMLElement | null;
+      const scrollEl = workspaceScrollRef.current;
+      if (!historyPane || !scrollEl) {
+        raf = window.requestAnimationFrame(tick);
+        return;
+      }
+
+      const historyRect = historyPane.getBoundingClientRect();
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const viewportCenter = window.innerWidth / 2;
+
+      // 你的逻辑：基于“历史栏右边界 + gap”确定 left（固定），然后用视口中心反推 width（保证中心在视口中心）
+      const GAP = 18; // 对应 splitLayout 的 gap: 18px
+      const left = historyRect.right + GAP;
+      const width = Math.max(320, (viewportCenter - left) * 2);
+
+      const top = scrollRect.top;
+      const height = scrollRect.height;
+
+      const cur = { left, top, width, height };
+
+      if (
+        last &&
+        Math.abs(cur.left - last.left) < EPS &&
+        Math.abs(cur.top - last.top) < EPS &&
+        Math.abs(cur.width - last.width) < EPS &&
+        Math.abs(cur.height - last.height) < EPS
+      ) {
+        stableCount++;
+      } else {
+        stableCount = 0;
+      }
+      last = cur;
+
+      if (stableCount >= NEED_STABLE_FRAMES || frames >= MAX_FRAMES) {
+        fixedContainerRef.current = cur;
+        setFixedContainer(cur);
+        return;
+      }
+
+      raf = window.requestAnimationFrame(tick);
+    };
+
+    raf = window.requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  // 将簇长方块容器的固定坐标写到全局 CSS 变量，供工作台/浮层复用
+  useEffect(() => {
+    if (!fixedContainer) return;
+    const root = document.documentElement;
+    root.style.setProperty('--ws-grid-left', `${fixedContainer.left}px`);
+    root.style.setProperty('--ws-grid-top', `${fixedContainer.top}px`);
+    root.style.setProperty('--ws-grid-width', `${fixedContainer.width}px`);
+    root.style.setProperty('--ws-grid-height', `${fixedContainer.height}px`);
+  }, [fixedContainer]);
 
   // tooltip portal root（渲染到 body：避免被 workspaceScroll 的 overflow 裁切）
   useEffect(() => {
@@ -286,6 +426,25 @@ export default function WorkspaceGrid({
         // ignore
       }
       tipPortalElRef.current = null;
+    };
+  }, []);
+
+  // 读顶栏 bottom：图例是 fixed，需要确保不会被 TopNavigation(sticky, z-index:1000) 盖住
+  useLayoutEffect(() => {
+    const update = () => {
+      const header = document.querySelector('header');
+      if (!header) return;
+      const r = header.getBoundingClientRect();
+      setTopNavBottom(r.bottom);
+      setViewportW(window.innerWidth);
+    };
+    update();
+    // 下一帧再读一次，避免首帧布局未稳定导致的偏差
+    const raf = window.requestAnimationFrame(update);
+    window.addEventListener('resize', update);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', update);
     };
   }, []);
 
@@ -612,31 +771,97 @@ export default function WorkspaceGrid({
   }, [rawClusters]);
 
   const isWorkspaceOverlayOpen = Boolean(selectedNoteId);
+  const shouldShowRecommendDock = isWorkspaceOverlayOpen && recommendations.length > 0;
 
-  // 计算当前网格列数（随容器宽度变化而变化），用于“按簇打包成连续块”的布局
+  // 语义联想（方案B）：选中工作台笔记时拉取联想结果
   useEffect(() => {
+    if (!selectedNoteId) {
+      setRecommendations([]);
+      return;
+    }
+
+    // 先同步展示本地缓存（SWR：stale-while-revalidate）
+    const cached = readRecCache(selectedNoteId);
+    if (cached?.recs && Array.isArray(cached.recs)) {
+      setRecommendations(cached.recs);
+    } else {
+      // 没缓存时，先清空（避免展示上一次笔记的联想）
+      setRecommendations([]);
+    }
+
+    // 取消上一次请求
+    if (recAbortRef.current) recAbortRef.current.abort();
+    const ac = new AbortController();
+    recAbortRef.current = ac;
+
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await authFetch('/api/recommend/semantic-notes', {
+            method: 'POST',
+            signal: ac.signal,
+            body: JSON.stringify({
+              noteId: selectedNoteId,
+              recallK: 30,
+              finalK: 10,
+              s1Threshold: 0.35,
+              hardThreshold: 0.62,
+            }),
+          });
+          const json = await res.json();
+          const recs = json?.data?.recommendations;
+          if (Array.isArray(recs)) {
+            // 只有结果发生变化才更新 UI（避免无意义重渲染/闪动）
+            const makeSig = (arr: any[]) =>
+              arr
+                .map((x) => {
+                  const id = String(x?.note?._id || '');
+                  const s = Number.isFinite(Number(x?.score)) ? Number(x.score).toFixed(3) : '';
+                  const r = String(x?.reason || '').trim();
+                  return `${id}:${s}:${r}`;
+                })
+                .join('|');
+            const nextSig = makeSig(recs);
+            const prev = readRecCache(selectedNoteId);
+            if (!prev || prev.sig !== nextSig) {
+              setRecommendations(recs);
+              writeRecCache(selectedNoteId, { recs, sig: nextSig, ts: Date.now() });
+            }
+          } else {
+            setRecommendations([]);
+          }
+        } catch (e: any) {
+          if (e?.name === 'AbortError') return;
+          console.warn('联想笔记请求失败（已忽略）:', e?.message || e);
+          setRecommendations([]);
+        }
+      })();
+    }, 220);
+
+    return () => {
+      window.clearTimeout(t);
+      ac.abort();
+    };
+  }, [selectedNoteId]);
+
+  // 冻结网格列数：仅在“固定容器坐标”就绪后测量一次，然后永远不再变化
+  useLayoutEffect(() => {
+    if (!fixedContainer) return;
     const el = gridElRef.current;
     if (!el) return;
-    let lastCols = 0;
-
-    const update = () => {
-      const { cols } = getGridMetrics(el);
-      if (cols !== lastCols) {
-        lastCols = cols;
-        setGridCols(cols);
-      }
-    };
-
-    update();
-    const ro = new ResizeObserver(() => update());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+    if (layoutColsRef.current != null) return;
+    const { cols } = getGridMetrics(el);
+    layoutColsRef.current = cols;
+    setGridCols(cols);
+  }, [fixedContainer]);
 
   const computedPlaced = useMemo<PlacedItem[]>(() => {
     // 避免极端大数据把 DOM 撑爆
     const MAX = 1200;
-    const cols = Math.max(1, gridCols || 1);
+    const actualCols = Math.max(1, gridCols || 1);
+
+    // 关键：用“首次稳定测量”的列数来计算扇形与布局（冻结），避免后续任何布局波动
+    const cols = layoutColsRef.current ?? actualCols;
 
     const clusterItems: Array<{ cluster: Cluster; items: Array<{ note: Note; idxInCluster: number }> }> = [];
     let total = 0;
@@ -654,8 +879,9 @@ export default function WorkspaceGrid({
     const N = clusterItems.reduce((sum, x) => sum + x.items.length, 0);
     if (N === 0) return [];
 
-    // A 定义：一个全局中心点（重心）作为“簇分界点”，每个簇在自己的扇形里从中心向外扩展
-    // 为了让“扇形”更明显：按半径从小到大逐层填充，且每个格子只能分配给其角度所在扇区的簇
+    // A 定义：一个全局中心点（重心）作为"簇分界点"，每个簇在自己的扇形里从中心向外扩展
+    // 为了让"扇形"更明显：按半径从小到大逐层填充，且每个格子只能分配给其角度所在扇区的簇
+    // 注意：这里的 cols 是固定的 VIRTUAL_COLS，不是实际容器列数
 
     const totalCells = N;
     const rows = Math.max(1, Math.ceil(totalCells / cols) + 24); // 给上下扇形扩展留足空间
@@ -757,8 +983,9 @@ export default function WorkspaceGrid({
     }
 
     // 视觉对齐：
-    // - 旧逻辑是“贴边到 (0,0)”，会让整体形状粘在左上，造成“左/上不够辐射”的观感
-    // - 新逻辑：水平方向在 cols 内尽量居中；垂直方向给一个很小的顶部留白（避免必须向下滚动才能看到）
+    // - 旧逻辑是"贴边到 (0,0)"，会让整体形状粘在左上，造成"左/上不够辐射"的观感
+    // - 新逻辑：水平方向在 actualCols（实际容器列数）内尽量居中；垂直方向给一个很小的顶部留白
+    // - 关键：扇形和颜色已经在虚拟坐标系中计算完成（与容器无关），这里只做平移
     let minRow = Infinity;
     let minCol = Infinity;
     let maxRow = -Infinity;
@@ -773,7 +1000,8 @@ export default function WorkspaceGrid({
       const shapeW = Math.max(1, maxCol - minCol + 1);
       const shapeH = Math.max(1, maxRow - minRow + 1);
       const padTop = 2;
-      const padLeft = Math.max(0, Math.floor((cols - shapeW) / 2));
+      // 使用实际容器列数 actualCols 来计算居中偏移
+      const padLeft = Math.max(0, Math.floor((actualCols - shapeW) / 2));
       const dRow = padTop - minRow;
       const dCol = padLeft - minCol;
 
@@ -783,7 +1011,7 @@ export default function WorkspaceGrid({
       }
 
       if (process.env.NODE_ENV !== 'production') {
-        // 轻量调试：验证“以中心辐射”的象限分布是否明显偏置
+        // 轻量调试：验证"以中心辐射"的象限分布是否明显偏置
         const cR = centerR + dRow;
         const cC = centerC + dCol;
         let q1 = 0, q2 = 0, q3 = 0, q4 = 0;
@@ -797,7 +1025,8 @@ export default function WorkspaceGrid({
         }
         // eslint-disable-next-line no-console
         console.log('[WorkspaceGrid layout]', {
-          cols,
+          virtualCols: cols,
+          actualCols,
           N,
           center: { r: Number(cR.toFixed(2)), c: Number(cC.toFixed(2)) },
           bounds: { minRow: minRow + dRow, maxRow: maxRow + dRow, minCol: minCol + dCol, maxCol: maxCol + dCol, shapeW, shapeH },
@@ -1277,76 +1506,153 @@ export default function WorkspaceGrid({
       className={styles.workspaceScroll}
       aria-label="笔记工作区网格"
     >
-      <div
-        className={styles.workspaceLegend}
-        aria-label="簇图例"
-        onMouseEnter={() => {
-          if (legendCloseTimerRef.current) {
-            window.clearTimeout(legendCloseTimerRef.current);
-            legendCloseTimerRef.current = null;
-          }
-        }}
-        onMouseLeave={() => {
-          if (!legendOpen) return;
-          // 关闭稍微延迟一点点，避免误关
-          if (legendCloseTimerRef.current) window.clearTimeout(legendCloseTimerRef.current);
-          legendCloseTimerRef.current = window.setTimeout(() => {
-            setLegendOpen(false);
-            legendCloseTimerRef.current = null;
-          }, 220);
-        }}
-      >
-        {hoverLabelKey && <div className={styles.workspaceLegendHoverLabel}>{hoverLabelKey}</div>}
-        <div
-          className={styles.workspaceLegendStrip}
-          aria-label="簇连续色带"
-          style={legendStripGradient ? { backgroundImage: legendStripGradient } : undefined}
-          onClick={() => setLegendOpen((v) => !v)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setLegendOpen((v) => !v);
-            }
-          }}
-          title={legendOpen ? '点击收起簇列表' : '点击展开簇列表'}
-        >
-          {clusterLegend.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              className={`${styles.workspaceLegendSeg} ${legendClusterKey === c.key ? styles.workspaceLegendSegActive : ''}`}
-              style={{ flex: `${Math.max(0.0001, c.frac)}` }}
-              onMouseEnter={() => setLegendHoverKey(c.key)}
-              onMouseLeave={() => setLegendHoverKey((cur) => (cur === c.key ? null : cur))}
-              title={`${c.key}（${c.count}）`}
-              aria-label={`${c.key}（${c.count}）`}
+      {fixedContainer && (
+        <>
+          {/* 图例：仅在“工作台未打开”时显示（避免与工作台/联想面板冲突） */}
+          {!shouldShowRecommendDock && (
+            <div
+              className={styles.workspaceLegendDock}
+              style={{
+                top: Math.max(fixedContainer.top + 12, topNavBottom + 12),
+                // 靠右对齐（与视口右侧对齐）
+                right: 18,
+                left: 'auto',
+                // 让图例更靠右：收紧 dock 宽度（避免看起来偏向页面中心）
+                width: 240,
+              }}
             >
-              {/* overlay only: 背景由整条色带统一渲染，以保证“连续渐变” */}
-            </button>
-          ))}
-        </div>
-        {legendOpen && (
-          <div className={styles.workspaceLegendList}>
-            {clusterLegend.map((c) => (
               <div
-                key={c.key}
-                className={`${styles.workspaceLegendItem} ${legendClusterKey === c.key ? styles.workspaceLegendItemActive : ''}`}
-                onMouseEnter={() => setLegendHoverKey(c.key)}
-                onMouseLeave={() => setLegendHoverKey((cur) => (cur === c.key ? null : cur))}
-                title={`${c.key}（${c.count}）`}
+                className={styles.workspaceLegend}
+                aria-label="簇图例"
+                onMouseEnter={() => {
+                  if (legendCloseTimerRef.current) {
+                    window.clearTimeout(legendCloseTimerRef.current);
+                    legendCloseTimerRef.current = null;
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (!legendOpen) return;
+                  // 关闭稍微延迟一点点，避免误关
+                  if (legendCloseTimerRef.current) window.clearTimeout(legendCloseTimerRef.current);
+                  legendCloseTimerRef.current = window.setTimeout(() => {
+                    setLegendOpen(false);
+                    legendCloseTimerRef.current = null;
+                  }, 220);
+                }}
               >
-                <span className={styles.workspaceLegendSwatch} style={{ background: c.avgColor }} />
-                <span className={styles.workspaceLegendLabel}>{c.key}</span>
-                <span className={styles.workspaceLegendMeta}>{c.count}</span>
+                {hoverLabelKey && <div className={styles.workspaceLegendHoverLabel}>{hoverLabelKey}</div>}
+                <div
+                  className={styles.workspaceLegendStrip}
+                  aria-label="簇连续色带"
+                  style={legendStripGradient ? { backgroundImage: legendStripGradient } : undefined}
+                  onClick={() => setLegendOpen((v) => !v)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setLegendOpen((v) => !v);
+                    }
+                  }}
+                  title={legendOpen ? '点击收起簇列表' : '点击展开簇列表'}
+                >
+                  {clusterLegend.map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      className={`${styles.workspaceLegendSeg} ${legendClusterKey === c.key ? styles.workspaceLegendSegActive : ''}`}
+                      style={{ flex: `${Math.max(0.0001, c.frac)}` }}
+                      onMouseEnter={() => setLegendHoverKey(c.key)}
+                      onMouseLeave={() => setLegendHoverKey((cur) => (cur === c.key ? null : cur))}
+                      title={`${c.key}（${c.count}）`}
+                      aria-label={`${c.key}（${c.count}）`}
+                    >
+                      {/* overlay only: 背景由整条色带统一渲染，以保证“连续渐变” */}
+                    </button>
+                  ))}
+                </div>
+                {legendOpen && (
+                  <div className={styles.workspaceLegendList}>
+                    {clusterLegend.map((c) => (
+                      <div
+                        key={c.key}
+                        className={`${styles.workspaceLegendItem} ${legendClusterKey === c.key ? styles.workspaceLegendItemActive : ''}`}
+                        onMouseEnter={() => setLegendHoverKey(c.key)}
+                        onMouseLeave={() => setLegendHoverKey((cur) => (cur === c.key ? null : cur))}
+                        title={`${c.key}（${c.count}）`}
+                      >
+                        <span className={styles.workspaceLegendSwatch} style={{ background: c.avgColor }} />
+                        <span className={styles.workspaceLegendLabel}>{c.key}</span>
+                        <span className={styles.workspaceLegendMeta}>{c.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div ref={gridElRef} className={styles.workspaceGrid} role="grid" aria-rowcount={undefined} aria-colcount={undefined}>
-        {visiblePlaced.map(({ note, cluster, idxInCluster, row, col, palette, displayColor }) => {
+            </div>
+          )}
+
+          {/* 联想列表：仅在“工作台打开”时显示；顶部与工作台顶部对齐 */}
+          {shouldShowRecommendDock && (
+            <div
+              className={styles.workspaceRecommendDock}
+              style={{
+                top: fixedContainer.top,
+                left: fixedContainer.left + fixedContainer.width + 18,
+                right: 'auto',
+                width: (() => {
+                  const RIGHT_PAD = 18;
+                  const vw = viewportW || window.innerWidth;
+                  const startX = fixedContainer.left + fixedContainer.width + 18;
+                  const max = Math.max(200, vw - startX - RIGHT_PAD);
+                  return Math.max(260, Math.min(360, max));
+                })(),
+              }}
+              aria-label="联想面板"
+            >
+              <ul className={styles.workspaceRecommendList} aria-label="联想笔记列表">
+                {recommendations.map((r, idx) => {
+                  const title = (r.note.title || '').trim() || '未命名';
+                  const body = (r.note.summary || r.note.contentText || r.note.content || '').trim();
+                  const reason = (r.reason || '').trim() || '联想理由：';
+                  return (
+                    <li
+                      key={r.note._id}
+                      className={styles.workspaceRecommendItem}
+                      style={{ animationDelay: `${idx * 0.8}s` }}
+                    >
+                      <div className={styles.workspaceRecommendCard}>
+                        <span className={styles.workspaceRecommendAccent} aria-hidden="true" />
+                        <div className={styles.workspaceRecommendContent}>
+                          <div className={styles.workspaceRecommendTitleRow}>
+                            <div className={styles.workspaceRecommendTitle}>{title}</div>
+                          </div>
+                          <div className={styles.workspaceRecommendReason}>{reason}</div>
+                          <div className={styles.workspaceRecommendBody}>{body}</div>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* 网格：固定坐标容器（只负责网格区域） */}
+          <div
+            ref={gridElRef}
+            className={styles.workspaceGrid}
+            role="grid"
+            aria-rowcount={undefined}
+            aria-colcount={undefined}
+            style={{
+              left: fixedContainer.left,
+              top: fixedContainer.top,
+              width: fixedContainer.width,
+              height: fixedContainer.height,
+            }}
+          >
+            {visiblePlaced.map(({ note, cluster, idxInCluster, row, col, palette, displayColor }) => {
           const isSelected = selectedNoteId === note._id;
           const isHovered = hoveredNoteId === note._id;
           const isClusterHovered = Boolean(legendClusterKey && legendClusterKey === cluster.key);
@@ -1443,8 +1749,10 @@ export default function WorkspaceGrid({
               )}
             </button>
           );
-        })}
-      </div>
+            })}
+          </div>
+        </>
+      )}
 
       {/* Tooltip（渲染到 body portal） */}
       {tipPortalElRef.current &&

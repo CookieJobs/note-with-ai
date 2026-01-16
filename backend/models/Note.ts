@@ -16,6 +16,12 @@ const NoteSchema = new mongoose.Schema(
     // 富文本派生：用于搜索/embedding 的纯文本（可选，建议与 content 保持一致）
     contentText: { type: String, default: '' },
     title: { type: String },
+    // 语义摘要：用于联想/重排输入（可选，异步生成并缓存）
+    summary: { type: String, default: '' },
+    // 概念扩展缓存：用于弱关联召回（可选，异步生成并缓存）
+    concepts: [{ type: String }],
+    // 语义联想结果缓存（用于节省 LLM token 成本）
+    recommendCache: { type: mongoose.Schema.Types.Mixed, default: null },
     keywords: [{ type: String }],
     embedding: [{ type: Number }], // 可选字段，可后续异步填充
   },
@@ -33,7 +39,7 @@ NoteSchema.index({ userId: 1, embedding: 1 });
 NoteSchema.index({ createdAt: -1 });
 
 // 4. 文本索引 - 支持全文搜索（富文本场景用 contentText）
-NoteSchema.index({ title: 'text', content: 'text', contentText: 'text' });
+NoteSchema.index({ title: 'text', summary: 'text', content: 'text', contentText: 'text' });
 
 // 5. 关键词索引 - 提升关键词搜索性能
 NoteSchema.index({ keywords: 1 });
