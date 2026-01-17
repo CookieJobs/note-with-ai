@@ -98,80 +98,94 @@ export async function maintainAllNoteEmbeddings(): Promise<MaintenanceResult> {
     const batchSize = parseInt(process.env.EMBEDDING_BATCH_SIZE || '50');
     const maxRetries = parseInt(process.env.EMBEDDING_MAX_RETRIES || '3');
     
-    // 获取所有没有embedding的笔记
-    const notesWithoutEmbedding = await Note.find({
-      $or: [
-        { embedding: { $exists: false } },
-        { embedding: { $size: 0 } },
-        { embedding: null }
-      ]
-    }).select('_id title content').limit(batchSize);
+    let totalProcessed = 0;
+    let totalSuccess = 0;
+    const allFailures: Array<{ noteId: string; error: string }> = [];
+    let hasMore = true;
+    let batchIndex = 1;
 
-    if (notesWithoutEmbedding.length === 0) {
-      console.log('✅ 所有笔记都已有向量，无需处理');
-      return {
-        processedCount: 0,
-        successCount: 0,
-        failureCount: 0
-      };
-    }
+    console.log(`🚀 开始全量修复任务 (Batch Size: ${batchSize})`);
 
-    console.log(`🔄 开始处理 ${notesWithoutEmbedding.length} 条笔记的向量生成`);
+    while (hasMore) {
+      // 获取当前批次的待处理笔记
+      const notesWithoutEmbedding = await Note.find({
+        $or: [
+          { embedding: { $exists: false } },
+          { embedding: { $size: 0 } },
+          { embedding: null }
+        ]
+      }).select('_id title content').limit(batchSize);
 
-    const failures: Array<{ noteId: string; error: string }> = [];
-    let successCount = 0;
-
-    // 处理当前批次的笔记
-    const textsToEmbed = notesWithoutEmbedding.map(note => 
-      `${note.title || ''} ${note.content}`.trim()
-    );
-
-    let retryCount = 0;
-    let batchSuccess = false;
-
-    while (retryCount < maxRetries && !batchSuccess) {
-      try {
-        const embeddings = await generateQwenEmbeddingBatch(textsToEmbed, 1024);
-        
-        const updatePromises = notesWithoutEmbedding.map((note, index) => {
-          if (embeddings[index] && embeddings[index].length > 0) {
-            return Note.findByIdAndUpdate(note._id, { embedding: embeddings[index] });
-          }
-          return Promise.resolve();
-        });
-
-        await Promise.all(updatePromises);
-        
-        const batchSuccessCount = embeddings.filter(emb => emb.length > 0).length;
-        successCount += batchSuccessCount;
-        batchSuccess = true;
-        
-        console.log(`✅ 批次处理成功: ${batchSuccessCount}/${notesWithoutEmbedding.length}`);
-        
-      } catch (error: any) {
-        retryCount++;
-        console.warn(`⚠️ 第 ${retryCount} 次重试失败:`, error.message);
-        
-        if (retryCount >= maxRetries) {
-          // 记录失败的笔记
-          notesWithoutEmbedding.forEach(note => {
-            failures.push({
-              noteId: note._id.toString(),
-              error: error.message || '未知错误'
-            });
-          });
-        } else {
-          // 等待一段时间后重试
-          await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+      if (notesWithoutEmbedding.length === 0) {
+        hasMore = false;
+        if (batchIndex === 1) {
+            console.log('✅ 所有笔记都已有向量，无需处理');
         }
+        break;
+      }
+
+      console.log(`\n📦 [Batch ${batchIndex}] 开始处理 ${notesWithoutEmbedding.length} 条笔记...`);
+
+      let retryCount = 0;
+      let batchSuccess = false;
+      
+      const textsToEmbed = notesWithoutEmbedding.map(note => 
+        `${note.title || ''} ${note.content}`.trim()
+      );
+
+      while (retryCount < maxRetries && !batchSuccess) {
+        try {
+          const embeddings = await generateQwenEmbeddingBatch(textsToEmbed, 1024);
+          
+          const updatePromises = notesWithoutEmbedding.map((note, index) => {
+            if (embeddings[index] && embeddings[index].length > 0) {
+              return Note.findByIdAndUpdate(note._id, { embedding: embeddings[index] });
+            }
+            return Promise.resolve();
+          });
+
+          await Promise.all(updatePromises);
+          
+          const batchSuccessCount = embeddings.filter(emb => emb.length > 0).length;
+          totalSuccess += batchSuccessCount;
+          totalProcessed += notesWithoutEmbedding.length;
+          batchSuccess = true;
+          
+          console.log(`✅ [Batch ${batchIndex}] 处理成功: ${batchSuccessCount}/${notesWithoutEmbedding.length}`);
+          
+        } catch (error: any) {
+          retryCount++;
+          console.warn(`⚠️ [Batch ${batchIndex}] 第 ${retryCount} 次重试失败:`, error.message);
+          
+          if (retryCount >= maxRetries) {
+            // 记录失败的笔记
+            notesWithoutEmbedding.forEach(note => {
+              allFailures.push({
+                noteId: note._id.toString(),
+                error: error.message || '未知错误'
+              });
+            });
+            totalProcessed += notesWithoutEmbedding.length; // 即使失败也算处理过（尝试过）
+          } else {
+            // 等待一段时间后重试
+            await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+          }
+        }
+      }
+
+      batchIndex++;
+      
+      // 批次间短暂休息，避免触发限流
+      if (hasMore) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
 
     const result: MaintenanceResult = {
-      processedCount: notesWithoutEmbedding.length,
-      successCount,
-      failureCount: failures.length,
-      failures: failures.length > 0 ? failures : undefined
+      processedCount: totalProcessed,
+      successCount: totalSuccess,
+      failureCount: allFailures.length,
+      failures: allFailures.length > 0 ? allFailures : undefined
     };
 
     return result;

@@ -9,6 +9,7 @@ import express from 'express';
 import { Note } from '../models/Note';
 import { summarizeNote, summarizeNoteMeta, summarizeNoteSummary, checkOrUpdateSummaryConcepts } from '../services/deepseek';
 import { generateQwenEmbedding } from '../utils/embedding';
+import { updateNoteRecommendations } from '../services/recommendService';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandler';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
@@ -37,12 +38,18 @@ function scheduleEmbeddingUpdate(params: {
       if (!Array.isArray(embedding) || embedding.length === 0) return;
 
       // 防止“生成过程中内容又被改了”导致写入旧 embedding
-      await Note.updateOne(
+      const res = await Note.updateOne(
         { _id: noteId, userId, updatedAt },
         { $set: { embedding } }
       );
+
+      // 只有 embedding 写入成功（且内容未再次变更），才触发“关联推荐计算”
+      // 这样能确保新笔记一生成向量，就立即计算并缓存关联，用户查看时即为 Hot Cache
+      if (res.matchedCount > 0) {
+        await updateNoteRecommendations(noteId, userId);
+      }
     } catch (e) {
-      console.warn('⚠️ embedding 异步生成失败（已忽略）:', e);
+      console.warn('⚠️ embedding/recommend 异步生成失败（已忽略）:', e);
     }
   })();
 }
