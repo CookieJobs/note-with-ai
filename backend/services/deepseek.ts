@@ -216,7 +216,7 @@ export async function rerankRecommendedNotes(params: {
       candidates,
       rules: {
         scoreRange: 's2 in [0,1]',
-        reason: '只能一句中文，尽量≤15字，必须指出当前笔记与候选笔记之间的概念连接点；不得编造',
+        reason: '必须是一句完整的中文短句（包含主谓宾），15-25字，解释为何推荐（如：补充了...的细节，提供了...的理论基础），不得编造',
         output: 'JSON: { "results": [ { "id": "...", "s2": 0.0-1.0, "type": "...", "reason": "..." } ] }',
       },
     };
@@ -230,7 +230,7 @@ export async function rerankRecommendedNotes(params: {
 1) 只能基于输入内容判断，不得引入外部事实
 2) s2越大越相关（0~1）
 3) type 从以下中选一个：强相关/补充背景/延伸阅读/类比/因果/反例/弱关联
-4) reason 只能一句中文，尽量≤15字（最多不超过20字），必须明确“连接桥梁”（概念/主题/关系/场景）
+4) reason 必须是通顺的中文短句（15-25字），使用逻辑连接词（因为、补充、对比等）明确解释推荐理由
 5) “同义/翻译等价”必须高相关：如果两边出现明显的中英文同义（例如 测试≈test、AI≈人工智能 等），应判为强相关，且 s2 不得低于 0.75；reason 可直接说明“同义/翻译等价”
 6) 只输出 JSON 对象（包含 results 数组），不要输出多余文本`,
       },
@@ -249,15 +249,14 @@ export async function rerankRecommendedNotes(params: {
         id: String(r.id || ''),
         s2: Number.isFinite(Number(r.s2)) ? Math.max(0, Math.min(1, Number(r.s2))) : 0,
         type: typeof r.type === 'string' ? r.type : '弱关联',
-        // 兜底：强制单句短理由（尽量≤15字，最多20字）
+        // 兜底：强制单句短理由（尽量≤25字）
         reason:
           typeof r.reason === 'string'
             ? r.reason
                 .trim()
                 .replace(/[\r\n]+/g, ' ')
                 .replace(/[。！？!?.]+/g, '。')
-                .split('。')[0]
-                .slice(0, 20)
+                .slice(0, 100)
             : '',
       }))
       .filter((r: any) => r.id);
