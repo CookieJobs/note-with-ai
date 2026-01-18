@@ -9,6 +9,8 @@
     "skipLibCheck": true,
     "strict": false,
     "noEmit": true,
+    "target": "es5",
+    "downlevelIteration": true,
     "incremental": true,
     "module": "esnext",
     "esModuleInterop": true,

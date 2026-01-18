@@ -161,7 +161,7 @@ function getKeywords(note: Note) {
     const nk = normalizeKeyword(k);
     if (nk) uniq.add(nk);
   }
-  return [...uniq];
+  return Array.from(uniq);
 }
 
 function cosineSimilarityVec(a: ArrayLike<number>, b: ArrayLike<number>) {
@@ -1838,4 +1838,3 @@ export default function WorkspaceGrid({
     </div>
   );
 }
-

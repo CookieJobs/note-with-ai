@@ -13,7 +13,7 @@ interface NoteCardProps {
   note: Note;
   onRequestDelete: (id: string) => void;
   isHighlighted?: boolean;
-  onUpdateTitle: (id: string, newTitle: string) => void;
+  onUpdateTitle: (id: string, newTitle: string, updatedAt?: string) => void;
   onUpdateContent?: (
     id: string,
     newContent: string,
@@ -1217,5 +1217,4 @@ export default function ModernNoteCard({
     </div>
   );
 }
-
 
