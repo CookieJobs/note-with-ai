@@ -290,15 +290,16 @@ export default function ChatPage() {
         onInputChange={handleInputChange}
         onSend={handleSendClick}
         centered={messages.length === 0}
+        suggestionComponent={
+          currentSession && showCare ? (
+            <CareAssistantPanel 
+              auto={true} 
+              onInsert={handleCareInsert} 
+              onSend={handleCareSend} 
+            />
+          ) : null
+        }
       />
-
-      {currentSession && showCare && (
-        <div className={styles.centerArea}>
-          <div className={styles.contentWrapper}>
-            <CareAssistantPanel auto={false} onInsert={handleCareInsert} onSend={handleCareSend} />
-          </div>
-        </div>
-      )}
 
       <DeleteConfirmModal
         show={showDeleteConfirm}

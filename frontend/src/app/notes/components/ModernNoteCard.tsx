@@ -652,9 +652,12 @@ export default function ModernNoteCard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: next }),
       });
+      const data = await response.json();
+
       if (!response.ok) throw new Error('保存标题失败');
 
-      onUpdateTitle(note._id, next);
+      const updatedNote = data?.data?.note;
+      onUpdateTitle(note._id, next, updatedNote?.updatedAt);
       dispatch({ type: 'SAVE_TITLE_SUCCESS', value: next });
     } catch {
       dispatch({ type: 'SAVE_TITLE_FAIL' });

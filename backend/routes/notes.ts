@@ -9,7 +9,6 @@ import express from 'express';
 import { Note } from '../models/Note';
 import { summarizeNote, summarizeNoteMeta, summarizeNoteSummary, checkOrUpdateSummaryConcepts } from '../services/deepseek';
 import { generateQwenEmbedding } from '../utils/embedding';
-import { updateNoteRecommendations } from '../services/recommendService';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandler';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
@@ -38,18 +37,12 @@ function scheduleEmbeddingUpdate(params: {
       if (!Array.isArray(embedding) || embedding.length === 0) return;
 
       // 防止“生成过程中内容又被改了”导致写入旧 embedding
-      const res = await Note.updateOne(
+      await Note.updateOne(
         { _id: noteId, userId, updatedAt },
         { $set: { embedding } }
       );
-
-      // 只有 embedding 写入成功（且内容未再次变更），才触发“关联推荐计算”
-      // 这样能确保新笔记一生成向量，就立即计算并缓存关联，用户查看时即为 Hot Cache
-      if (res.matchedCount > 0) {
-        await updateNoteRecommendations(noteId, userId);
-      }
     } catch (e) {
-      console.warn('⚠️ embedding/recommend 异步生成失败（已忽略）:', e);
+      console.warn('⚠️ embedding 异步生成失败（已忽略）:', e);
     }
   })();
 }
@@ -387,7 +380,23 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
 
       // 重新获取最新的 note，避免版本冲突 (VersionError)
       const freshNote = await Note.findById(id);
+      
+      // 二次乐观锁检查：确保在 AI 处理期间没有其他并发修改
+      // 如果 updatedAt 变了，说明有新修改，我们不能覆盖
       if (freshNote) {
+        const freshUpdatedTime = new Date(freshNote.updatedAt).getTime();
+        const originalUpdatedTime = new Date(note.updatedAt).getTime();
+        
+        // 注意：这里我们比较的是 note.updatedAt（请求开始时的版本），
+        // 如果 freshNote.updatedAt 比它新，说明中间被插队了。
+        // 对于 summaryCheck（用户保存），这应该视为冲突。
+        if (freshUpdatedTime !== originalUpdatedTime) {
+            console.warn(`summaryCheck 期间发生并发修改，放弃覆盖。ID: ${id}`);
+            // 抛出 409，让前端重试或处理
+            res.status(409).json({ success: false, error: '笔记已在他处更新（AI处理期间）', data: { note: freshNote } });
+            return;
+        }
+
         // 重新应用用户提交的变更到 freshNote
         if (title !== undefined) freshNote.title = title.trim();
         if (contentText !== undefined) {
@@ -431,8 +440,10 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
     }
   }
 
-  // 可选：自动摘要与关键词重生成（基于正文变更）
-  if (autoSummarize === true && contentChanged) {
+  // 可选：自动摘要与关键词重生成（基于正文变更，或者显式 autoSummarize 请求）
+  // 注意：如果是新建笔记后的 autoSummarize 请求，contentChanged 可能为 false（为了不传大报文），
+  // 但我们需要基于 DB 里的内容生成摘要。
+  if (autoSummarize === true) {
     try {
       // 这里的 summarizeNoteMeta 比较耗时，这期间 note 可能已经被其他请求（如 embed）更新
       const summary = await summarizeNoteMeta(note.content);
@@ -440,6 +451,18 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
       // 重新获取最新的 note，避免版本冲突 (VersionError)
       const freshNote = await Note.findById(id);
       if (freshNote) {
+        // 二次乐观锁检查：确保在 AI 处理期间没有其他并发修改
+        const freshUpdatedTime = new Date(freshNote.updatedAt).getTime();
+        const originalUpdatedTime = new Date(note.updatedAt).getTime();
+        
+        // 对于后台 autoSummarize，如果发现并发修改，直接放弃本次更新即可（保留用户的新内容）
+        if (freshUpdatedTime !== originalUpdatedTime) {
+            console.warn(`autoSummarize 期间发生并发修改，放弃更新元数据。ID: ${id}`);
+            // 这里不报错，直接返回当前最新 note，让前端同步状态
+            ResponseHandler.success(res, { note: freshNote }, '检测到并发修改，跳过自动摘要更新');
+            return;
+        }
+
         // 使用最新的 note 对象来保存
         if (summary?.title) freshNote.title = summary.title;
         if (Array.isArray(summary?.keywords)) freshNote.keywords = summary.keywords;

@@ -760,6 +760,20 @@
 
   /* 统一高亮色：竖条颜色 = 理由背景颜色 */
   --ws-recommend-hl: rgba(18, 225, 255, 0.08);
+  
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.workspaceRecommendCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+  border-color: rgba(18, 225, 255, 0.28);
+}
+
+.workspaceRecommendCard:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.26);
 }
 
 /* 左侧竖向高亮边缘：类似引用效果 */
@@ -807,10 +821,9 @@
   align-self: flex-start;
   width: fit-content;
   max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* 与竖条同色 */
+  white-space: normal;
+  word-break: break-word;
+  /* 与卡片左侧竖条同色 */
   background: var(--ws-recommend-hl);
   border: 1px solid rgba(18, 225, 255, 0.10);
 }

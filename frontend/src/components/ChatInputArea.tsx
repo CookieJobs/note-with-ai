@@ -16,6 +16,7 @@ interface ChatInputAreaProps {
   onInputChange: (value: string) => void;
   onSend: () => void;
   centered?: boolean; // 当为空状态时，输入框垂直居中显示
+  suggestionComponent?: React.ReactNode; // 顶部建议组件插槽
 }
 
 const ChatInputArea: React.FC<ChatInputAreaProps> = ({
@@ -25,6 +26,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   onInputChange,
   onSend,
   centered = false,
+  suggestionComponent,
 }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -45,6 +47,11 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     <>
       {/* 固定/居中的输入框（空状态时居中） */}
       <div className={containerClassName}>
+        {suggestionComponent && (
+          <div className={styles.suggestionWrapper}>
+            {suggestionComponent}
+          </div>
+        )}
         {centered && (
           <div className={styles.promptTitle}>您现在在想什么？</div>
         )}

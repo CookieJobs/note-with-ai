@@ -23,7 +23,7 @@ interface Props {
   auto?: boolean;
 }
 
-export default function CareAssistantPanel({ onInsert, onSend, auto = false }: Props) {
+export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Props) {
   const [intro, setIntro] = useState<CareIntro | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -32,10 +32,13 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = false }: P
   const fetchIntro = async () => {
     setLoading(true);
     setError('');
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
+    // 移除之前的 AbortController，避免组件重渲染时误杀请求
+    // abortRef.current?.abort(); 
+    // abortRef.current = new AbortController();
+    
     try {
-      const res = await authFetch('/api/chat/robot/intro', { signal: abortRef.current.signal } as any);
+      // 移除 signal 信号，不再主动取消请求，确保请求能完成
+      const res = await authFetch('/api/chat/robot/intro');
       const json = await res.json();
       const payload = json && json.data ? json.data : json;
       const data: CareIntro = {
@@ -46,7 +49,14 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = false }: P
       };
       setIntro(data);
     } catch (e: any) {
-      if (e?.name !== 'AbortError') setError('获取失败');
+      console.error('CareAssistantPanel fetch error:', e);
+      // 即使失败，也设置一个默认兜底，保证组件展示
+      setIntro({
+        noteId: null,
+        noteTitle: '',
+        snippet: '',
+        aiOpening: '最近有什么新鲜事想和我分享吗？'
+      });
     } finally {
       setLoading(false);
     }
@@ -54,42 +64,31 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = false }: P
 
   const fetchedRef = useRef(false);
   useEffect(() => {
-    if (fetchedRef.current) return () => abortRef.current?.abort();
-    if (!auto) return () => abortRef.current?.abort();
+    if (fetchedRef.current) return;
     fetchedRef.current = true;
     fetchIntro();
-    return () => abortRef.current?.abort();
-  }, [auto]);
+    // 移除清理函数中的 abort，避免组件卸载/更新时中断请求
+    // return () => abortRef.current?.abort();
+  }, []);
+
+  if (loading) return <div className={styles.careSuggestionLoading}>🌿 正在寻找话题灵感...</div>;
+  if (error) return null;
+  if (!intro) return null;
 
   return (
-    <div className={styles.carePanel}>
-      <div className={styles.careHeader} style={{ justifyContent: 'center' }}>
-        <div className={styles.careIcon} aria-hidden="true">🌿</div>
-        <div className={styles.careTitles} style={{ alignItems: 'center' }}>
-          <div className={styles.careTitle}>随机漫步</div>
-          <div className={styles.careSubTitle}>给你一个贴心话题</div>
-        </div>
-        <button className={styles.robotButtonPrimary} aria-label="触发" onClick={fetchIntro}>触发</button>
-        <button className={styles.robotButtonSecondary} aria-label="换一个" onClick={fetchIntro}>换一个</button>
+    <div className={styles.careSuggestionPanel} onClick={() => onSend(intro.aiOpening)}>
+      <div className={styles.careSuggestionIcon}>✨</div>
+      <div className={styles.careSuggestionContent}>
+        <div className={styles.careSuggestionText}>{intro.aiOpening}</div>
+        <div className={styles.careSuggestionHint}>点击开始对话</div>
       </div>
-      {loading && <div className={styles.careLoading}>正在准备贴心开场…</div>}
-      {!loading && error && (
-        <div className={styles.careError}>
-          <span>❌ {error}</span>
-          <button className={styles.robotButtonSecondary} onClick={fetchIntro}>重试</button>
-        </div>
-      )}
-      {!loading && !error && intro && (
-        <div className={styles.careContent}>
-          {intro.noteTitle && <div className={styles.robotNoteTitle}>来源笔记：{intro.noteTitle}</div>}
-          {intro.snippet && <div className={styles.robotSnippet}>“{intro.snippet}”</div>}
-          <div className={styles.robotOpening}>{intro.aiOpening}</div>
-          <div className={styles.aiRobotActions}>
-            <button className={styles.robotButtonSecondary} onClick={() => onInsert(intro.aiOpening)}>插入到输入框</button>
-            <button className={styles.robotButtonPrimary} onClick={() => onSend(intro.aiOpening)}>直接发送</button>
-          </div>
-        </div>
-      )}
+      <button 
+        className={styles.careSuggestionRefresh} 
+        onClick={(e) => { e.stopPropagation(); fetchIntro(); }}
+        title="换一个话题"
+      >
+        ↻
+      </button>
     </div>
   );
 }

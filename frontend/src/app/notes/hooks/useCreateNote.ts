@@ -97,10 +97,12 @@ export function useCreateNote(
           .catch(console.error);
 
         // 1.5 异步生成标题与关键词（内容不变也触发）
+        // 优化：仅发送 autoSummarize: true，不发送 contentText，避免大报文和覆盖风险
+        // 后端会自动使用 DB 里的内容进行摘要
         authFetch(`/api/notes/${created._id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contentText: created.contentText || created.content, autoSummarize: true }),
+          body: JSON.stringify({ autoSummarize: true }),
         })
           .then((r) => r.json())
           .then((patchData) => {

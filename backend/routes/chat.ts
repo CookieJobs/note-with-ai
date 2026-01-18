@@ -278,7 +278,11 @@ const splitContentIntoNodes = (content: string): string[] => {
 // AI 关怀助手开场白（迁移自 for-me）
 router.get('/robot/intro', authenticateToken, asyncHandler(async (req: any, res: any) => {
   const userId = req.user?.userId;
-  const notes = await Note.find({ userId }).sort({ createdAt: -1 });
+  // 优化：只查询需要的字段，限制最近 50 条，避免全量查询导致超时
+  const notes = await Note.find({ userId })
+    .select('content title')
+    .sort({ createdAt: -1 })
+    .limit(50);
 
   if (!notes || notes.length === 0) {
     return ResponseHandler.success(res, {
@@ -293,10 +297,10 @@ router.get('/robot/intro', authenticateToken, asyncHandler(async (req: any, res:
   const nodes = splitContentIntoNodes(randomNote.content || '');
   if (!nodes || nodes.length === 0) {
     const fallbackSnippet = (randomNote.content || '').slice(0, 60);
-    const prompt = `你将看到用户过往笔记中的一个片段，请用体贴、自然的语气发起一句关怀性中文开场白，最多40字，不要复述片段。片段:"${fallbackSnippet}"`;
+    const prompt = `你将看到用户过往笔记中的一个片段，请用体贴、自然的语气发起一句关怀性中文开场白，最多60字，不要复述片段。片段:"${fallbackSnippet}"`;
     try {
       const aiOpening = await chatWithDeepSeek([
-        { role: 'system', content: '你是一个温暖、克制的生活助手。请基于用户过去的笔记片段，主动给出一句简短的关怀问候或追问，语气自然，不要暴露隐私。' },
+        { role: 'system', content: '你是一个富有洞察力且善于启发的思想伙伴。你的目标是通过回顾用户过去的笔记片段，提出一个有深度、能引发思考或激发表达欲的问题。尝试寻找片段背后的情绪、动机或潜在关联，而不仅仅是表面问候。' },
         { role: 'user', content: prompt }
       ]);
       return ResponseHandler.success(res, {
@@ -317,8 +321,8 @@ router.get('/robot/intro', authenticateToken, asyncHandler(async (req: any, res:
   }
 
   const snippet = nodes[Math.floor(Math.random() * nodes.length)];
-  const system = '你是一个温暖、克制的生活助手。请基于用户过去的笔记片段，主动给出一句简短的关怀问候或追问，语气自然，避免复述原文，不要进行医疗建议。最多40字。';
-  const userMsg = `用户过往笔记片段:"${snippet}"。请仅返回一句中文开场白，例如「您的膝盖恢复情况如何？」或「最近睡眠有改善吗？」。`;
+  const system = '你是一个富有洞察力且善于启发的思想伙伴。你的目标是通过回顾用户过去的笔记片段，提出一个有深度、能引发思考或激发表达欲的问题。尝试寻找片段背后的情绪、动机或潜在关联，而不仅仅是表面问候。语气保持真诚、好奇且自然。最多60字。';
+  const userMsg = `用户过往笔记片段:"${snippet}"。请基于此片段，构思一个能引发用户深层思考或分享欲望的简短开场白。可以是关于当时的感受、后续的思考，或者是对某个观点的进一步探讨。避免简单的寒暄。`;
 
   try {
     const aiOpening = await chatWithDeepSeek([

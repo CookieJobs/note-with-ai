@@ -124,6 +124,8 @@ function NotesContent() {
       if (t.closest(`.${styles.historyItem}`)) return;
       // 点在工作区方块：交给 onSelect 切换选中，不在这里关闭
       if (t.closest(`.${styles.workspaceCell}`)) return;
+      // 点在联想面板（包含卡片）：不关闭
+      if (t.closest(`.${styles.workspaceRecommendDock}`)) return;
 
       setSelectedNoteId(null);
       setEditingNoteId(null);

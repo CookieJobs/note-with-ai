@@ -1621,7 +1621,18 @@ export default function WorkspaceGrid({
                       className={styles.workspaceRecommendItem}
                       style={{ animationDelay: `${idx * 0.8}s` }}
                     >
-                      <div className={styles.workspaceRecommendCard}>
+                      <div
+                        className={styles.workspaceRecommendCard}
+                        onClick={() => onSelect(r.note._id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelect(r.note._id);
+                          }
+                        }}
+                      >
                         <span className={styles.workspaceRecommendAccent} aria-hidden="true" />
                         <div className={styles.workspaceRecommendContent}>
                           <div className={styles.workspaceRecommendTitleRow}>

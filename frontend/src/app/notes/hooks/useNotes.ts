@@ -58,8 +58,10 @@ export function useNotes(user: any | null, options: UseNotesOptions = {}) {
     }
   };
 
-  const updateTitle = (id: string, newTitle: string) => {
-    setNotes((prev) => prev.map((n) => (n._id === id ? { ...n, title: newTitle } : n)));
+  const updateTitle = (id: string, newTitle: string, updatedAt?: string) => {
+    setNotes((prev) =>
+      prev.map((n) => (n._id === id ? { ...n, title: newTitle, updatedAt: updatedAt || n.updatedAt } : n))
+    );
   };
 
   const updateContent = (
