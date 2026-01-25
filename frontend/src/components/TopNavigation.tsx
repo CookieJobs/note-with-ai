@@ -34,7 +34,7 @@ export default function TopNavigation() {
   };
 
   return (
-    <header className={styles.topNav}>
+    <header className={`${styles.topNav} ${pathname.startsWith('/chat') ? styles.topNavSolid : ''}`}>
       <div className={styles.container}>
         {/* 左侧 Logo */}
         <div className={styles.leftSection}>

@@ -278,11 +278,7 @@ const splitContentIntoNodes = (content: string): string[] => {
 // AI 关怀助手开场白（迁移自 for-me）
 router.get('/robot/intro', authenticateToken, asyncHandler(async (req: any, res: any) => {
   const userId = req.user?.userId;
-  // 优化：只查询需要的字段，限制最近 50 条，避免全量查询导致超时
-  const notes = await Note.find({ userId })
-    .select('content title')
-    .sort({ createdAt: -1 })
-    .limit(50);
+  const notes = await Note.find({ userId }).sort({ createdAt: -1 });
 
   if (!notes || notes.length === 0) {
     return ResponseHandler.success(res, {

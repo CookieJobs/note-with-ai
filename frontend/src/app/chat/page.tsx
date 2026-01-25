@@ -222,13 +222,14 @@ export default function ChatPage() {
 
   // 仅在新会话且消息为空时显示“随机漫步”，并对每个会话只激活一次
   useEffect(() => {
-    const sid = currentSession?.id || '';
+    // 只要消息为空，就显示（无论是否有 currentSession，没有 session 意味着是新用户或新会话状态）
     const hasMessages = Array.isArray(messages) && messages.length > 0;
-    if (!sid) { setShowCare(false); return; }
-    if (hasMessages) { setShowCare(false); return; }
-    // 会话存在且消息为空：显示随机漫步
-    setShowCare(true);
-  }, [currentSession?.id, messages.length]);
+    if (hasMessages) {
+      setShowCare(false);
+    } else {
+      setShowCare(true);
+    }
+  }, [messages.length]);
 
   // 如果是服务端渲染，返回加载占位符
   if (!isClient) {
@@ -252,18 +253,28 @@ export default function ChatPage() {
   };
 
   const handleCareSend = async (text: string) => {
-    if (!currentSession || !user?.id) return;
-    const prev = input;
-    setInput(text);
-    await sendMessageHook(
-      text,
-      currentSession,
-      user.id,
-      updateSessionMessages,
-      saveSessionToDBHook,
-      setSessions
-    );
-    setInput(prev);
+    if (!user?.id) return;
+    
+    // 如果没有会话，先创建会话
+    let session = currentSession;
+    if (!session) {
+       console.log('⚠️ [CareSend] 当前无会话，自动创建新会话...');
+       session = await startNewSessionHook(user.id);
+    }
+    
+    if (session) {
+      const prev = input;
+      setInput(text);
+      await sendMessageHook(
+        text,
+        session,
+        user.id,
+        updateSessionMessages,
+        saveSessionToDBHook,
+        setSessions
+      );
+      setInput(prev);
+    }
   };
 
   return (
@@ -291,7 +302,7 @@ export default function ChatPage() {
         onSend={handleSendClick}
         centered={messages.length === 0}
         suggestionComponent={
-          currentSession && showCare ? (
+          showCare ? (
             <CareAssistantPanel 
               auto={true} 
               onInsert={handleCareInsert} 

@@ -1,9 +1,3 @@
-/*
-Input: 待补充
-Output: 待补充
-Pos: 前端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
-*/
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -28,16 +22,12 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const abortRef = useRef<AbortController | null>(null);
+  // 移除 AbortController 以防止请求被意外中断
   const fetchIntro = async () => {
     setLoading(true);
     setError('');
-    // 移除之前的 AbortController，避免组件重渲染时误杀请求
-    // abortRef.current?.abort(); 
-    // abortRef.current = new AbortController();
     
     try {
-      // 移除 signal 信号，不再主动取消请求，确保请求能完成
       const res = await authFetch('/api/chat/robot/intro');
       const json = await res.json();
       const payload = json && json.data ? json.data : json;
@@ -50,7 +40,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
       setIntro(data);
     } catch (e: any) {
       console.error('CareAssistantPanel fetch error:', e);
-      // 即使失败，也设置一个默认兜底，保证组件展示
+      // 兜底文案
       setIntro({
         noteId: null,
         noteTitle: '',
@@ -67,8 +57,6 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     fetchIntro();
-    // 移除清理函数中的 abort，避免组件卸载/更新时中断请求
-    // return () => abortRef.current?.abort();
   }, []);
 
   if (loading) return <div className={styles.careSuggestionLoading}>🌿 正在寻找话题灵感...</div>;
