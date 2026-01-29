@@ -4,242 +4,146 @@ Output: 待补充
 Pos: 前端 样式
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
-/* auth.module.scss */
+/* auth.module.scss - Apple Style */
 
 .container {
   display: flex;
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-}
-
-.leftPanel {
-  flex: 1;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  display: flex;
+  width: 100vw;
   align-items: center;
   justify-content: center;
-  padding: 4rem 2rem;
-  position: relative;
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/><circle cx="50" cy="10" r="0.5" fill="white" opacity="0.1"/><circle cx="10" cy="60" r="0.5" fill="white" opacity="0.1"/><circle cx="90" cy="40" r="0.5" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
-    opacity: 0.3;
-  }
-
-  @media (max-width: 768px) {
-    display: none;
-  }
+  background-color: #F5F5F7; /* Apple 经典浅灰背景 */
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1D1D1F;
 }
 
-.brandSection {
-  text-align: center;
-  color: white;
-  z-index: 1;
-  position: relative;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.logoIcon {
-  font-size: 3rem;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
-}
-
-.brandName {
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin: 0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.brandDescription {
-  font-size: 1.2rem;
-  margin-bottom: 3rem;
-  opacity: 0.9;
-  line-height: 1.6;
-}
-
-.features {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  align-items: center;
-}
-
-.feature {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 1.1rem;
-  opacity: 0.9;
-}
-
-.featureIcon {
-  font-size: 1.5rem;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-}
-
-.rightPanel {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  background: #fafbfc;
-
-  @media (max-width: 768px) {
-    flex: none;
-    width: 100%;
-    padding: 1rem;
-  }
+/* 移除旧的左右分栏布局相关样式 */
+.leftPanel, .brandSection, .logo, .logoIcon, .brandName, .brandDescription, .features, .feature, .featureIcon, .rightPanel {
+  display: none;
 }
 
 .authCard {
   width: 100%;
-  max-width: 420px;
-  background: white;
-  border-radius: 16px;
-  padding: 2.5rem;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  max-width: 440px;
+  background: #FFFFFF;
+  border-radius: 24px; /* 更大的圆角 */
+  padding: 48px 40px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.04); /* 极柔和的弥散阴影 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden; /* 防止内容溢出圆角 */
+}
 
-  @media (max-width: 480px) {
-    padding: 2rem 1.5rem;
-    border-radius: 12px;
-  }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .authHeader {
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
+  width: 100%;
+}
+
+.brandLogo {
+  font-size: 48px;
+  margin-bottom: 1rem;
+  display: block;
 }
 
 .authTitle {
-  font-size: 1.875rem;
-  font-weight: 700;
-  color: #1a202c;
+  font-size: 28px;
+  font-weight: 600;
+  color: #1D1D1F;
   margin: 0 0 0.5rem 0;
+  letter-spacing: -0.01em;
 }
 
 .authSubtitle {
-  font-size: 0.95rem;
-  color: #64748b;
+  font-size: 15px;
+  color: #86868B;
   margin: 0;
   line-height: 1.5;
+  font-weight: 400;
 }
 
+/* 移除旧的 Tabs 样式 */
 .authTabs {
-  display: flex;
-  background: #f1f5f9;
-  border-radius: 12px;
-  padding: 4px;
-  margin-bottom: 2rem;
-  position: relative;
-}
-
-.tab {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-  z-index: 1;
-
-  &.active {
-    color: #1a202c;
-    background: white;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  }
-
-  &:hover:not(.active) {
-    color: #475569;
-  }
+  display: none;
 }
 
 .authForm {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
 .inputGroup {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  position: relative;
 }
 
 .label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #374151;
+  /* 隐藏传统 Label，改用 Placeholder 或 Floating Label 风格 */
+  display: none; 
 }
 
 .input {
   width: 100%;
-  padding: 0.875rem 1rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  background: #fafbfc;
-  color: #1a202c;
-  transition: all 0.2s ease;
+  height: 52px;
+  padding: 0 16px;
+  border: 1px solid transparent; /* 默认无边框 */
+  border-radius: 12px;
+  font-size: 17px;
+  background: #F5F5F7; /* 浅灰背景输入框 */
+  color: #1D1D1F;
+  transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
   box-sizing: border-box;
 
   &::placeholder {
-    color: #9ca3af;
+    color: #86868B;
   }
 
   &:focus {
     outline: none;
-    border-color: #667eea;
-    background: white;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    background: #FFFFFF;
+    border-color: #0071E3; /* Apple Blue */
+    box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.15); /* 蓝色光晕 */
   }
 
   &:hover:not(:focus) {
-    border-color: #d1d5db;
+    background: #E8E8ED;
   }
 }
 
 .passwordInput {
   position: relative;
-  display: flex;
-  align-items: center;
+  width: 100%;
 }
 
 .passwordToggle {
   position: absolute;
-  right: 1rem;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1.2rem;
-  color: #9ca3af;
-  transition: color 0.2s ease;
-  z-index: 1;
+  color: #86868B;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
 
   &:hover {
-    color: #667eea;
+    color: #1D1D1F;
   }
 }
 
@@ -248,64 +152,57 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  color: #dc2626;
-  font-size: 0.875rem;
-  margin-top: -0.5rem;
-}
-
-.errorIcon {
-  font-size: 1rem;
+  background: #FFF2F2;
+  border-radius: 12px;
+  color: #FF3B30; /* Apple Red */
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .submitButton {
   width: 100%;
-  padding: 0.875rem 1rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  height: 52px;
+  background: #1D1D1F; /* 纯黑按钮 */
   color: white;
   border: none;
-  border-radius: 10px;
-  font-size: 1rem;
+  border-radius: 12px;
+  font-size: 17px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
-  margin-top: 0.5rem;
+  transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+  margin-top: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
 
   &:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    background: #333336;
+    transform: scale(1.01);
   }
 
   &:active:not(:disabled) {
-    transform: translateY(0);
+    transform: scale(0.98);
   }
 
   &:disabled {
-    opacity: 0.7;
+    opacity: 0.5;
     cursor: not-allowed;
-    transform: none;
   }
 }
 
 .loadingSpinner {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
 }
 
 .spinner {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top: 2px solid white;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -315,106 +212,98 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 
 .authFooter {
   text-align: center;
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid #e5e7eb;
+  margin-top: 2rem;
+  padding-top: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.footerText {
+  font-size: 14px;
+  color: #86868B;
+}
+
+.switchModeLink {
+  color: #0071E3;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 14px;
+  margin-left: 4px;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .forgotPassword {
-  color: #667eea;
+  color: #0071E3;
   text-decoration: none;
-  font-size: 0.875rem;
+  font-size: 14px;
   font-weight: 500;
-  transition: color 0.2s ease;
+  margin-top: 0.5rem;
+  display: inline-block;
 
   &:hover {
-    color: #5a67d8;
     text-decoration: underline;
   }
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
-  .container {
-    flex-direction: column;
-  }
-
+@media (max-width: 480px) {
   .authCard {
-    margin: 1rem;
+    max-width: 100%;
+    height: 100vh;
+    border-radius: 0;
+    box-shadow: none;
     padding: 2rem 1.5rem;
+    justify-content: center;
   }
-
-  .authTitle {
-    font-size: 1.5rem;
-  }
-
-  .brandName {
-    font-size: 2rem;
-  }
-
-  .brandDescription {
-    font-size: 1rem;
+  
+  .container {
+    background: #FFFFFF;
   }
 }
 
 /* 深色模式支持 */
 @media (prefers-color-scheme: dark) {
-  .rightPanel {
-    background: #0f172a;
+  .container {
+    background-color: #000000;
   }
 
   .authCard {
-    background: #1e293b;
-    border-color: #334155;
+    background: #1C1C1E;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   }
 
   .authTitle {
-    color: #f8fafc;
-  }
-
-  .authSubtitle {
-    color: #94a3b8;
-  }
-
-  .authTabs {
-    background: #334155;
-  }
-
-  .tab {
-    color: #94a3b8;
-
-    &.active {
-      color: #f8fafc;
-      background: #475569;
-    }
-  }
-
-  .label {
-    color: #e2e8f0;
+    color: #F5F5F7;
   }
 
   .input {
-    background: #334155;
-    border-color: #475569;
-    color: #f8fafc;
-
-    &::placeholder {
-      color: #64748b;
-    }
+    background: #2C2C2E;
+    color: #FFFFFF;
 
     &:focus {
-      background: #475569;
-      border-color: #667eea;
+      background: #3A3A3C;
+    }
+    
+    &:hover:not(:focus) {
+      background: #3A3A3C;
     }
   }
 
-  .errorMessage {
-    background: #450a0a;
-    border-color: #7f1d1d;
-    color: #fca5a5;
-  }
+  .submitButton {
+    background: #FFFFFF;
+    color: #000000;
 
-  .authFooter {
-    border-color: #475569;
+    &:hover:not(:disabled) {
+      background: #E5E5E5;
+    }
   }
 }

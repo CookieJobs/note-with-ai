@@ -8,6 +8,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import styles from './auth.module.scss';
 
 export default function AuthPage() {
@@ -65,10 +66,6 @@ export default function AuthPage() {
         setError('用户名长度至少为2位');
         return false;
       }
-      if (!/^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$/.test(formData.username)) {
-        setError('用户名包含非法字符');
-        return false;
-      }
     }
     return true;
   };
@@ -100,13 +97,12 @@ export default function AuthPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // 后端统一响应: { success, message, data: { token, user } }
         const payload = data?.data ?? {};
         const token: string | undefined = payload.token;
         const user = payload.user;
 
         if (!token || !user) {
-          setError('登录响应无效，请重试');
+          setError('服务器响应无效');
           return;
         }
 
@@ -125,156 +121,128 @@ export default function AuthPage() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.leftPanel}>
-        <div className={styles.brandSection}>
-          <div className={styles.logo}>
-            <div className={styles.logoIcon}>📝</div>
-            <h1 className={styles.brandName}>NoteWithAI</h1>
-          </div>
-          <p className={styles.brandDescription}>
-            智能笔记助手，让思考更有条理
+      <div className={styles.authCard}>
+        <div className={styles.authHeader}>
+          <span className={styles.brandLogo}>📝</span>
+          <h2 className={styles.authTitle}>
+            {isLogin ? '登录 NoteWithAI' : '创建账号'}
+          </h2>
+          <p className={styles.authSubtitle}>
+            {isLogin ? '使用您的账号管理所有笔记' : '加入我们，开启智能笔记之旅'}
           </p>
-          <div className={styles.features}>
-            <div className={styles.feature}>
-              <span className={styles.featureIcon}>🤖</span>
-              <span>AI 智能对话</span>
-            </div>
-            <div className={styles.feature}>
-              <span className={styles.featureIcon}>📚</span>
-              <span>知识管理</span>
-            </div>
-            <div className={styles.feature}>
-              <span className={styles.featureIcon}>🔍</span>
-              <span>智能搜索</span>
-            </div>
-          </div>
         </div>
-      </div>
 
-      <div className={styles.rightPanel}>
-        <div className={styles.authCard}>
-          <div className={styles.authHeader}>
-            <h2 className={styles.authTitle}>
-              {isLogin ? '欢迎回来' : '创建账号'}
-            </h2>
-            <p className={styles.authSubtitle}>
-              {isLogin ? '登录您的账号以继续使用' : '注册新账号开始您的智能笔记之旅'}
-            </p>
-          </div>
-
-          <div className={styles.authTabs}>
-            <button
-              className={`${styles.tab} ${isLogin ? styles.active : ''}`}
-              onClick={() => setIsLogin(true)}
-              type="button"
-            >
-              登录
-            </button>
-            <button
-              className={`${styles.tab} ${!isLogin ? styles.active : ''}`}
-              onClick={() => setIsLogin(false)}
-              type="button"
-            >
-              注册
-            </button>
-          </div>
-
-          <form className={styles.authForm} onSubmit={handleSubmit}>
-            {!isLogin && (
-              <div className={styles.inputGroup}>
-                <label className={styles.label}>用户名</label>
-                <input
-                  type="text"
-                  name="username"
-                  className={styles.input}
-                  placeholder="请输入用户名"
-                  value={formData.username}
-                  onChange={handleChange}
-                  required
-                  minLength={2}
-                />
-              </div>
-            )}
-
+        <form className={styles.authForm} onSubmit={handleSubmit}>
+          {!isLogin && (
             <div className={styles.inputGroup}>
-              <label className={styles.label}>邮箱</label>
               <input
-                type="email"
-                name="email"
+                type="text"
+                name="username"
                 className={styles.input}
-                placeholder="请输入邮箱地址"
-                value={formData.email}
+                placeholder="用户名"
+                value={formData.username}
+                onChange={handleChange}
+                required
+                minLength={2}
+              />
+            </div>
+          )}
+
+          <div className={styles.inputGroup}>
+            <input
+              type="email"
+              name="email"
+              className={styles.input}
+              placeholder="邮箱或用户名"
+              value={formData.email}
+              onChange={handleChange}
+              required
+            />
+          </div>
+
+          <div className={styles.inputGroup}>
+            <div className={styles.passwordInput}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                className={styles.input}
+                placeholder="密码"
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
+              <button
+                type="button"
+                className={styles.passwordToggle}
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+          </div>
+
+          {!isLogin && (
+            <div className={styles.inputGroup}>
+              <input
+                type="password"
+                name="confirmPassword"
+                className={styles.input}
+                placeholder="确认密码"
+                value={formData.confirmPassword}
                 onChange={handleChange}
                 required
               />
             </div>
+          )}
 
-            <div className={styles.inputGroup}>
-              <label className={styles.label}>密码</label>
-              <div className={styles.passwordInput}>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  className={styles.input}
-                  placeholder="请输入密码"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                />
-                <button
-                  type="button"
-                  className={styles.passwordToggle}
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? '👁️' : '👁️‍🗨️'}
-                </button>
-              </div>
+          {error && (
+            <div className={styles.errorMessage}>
+              <AlertCircle size={16} />
+              {error}
             </div>
+          )}
 
-            {!isLogin && (
-              <div className={styles.inputGroup}>
-                <label className={styles.label}>确认密码</label>
-                <input
-                  type="password"
-                  name="confirmPassword"
-                  className={styles.input}
-                  placeholder="请再次输入密码"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  required
-                />
+          <button
+            type="submit"
+            className={styles.submitButton}
+            disabled={loading}
+          >
+            {loading ? (
+              <div className={styles.loadingSpinner}>
+                <div className={styles.spinner}></div>
               </div>
+            ) : (
+              '继续'
             )}
+          </button>
+        </form>
 
-            {error && (
-              <div className={styles.errorMessage}>
-                <span className={styles.errorIcon}>⚠️</span>
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className={styles.submitButton}
-              disabled={loading}
-            >
-              {loading ? (
-                <div className={styles.loadingSpinner}>
-                  <div className={styles.spinner}></div>
-                  {isLogin ? '登录中...' : '注册中...'}
-                </div>
-              ) : (
-                isLogin ? '登录' : '创建账号'
-              )}
-            </button>
-          </form>
-
-          {isLogin && (
-            <div className={styles.authFooter}>
+        <div className={styles.authFooter}>
+          {isLogin ? (
+            <>
               <a href="#" className={styles.forgotPassword}>
                 忘记密码？
               </a>
-            </div>
+              <span className={styles.footerText}>
+                还没有账号？ 
+                <button 
+                  className={styles.switchModeLink}
+                  onClick={() => setIsLogin(false)}
+                >
+                  立即注册
+                </button>
+              </span>
+            </>
+          ) : (
+            <span className={styles.footerText}>
+              已有账号？
+              <button 
+                className={styles.switchModeLink}
+                onClick={() => setIsLogin(true)}
+              >
+                直接登录
+              </button>
+            </span>
           )}
         </div>
       </div>
