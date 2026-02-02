@@ -16,7 +16,7 @@ interface CareIntro {
 
 interface Props {
   onInsert: (text: string) => void;
-  onSend: (text: string) => void;
+  onSend: (text: string, introData?: CareIntro) => void;
   auto?: boolean;
 }
 
@@ -83,35 +83,68 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
     fetchIntro();
   }, []);
 
-  if (loading) return (
-    <div className="flex items-center justify-center gap-2 p-3 text-sm text-muted-foreground bg-muted/30 rounded-xl animate-pulse">
-      <Loader2 className="h-4 w-4 animate-spin" />
-      <span>正在寻找话题灵感...</span>
+  if (error) return null;
+  
+  // 骨架屏加载状态（保持原有布局）
+  if (loading || !intro) return (
+    <div className="group relative flex items-start gap-3 p-4 rounded-2xl border border-border/60 bg-gradient-to-br from-background/80 via-background/60 to-muted/40 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.08)] cursor-wait select-none">
+      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-white/70 via-white/40 to-transparent dark:from-white/10 dark:via-white/0" />
+      <div className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/20 ring-1 ring-black/5 text-muted-foreground/30">
+        <Sparkles className="h-4 w-4 animate-pulse" />
+      </div>
+      
+      <div className="relative z-10 flex-1 min-w-0 flex flex-col gap-3">
+        {/* 标题占位 */}
+        <div className="flex flex-col gap-2 pt-1">
+          <div className="h-4 w-3/4 rounded-md bg-muted/50 skeletonShimmer" />
+          <div className="h-4 w-1/2 rounded-md bg-muted/50 skeletonShimmer" />
+        </div>
+
+        {/* 片段占位 */}
+        <div className="flex flex-col gap-2 mt-1">
+          <div className="h-3 w-16 rounded-md bg-muted/30 skeletonShimmer" />
+          <div className="h-16 w-full rounded-lg bg-muted/30 border border-black/5 skeletonShimmer" />
+        </div>
+        
+        {/* 底部链接占位 */}
+        <div className="flex items-center gap-2 mt-1">
+          <div className="h-5 w-24 rounded-full bg-muted/50 skeletonShimmer" />
+          <div className="h-3 w-32 rounded bg-muted/30 skeletonShimmer" />
+        </div>
+      </div>
+
+      <div className="relative z-10 h-8 w-8 shrink-0 flex items-center justify-center">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/50" />
+      </div>
     </div>
   );
-  
-  if (error) return null;
-  if (!intro) return null;
 
   return (
     <div 
-      className="group relative flex items-start gap-3 p-4 rounded-xl border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden"
-      onClick={() => onSend(intro.aiOpening)}
+      className="group relative flex items-start gap-3 p-4 rounded-2xl border border-border/60 bg-gradient-to-br from-background/80 via-background/60 to-muted/40 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_32px_rgba(0,0,0,0.12)] hover:border-primary/30 transition-all cursor-pointer"
+      onClick={() => onSend(intro.aiOpening, intro)}
     >
-      {/* 装饰边条 */}
-      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-purple-500 opacity-80" />
-      
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-        <Sparkles className="h-5 w-5" />
+      <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-white/70 via-white/40 to-transparent dark:from-white/10 dark:via-white/0" />
+      <div className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/20 text-primary shadow-[0_6px_18px_rgba(59,130,246,0.25)]">
+        <Sparkles className="h-4 w-4" />
       </div>
       
-      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-        <div className="text-sm font-medium text-foreground leading-relaxed">
+      <div className="relative z-10 flex-1 min-w-0 flex flex-col gap-2">
+        <div className="text-sm font-semibold text-foreground leading-relaxed tracking-tight">
           {intro.aiOpening}
         </div>
+
+        {intro.snippet && (
+          <div className="flex flex-col gap-1">
+            <div className="text-[11px] text-muted-foreground/80">笔记片段</div>
+            <div className="text-xs text-foreground/80 bg-muted/30 border border-border/60 rounded-lg px-3 py-2 leading-relaxed line-clamp-2">
+              {intro.snippet}
+            </div>
+          </div>
+        )}
         
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">点击开始对话</span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary/90">点击开始对话</span>
           {intro.noteTitle && intro.noteId && (
             <>
               <span className="text-muted-foreground/30">•</span>
@@ -134,7 +167,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+        className="relative z-10 h-8 w-8 shrink-0 rounded-full border border-border/50 bg-background/60 text-muted-foreground shadow-sm backdrop-blur hover:text-primary hover:border-primary/40 hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
         onClick={(e) => { 
           e.stopPropagation(); 
           fetchIntro(); 
@@ -147,4 +180,3 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
     </div>
   );
 }
-

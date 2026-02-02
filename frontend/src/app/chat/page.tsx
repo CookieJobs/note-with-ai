@@ -42,6 +42,13 @@ interface ChatSession {
   messages: Message[];
 }
 
+interface CareIntro {
+  noteId: string | null;
+  noteTitle: string;
+  snippet: string;
+  aiOpening: string;
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -252,7 +259,7 @@ export default function ChatPage() {
     setInput(text);
   };
 
-  const handleCareSend = async (text: string) => {
+  const handleCareSend = async (text: string, introData?: CareIntro) => {
     if (!user?.id) return;
     
     // 如果没有会话，先创建会话
@@ -263,17 +270,27 @@ export default function ChatPage() {
     }
     
     if (session) {
-      const prev = input;
-      setInput(text);
-      await sendMessageHook(
-        text,
-        session,
-        user.id,
-        updateSessionMessages,
-        saveSessionToDBHook,
-        setSessions
-      );
-      setInput(prev);
+      // 构造 AI 消息
+      const newMessage: Message = {
+        role: 'assistant',
+        content: text,
+        relatedNotes: introData?.noteId ? [{
+          id: introData.noteId,
+          title: introData.noteTitle,
+          content: introData.snippet,
+          similarity: 1.0,
+          matchType: 'care_source',
+          createdAt: new Date().toISOString()
+        }] : undefined
+      };
+
+      const newMessages = [...session.messages, newMessage];
+      
+      // 更新本地状态
+      updateSessionMessages(session.id, newMessages, user.id);
+      
+      // 保存到数据库
+      await saveSessionToDBHook(user.id, { ...session, messages: newMessages });
     }
   };
 

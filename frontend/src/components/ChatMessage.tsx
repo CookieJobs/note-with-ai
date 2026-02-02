@@ -62,7 +62,9 @@ export default function ChatMessage({ role, content, relatedNotes, searchingNote
       {!isUser && Array.isArray(relatedNotes) && relatedNotes.length > 0 && (
         <div className={styles.relatedNotesContainer}>
           <div className={styles.relatedNotesHeader}>
-            📝 相关笔记 ({relatedNotes.length})
+            {relatedNotes.some(n => n.matchType === 'care_source') 
+              ? '✨ 话题来源' 
+              : `📝 相关笔记 (${relatedNotes.length})`}
           </div>
           <div className={styles.relatedNotesList}>
             {relatedNotes.map((note) => {
@@ -79,9 +81,11 @@ export default function ChatMessage({ role, content, relatedNotes, searchingNote
                 <>
                   <div className={styles.noteHeader}>
                     <span className={styles.noteTitle}>{safeTitle}</span>
-                    <span className={styles.noteSimilarity}>
-                      {similarity}% 相关
-                    </span>
+                    {note.matchType !== 'care_source' && (
+                      <span className={styles.noteSimilarity}>
+                        {similarity}% 相关
+                      </span>
+                    )}
                   </div>
                   <div className={styles.noteContent}>{preview}</div>
                   <div className={styles.noteFooter}>
