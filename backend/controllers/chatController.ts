@@ -13,7 +13,7 @@ import { ResponseHandler, ErrorHandler } from '../utils/errorHandler';
 export const saveChatSession = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = await UserValidator.authenticateUser(req);
-    const { sessionId, title, messages } = req.body;
+    const { sessionId, title, messages, relatedNotes } = req.body;
     const userId = user._id.toString();
 
     let session;
@@ -21,9 +21,14 @@ export const saveChatSession = async (req: Request, res: Response): Promise<void
     if (sessionId) {
       // 更新已有对话（确保只能更新自己的对话）
       await ResourceValidator.validateOwnership(Chat, sessionId, userId, '对话');
+      const updateData: any = { title, messages };
+      if (relatedNotes) {
+        updateData.relatedNotes = relatedNotes;
+      }
+      
       session = await Chat.findOneAndUpdate(
         { _id: sessionId, userId },
-        { title, messages },
+        updateData,
         { new: true }
       );
       if (!session) {
@@ -31,7 +36,7 @@ export const saveChatSession = async (req: Request, res: Response): Promise<void
       }
     } else {
       // 新建对话
-      session = new Chat({ userId, title, messages });
+      session = new Chat({ userId, title, messages, relatedNotes: relatedNotes || [] });
       await session.save();
     }
 

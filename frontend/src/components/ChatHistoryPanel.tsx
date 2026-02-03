@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, MessageSquare, MessageSquarePlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -34,25 +33,21 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
   return (
     <aside className="fixed top-[80px] left-0 bottom-0 w-[320px] flex flex-col border-r border-border/40 bg-background/95 backdrop-blur-xl z-20 transition-all duration-300 shadow-[2px_0_8px_rgba(0,0,0,0.02)]">
       {/* Header Area */}
-      <div className="flex items-center justify-between px-4 h-14 shrink-0">
-        <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground/80 tracking-tight">
-          <MessageSquare className="h-4 w-4 opacity-70" />
-          历史记录
-        </span>
+      <div className="flex flex-col gap-4 px-4 py-4 shrink-0">
         <Button 
           onClick={onNewSession} 
-          variant="ghost" 
-          size="icon" 
-          className="h-8 w-8 rounded-md hover:bg-primary/10 hover:text-primary text-muted-foreground transition-all duration-200"
-          title="新建对话"
+          variant="ghost"
+          className="w-full justify-start gap-2 h-10 px-2 hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-all duration-200"
         >
-          <Plus className="h-4 w-4" />
-          <span className="sr-only">新建对话</span>
+          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary">
+            <Plus className="h-4 w-4" />
+          </div>
+          <span className="font-medium">开启新对话</span>
         </Button>
-      </div>
-      
-      <div className="px-4 pb-2">
-        <Separator className="bg-border/40" />
+        
+        <div className="px-1 text-xs font-medium text-muted-foreground/60 tracking-wider uppercase">
+          你的聊天
+        </div>
       </div>
       
       {/* List Area */}
@@ -74,21 +69,13 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
                 key={session.id}
                 onClick={() => onSessionSelect(session.id)}
                 className={cn(
-                  "group relative flex items-center justify-between gap-3 px-3 py-2.5 text-sm rounded-md cursor-pointer transition-all duration-200 border border-transparent select-none",
+                  "group relative flex items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium rounded-md cursor-pointer transition-all duration-200 border border-transparent select-none text-muted-foreground hover:text-foreground",
                   session.id === currentSessionId 
-                    ? "bg-primary/10 text-primary font-medium border-primary/5 shadow-sm" 
-                    : "text-muted-foreground/80 hover:bg-muted/60 hover:text-foreground hover:shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+                    ? "bg-primary/10" 
+                    : "hover:bg-muted/60"
                 )}
               >
-                {/* Active Indicator Line (Optional style preference) */}
-                {session.id === currentSessionId && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] bg-primary rounded-r-full opacity-80" />
-                )}
-
-                <span className={cn(
-                  "truncate flex-1 transition-colors",
-                  session.id === currentSessionId ? "pl-1.5" : ""
-                )}>
+                <span className="truncate flex-1 transition-colors">
                   {session.title || "新对话"}
                 </span>
                 
@@ -98,8 +85,8 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
                   className={cn(
                     "h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-200 focus:opacity-100",
                     session.id === currentSessionId 
-                      ? "hover:bg-primary/20 text-primary hover:text-primary" 
-                      : "hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      ? "hover:bg-primary/20 hover:text-primary" 
+                      : "hover:bg-destructive/10 hover:text-destructive"
                   )}
                   onClick={(e) => {
                     e.stopPropagation();

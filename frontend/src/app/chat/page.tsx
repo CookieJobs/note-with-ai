@@ -8,6 +8,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import styles from './chat.module.scss';
 import { isAuthenticated, getUser, authFetch } from '../../utils/auth';
 import TopNavigation from '../../components/TopNavigation';
@@ -18,6 +19,7 @@ import DeleteConfirmModal from '../../components/DeleteConfirmModal';
 import { useChatSessions } from '../../hooks/useChatSessions';
 import { useChatMessages } from '../../hooks/useChatMessages';
 import CareAssistantPanel from '../../components/CareAssistantPanel';
+import ChatRelatedNotesPanel from '../../components/ChatRelatedNotesPanel';
 
 interface RelatedNote {
   id: string;
@@ -40,6 +42,7 @@ interface ChatSession {
   _id?: string; // MongoDB 返回的 _id 字段
   title: string;
   messages: Message[];
+  relatedNotes?: any[];
 }
 
 interface CareIntro {
@@ -78,7 +81,6 @@ export default function ChatPage() {
     error,
     setError,
     sendMessage: sendMessageHook,
-    searchRelatedNotesAsync: searchRelatedNotesAsyncHook
   } = useChatMessages();
 
   // 确保只在客户端渲染
@@ -155,6 +157,14 @@ export default function ChatPage() {
   };
 
   const startNewSession = async () => {
+    // 检查当前会话是否已经是新对话（无消息）
+    const isCurrentSessionEmpty = currentSession && (!currentSession.messages || currentSession.messages.length === 0);
+    
+    if (isCurrentSessionEmpty) {
+      toast('你已经在新对话中了～');
+      return;
+    }
+
     if (user?.id) {
       await startNewSessionHook(user.id);
     }
@@ -327,6 +337,11 @@ export default function ChatPage() {
             />
           ) : null
         }
+      />
+
+      <ChatRelatedNotesPanel 
+        relatedNotes={currentSession?.relatedNotes || []} 
+        className={styles.rightPanel}
       />
 
       <DeleteConfirmModal

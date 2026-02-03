@@ -94,4 +94,44 @@ router.post('/batch-related-notes', authenticateToken, asyncHandler(async (req, 
   return ResponseHandler.success(res, responseData);
 }));
 
+/**
+ * 基于对话上下文获取相关笔记
+ * POST /api/chat/context-related-notes
+ */
+router.post('/context-related-notes', authenticateToken, asyncHandler(async (req, res): Promise<void> => {
+  const user = await UserValidator.authenticateUser(req);
+  const { messages, threshold = 0.2, limit = 5 } = req.body;
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw ErrorHandler.createValidationError('消息列表不能为空');
+  }
+
+  // 构建上下文：取最后 6 条消息
+  const lastMessages = messages.slice(-6);
+  const context = lastMessages.map((m: any) => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}`).join('\n');
+
+  // 查找相关笔记
+  const relatedNotes = await findRelatedNotes(
+    context,
+    user._id.toString(),
+    threshold,
+    limit
+  );
+
+  // 格式化返回数据，确保符合前端 RelatedNote 接口
+  const formattedNotes = relatedNotes.map(item => ({
+    noteId: item.note._id,
+    title: item.note.title,
+    content: item.note.content,
+    score: item.score,
+    matchType: item.matchType,
+    createdAt: item.note.createdAt
+  }));
+
+  return ResponseHandler.success(res, {
+    relatedNotes: formattedNotes,
+    count: formattedNotes.length
+  });
+}));
+
 export default router;

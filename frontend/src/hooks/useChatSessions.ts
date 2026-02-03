@@ -18,6 +18,16 @@ interface RelatedNote {
   createdAt: string;
 }
 
+interface ChatRelatedNote {
+  noteId: string;
+  title?: string;
+  content: string;
+  score: number;
+  matchType?: string;
+  createdAt: string;
+  reason?: string;
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -30,6 +40,7 @@ interface ChatSession {
   _id?: string;
   title: string;
   messages: Message[];
+  relatedNotes?: ChatRelatedNote[];
 }
 
 interface UseChatSessionsReturn {
@@ -188,6 +199,7 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
           sessionId: isLocalId ? undefined : session.id, // 如果是本地ID，则不传给服务器
           title: session.title,
           messages: session.messages,
+          relatedNotes: session.relatedNotes,
         }),
       });
 

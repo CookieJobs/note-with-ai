@@ -18,10 +18,20 @@ interface RelatedNote {
   createdAt: string;
 }
 
+interface ChatRelatedNote {
+  noteId: string;
+  title?: string;
+  content: string;
+  score: number;
+  matchType?: string;
+  createdAt: string;
+  reason?: string;
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
-  relatedNotes?: RelatedNote[];
+  relatedNotes?: RelatedNote[]; // Legacy support, or remove if unused
   searchingNotes?: boolean;
 }
 
@@ -30,6 +40,7 @@ interface ChatSession {
   _id?: string;
   title: string;
   messages: Message[];
+  relatedNotes?: ChatRelatedNote[];
 }
 
 interface UseChatMessagesReturn {
@@ -44,14 +55,12 @@ interface UseChatMessagesReturn {
     saveSessionToDB: (userId: string, session: ChatSession) => Promise<string>,
     setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>
   ) => Promise<void>;
-  searchRelatedNotesAsync: (
-    userMessage: string,
-    aiReply: string,
+  updateContextRelatedNotes: (
     sessionId: string,
-    messageIndex: number,
+    messages: Message[],
     userId: string,
     setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>,
-    sessions: ChatSession[]
+    saveSessionToDB: (userId: string, session: ChatSession) => Promise<string>
   ) => Promise<void>;
 }
 
@@ -59,59 +68,35 @@ export const useChatMessages = (): UseChatMessagesReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const searchRelatedNotesAsync = async (
-    userMessage: string,
-    aiReply: string,
+  const updateContextRelatedNotes = async (
     sessionId: string,
-    messageIndex: number,
+    messages: Message[],
     userId: string,
     setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>,
-    sessions: ChatSession[]
+    saveSessionToDB: (userId: string, session: ChatSession) => Promise<string>
   ) => {
     try {
-      console.log('🔍 开始异步搜索相关笔记...');
+      console.log('🔍 开始异步搜索会话相关笔记...');
       
-      // 先更新消息状态，显示搜索中的提示
-      setSessions(prevSessions => {
-        return prevSessions.map(session => {
-          if (session.id === sessionId) {
-            const updatedMessages = [...session.messages];
-            if (updatedMessages[messageIndex]) {
-              updatedMessages[messageIndex] = {
-                ...updatedMessages[messageIndex],
-                searchingNotes: true
-              };
-            }
-            return { ...session, messages: updatedMessages };
-          }
-          return session;
-        });
-      });
-
-      const res = await authFetch('/api/chat/search-related-notes', {
+      const res = await authFetch('/api/chat/context-related-notes', {
         method: 'POST',
-        body: JSON.stringify({ userMessage, aiReply }),
+        body: JSON.stringify({ messages }),
       });
 
       if (res.ok) {
         const data = await res.json();
-        const relatedNotes = (data && data.data && Array.isArray(data.data.relatedNotes) ? data.data.relatedNotes : (data.relatedNotes || []));
+        const relatedNotes: ChatRelatedNote[] = (data && data.data && Array.isArray(data.data.relatedNotes) ? data.data.relatedNotes : (data.relatedNotes || []));
         
-        console.log('📝 找到相关笔记:', relatedNotes.length, '条');
+        console.log('📝 找到会话相关笔记:', relatedNotes.length, '条');
 
-        // 更新消息，添加相关笔记，并同步更新本地存储
+        let updatedSession: ChatSession | undefined;
+
+        // 更新会话状态
         setSessions(prevSessions => {
           const updatedSessions = prevSessions.map(session => {
             if (session.id === sessionId) {
-              const updatedMessages = [...session.messages];
-              if (updatedMessages[messageIndex]) {
-                updatedMessages[messageIndex] = {
-                  ...updatedMessages[messageIndex],
-                  relatedNotes: relatedNotes,
-                  searchingNotes: false
-                };
-              }
-              return { ...session, messages: updatedMessages };
+              updatedSession = { ...session, relatedNotes };
+              return updatedSession;
             }
             return session;
           });
@@ -123,43 +108,17 @@ export const useChatMessages = (): UseChatMessagesReturn => {
 
           return updatedSessions;
         });
+
+        // 持久化到数据库
+        if (updatedSession) {
+          console.log('💾 保存相关笔记到数据库...');
+          await saveSessionToDB(userId, updatedSession);
+        }
       } else {
-        console.error('搜索相关笔记失败');
-        // 移除搜索中状态
-        setSessions(prevSessions => {
-          return prevSessions.map(session => {
-            if (session.id === sessionId) {
-              const updatedMessages = [...session.messages];
-              if (updatedMessages[messageIndex]) {
-                updatedMessages[messageIndex] = {
-                  ...updatedMessages[messageIndex],
-                  searchingNotes: false
-                };
-              }
-              return { ...session, messages: updatedMessages };
-            }
-            return session;
-          });
-        });
+        console.error('搜索会话相关笔记失败');
       }
     } catch (error) {
-      console.error('搜索相关笔记出错:', error);
-      // 移除搜索中状态
-      setSessions(prevSessions => {
-        return prevSessions.map(session => {
-          if (session.id === sessionId) {
-            const updatedMessages = [...session.messages];
-            if (updatedMessages[messageIndex]) {
-              updatedMessages[messageIndex] = {
-                ...updatedMessages[messageIndex],
-                searchingNotes: false
-              };
-            }
-            return { ...session, messages: updatedMessages };
-          }
-          return session;
-        });
-      });
+      console.error('搜索会话相关笔记出错:', error);
     }
   };
 
@@ -226,15 +185,13 @@ export const useChatMessages = (): UseChatMessagesReturn => {
       // 更新本地状态
       updateSessionMessages(currentSession.id, finalMessages, userId);
 
-      // 异步搜索相关笔记
-      searchRelatedNotesAsync(
-        userMessage.content, 
-        assistantMessage.content, 
-        currentSession.id, 
-        finalMessages.length - 1,
+      // 异步搜索会话相关笔记
+      updateContextRelatedNotes(
+        currentSession.id,
+        finalMessages,
         userId,
         setSessions,
-        [] // 这里需要传入当前的sessions，但由于闭包问题，我们在调用时会处理
+        saveSessionToDB
       );
 
       // 自动摘要并更新会话标题
@@ -266,20 +223,34 @@ export const useChatMessages = (): UseChatMessagesReturn => {
             });
             
             // 保存到数据库
-            const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages, title });
+            // 注意：这里可能会与 updateContextRelatedNotes 的保存产生竞争，但通常摘要较快，或者两者先后保存都行
+            // 关键修正：保存时移除 relatedNotes，防止用旧的/空的 relatedNotes 覆盖掉 updateContextRelatedNotes 可能已经写入的新数据
+            const sessionToSave = { ...currentSession, messages: finalMessages, title };
+            delete sessionToSave.relatedNotes;
+            
+            const newSessionId = await saveSessionToDB(userId, sessionToSave);
             console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
           } else {
             // 摘要失败也要保存消息
-            const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages });
+            const sessionToSave = { ...currentSession, messages: finalMessages };
+            delete sessionToSave.relatedNotes;
+            
+            const newSessionId = await saveSessionToDB(userId, sessionToSave);
             console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
           }
         } else {
           // 内容为空，跳过标题摘要但依然保存消息
-          const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages });
+          const sessionToSave = { ...currentSession, messages: finalMessages };
+          delete sessionToSave.relatedNotes;
+          
+          const newSessionId = await saveSessionToDB(userId, sessionToSave);
           console.log('🚦 sendMessage（跳过摘要）保存会话后返回的ID:', newSessionId);
         }
       } catch (e) {
-        const newSessionId = await saveSessionToDB(userId, { ...currentSession, messages: finalMessages });
+        const sessionToSave = { ...currentSession, messages: finalMessages };
+        delete sessionToSave.relatedNotes;
+        
+        const newSessionId = await saveSessionToDB(userId, sessionToSave);
         console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
       }
     } catch (err: any) {
@@ -296,6 +267,6 @@ export const useChatMessages = (): UseChatMessagesReturn => {
     error,
     setError,
     sendMessage,
-    searchRelatedNotesAsync,
+    updateContextRelatedNotes,
   };
 };

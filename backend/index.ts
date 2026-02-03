@@ -7,6 +7,7 @@ import cors from 'cors';
 
 import noteRoutes from './routes/notes';
 import chatRoutes from './routes/chat';
+import chatRelatedNotesRoutes from './routes/chatRelatedNotes';
 import recommendRoutes from './routes/recommend';
 import authRoutes from './routes/auth';
 import healthRoutes from './routes/health';
@@ -38,6 +39,7 @@ app.get('/api/health', (_, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/chat', chatRelatedNotesRoutes);
 app.use('/api/recommend', recommendRoutes);
 app.use('/api/cache', cacheRoutes);
 app.use('/api/performance', performanceRoutes);
