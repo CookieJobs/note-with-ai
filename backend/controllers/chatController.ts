@@ -23,6 +23,7 @@ export const saveChatSession = async (req: Request, res: Response): Promise<void
       await ResourceValidator.validateOwnership(Chat, sessionId, userId, '对话');
       const updateData: any = { title, messages };
       if (relatedNotes) {
+        console.log(`💾 saveChatSession: 接收到 ${relatedNotes.length} 条相关笔记`);
         updateData.relatedNotes = relatedNotes;
       }
       
@@ -31,7 +32,11 @@ export const saveChatSession = async (req: Request, res: Response): Promise<void
         updateData,
         { new: true }
       );
-      if (!session) {
+      
+      if (session) {
+        console.log(`✅ saveChatSession: 会话 ${sessionId} 更新成功，当前 relatedNotes 数量: ${session.relatedNotes?.length || 0}`);
+      } else {
+        console.log(`❌ saveChatSession: 会话 ${sessionId} 更新失败 (未找到或无权限)`);
         throw ErrorHandler.createNotFoundError('对话不存在');
       }
     } else {
@@ -59,6 +64,9 @@ export const getChatSessions = async (req: Request, res: Response): Promise<void
       id: s._id.toString(), // 转换为字符串
       _id: s._id.toString(), // 保持 _id 字段但转为字符串
     }));
+
+    const sessionsWithNotes = formatted.filter(s => s.relatedNotes && s.relatedNotes.length > 0).length;
+    console.log(`🔍 getChatSessions: 返回 ${formatted.length} 条会话，其中 ${sessionsWithNotes} 条包含相关笔记`);
     
     ResponseHandler.success(res, { sessions: formatted });
   } catch (err) {

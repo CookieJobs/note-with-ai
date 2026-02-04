@@ -62,6 +62,18 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
 
   const currentSession = sessions.find((s) => s.id === currentSessionId);
 
+  // 自动切换当前会话：当列表更新且当前没有选中会话，或当前会话已不存在时
+  useEffect(() => {
+    if (sessions.length > 0) {
+      const exists = sessions.some(s => s.id === currentSessionId);
+      if (!currentSessionId || !exists) {
+        const firstId = sessions[0].id || (sessions[0] as any)._id;
+        console.log('🔄 [useChatSessions] 自动选中第一个会话:', firstId);
+        setCurrentSessionId(firstId);
+      }
+    }
+  }, [sessions, currentSessionId]);
+
   const generateUUID = () => {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       const r = Math.random() * 16 | 0;
@@ -75,70 +87,59 @@ export const useChatSessions = (userId?: string): UseChatSessionsReturn => {
       const res = await authFetch('/api/chat/sessions');
       const response = await res.json();
       console.log('🟣 loadSessionsFromDB 服务端响应:', response);
-      // 后端返回格式: {success: true, message: string, data: {sessions: ChatSession[]}}
+      
       const serverSessions: ChatSession[] = response.success && response.data && response.data.sessions ? response.data.sessions : [];
-      console.log('🟣 loadSessionsFromDB 提取的会话数据:', serverSessions);
-      if (serverSessions && serverSessions.length > 0) {
-        // 服务器数据优先，过滤掉本地重复会话
-        const serverSessionIds = new Set(serverSessions.map((s: ChatSession) => s.id || (s as any)._id));
-        // 过滤掉本地会话中与服务器重复的会话，并且过滤掉本地无效会话（如空消息会话）
-        const filteredLocal = localSessions.filter(s => !serverSessionIds.has(s.id) && !(s as any)._id && s.messages.length > 0);
-        const combined = [...serverSessions, ...filteredLocal];
-        // 去重合并后的会话，防止重复
-        const uniqueSessionsMap = new Map<string, ChatSession>();
-        combined.forEach(session => {
-          const id = session.id || (session as any)._id;
-          if (!uniqueSessionsMap.has(id)) {
-            uniqueSessionsMap.set(id, session);
+      
+      setSessions(prevSessions => {
+        // 1. 建立一个以 ID 为键的 Map，用于高效合并
+        const mergedSessionsMap = new Map<string, ChatSession>();
+
+        // 2. 先填充服务器数据
+        serverSessions.forEach(s => {
+          const id = s.id || (s as any)._id;
+          mergedSessionsMap.set(id, s);
+        });
+
+        // 3. 合并本地数据 (localSessions 来自 localStorage，prevSessions 来自当前运行状态)
+        // 优先信任当前正在运行的状态 prevSessions，其次是 localStorage
+        const localSource = prevSessions.length > 0 ? prevSessions : localSessions;
+        
+        localSource.forEach(local => {
+          const id = local.id || (local as any)._id;
+          const server = mergedSessionsMap.get(id);
+          
+          if (server) {
+            // 如果两端都有，执行智能合并
+            // 策略：优先保留本地的消息和相关笔记，除非服务器的版本更新（通过消息长度或笔记长度判断）
+            const hasLocalNotes = local.relatedNotes && local.relatedNotes.length > 0;
+            const hasServerNotes = server.relatedNotes && server.relatedNotes.length > 0;
+            
+            // 如果服务器没笔记但本地有，或者本地消息更长（说明有尚未同步的回复），则保留本地部分属性
+            const mergedNotes = hasServerNotes ? server.relatedNotes : (hasLocalNotes ? local.relatedNotes : server.relatedNotes);
+            const mergedMessages = server.messages.length >= local.messages.length ? server.messages : local.messages;
+
+            mergedSessionsMap.set(id, {
+              ...server,
+              messages: mergedMessages,
+              relatedNotes: mergedNotes
+            });
+          } else if (id.startsWith('local_')) {
+            // 只有本地有的新会话，保留
+            mergedSessionsMap.set(id, local);
           }
         });
-        const uniqueSessions = Array.from(uniqueSessionsMap.values());
-        console.log('🟣 loadSessionsFromDB 合并后的 uniqueSessions:', uniqueSessions);
+
+        const finalSessions = Array.from(mergedSessionsMap.values());
         
-        // 保存当前会话ID
-        const currentId = currentSessionId;
-        console.log('🟣 loadSessionsFromDB 更新前的 currentSessionId:', currentId);
+        // 4. 更新当前选中会话的 ID
+        // 注意：这里由于在 setSessions 内部，我们不能直接调用 setCurrentSessionId
+        // 我们会在 useEffect 中处理 currentSessionId 的自动切换
         
-        // 如果当前正在创建新会话，则不更新会话列表
-        if (currentId && currentId.startsWith('local_')) {
-          console.log('🟣 loadSessionsFromDB 检测到正在创建新会话，跳过更新会话列表');
-          return;
-        }
+        // 5. 持久化到本地存储
+        localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(finalSessions));
         
-        // 保留当前会话的消息内容（使用现有 state sessions，而不是服务端列表）
-        let currentSessionMessages: Message[] = [];
-        if (currentId) {
-          const existingCurrent = sessions.find(s => (s.id === currentId) || ((s as any)._id === currentId));
-          if (existingCurrent) {
-            currentSessionMessages = existingCurrent.messages;
-          }
-        }
-        
-        // 更新会话列表，但保留当前会话的消息内容
-        setSessions(prevSessions => {
-          // 如果有当前会话，确保保留其消息内容
-          const updatedSessions = uniqueSessions.map(s => {
-            if ((s.id === currentId) || ((s as any)._id === currentId)) {
-              return { ...s, messages: currentSessionMessages.length > 0 ? currentSessionMessages : s.messages } as ChatSession;
-            }
-            return s as ChatSession;
-          });
-          
-          // 更新本地存储
-          localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updatedSessions));
-          
-          return updatedSessions;
-        });
-        
-        // 如果当前没有选中的会话，或者当前选中的会话不在新的会话列表中，才设置为第一个会话
-        if (!currentId || !uniqueSessions.some(s => ((s.id === currentId) || ((s as any)._id === currentId)))) {
-          const newCurrentId = (uniqueSessions[0]?.id || (uniqueSessions[0] as any)?._id || '');
-          console.log('🟣 loadSessionsFromDB 设置新的 currentSessionId:', newCurrentId);
-          setCurrentSessionId(newCurrentId);
-        } else {
-          console.log('🟣 loadSessionsFromDB 保持当前 currentSessionId:', currentId);
-        }
-      }
+        return finalSessions;
+      });
     } catch (err) {
       console.error('❌ 获取聊天记录失败:', err);
     }

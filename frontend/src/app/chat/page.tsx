@@ -116,13 +116,9 @@ export default function ChatPage() {
     const parsed: ChatSession[] = local ? JSON.parse(local) : [];
     console.log('🟠 useEffect[user] 本地 parsed:', parsed);
     
-    // 只有在没有会话或当前没有选中会话时，才设置默认选中的会话
-    if (sessions.length === 0) {
+    // 只有在没有会话时，才设置本地存储的会话
+    if (sessions.length === 0 && parsed.length > 0) {
       setSessions(parsed);
-      if (!currentSessionId && parsed.length > 0) {
-        console.log('🟠 设置默认选中的会话:', parsed[0]?.id);
-        setCurrentSessionId(parsed[0]?.id || '');
-      }
     }
 
     // 如果当前正在创建新会话，则不加载服务器会话
@@ -296,11 +292,31 @@ export default function ChatPage() {
 
       const newMessages = [...session.messages, newMessage];
       
+      // 构造会话级相关笔记 (如果 introData 包含笔记)
+      const newRelatedNotes = introData?.noteId ? [{
+        noteId: introData.noteId,
+        title: introData.noteTitle,
+        content: introData.snippet,
+        score: 1.0,
+        matchType: 'care_source',
+        createdAt: new Date().toISOString()
+      }] : [];
+
       // 更新本地状态
-      updateSessionMessages(session.id, newMessages, user.id);
+      setSessions(prev => prev.map(s => 
+        s.id === session!.id ? { 
+          ...s, 
+          messages: newMessages,
+          relatedNotes: [...(s.relatedNotes || []), ...newRelatedNotes]
+        } : s
+      ));
       
       // 保存到数据库
-      await saveSessionToDBHook(user.id, { ...session, messages: newMessages });
+      await saveSessionToDBHook(user.id, { 
+        ...session, 
+        messages: newMessages,
+        relatedNotes: [...(session.relatedNotes || []), ...newRelatedNotes]
+      });
     }
   };
 
