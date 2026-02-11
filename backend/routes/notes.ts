@@ -455,25 +455,26 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
         const freshUpdatedTime = new Date(freshNote.updatedAt).getTime();
         const originalUpdatedTime = new Date(note.updatedAt).getTime();
         
-        // 对于后台 autoSummarize，如果发现并发修改，直接放弃本次更新即可（保留用户的新内容）
+        // 即使发生了并发修改（freshUpdatedTime !== originalUpdatedTime），
+        // 如果用户还没手动改过标题（仍是默认生成的或为空），我们也应用 AI 的结果。
+        let shouldApplyAISummary = true;
         if (freshUpdatedTime !== originalUpdatedTime) {
-            console.warn(`autoSummarize 期间发生并发修改，放弃更新元数据。ID: ${id}`);
-            // 这里不报错，直接返回当前最新 note，让前端同步状态
-            ResponseHandler.success(res, { note: freshNote }, '检测到并发修改，跳过自动摘要更新');
+          const isTitleDefault = !freshNote.title || 
+                                freshNote.title === '未命名笔记' || 
+                                freshNote.title === (freshNote.contentText || '').split('\n')[0].trim().slice(0, 100);
+          const isKeywordsEmpty = !freshNote.keywords || freshNote.keywords.length === 0;
+
+          // 如果标题已经被用户改了，且不是默认标题，则不覆盖标题
+          // 如果关键词已经被用户改了，则不覆盖关键词
+          if (!isTitleDefault && !isKeywordsEmpty) {
+            console.warn(`autoSummarize 期间发生实质性并发修改（用户已修改标题/关键词），放弃更新。ID: ${id}`);
+            ResponseHandler.success(res, { note: freshNote }, '检测到并发修改且用户已编辑，跳过自动摘要更新');
             return;
+          }
+          console.log(`autoSummarize 期间发生并发修改，但标题/关键词仍为默认，尝试合并更新。ID: ${id}`);
         }
 
-        // 使用最新的 note 对象来保存
-        if (summary?.title) freshNote.title = summary.title;
-        if (Array.isArray(summary?.keywords)) freshNote.keywords = summary.keywords;
-        if (typeof summary?.summary === 'string') freshNote.summary = summary.summary;
-        
-        // 确保我们也应用了刚才用户提交的变更（如果刚才的 save 成功了，这里其实已经有了，
-        // 但为了保险起见，或者如果我们在上面没有先 save，这里应该合并）
-        // 在当前的逻辑流中，我们上面还没有 save。
-        // 所以我们需要把用户提交的变更也应用到 freshNote 上
-        
-        // 重新应用用户提交的变更到 freshNote (因为 freshNote 是从 DB 读的，可能还没包含本次请求的变更)
+        // 重新应用用户本次请求提交的变更到 freshNote (因为 freshNote 是从 DB 读的，可能还没包含本次请求的变更)
         if (title !== undefined) freshNote.title = title.trim();
         if (contentText !== undefined) {
           freshNote.contentText = contentText;
@@ -492,11 +493,18 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
         (freshNote as any).embedding = [];
         (freshNote as any).recommendCache = null;
         
-        // 如果 AI 生成了标题且用户没有显式提交标题，则使用 AI 的
-        if (summary?.title && title === undefined) freshNote.title = summary.title;
-        // 如果 AI 生成了关键词且用户没有显式提交关键词，则使用 AI 的
-        if (Array.isArray(summary?.keywords) && keywords === undefined) freshNote.keywords = summary.keywords;
-        // summary 始终由 AI 生成（用户不编辑），直接覆盖
+        // 应用 AI 生成的结果（如果用户没有显式提交且当前仍为默认）
+        const isTitleDefault = !freshNote.title || 
+                              freshNote.title === '未命名笔记' || 
+                              freshNote.title === (freshNote.contentText || '').split('\n')[0].trim().slice(0, 100);
+        
+        if (summary?.title && title === undefined && isTitleDefault) {
+          freshNote.title = summary.title;
+        }
+        if (Array.isArray(summary?.keywords) && keywords === undefined && (!freshNote.keywords || freshNote.keywords.length === 0)) {
+          freshNote.keywords = summary.keywords;
+        }
+        // summary 始终由 AI 生成（用户不直接在 Patch 接口编辑它），直接覆盖
         if (typeof summary?.summary === 'string') freshNote.summary = summary.summary;
 
         await freshNote.save();
@@ -508,9 +516,6 @@ router.patch('/:id', authenticateToken, asyncHandler(async (req: any, res: any) 
           text: (freshNote as any).contentText || freshNote.content || '',
         });
         
-        // 更新响应中的 note 对象，以便返回最新数据
-        // 注意：这里我们替换了原本的 note 引用
-        // 这是一个局部变量的重新赋值，不影响外面的逻辑，但为了响应一致性，我们手动构造返回数据
         ResponseHandler.success(res, { note: freshNote }, '笔记更新成功（含自动摘要）');
         return;
       }

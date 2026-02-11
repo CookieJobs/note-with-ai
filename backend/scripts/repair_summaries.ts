@@ -78,6 +78,11 @@ const runRepair = async () => {
           console.log(`🤖 正在生成摘要: ${note._id} (长度: ${content.length})`);
           
           const result = await summarizeNote(content);
+
+          if (!result) {
+            console.log(`⚠️ 笔记 ${note._id} 摘要生成失败，跳过`);
+            continue;
+          }
           
           // 更新笔记
           if (result.title || result.keywords.length > 0) {

@@ -14,7 +14,11 @@ const path = require('path');
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY;
-const QWEN_EMBEDDING_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings';
+const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'qwen3-vl-embedding';
+
+function isMultimodalModel(modelName) {
+  return modelName.includes('-vl-') || modelName.includes('vision');
+}
 
 async function generateQwenEmbedding(text) {
   try {
@@ -22,14 +26,32 @@ async function generateQwenEmbedding(text) {
       throw new Error('DASHSCOPE_API_KEY 环境变量未设置');
     }
 
-    const response = await axios.post(
-      QWEN_EMBEDDING_URL,
-      {
-        model: 'text-embedding-v4',
+    const isMultimodal = isMultimodalModel(EMBEDDING_MODEL);
+    const url = isMultimodal 
+      ? 'https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding'
+      : 'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings';
+
+    let requestBody;
+    if (isMultimodal) {
+      requestBody = {
+        model: EMBEDDING_MODEL,
+        input: {
+          contents: [{ text }]
+        },
+        parameters: { dimension: 1024 }
+      };
+    } else {
+      requestBody = {
+        model: EMBEDDING_MODEL,
         input: text,
         dimensions: 1024,
         encoding_format: 'float'
-      },
+      };
+    }
+
+    const response = await axios.post(
+      url,
+      requestBody,
       {
         headers: {
           'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
@@ -39,9 +61,14 @@ async function generateQwenEmbedding(text) {
       }
     );
 
-    return response.data.data[0].embedding;
+    if (isMultimodal) {
+      return response.data.output.embeddings[0].embedding;
+    } else {
+      return response.data.data[0].embedding;
+    }
   } catch (error) {
-    console.error('❌ Qwen Embedding 生成失败:', error.message || error);
+    const errorMsg = error.response?.data?.message || error.message || error;
+    console.error(`❌ Qwen Embedding 生成失败 (${EMBEDDING_MODEL}):`, errorMsg);
     return [];
   }
 }

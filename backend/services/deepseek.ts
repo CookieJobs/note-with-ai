@@ -58,7 +58,7 @@ export async function summarizeChatTitle(content: string): Promise<string> {
 /**
  * 为笔记生成标题和关键词
  */
-export async function summarizeNote(content: string): Promise<{ title: string; keywords: string[] }> {
+export async function summarizeNote(content: string): Promise<{ title: string; keywords: string[] } | null> {
     try {
       const messages = [
         {
@@ -89,7 +89,7 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
       };
     } catch (error: any) {
       console.error('❌ summarizeNote 解析失败：', error.message || error);
-      return { title: '未命名笔记', keywords: [] };
+      return null;
     }
   }
 
@@ -99,7 +99,7 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
  */
 export async function summarizeNoteMeta(
   content: string
-): Promise<{ title: string; keywords: string[]; summary: string }> {
+): Promise<{ title: string; keywords: string[]; summary: string } | null> {
   try {
     const messages = [
       {
@@ -129,7 +129,7 @@ export async function summarizeNoteMeta(
     };
   } catch (error: any) {
     console.error('❌ summarizeNoteMeta 解析失败：', error.message || error);
-    return { title: '未命名笔记', keywords: [], summary: '' };
+    return null;
   }
 }
 
