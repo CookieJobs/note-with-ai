@@ -6,7 +6,7 @@ import RichTextEditor from './RichTextEditor';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { authFetch } from '../../../utils/auth';
 import type { RelatedNote } from '../../../components/RelatedNoteCard';
-import type { Note } from '../types';
+import type { Note } from '../hooks/useNotes';
 
 type Props = {
   valueJson: any | null;

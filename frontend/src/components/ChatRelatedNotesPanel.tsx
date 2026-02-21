@@ -1,19 +1,10 @@
 import React from 'react';
 import RelatedNoteCard from './RelatedNoteCard';
 import styles from './ChatRelatedNotesPanel.module.scss';
-
-export interface ChatRelatedNote {
-  noteId: string;
-  title?: string;
-  content: string;
-  score: number;
-  matchType?: string;
-  createdAt: string;
-  reason?: string;
-}
+import { IRelatedNote } from '../types';
 
 interface ChatRelatedNotesPanelProps {
-  relatedNotes: ChatRelatedNote[];
+  relatedNotes: IRelatedNote[];
   className?: string;
   onNoteClick?: (noteId: string) => void;
 }
@@ -53,9 +44,9 @@ export const ChatRelatedNotesPanel: React.FC<ChatRelatedNotesPanelProps> = ({
                 note={{
                   _id: note.noteId,
                   title: note.title,
-                  content: note.content,
-                  similarity: note.score,
-                  createdAt: note.createdAt,
+                  content: note.content || '',
+                  similarity: note.score || 0,
+                  createdAt: note.createdAt || new Date().toISOString(),
                   keywords: [] // Backend doesn't return keywords yet, but that's fine
                 }}
                 onExpand={onNoteClick}

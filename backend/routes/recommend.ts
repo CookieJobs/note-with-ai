@@ -11,7 +11,8 @@ import { searchArticlesByKeyword } from '../services/search';
 import { authenticateToken } from '../middleware/auth';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
-import { getCachedQwenEmbedding, findTopMatches } from '../utils/embedding';
+import { getCachedQwenEmbedding } from '../utils/embedding';
+import { vectorStore } from '../services/vectorStore';
 import { rerankRecommendedNotes } from '../services/deepseek';
 
 const router = express.Router();
@@ -129,7 +130,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
   for (let qi = 0; qi < queryItems.length; qi++) {
     const emb = queryEmbeddings[qi];
     if (!Array.isArray(emb) || emb.length === 0) continue;
-    const hits = findTopMatches(emb as any, userNotes as any, Math.max(1, Math.min(100, Number(recallK))), Number(s1Threshold));
+    const hits = vectorStore.searchInMemory(emb as any, userNotes as any, Math.max(1, Math.min(100, Number(recallK))), Number(s1Threshold));
     for (const h of hits) {
       const n: any = h.item as any;
       const id = String(n._id);

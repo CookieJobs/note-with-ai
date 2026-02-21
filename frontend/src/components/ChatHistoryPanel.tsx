@@ -5,16 +5,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, MessageSquare, MessageSquarePlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-interface ChatSession {
-  id: string;
-  _id?: string;
-  title: string;
-  messages: any[];
-}
+import { IChat } from '../types';
 
 interface ChatHistoryPanelProps {
-  sessions: ChatSession[];
+  sessions: IChat[];
   currentSessionId: string;
   isClient: boolean;
   onSessionSelect: (sessionId: string) => void;
@@ -30,6 +24,7 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
   onNewSession,
   onDeleteSession,
 }) => {
+  // ... rest of the component
   return (
     <aside className="fixed top-[80px] left-0 bottom-0 w-[320px] flex flex-col border-r border-border/40 bg-background/95 backdrop-blur-xl z-20 transition-all duration-300 shadow-[2px_0_8px_rgba(0,0,0,0.02)]">
       {/* Header Area */}
@@ -53,18 +48,18 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
       {/* List Area */}
       <ScrollArea className="flex-1 px-3 py-2">
         <div className="space-y-1 pb-4">
-          {isClient && sessions.length === 0 ? (
+          {!isClient || sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center px-4 select-none">
               <div className="bg-muted/30 p-4 rounded-full mb-4 ring-1 ring-border/50">
                 <MessageSquarePlus className="h-6 w-6 text-muted-foreground/40" />
               </div>
               <p className="text-sm font-medium text-muted-foreground mb-1.5">开启新话题</p>
               <p className="text-xs text-muted-foreground/50 max-w-[180px] leading-relaxed">
-                点击右上角的 "+" 按钮开始一个新的对话
+                点击右上角的 &quot;+&quot; 按钮开始一个新的对话
               </p>
             </div>
           ) : (
-            isClient && sessions.map((session) => (
+            sessions.map((session) => (
               <div
                 key={session.id}
                 onClick={() => onSessionSelect(session.id)}

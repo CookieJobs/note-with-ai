@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Note } from '../types';
+import type { Note } from '../hooks/useNotes';
 import styles from '../notes.module.scss';
 import { authFetch } from '../../../utils/auth';
 import {

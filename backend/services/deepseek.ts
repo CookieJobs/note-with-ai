@@ -5,12 +5,10 @@ Pos: 后端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 // backend/services/deepseek.ts
-import dotenv from 'dotenv';
 import { DeepSeekApiClient } from '../utils/apiClient';
+import { config } from '../config';
 
-dotenv.config();
-
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+const DEEPSEEK_API_KEY = config.DEEPSEEK_API_KEY;
 if (!DEEPSEEK_API_KEY) {
   throw new Error('DEEPSEEK_API_KEY environment variable is required');
 }

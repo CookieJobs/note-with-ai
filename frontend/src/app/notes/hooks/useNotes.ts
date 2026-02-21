@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { authFetch } from '../../../utils/auth';
-import type { Note } from '../types';
+import type { INote } from '../../../types';
+
+export type Note = INote & { enriching?: boolean };
 
 type UseNotesOptions = {
   onError?: (message: string) => void;
@@ -10,11 +12,13 @@ export function useNotes(user: any | null, options: UseNotesOptions = {}) {
   const { onError } = options;
 
   const [notes, setNotes] = useState<Note[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 加载笔记列表（随 user 就绪触发）
   useEffect(() => {
     if (!user) return;
 
+    setIsLoading(true);
     const controller = new AbortController();
     let mounted = true;
 
@@ -39,6 +43,9 @@ export function useNotes(user: any | null, options: UseNotesOptions = {}) {
         if (err?.name === 'AbortError') return;
         console.error('加载失败:', err);
         onError?.('加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (mounted) setIsLoading(false);
       });
 
     return () => {
@@ -97,11 +104,10 @@ export function useNotes(user: any | null, options: UseNotesOptions = {}) {
   return {
     notes,
     setNotes, // 给页面保留灵活性（例如快速记录的乐观插入/回滚）
+    isLoading,
     deleteNote,
     updateTitle,
     updateContent,
     updateKeywords,
   };
 }
-
-

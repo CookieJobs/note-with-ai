@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { authFetch } from '../../../utils/auth';
 import { generateUUID } from '../../../utils/uuid';
-import type { Note } from '../types';
+import type { Note } from './useNotes';
 import type { RelatedNote } from '../../../components/RelatedNoteCard';
 
 type UseCreateNoteOptions = {
@@ -48,12 +48,14 @@ export function useCreateNote(
     const tempId = 'temp-' + generateUUID();
     const tempNote: Note = {
       _id: tempId,
+      userId: '', // Placeholder, will be replaced by server
       title: '',
       content: contentText,
       contentText: contentText,
       contentJson: newContentJson ?? undefined,
       keywords: [],
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       enriching: true,
     };
     setNotes((prev) => [tempNote, ...prev]);
@@ -196,5 +198,3 @@ export function useCreateNote(
     noRelatedFound,
   };
 }
-
-
