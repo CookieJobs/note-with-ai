@@ -77,7 +77,7 @@ export const useChatMessages = (): UseChatMessagesReturn => {
   ) => {
     try {
       console.log('🔍 开始异步搜索会话相关笔记...');
-      
+
       const res = await authFetch('/api/chat/context-related-notes', {
         method: 'POST',
         body: JSON.stringify({ messages }),
@@ -86,7 +86,7 @@ export const useChatMessages = (): UseChatMessagesReturn => {
       if (res.ok) {
         const data = await res.json();
         const relatedNotes: ChatRelatedNote[] = (data && data.data && Array.isArray(data.data.relatedNotes) ? data.data.relatedNotes : (data.relatedNotes || []));
-        
+
         console.log('📝 找到会话相关笔记:', relatedNotes.length, '条');
 
         let updatedSession: ChatSession | undefined;
@@ -130,7 +130,7 @@ export const useChatMessages = (): UseChatMessagesReturn => {
     saveSessionToDB: (userId: string, session: ChatSession) => Promise<string>,
     setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>
   ) => {
-    console.log('🚦 sendMessage 触发, input:', input, 'currentSession:', currentSession, 'loading:', loading);
+    console.log('🚦 sendMessage 触发 (流式), input:', input, 'currentSession:', currentSession, 'loading:', loading);
     if (!input.trim()) {
       console.log('⚠️ 输入为空, 不发送');
       return;
@@ -161,7 +161,7 @@ export const useChatMessages = (): UseChatMessagesReturn => {
         method: 'POST',
         body: JSON.stringify({ messages: updatedMessages, sessionId: serverSessionId }),
       });
-      
+
       if (!res.ok) {
         // 尝试解析错误信息
         try {
@@ -171,19 +171,71 @@ export const useChatMessages = (): UseChatMessagesReturn => {
           throw new Error('请求失败');
         }
       }
-      
-      const data = await res.json();
-      const reply: string = (data && data.data && typeof data.data.reply === 'string') ? data.data.reply : data.reply;
 
-      // 确保返回消息的role为'assistant'
-      const assistantMessage: Message = { 
-        role: 'assistant', 
-        content: reply
+      // 处理流式响应
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('无法读取响应流');
+
+      const decoder = new TextDecoder();
+      let assistantReply = '';
+
+      // 先在 UI 中添加一个空的 assistant 消息占位
+      const initialAssistantMessage: Message = { role: 'assistant', content: '' };
+      let currentMessages = [...updatedMessages, initialAssistantMessage];
+      updateSessionMessages(currentSession.id, currentMessages, userId);
+
+      let buffer = '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // 最后一行可能不完整，保留在 buffer 中
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
+
+            // 使用正则更稳健地匹配 SSE 数据行
+            const match = trimmedLine.match(/^data:\s*(.*)$/);
+            if (!match) continue;
+
+            const dataStr = match[1].trim();
+            if (dataStr === '[DONE]') break;
+
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.chunk) {
+                // 每收到一个 chunk 立即更新 UI，实现真正的流式输出
+                assistantReply += data.chunk;
+                currentMessages = [
+                  ...updatedMessages,
+                  { role: 'assistant', content: assistantReply }
+                ];
+                updateSessionMessages(currentSession.id, currentMessages, userId);
+              } else if (data.error) {
+                throw new Error(data.error);
+              }
+            } catch (e: any) {
+              if (dataStr.includes('"error":')) {
+                throw e;
+              }
+              console.warn('SSE 解析警告:', e.message, '数据:', dataStr);
+            }
+          }
+        }
+      } finally {
+        // 流读取完毕
+      }
+
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: assistantReply
       };
       const finalMessages: Message[] = [...updatedMessages, assistantMessage];
-
-      // 更新本地状态
-      updateSessionMessages(currentSession.id, finalMessages, userId);
 
       // 异步搜索会话相关笔记
       updateContextRelatedNotes(
@@ -197,7 +249,7 @@ export const useChatMessages = (): UseChatMessagesReturn => {
       // 自动摘要并更新会话标题
       try {
         const userText = (userMessage.content || '').trim();
-        const aiText = (assistantMessage.content || '').trim();
+        const aiText = assistantReply.trim();
 
         if (userText && aiText) {
           const summaryRes = await authFetch('/api/chat/summarizeTitle', {
@@ -221,20 +273,18 @@ export const useChatMessages = (): UseChatMessagesReturn => {
               }
               return updated;
             });
-            
+
             // 保存到数据库
-            // 注意：这里可能会与 updateContextRelatedNotes 的保存产生竞争，但通常摘要较快，或者两者先后保存都行
-            // 关键修正：保存时移除 relatedNotes，防止用旧的/空的 relatedNotes 覆盖掉 updateContextRelatedNotes 可能已经写入的新数据
             const sessionToSave = { ...currentSession, messages: finalMessages, title };
             delete sessionToSave.relatedNotes;
-            
+
             const newSessionId = await saveSessionToDB(userId, sessionToSave);
             console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
           } else {
             // 摘要失败也要保存消息
             const sessionToSave = { ...currentSession, messages: finalMessages };
             delete sessionToSave.relatedNotes;
-            
+
             const newSessionId = await saveSessionToDB(userId, sessionToSave);
             console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
           }
@@ -242,14 +292,14 @@ export const useChatMessages = (): UseChatMessagesReturn => {
           // 内容为空，跳过标题摘要但依然保存消息
           const sessionToSave = { ...currentSession, messages: finalMessages };
           delete sessionToSave.relatedNotes;
-          
+
           const newSessionId = await saveSessionToDB(userId, sessionToSave);
           console.log('🚦 sendMessage（跳过摘要）保存会话后返回的ID:', newSessionId);
         }
       } catch (e) {
         const sessionToSave = { ...currentSession, messages: finalMessages };
         delete sessionToSave.relatedNotes;
-        
+
         const newSessionId = await saveSessionToDB(userId, sessionToSave);
         console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
       }

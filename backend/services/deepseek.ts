@@ -28,6 +28,16 @@ export async function chatWithDeepSeek(messages: { role: 'user' | 'assistant' | 
   });
 }
 
+/**
+ * 与 DeepSeek 聊天模型流式对话
+ */
+export async function chatWithDeepSeekStream(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<AsyncIterable<string>> {
+  return deepSeekClient.chatCompletionStream(messages, {
+    temperature: 0.7,
+    max_tokens: 1024
+  });
+}
+
 
 /**
  * 为聊天对话生成标题

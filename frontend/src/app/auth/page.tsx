@@ -152,11 +152,13 @@ export default function AuthPage() {
             <input
               type="email"
               name="email"
+              id="email"
               className={styles.input}
               placeholder="邮箱或用户名"
               value={formData.email}
               onChange={handleChange}
               required
+              autoComplete="username"
             />
           </div>
 
@@ -165,11 +167,13 @@ export default function AuthPage() {
               <input
                 type={showPassword ? 'text' : 'password'}
                 name="password"
+                id="password"
                 className={styles.input}
                 placeholder="密码"
                 value={formData.password}
                 onChange={handleChange}
                 required
+                autoComplete={isLogin ? "current-password" : "new-password"}
               />
               <button
                 type="button"
@@ -186,11 +190,13 @@ export default function AuthPage() {
               <input
                 type="password"
                 name="confirmPassword"
+                id="confirmPassword"
                 className={styles.input}
                 placeholder="确认密码"
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 required
+                autoComplete="new-password"
               />
             </div>
           )}

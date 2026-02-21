@@ -28,9 +28,10 @@ interface Message {
 
 interface ChatMainContentProps {
   messages: Message[];
+  isLoading?: boolean;
 }
 
-const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages }) => {
+const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages, isLoading }) => {
   const safeMessages = Array.isArray(messages) ? messages : [];
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -77,6 +78,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages }) => {
                       content={msg.content} 
                       relatedNotes={msg.relatedNotes}
                       searchingNotes={msg.searchingNotes}
+                      isLoading={isLoading && index === safeMessages.length - 1}
                     />
                   );
                 })}

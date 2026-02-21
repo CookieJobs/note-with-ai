@@ -333,7 +333,7 @@ export default function ChatPage() {
         onDeleteSession={handleDeleteClick}
       />
 
-      <ChatMainContent messages={messages} />
+      <ChatMainContent messages={messages} isLoading={loading} />
 
       {/* 提示文案已移动到 ChatInputArea 内部，使其与输入框位置和宽度一致 */}
 

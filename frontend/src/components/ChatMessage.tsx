@@ -23,9 +23,10 @@ interface ChatMessageProps {
   content: string;
   relatedNotes?: RelatedNote[];
   searchingNotes?: boolean;
+  isLoading?: boolean;
 }
 
-export default function ChatMessage({ role, content }: ChatMessageProps) {
+export default function ChatMessage({ role, content, isLoading }: ChatMessageProps) {
   const isUser = role === 'user';
 
   return (
@@ -40,7 +41,16 @@ export default function ChatMessage({ role, content }: ChatMessageProps) {
       ) : (
         // AI消息：直接渲染内容，支持Markdown
         <div className={styles.assistantMessage}>
-          <ReactMarkdown>{content}</ReactMarkdown>
+          {!content && isLoading ? (
+            <div className={styles.loadingDots}>
+              <span></span><span></span><span></span>
+            </div>
+          ) : (
+            <>
+              <ReactMarkdown>{content}</ReactMarkdown>
+              {isLoading && <span className={styles.blinkingCursor}>▍</span>}
+            </>
+          )}
         </div>
       )}
     </div>

@@ -142,6 +142,8 @@ export class ApiClient {
  * DeepSeek API客户端
  */
 export class DeepSeekApiClient extends ApiClient {
+  private apiKey: string;
+
   constructor(apiKey: string) {
     super({
       baseURL: 'https://api.deepseek.com/v1',
@@ -152,6 +154,7 @@ export class DeepSeekApiClient extends ApiClient {
       timeout: 60000, // DeepSeek可能需要更长时间
       retries: 2
     });
+    this.apiKey = apiKey;
   }
 
   /**
@@ -175,6 +178,78 @@ export class DeepSeekApiClient extends ApiClient {
     }
     
     return reply;
+  }
+
+  /**
+   * 流式聊天完成请求
+   * 使用原生 fetch 代替 axios，确保 DeepSeek SSE 数据流逐 chunk 返回，不被缓冲
+   */
+  async *chatCompletionStream(messages: any[], options: any = {}): AsyncIterable<string> {
+    const payload = {
+      model: 'deepseek-chat',
+      messages,
+      temperature: 0.7,
+      max_tokens: 1024,
+      stream: true,
+      ...options
+    };
+
+    // 使用原生 fetch 获取真正的流式响应（Node 18+ 原生支持）
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw ErrorHandler.createExternalApiError(
+        `API请求错误 (${response.status}): ${errorText || response.statusText}`,
+        'DeepSeek'
+      );
+    }
+
+    if (!response.body) {
+      throw ErrorHandler.createExternalApiError('未收到流式响应 body', 'DeepSeek');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 最后一行可能不完整，存入 buffer
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
+
+          const data = trimmedLine.slice(6).trim();
+          if (data === '[DONE]') return;
+
+          try {
+            const json = JSON.parse(data);
+            const content = json.choices?.[0]?.delta?.content;
+            if (content) {
+              yield content;
+            }
+          } catch (e) {
+            // 忽略解析错误，可能是数据不完整
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   /**
