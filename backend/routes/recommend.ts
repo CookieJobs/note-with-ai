@@ -17,9 +17,10 @@ import { rerankRecommendedNotes } from '../services/deepseek';
 
 const router = express.Router();
 
-router.get('/', asyncHandler(async (req, res) => {
-  // 查询用户所有笔记，统计关键词频率
-  const notes = await Note.find();
+router.get('/', authenticateToken, asyncHandler(async (req, res) => {
+  // 获取当前用户，确保只查询自己的笔记
+  const user = await UserValidator.authenticateUser(req);
+  const notes = await Note.find({ userId: user._id });
   const keywordCounts: Record<string, number> = {};
 
   for (const note of notes) {

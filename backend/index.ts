@@ -21,8 +21,17 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-with-ai';
 
-app.use(cors());
-app.use(express.json());
+// CORS 限制：仅允许指定来源
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : ['http://localhost:3000', 'http://localhost:3001'];
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,
+}));
+
+// 请求体大小限制（防止超大 payload 导致 OOM）
+app.use(express.json({ limit: '5mb' }));
 
 // 添加请求日志中间件
 app.use((req, res, next) => {
