@@ -1,36 +1,16 @@
-/*
-Input: 待补充
-Output: 待补充
-Pos: 前端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
-*/
 'use client';
 
 import React, { useEffect, useRef } from 'react';
 import ChatMessage from './ChatMessage';
 import styles from '../app/chat/chat.module.scss';
-
-interface RelatedNote {
-  id: string;
-  title: string;
-  content: string;
-  similarity: number;
-  matchType: string;
-  createdAt: string;
-}
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  relatedNotes?: RelatedNote[];
-  searchingNotes?: boolean;
-}
+import { IMessage } from '../types';
 
 interface ChatMainContentProps {
-  messages: Message[];
+  messages: IMessage[];
+  isLoading?: boolean;
 }
 
-const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages }) => {
+const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages, isLoading }) => {
   const safeMessages = Array.isArray(messages) ? messages : [];
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -77,6 +57,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages }) => {
                       content={msg.content} 
                       relatedNotes={msg.relatedNotes}
                       searchingNotes={msg.searchingNotes}
+                      isLoading={isLoading && index === safeMessages.length - 1}
                     />
                   );
                 })}

@@ -17,6 +17,15 @@ const ChatSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true },
     messages: [MessageSchema],
+    relatedNotes: [{
+      noteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Note' },
+      title: String,
+      content: String,
+      score: Number,
+      matchType: String,
+      reason: String,
+      createdAt: Date
+    }],
   },
   { timestamps: true }
 );

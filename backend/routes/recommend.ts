@@ -11,14 +11,16 @@ import { searchArticlesByKeyword } from '../services/search';
 import { authenticateToken } from '../middleware/auth';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
-import { getCachedQwenEmbedding, findTopMatches } from '../utils/embedding';
+import { getCachedQwenEmbedding } from '../utils/embedding';
+import { vectorStore } from '../services/vectorStore';
 import { rerankRecommendedNotes } from '../services/deepseek';
 
 const router = express.Router();
 
-router.get('/', asyncHandler(async (req, res) => {
-  // 查询用户所有笔记，统计关键词频率
-  const notes = await Note.find();
+router.get('/', authenticateToken, asyncHandler(async (req, res) => {
+  // 获取当前用户，确保只查询自己的笔记
+  const user = await UserValidator.authenticateUser(req);
+  const notes = await Note.find({ userId: user._id });
   const keywordCounts: Record<string, number> = {};
 
   for (const note of notes) {
@@ -49,8 +51,8 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
     noteId,
     recallK = 30,
     finalK = 10,
-    s1Threshold = 0.35,
-    hardThreshold = 0.62,
+    s1Threshold = 0.50, // 收紧阈值
+    hardThreshold = 0.75, // 收紧阈值
   } = req.body || {};
 
   const t0 = Date.now();
@@ -129,7 +131,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
   for (let qi = 0; qi < queryItems.length; qi++) {
     const emb = queryEmbeddings[qi];
     if (!Array.isArray(emb) || emb.length === 0) continue;
-    const hits = findTopMatches(emb as any, userNotes as any, Math.max(1, Math.min(100, Number(recallK))), Number(s1Threshold));
+    const hits = vectorStore.searchInMemory(emb as any, userNotes as any, Math.max(1, Math.min(100, Number(recallK))), Number(s1Threshold));
     for (const h of hits) {
       const n: any = h.item as any;
       const id = String(n._id);

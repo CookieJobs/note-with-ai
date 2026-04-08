@@ -1,5 +1,6 @@
 import { Note } from '../models/Note';
-import { getCachedQwenEmbedding, findTopMatches } from '../utils/embedding';
+import { getCachedQwenEmbedding } from '../utils/embedding';
+import { vectorStore } from './vectorStore';
 import { rerankRecommendedNotes } from './deepseek';
 
 export interface RecommendationOptions {
@@ -48,8 +49,8 @@ export async function updateNoteRecommendations(
   const {
     recallK = 30,
     finalK = 10,
-    s1Threshold = 0.35,
-    hardThreshold = 0.62,
+    s1Threshold = 0.50, // 收紧第一阶段向量召回阈值（从 0.35 -> 0.50）
+    hardThreshold = 0.75, // 收紧最终融合得分阈值（从 0.62 -> 0.75）
   } = options;
 
   const t0 = Date.now();
@@ -117,7 +118,7 @@ export async function updateNoteRecommendations(
   for (let qi = 0; qi < queryItems.length; qi++) {
     const emb = queryEmbeddings[qi];
     if (!Array.isArray(emb) || emb.length === 0) continue;
-    const hits = findTopMatches(emb as any, userNotes as any, Math.max(1, Math.min(100, Number(recallK))), Number(s1Threshold));
+    const hits = vectorStore.searchInMemory(emb as any, userNotes as any, Math.max(1, Math.min(100, Number(recallK))), Number(s1Threshold));
     for (const h of hits) {
       const n: any = h.item as any;
       const id = String(n._id);
@@ -239,6 +240,7 @@ export async function updateNoteRecommendations(
     const r = rrMap.get(id);
     if (!r) continue;
     byCandidateId[id] = {
+      s1: x.s1max, // 缓存第一阶段向量召回最高得分
       s2: r.s2,
       type: r.type,
       reason: r.reason,

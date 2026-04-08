@@ -84,7 +84,7 @@
 | 服务商 | 用途 | API | 成本/限制 |
 |--------|------|-----|----------|
 | **DeepSeek** | LLM 对话、文本摘要、关键词提取、概念扩展、语义重排 | Chat Completion | Token 付费 |
-| **阿里云 Qwen** | 向量嵌入生成（text-embedding-v4） | Embedding API | 按调用次数计费 |
+| **阿里云 Qwen** | 向量嵌入生成（qwen3-vl-embedding） | Embedding API | 按调用次数计费 |
 
 ### 2.4 技术栈架构图
 
@@ -889,7 +889,7 @@ Response (200):
 
 1. 嵌入模型选择
    - 提供商：阿里云 Qwen
-   - 模型：text-embedding-v4
+   - 模型：qwen3-vl-embedding
    - 向量维度：1024 维
    - 精度：float32
 

@@ -1,3 +1,4 @@
+
 /*
 Input: 待补充
 Output: 待补充
@@ -5,7 +6,8 @@ Pos: 后端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 import express from 'express';
-import { findRelatedNotes } from '../utils/embedding';
+import { getCachedQwenEmbedding } from '../utils/embedding';
+import { vectorStore } from '../services/vectorStore';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
 import { UserValidator } from '../utils/userValidation';
@@ -24,20 +26,33 @@ router.post('/related-notes', authenticateToken, asyncHandler(async (req, res): 
     throw ErrorHandler.createValidationError('消息内容不能为空');
   }
 
+  // 生成 embedding
+  const queryEmbedding = await getCachedQwenEmbedding(message, 1024);
+  
   // 查找相关笔记
-  const relatedNotes = await findRelatedNotes(
-    message,
-    user._id.toString(),
-    threshold,
-    limit,
-    excludeNoteId
-  );
+  const rawResults = await vectorStore.search(user._id.toString(), queryEmbedding, limit * 2); // Fetch more to allow for filtering
+  
+  let relatedNotes = rawResults.filter(item => item.score >= threshold);
+
+  if (excludeNoteId) {
+    relatedNotes = relatedNotes.filter(item => item.item._id.toString() !== excludeNoteId);
+  }
+
+  // Limit results
+  relatedNotes = relatedNotes.slice(0, limit);
+
+  // Format response
+  const formattedNotes = relatedNotes.map(item => ({
+    note: item.item,
+    score: item.score,
+    matchType: 'vector' as const
+  }));
 
   const responseData = {
-    relatedNotes,
+    relatedNotes: formattedNotes,
     query: message,
     threshold,
-    count: relatedNotes.length
+    count: formattedNotes.length
   };
 
   return ResponseHandler.success(res, responseData);
@@ -59,12 +74,17 @@ router.post('/batch-related-notes', authenticateToken, asyncHandler(async (req, 
   const results = await Promise.all(
     messages.map(async (message: string, index: number) => {
       try {
-        const relatedNotes = await findRelatedNotes(
-          message,
-          user._id.toString(),
-          threshold,
-          limit
-        );
+        const queryEmbedding = await getCachedQwenEmbedding(message, 1024);
+        const rawResults = await vectorStore.search(user._id.toString(), queryEmbedding, limit);
+        
+        const relatedNotes = rawResults
+          .filter(item => item.score >= threshold)
+          .map(item => ({
+            note: item.item,
+            score: item.score,
+            matchType: 'vector' as const
+          }));
+
         return {
           messageIndex: index,
           message,
@@ -92,6 +112,53 @@ router.post('/batch-related-notes', authenticateToken, asyncHandler(async (req, 
   };
 
   return ResponseHandler.success(res, responseData);
+}));
+
+/**
+ * 基于对话上下文获取相关笔记
+ * POST /api/chat/context-related-notes
+ */
+router.post('/context-related-notes', authenticateToken, asyncHandler(async (req, res): Promise<void> => {
+  const user = await UserValidator.authenticateUser(req);
+  const { messages, threshold = 0.2, limit = 5 } = req.body;
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw ErrorHandler.createValidationError('消息列表不能为空');
+  }
+
+  // 构建上下文：取最后 6 条消息
+  const lastMessages = messages.slice(-6);
+  const context = lastMessages.map((m: any) => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}`).join('\n');
+
+  // 生成 embedding
+  const queryEmbedding = await getCachedQwenEmbedding(context, 1024);
+
+  // 查找相关笔记
+  const rawResults = await vectorStore.search(user._id.toString(), queryEmbedding, limit * 2);
+  
+  const relatedNotes = rawResults
+    .filter(item => item.score >= 0.5) // 将原有的 0.2 宽松阈值提升至合理的 0.5
+    .slice(0, limit)
+    .map(item => ({
+      note: item.item,
+      score: item.score,
+      matchType: 'vector' as const
+    }));
+
+  // 格式化返回数据，确保符合前端 RelatedNote 接口
+  const formattedNotes = relatedNotes.map(item => ({
+    noteId: item.note._id,
+    title: item.note.title,
+    content: item.note.content,
+    score: item.score,
+    matchType: item.matchType,
+    createdAt: item.note.createdAt
+  }));
+
+  return ResponseHandler.success(res, {
+    relatedNotes: formattedNotes,
+    count: formattedNotes.length
+  });
 }));
 
 export default router;

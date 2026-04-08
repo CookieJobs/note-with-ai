@@ -6,58 +6,54 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 */
 // backend/utils/embedding.ts
 import axios from 'axios';
-import dotenv from 'dotenv';
+import { EMBEDDING_CONFIG, isMultimodalModel } from '../config/embedding';
+import { config } from '../config';
 
-dotenv.config();
+const DASHSCOPE_API_KEY = config.DASHSCOPE_API_KEY || '';
 
-const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || '';
-const QWEN_EMBEDDING_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings';
-
-// 计算两个向量的余弦相似度
-export function cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length || a.length === 0) return 0;
-  
-    const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
-    const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-    const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-  
-    return magnitudeA && magnitudeB ? dotProduct / (magnitudeA * magnitudeB) : 0;
-}
-
-// 获取与某个 embedding 最相似的笔记
-export function findTopMatches<T extends { embedding: number[] }>(
-  queryEmbedding: number[],
-  items: T[],
-  topK = 5,
-  threshold = 0.3 // 降低默认阈值，更宽松的匹配
-): { item: T; score: number }[] {
-  const scored = items
-    .map((item) => ({ item, score: cosineSimilarity(queryEmbedding, item.embedding) }))
-    .filter(({ score }) => score >= threshold)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK);
-
-  return scored;
-}
-
-// 使用 Qwen text-embedding-v4 生成单个文本的向量
+// 使用 Qwen 嵌入模型生成单个文本的向量
 export async function generateQwenEmbedding(
   text: string, 
-  dimensions: number = 1024
+  dimensions: number = EMBEDDING_CONFIG.QWEN.DEFAULT_DIMENSIONS
 ): Promise<number[]> {
   try {
     if (!DASHSCOPE_API_KEY) {
       throw new Error('DASHSCOPE_API_KEY 环境变量未设置');
     }
 
-    const response = await axios.post(
-      QWEN_EMBEDDING_URL,
-      {
-        model: 'text-embedding-v4',
+    const model = EMBEDDING_CONFIG.QWEN.MODEL;
+    const isMultimodal = isMultimodalModel(model);
+    const url = isMultimodal 
+      ? EMBEDDING_CONFIG.QWEN.MULTIMODAL_ENDPOINT 
+      : EMBEDDING_CONFIG.QWEN.TEXT_ENDPOINT;
+
+    let requestBody: any;
+    if (isMultimodal) {
+      // 多模态模型请求格式 (DashScope 原生 API)
+      requestBody = {
+        model,
+        input: {
+          contents: [
+            { text }
+          ]
+        },
+        parameters: {
+          dimension: dimensions
+        }
+      };
+    } else {
+      // 标准文本模型请求格式 (OpenAI 兼容)
+      requestBody = {
+        model,
         input: text,
         dimensions,
         encoding_format: 'float'
-      },
+      };
+    }
+
+    const response = await axios.post(
+      url,
+      requestBody,
       {
         headers: {
           'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
@@ -67,11 +63,20 @@ export async function generateQwenEmbedding(
       }
     );
 
-    const embedding = response.data.data[0].embedding;
-    console.log(`✅ 成功生成 ${dimensions} 维向量，文本长度: ${text.length}`);
+    let embedding: number[];
+    if (isMultimodal) {
+      // 多模态模型响应格式
+      embedding = response.data.output.embeddings[0].embedding;
+    } else {
+      // 标准文本模型响应格式
+      embedding = response.data.data[0].embedding;
+    }
+
+    console.log(`✅ 成功生成 ${dimensions} 维向量，文本长度: ${text.length} (模型: ${model})`);
     return embedding;
   } catch (error: any) {
-    console.error('❌ Qwen Embedding 生成失败:', error.message || error);
+    const errorMsg = error.response?.data?.message || error.message || error;
+    console.error(`❌ Qwen Embedding 生成失败 (${EMBEDDING_CONFIG.QWEN.MODEL}):`, errorMsg);
     return [];
   }
 }
@@ -79,41 +84,68 @@ export async function generateQwenEmbedding(
 // 批量生成向量（提高效率）
 export async function generateQwenEmbeddingBatch(
   texts: string[], 
-  dimensions: number = 1024
+  dimensions: number = EMBEDDING_CONFIG.QWEN.DEFAULT_DIMENSIONS
 ): Promise<number[][]> {
   try {
     if (!DASHSCOPE_API_KEY) {
       throw new Error('DASHSCOPE_API_KEY 环境变量未设置');
     }
 
-    // Qwen 支持批量处理，最多10行
-    const batchSize = 10;
+    const model = EMBEDDING_CONFIG.QWEN.MODEL;
+    const isMultimodal = isMultimodalModel(model);
+    const url = isMultimodal 
+      ? EMBEDDING_CONFIG.QWEN.MULTIMODAL_ENDPOINT 
+      : EMBEDDING_CONFIG.QWEN.TEXT_ENDPOINT;
+
+    // Qwen 支持批量处理
+    const batchSize = EMBEDDING_CONFIG.QWEN.MAX_BATCH_SIZE;
     const results: number[][] = [];
 
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, i + batchSize);
       
-      const response = await axios.post(
-        QWEN_EMBEDDING_URL,
-        {
-          model: 'text-embedding-v4',
+      let requestBody: any;
+      if (isMultimodal) {
+        requestBody = {
+          model,
+          input: {
+            contents: batch.map(text => ({ text }))
+          },
+          parameters: {
+            dimension: dimensions
+          }
+        };
+      } else {
+        requestBody = {
+          model,
           input: batch,
           dimensions,
           encoding_format: 'float'
-        },
+        };
+      }
+
+      const response = await axios.post(
+        url,
+        requestBody,
         {
           headers: {
             'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
             'Content-Type': 'application/json',
           },
-          timeout: 15000 // 批量处理延长超时
+          timeout: 20000 // 批量处理延长超时
         }
       );
 
-      const batchEmbeddings = response.data.data.map((item: any) => item.embedding);
+      let batchEmbeddings: number[][];
+      if (isMultimodal) {
+        batchEmbeddings = response.data.output.embeddings.map((item: any) => item.embedding);
+      } else {
+        batchEmbeddings = response.data.data.map((item: any) => item.embedding);
+      }
+      
       results.push(...batchEmbeddings);
       
-      console.log(`✅ 批量生成向量 ${i + 1}-${Math.min(i + batchSize, texts.length)}/${texts.length}`);
+      console.log(`✅ 批量生成向量 ${i + 1}-${Math.min(i + batchSize, texts.length)}/${texts.length} (模型: ${model})`);
       
       // 避免频率限制，批次间稍作延迟
       if (i + batchSize < texts.length) {
@@ -123,15 +155,16 @@ export async function generateQwenEmbeddingBatch(
 
     return results;
   } catch (error: any) {
-    console.error('❌ Qwen Embedding 批量生成失败:', error.message || error);
+    const errorMsg = error.response?.data?.message || error.message || error;
+    console.error(`❌ Qwen Embedding 批量生成失败 (${EMBEDDING_CONFIG.QWEN.MODEL}):`, errorMsg);
     return [];
   }
 }
 
 // 向量缓存配置
-const CACHE_MAX_SIZE = parseInt(process.env.EMBEDDING_CACHE_SIZE || '2000'); // 增加缓存大小
-const CACHE_TTL = parseInt(process.env.EMBEDDING_CACHE_TTL || '7200000'); // 2小时
-const CACHE_CLEANUP_INTERVAL = parseInt(process.env.CACHE_CLEANUP_INTERVAL || '1800000'); // 30分钟清理一次
+const CACHE_MAX_SIZE = config.EMBEDDING_CACHE_SIZE; // 增加缓存大小
+const CACHE_TTL = config.EMBEDDING_CACHE_TTL; // 2小时
+const CACHE_CLEANUP_INTERVAL = config.CACHE_CLEANUP_INTERVAL; // 30分钟清理一次
 
 interface CacheItem {
   embedding: number[];
@@ -235,7 +268,7 @@ export function clearCache(): void {
 
 export async function getCachedQwenEmbedding(
   text: string, 
-  dimensions: number = 1024
+  dimensions: number = EMBEDDING_CONFIG.QWEN.DEFAULT_DIMENSIONS
 ): Promise<number[]> {
   const cacheKey = `qwen_${dimensions}_${hashText(text)}`;
   
@@ -288,118 +321,4 @@ function hashText(text: string): string {
   return hash.toString(36);
 }
 
-// 根据用户ID搜索相关笔记
-export async function findRelatedNotes(
-  searchText: string,
-  userId: string,
-  threshold: number = 0.3, // 降低默认阈值，更宽松的匹配
-  limit: number = 3,
-  excludeNoteId?: string
-): Promise<{ note: any; score: number; matchType: 'vector' | 'keyword' }[]> {
-  try {
-    const { Note } = await import('../models/Note');
-    
-    // 获取用户的所有笔记（包含embedding）
-    const query: any = { 
-      userId, 
-      embedding: { $exists: true, $ne: null, $not: { $size: 0 } }
-    };
-    
-    if (excludeNoteId) {
-      query._id = { $ne: excludeNoteId };
-    }
-
-    const userNotes = await Note.find(query);
-
-    if (userNotes.length === 0) {
-      console.log('⚠️ 用户没有包含向量的笔记');
-      return [];
-    }
-
-    // 生成搜索文本的向量
-    const searchEmbedding = await getCachedQwenEmbedding(searchText, 1024);
-    if (searchEmbedding.length === 0) {
-      console.log('⚠️ 无法生成搜索文本的向量');
-      return [];
-    }
-
-    // 计算相似度
-    const matches = findTopMatches(searchEmbedding, userNotes, limit, threshold);
-    
-    return matches.map(({ item, score }) => ({
-      note: item,
-      score,
-      matchType: 'vector' as const
-    }));
-    
-  } catch (error: any) {
-    console.error('❌ 搜索相关笔记失败:', error.message || error);
-    return [];
-  }
-}
-
-// 智能相关性检测（混合关键词和向量匹配）
-export async function findRelatedNotesAdvanced(
-  userMessage: string,
-  aiResponse: string,
-  userNotes: any[],
-  options: {
-    maxResults?: number;
-    threshold?: number;
-    dimensions?: number;
-  } = {}
-): Promise<{ note: any; score: number; matchType: 'vector' | 'keyword' }[]> {
-  const { maxResults = 3, threshold = 0.3, dimensions = 1024 } = options; // 降低默认阈值
-  
-  try {
-    // 1. 并行生成用户消息和AI回复的向量
-    const [userEmbedding, aiEmbedding] = await Promise.all([
-      getCachedQwenEmbedding(userMessage, dimensions),
-      getCachedQwenEmbedding(aiResponse, dimensions)
-    ]);
-
-    // 2. 过滤有向量的笔记
-    const notesWithEmbedding = userNotes.filter(note => 
-      note.embedding && note.embedding.length > 0
-    );
-
-    if (notesWithEmbedding.length === 0) {
-      console.log('⚠️ 没有找到包含向量的笔记');
-      return [];
-    }
-
-    // 3. 计算向量相似度
-    const userMatches = findTopMatches(userEmbedding, notesWithEmbedding, maxResults, threshold);
-    const aiMatches = findTopMatches(aiEmbedding, notesWithEmbedding, maxResults, threshold);
-
-    // 4. 合并结果并去重
-    const allMatches = new Map<string, { note: any; score: number; matchType: 'vector' | 'keyword' }>();
-    
-    userMatches.forEach(({ item, score }) => {
-      const noteId = item._id.toString();
-      if (!allMatches.has(noteId) || allMatches.get(noteId)!.score < score) {
-        allMatches.set(noteId, { note: item, score, matchType: 'vector' });
-      }
-    });
-    
-    aiMatches.forEach(({ item, score }) => {
-      const noteId = item._id.toString();
-      if (!allMatches.has(noteId) || allMatches.get(noteId)!.score < score) {
-        allMatches.set(noteId, { note: item, score, matchType: 'vector' });
-      }
-    });
-
-    // 5. 按相似度排序并返回
-    const results = Array.from(allMatches.values())
-      .sort((a, b) => b.score - a.score)
-      .slice(0, maxResults);
-
-    console.log(`🔍 找到 ${results.length} 条相关笔记`);
-    return results;
-    
-  } catch (error: any) {
-    console.error('❌ 相关笔记检测失败:', error.message || error);
-    return [];
-  }
-}
   

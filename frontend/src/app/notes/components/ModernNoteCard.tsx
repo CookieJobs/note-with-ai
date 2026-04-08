@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import styles from '../notes.module.scss';
 import TrashIcon from '../../../components/icons/TrashIcon';
-import { authFetch } from '../../../utils/auth';
-import type { Note } from '../types';
+import type { Note } from '../hooks/useNotes';
 import RichTextEditor from './RichTextEditor';
 import RichTextViewer from './RichTextViewer';
-import { WORKSPACE_ANIM_DELAY_MS } from '../animationTimings';
+import { useNoteEditor } from '../hooks/useNoteEditor';
 
 interface NoteCardProps {
   note: Note;
@@ -30,157 +29,6 @@ interface NoteCardProps {
   exitEditSignal?: number;
   /** detail: 右侧工作台放大展示（默认展开、禁用“展开/收起”交互） */
   layoutVariant?: 'list' | 'detail';
-}
-
-type State = {
-  expanded: boolean;
-  title: {
-    isEditing: boolean;
-    value: string;
-    saving: boolean;
-  };
-  content: {
-    isEditing: boolean;
-    value: string;
-    original: string;
-    draft: string | null;
-    saving: boolean;
-    error: string;
-  };
-  layout: {
-    canExpand: boolean;
-    maxHeight: string;
-  };
-};
-
-type Action =
-  | { type: 'TOGGLE_EXPANDED' }
-  | { type: 'SET_EXPANDED'; value: boolean }
-  | { type: 'ENTER_TITLE_EDIT'; value: string }
-  | { type: 'CHANGE_TITLE'; value: string }
-  | { type: 'CANCEL_TITLE_EDIT'; value: string }
-  | { type: 'SAVE_TITLE_START' }
-  | { type: 'SAVE_TITLE_SUCCESS'; value: string }
-  | { type: 'SAVE_TITLE_FAIL' }
-  | { type: 'SYNC_TITLE_FROM_NOTE'; value: string }
-  | { type: 'ENTER_CONTENT_EDIT'; original: string; value: string }
-  | { type: 'CHANGE_CONTENT'; value: string }
-  | { type: 'BLUR_CONTENT_EXIT' }
-  | { type: 'CANCEL_CONTENT_EDIT'; value: string }
-  | { type: 'SAVE_CONTENT_START' }
-  | { type: 'SAVE_CONTENT_SUCCESS'; value: string }
-  | { type: 'SAVE_CONTENT_FAIL'; error: string }
-  | { type: 'SYNC_CONTENT_FROM_NOTE'; value: string }
-  | { type: 'SET_CAN_EXPAND'; value: boolean }
-  | { type: 'SET_MAX_HEIGHT'; value: string };
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case 'TOGGLE_EXPANDED':
-      return { ...state, expanded: !state.expanded };
-
-    case 'SET_EXPANDED':
-      return { ...state, expanded: action.value };
-
-    case 'ENTER_TITLE_EDIT':
-      return {
-        ...state,
-        title: { ...state.title, isEditing: true, value: action.value, saving: false },
-      };
-
-    case 'CHANGE_TITLE':
-      return { ...state, title: { ...state.title, value: action.value } };
-
-    case 'CANCEL_TITLE_EDIT':
-      return { ...state, title: { ...state.title, isEditing: false, value: action.value, saving: false } };
-
-    case 'SAVE_TITLE_START':
-      return { ...state, title: { ...state.title, saving: true } };
-
-    case 'SAVE_TITLE_SUCCESS':
-      return { ...state, title: { isEditing: false, value: action.value, saving: false } };
-
-    case 'SAVE_TITLE_FAIL':
-      return { ...state, title: { ...state.title, saving: false } };
-
-    case 'SYNC_TITLE_FROM_NOTE':
-      if (state.title.isEditing) return state;
-      return { ...state, title: { ...state.title, value: action.value } };
-
-    case 'ENTER_CONTENT_EDIT':
-      return {
-        ...state,
-        content: {
-          ...state.content,
-          isEditing: true,
-          original: action.original,
-          value: action.value,
-          error: '',
-          saving: false,
-        },
-        layout: { ...state.layout, canExpand: false },
-      };
-
-    case 'CHANGE_CONTENT':
-      return {
-        ...state,
-        content: { ...state.content, value: action.value, draft: action.value },
-      };
-
-    case 'BLUR_CONTENT_EXIT':
-      return {
-        ...state,
-        content: { ...state.content, isEditing: false },
-      };
-
-    case 'CANCEL_CONTENT_EDIT':
-      return {
-        ...state,
-        content: { ...state.content, isEditing: false, value: action.value, original: action.value, draft: null, error: '' },
-      };
-
-    case 'SAVE_CONTENT_START':
-      return { ...state, content: { ...state.content, saving: true, error: '' } };
-
-    case 'SAVE_CONTENT_SUCCESS':
-      return {
-        ...state,
-        content: { ...state.content, isEditing: false, saving: false, value: action.value, original: action.value, draft: null, error: '' },
-      };
-
-    case 'SAVE_CONTENT_FAIL':
-      return { ...state, content: { ...state.content, saving: false, error: action.error } };
-
-    case 'SYNC_CONTENT_FROM_NOTE':
-      if (state.content.isEditing) return state;
-      if (state.content.draft !== null) return state;
-      return { ...state, content: { ...state.content, value: action.value, original: action.value, error: '' } };
-
-    case 'SET_CAN_EXPAND':
-      return { ...state, layout: { ...state.layout, canExpand: action.value } };
-
-    case 'SET_MAX_HEIGHT':
-      return { ...state, layout: { ...state.layout, maxHeight: action.value } };
-
-    default:
-      return state;
-  }
-}
-
-function initState(note: Note): State {
-  return {
-    expanded: false,
-    title: { isEditing: false, value: note.title || '', saving: false },
-    content: {
-      isEditing: false,
-      value: note.content || '',
-      original: note.content || '',
-      draft: null,
-      saving: false,
-      error: '',
-    },
-    layout: { canExpand: false, maxHeight: '' },
-  };
 }
 
 function useFocusCursorToEnd(
@@ -228,158 +76,81 @@ export default function ModernNoteCard({
   exitEditSignal,
   layoutVariant = 'list',
 }: NoteCardProps) {
-  const [state, dispatch] = useReducer(reducer, note, initState);
+  const {
+    state,
+    dispatch,
+    contentJsonDraft,
+    contentTextDraft,
+    contentSavedFlash,
+    activeKeywordIndex,
+    setActiveKeywordIndex,
+    tagEditValue,
+    setTagEditValue,
+    handleSaveTitle,
+    handleSaveContent,
+    handleCancelContent,
+    deleteKeywordAt,
+    commitKeywordAt,
+    enterContentEdit,
+    onEditorChange,
+    getNotePlainText,
+    getNoteTextForEditor,
+    buildJsonFromPlain,
+    extractPlainTextFromJson,
+  } = useNoteEditor({
+    note,
+    onUpdateTitle,
+    onUpdateContent,
+    onUpdateKeywords,
+    onContentEditingChange,
+    draft,
+    onDraftChange,
+    exitEditSignal,
+  });
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const contentAreaRef = useRef<HTMLDivElement | null>(null);
   const contentEditActionsRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLParagraphElement | null>(null);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const anchorRef = useRef<'top' | 'bottom'>('top');
   const didEnterLayoutRef = useRef(false);
-
-  const [activeKeywordIndex, setActiveKeywordIndex] = useState<number | null>(null);
-  const [tagEditValue, setTagEditValue] = useState<string>('');
-
-  const [contentJsonDraft, setContentJsonDraft] = useState<any | null>(null);
-  const [contentTextDraft, setContentTextDraft] = useState<string>('');
-  const draftMetaRef = useRef<{ noteId: string | null; dirty: boolean }>({ noteId: null, dirty: false });
-  const contentEditBaselineRef = useRef<{ noteId: string | null; jsonStr: string; text: string } | null>(null);
-  const contentEditIgnoreFirstChangeRef = useRef<{ noteId: string | null; ignore: boolean }>({ noteId: null, ignore: false });
-  const [contentSavedFlash, setContentSavedFlash] = useState(false);
-  const contentSavedTimerRef = useRef<number | null>(null);
-  const saveExitTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
-      if (saveExitTimerRef.current) window.clearTimeout(saveExitTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (draft && draft.dirty && draft.json) {
-      setContentJsonDraft(draft.json);
-      setContentTextDraft(draft.text || '');
-      draftMetaRef.current = { noteId: note._id, dirty: true };
-      return;
-    }
-
-    if (draft && !draft.dirty && draftMetaRef.current.noteId === note._id) {
-      draftMetaRef.current = { noteId: note._id, dirty: false };
-    }
-  }, [draft, note._id]);
-
-  useEffect(() => {
-    if (!exitEditSignal) return;
-    if (!state.content.isEditing) return;
-    dispatch({ type: 'BLUR_CONTENT_EXIT' });
-  }, [exitEditSignal, state.content.isEditing]);
-
-  const getNotePlainText = () => {
-    const t = note.contentText;
-    if (typeof t === 'string' && t.trim().length > 0) return t;
-    return note.content || '';
-  };
-
-  const buildJsonFromPlain = (text: string) => ({
-    type: 'doc',
-    content: [
-      {
-        type: 'paragraph',
-        content: text ? [{ type: 'text', text }] : [],
-      },
-    ],
-  });
-
-  const safeStringify = (v: any) => {
-    try {
-      return JSON.stringify(v ?? null);
-    } catch {
-      return '';
-    }
-  };
-
-  const extractPlainTextFromJson = (doc: any): string => {
-    // 与 RichTextEditor 的提取规则一致：image => "[图片]"
-    const out: string[] = [];
-    const walk = (node: any) => {
-      if (!node || typeof node !== 'object') return;
-      const type = node.type;
-      if (type === 'text' && typeof node.text === 'string') {
-        out.push(node.text);
-        return;
-      }
-      if (type === 'image') {
-        if (out.length > 0 && !out[out.length - 1].endsWith('\n')) out.push('\n');
-        out.push('[图片]');
-        out.push('\n');
-        return;
-      }
-      if (type === 'hardBreak') {
-        out.push('\n');
-        return;
-      }
-      const content = Array.isArray(node.content) ? node.content : [];
-      for (const c of content) walk(c);
-      if (type === 'paragraph' || type === 'heading' || type === 'blockquote' || type === 'listItem') {
-        if (out.length > 0 && !out[out.length - 1].endsWith('\n')) out.push('\n');
-      }
-    };
-    walk(doc);
-    return out.join('').replace(/\n{3,}/g, '\n\n').trim();
-  };
-
-  const getNoteTextForEditor = () => {
-    // 解决“只有图片但 contentText 为空”的情况：进入编辑态用 contentJson 推导文本
-    if (note.contentJson) {
-      const t = extractPlainTextFromJson(note.contentJson);
-      if (t) return t;
-    }
-    return getNotePlainText();
-  };
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+
     const now = new Date();
-
-    // 按“日历日期”判断（本地 00:00），避免用时间戳差导致跨天显示不准
-    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const deltaDays = Math.floor((startOfDay(now) - startOfDay(date)) / (1000 * 60 * 60 * 24));
-
-    if (deltaDays <= 0) return '今天';
-    if (deltaDays === 1) return '昨天';
-    if (deltaDays <= 29) return `${deltaDays} 天前`;
-
-    // 更远：显示 N 月前 / N 年前（按“满月/满年”计算，避免 0 月前/0 年前）
-    let monthsDiff = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
-    if (now.getDate() < date.getDate()) monthsDiff -= 1; // 未满一月不算
-    monthsDiff = Math.max(0, monthsDiff);
-
-    let yearsDiff = now.getFullYear() - date.getFullYear();
-    if (
-      now.getMonth() < date.getMonth() ||
-      (now.getMonth() === date.getMonth() && now.getDate() < date.getDate())
-    ) {
-      yearsDiff -= 1; // 未满一年不算
+    
+    // 计算本周一的凌晨 00:00:00
+    const currentDay = now.getDay(); // 0 是周日, 1-6 是周一到周六
+    const distanceToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    // 计算下周一的凌晨 00:00:00
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+    
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const hh = pad(date.getHours());
+    const mm = pad(date.getMinutes());
+    const ss = pad(date.getSeconds());
+    const timeStr = `${hh}:${mm}:${ss}`;
+    
+    if (date >= startOfWeek && date < endOfWeek) {
+      const days = ['日', '一', '二', '三', '四', '五', '六'];
+      const dayStr = days[date.getDay()];
+      return `本周${dayStr} ${timeStr}`;
+    } else {
+      const yyyy = date.getFullYear();
+      const month = pad(date.getMonth() + 1);
+      const dd = pad(date.getDate());
+      return `${yyyy}-${month}-${dd} ${timeStr}`;
     }
-    yearsDiff = Math.max(0, yearsDiff);
-
-    if (yearsDiff >= 1) return `${yearsDiff} 年前`;
-    if (monthsDiff >= 1) return `${monthsDiff} 月前`;
-
-    // 兜底：避免出现“0 月前”，回退到日期显示
-    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
   };
-
-  useEffect(() => {
-    dispatch({ type: 'SYNC_TITLE_FROM_NOTE', value: note.title || '' });
-  }, [note.title]);
-
-  useEffect(() => {
-    dispatch({ type: 'SYNC_CONTENT_FROM_NOTE', value: note.content || '' });
-  }, [note.content]);
 
   // detail 模式：默认展开，且不展示“展开/收起”控件
   useEffect(() => {
@@ -390,11 +161,6 @@ export default function ModernNoteCard({
 
   // 进入编辑态：自动聚焦并把光标放到末尾（标题/正文复用同一逻辑）
   useFocusCursorToEnd(state.title.isEditing, titleInputRef);
-
-  // 正文编辑态：通知页面（用于强制收缩快速记录）
-  useEffect(() => {
-    onContentEditingChange?.(note._id, state.content.isEditing);
-  }, [note._id, onContentEditingChange, state.content.isEditing]);
 
   const alignTo = (anchor: 'top' | 'bottom') => {
     const card = rootRef.current;
@@ -638,140 +404,6 @@ export default function ModernNoteCard({
     note.contentJson,
   ]);
 
-  const handleSaveTitle = async () => {
-    const next = state.title.value.trim();
-    if (next === (note.title || '')) {
-      dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' });
-      return;
-    }
-
-    dispatch({ type: 'SAVE_TITLE_START' });
-    try {
-      const response = await authFetch(`/api/notes/${note._id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: next }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) throw new Error('保存标题失败');
-
-      const updatedNote = data?.data?.note;
-      onUpdateTitle(note._id, next, updatedNote?.updatedAt);
-      dispatch({ type: 'SAVE_TITLE_SUCCESS', value: next });
-    } catch {
-      dispatch({ type: 'SAVE_TITLE_FAIL' });
-      dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' });
-    }
-  };
-
-  const handleSaveContent = async () => {
-    if (!onUpdateContent) {
-      dispatch({ type: 'BLUR_CONTENT_EXIT' });
-      return;
-    }
-
-    const valText = (contentTextDraft || '').trim();
-    const prevText = getNotePlainText().trim();
-    const prevLen = prevText.length;
-    const nextLen = valText.length;
-    const deltaRatio = Math.abs(nextLen - prevLen) / Math.max(prevLen, 1);
-    const shouldSummaryCheck = deltaRatio > 0.3;
-
-    // TipTap：格式化可能不改变纯文本（getText 不变），但 JSON 会变
-    const prevJson = note.contentJson ?? buildJsonFromPlain(getNotePlainText());
-    const nextJson = contentJsonDraft ?? buildJsonFromPlain(contentTextDraft || '');
-    const prevJsonStr = safeStringify(prevJson);
-    const nextJsonStr = safeStringify(nextJson);
-
-    if (valText === prevText && prevJsonStr === nextJsonStr) {
-      dispatch({ type: 'BLUR_CONTENT_EXIT' });
-      return;
-    }
-
-    dispatch({ type: 'SAVE_CONTENT_START' });
-    try {
-      const response = await authFetch(`/api/notes/${note._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contentText: contentTextDraft,
-          contentJson: nextJson,
-          updatedAt: note.updatedAt,
-          // 保存策略：纯文本长度变化超过原长度30%才触发 LLM 校验/更新 summary+concepts
-          ...(shouldSummaryCheck ? { summaryCheck: true } : {}),
-        }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 409) {
-          const serverNote = data?.data?.note;
-          const serverText = (serverNote?.contentText ?? serverNote?.content) as string | undefined;
-          const serverJson = serverNote?.contentJson;
-          if (typeof serverText === 'string') {
-            onUpdateContent(note._id, serverText, serverNote?.updatedAt, serverJson, serverNote?.contentText);
-            setContentTextDraft(serverText);
-            setContentJsonDraft(serverJson ?? null);
-            // 保存成功：草稿归零（后续再进入编辑就用最新数据）
-            draftMetaRef.current = { noteId: note._id, dirty: false };
-            onDraftChange?.(note._id, { json: serverJson ?? null, text: serverText, dirty: false });
-            // 保存成功提示（2s 自动消失）
-            setContentSavedFlash(true);
-            if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
-            contentSavedTimerRef.current = window.setTimeout(() => setContentSavedFlash(false), 2000);
-            // 点击保存后延迟一点再退出编辑态（与“关闭工作台延迟”统一）
-            if (saveExitTimerRef.current) window.clearTimeout(saveExitTimerRef.current);
-            saveExitTimerRef.current = window.setTimeout(() => {
-              dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: serverText });
-              saveExitTimerRef.current = null;
-            }, WORKSPACE_ANIM_DELAY_MS);
-          } else {
-            throw new Error('保存失败');
-          }
-        } else {
-          throw new Error(data?.error || '保存失败');
-        }
-      } else {
-        const updated = data?.data?.note || {};
-        const nextText = (updated.contentText ?? updated.content ?? contentTextDraft) as string;
-        const nextJson = updated.contentJson ?? contentJsonDraft;
-        onUpdateContent(note._id, nextText, updated.updatedAt, nextJson, updated.contentText);
-        // 生成 embedding 并把结果合并回前端状态（用于重新聚类/排序/上色）
-        authFetch(`/api/notes/${note._id}/embed`, { method: 'POST' })
-          .then((r) => r.json())
-          .then((embedData) => {
-            const emb = embedData?.data?.embedding;
-            if (Array.isArray(emb) && emb.length > 0) {
-              onUpdateContent(note._id, nextText, updated.updatedAt, nextJson, updated.contentText, emb);
-            }
-          })
-          .catch(() => {});
-        // 保存成功：草稿归零（后续再进入编辑就用最新数据）
-        draftMetaRef.current = { noteId: note._id, dirty: false };
-        onDraftChange?.(note._id, { json: nextJson ?? null, text: nextText, dirty: false });
-
-        // 保存成功提示（2s 自动消失）
-        setContentSavedFlash(true);
-        if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
-        contentSavedTimerRef.current = window.setTimeout(() => setContentSavedFlash(false), 2000);
-
-        // 点击保存后延迟一点再退出编辑态（与“关闭工作台延迟”统一）
-        if (saveExitTimerRef.current) window.clearTimeout(saveExitTimerRef.current);
-        saveExitTimerRef.current = window.setTimeout(() => {
-          dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: nextText });
-          saveExitTimerRef.current = null;
-        }, WORKSPACE_ANIM_DELAY_MS);
-      }
-    } catch (e: any) {
-      if (saveExitTimerRef.current) {
-        window.clearTimeout(saveExitTimerRef.current);
-        saveExitTimerRef.current = null;
-      }
-      dispatch({ type: 'SAVE_CONTENT_FAIL', error: e?.message || '保存失败' });
-    }
-  };
-
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -782,115 +414,8 @@ export default function ModernNoteCard({
     }
   };
 
-  const deleteKeywordAt = async (idx: number) => {
-    if (!onUpdateKeywords) return;
-    const arr = [...(note.keywords || [])];
-    if (idx < 0 || idx >= arr.length) return;
-    arr.splice(idx, 1);
-
-    try {
-      const response = await authFetch(`/api/notes/${note._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
-      });
-      const data = await response.json();
-      const updated = data?.data?.note;
-      const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
-      onUpdateKeywords(note._id, next, updated?.updatedAt);
-    } catch {
-      // 静默失败：避免打断编辑；如需提示可后续加 toast
-    } finally {
-      // 如果刚好在编辑这个 tag，退出编辑态
-      setActiveKeywordIndex(null);
-      setTagEditValue('');
-    }
-  };
-
-  const commitKeywordAt = async (idx: number) => {
-    if (!onUpdateKeywords) {
-      setActiveKeywordIndex(null);
-      setTagEditValue('');
-      return;
-    }
-    const arr = [...(note.keywords || [])];
-    const v = tagEditValue.trim();
-    if (v) arr[idx] = v;
-    else if (idx < arr.length) arr.splice(idx, 1);
-    else {
-      // 添加态且为空：直接取消
-      setActiveKeywordIndex(null);
-      setTagEditValue('');
-      return;
-    }
-
-    try {
-      const response = await authFetch(`/api/notes/${note._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
-      });
-      const data = await response.json();
-      const updated = data?.data?.note;
-      const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
-      onUpdateKeywords(note._id, next, updated?.updatedAt);
-    } finally {
-      setActiveKeywordIndex(null);
-      setTagEditValue('');
-    }
-  };
-
   const cardClassName = `${styles.noteCard} ${layoutVariant === 'detail' ? styles.noteCardDetail : ''} ${isHighlighted ? styles.noteCardHighlight : ''} ${state.content.isEditing ? styles.noteCardEditing : ''}`;
-  const hasUnsavedDraft =
-    !!draft?.dirty || (draftMetaRef.current.noteId === note._id && draftMetaRef.current.dirty);
-
-  const enterContentEdit = (e?: React.MouseEvent) => {
-    if (state.content.isEditing) return;
-
-    const t = (e?.target ?? null) as Element | null;
-    if (t) {
-      // 点击在可交互控件上：不要抢（例如未来可能加的按钮/输入框）
-      if (t.closest('button, input, textarea, select, [role="button"]')) return;
-
-      // 预览态：链接支持 Ctrl/Cmd 点击打开；普通点击进入编辑
-      const a = t.closest('a');
-      if (a) {
-        if (e && (e.metaKey || e.ctrlKey)) return;
-        e?.preventDefault();
-      }
-    }
-
-    // 预览态：如果是拖拽/选择文本，不进入编辑
-    const sel = window.getSelection?.();
-    if (sel && !sel.isCollapsed && String(sel).trim().length > 0) {
-      return;
-    }
-
-    // 如果有未保存草稿且属于当前 note，则继续用草稿；否则用服务端内容初始化
-    if (draftMetaRef.current.noteId === note._id && draftMetaRef.current.dirty && contentJsonDraft) {
-      // keep draft
-    } else {
-      const baseJson = note.contentJson ?? buildJsonFromPlain(getNotePlainText());
-      const baseText = extractPlainTextFromJson(baseJson) || getNoteTextForEditor();
-      setContentJsonDraft(baseJson);
-      setContentTextDraft(baseText);
-      draftMetaRef.current = { noteId: note._id, dirty: false };
-                  onDraftChange?.(note._id, { json: baseJson, text: baseText, dirty: false });
-      contentEditBaselineRef.current = {
-        noteId: note._id,
-        jsonStr: safeStringify(baseJson),
-        text: baseText,
-      };
-      // 进入编辑态后忽略第一次 TipTap onChange（结构规范化）
-      contentEditIgnoreFirstChangeRef.current = { noteId: note._id, ignore: true };
-    }
-
-    dispatch({
-      type: 'ENTER_CONTENT_EDIT',
-      original: getNoteTextForEditor(),
-      value: getNoteTextForEditor(),
-    });
-  };
+  const hasUnsavedDraft = !!draft?.dirty;
 
   return (
     <div
@@ -900,7 +425,6 @@ export default function ModernNoteCard({
       }}
       className={cardClassName}
     >
-      {/* 其余渲染保持不变 */}
       <div
         className={styles.noteHeader}
         onClick={layoutVariant === 'detail' ? undefined : () => dispatch({ type: 'TOGGLE_EXPANDED' })}
@@ -980,43 +504,7 @@ export default function ModernNoteCard({
             <div className={styles.noteContentInput}>
               <RichTextEditor
                 value={contentJsonDraft}
-                onChange={({ json, text }) => {
-                  const jsonStr = safeStringify(json);
-                  const baseline = contentEditBaselineRef.current;
-                  // TipTap 初始化/同步也会触发一次 update：如果内容与 baseline 完全一致，不应标记为“草稿未保存”
-                  if (
-                    baseline &&
-                    baseline.noteId === note._id &&
-                    baseline.jsonStr === jsonStr &&
-                    baseline.text === text
-                  ) {
-                    setContentJsonDraft(json);
-                    setContentTextDraft(text);
-                    return;
-                  }
-
-                  // 更强的防抖：进入编辑态后的第一次 onChange，常常来自 ProseMirror 的“结构规范化”
-                  //（例如给只有图片的 doc 自动补一个空段落）。这不应算用户修改。
-                  const ig = contentEditIgnoreFirstChangeRef.current;
-                  if (ig && ig.noteId === note._id && ig.ignore) {
-                    ig.ignore = false;
-                    setContentJsonDraft(json);
-                    setContentTextDraft(text);
-                    contentEditBaselineRef.current = { noteId: note._id, jsonStr, text };
-                    return;
-                  }
-
-                  setContentJsonDraft(json);
-                  setContentTextDraft(text);
-                  draftMetaRef.current = { noteId: note._id, dirty: true };
-                  onDraftChange?.(note._id, { json, text, dirty: true });
-                  if (contentSavedFlash) setContentSavedFlash(false);
-                  if (contentSavedTimerRef.current) {
-                    window.clearTimeout(contentSavedTimerRef.current);
-                    contentSavedTimerRef.current = null;
-                  }
-                  dispatch({ type: 'CHANGE_CONTENT', value: text });
-                }}
+                onChange={onEditorChange}
                 onBlur={() => {
                   dispatch({ type: 'BLUR_CONTENT_EXIT' });
                 }}
@@ -1033,11 +521,9 @@ export default function ModernNoteCard({
                 const draftText = draft?.dirty ? draft?.text : contentTextDraft;
                 const hasDraft =
                   !!draft?.dirty ||
-                  (draftMetaRef.current.noteId === note._id &&
-                    draftMetaRef.current.dirty &&
-                    (!!draftJson || !!draftText));
+                  (!!draftJson || !!draftText); // Simplified check, relying on draft.dirty primarily
 
-                if (hasDraft) {
+                if (hasDraft && draft?.dirty) { // Only show draft if it is dirty
                   if (draftJson) {
                     return <RichTextViewer value={draftJson} />;
                   }
@@ -1181,22 +667,7 @@ export default function ModernNoteCard({
               <button
                 type="button"
                 className={styles.noteEditCancel}
-                onClick={() => {
-                  dispatch({ type: 'CANCEL_CONTENT_EDIT', value: state.content.original });
-                  // 取消：丢弃草稿，回到服务端内容
-                  const plain = getNotePlainText();
-                  const baseJson = note.contentJson ?? buildJsonFromPlain(plain);
-                  const baseText = extractPlainTextFromJson(baseJson) || getNoteTextForEditor();
-                  setContentJsonDraft(baseJson);
-                  setContentTextDraft(baseText);
-                  draftMetaRef.current = { noteId: note._id, dirty: false };
-                  onDraftChange?.(note._id, { json: baseJson, text: baseText, dirty: false });
-                  contentEditBaselineRef.current = {
-                    noteId: note._id,
-                    jsonStr: safeStringify(baseJson),
-                    text: baseText,
-                  };
-                }}
+                onClick={handleCancelContent}
                 disabled={state.content.saving}
               >
                 取消
@@ -1217,4 +688,3 @@ export default function ModernNoteCard({
     </div>
   );
 }
-

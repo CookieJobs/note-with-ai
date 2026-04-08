@@ -69,7 +69,11 @@ export const getAuthHeaders = (): HeadersInit => {
 
 // 认证的fetch请求（统一处理401/403）
 export const authFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  const response = await fetch(url, {
+  // 拼接完整的后端地址以绕过 Next.js 代理缓冲（若在客户端或环境变量已设置）
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+  const fullUrl = (url.startsWith('http') || !baseUrl) ? url : `${baseUrl}${url}`;
+
+  const response = await fetch(fullUrl, {
     ...options,
     headers: {
       ...getAuthHeaders(),

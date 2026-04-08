@@ -36,6 +36,12 @@ export const EMBEDDING_CONFIG = {
 
   // Qwen API 配置
   QWEN: {
+    // 嵌入模型
+    MODEL: process.env.EMBEDDING_MODEL || 'qwen3-vl-embedding',
+    // 标准文本嵌入端点 (OpenAI 兼容模式)
+    TEXT_ENDPOINT: 'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings',
+    // 多模态嵌入端点 (DashScope 原生 API)
+    MULTIMODAL_ENDPOINT: 'https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding',
     // 默认向量维度
     DEFAULT_DIMENSIONS: 1024,
     // API 请求超时时间
@@ -60,6 +66,13 @@ export const EMBEDDING_CONFIG = {
     PERFORMANCE: true,
   }
 };
+
+/**
+ * 判断是否为多模态嵌入模型
+ */
+export function isMultimodalModel(modelName: string): boolean {
+  return modelName.includes('-vl-') || modelName.includes('vision');
+}
 
 // 环境变量验证
 export function validateEmbeddingConfig() {

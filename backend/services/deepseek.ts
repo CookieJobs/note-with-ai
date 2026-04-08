@@ -5,12 +5,10 @@ Pos: 后端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 // backend/services/deepseek.ts
-import dotenv from 'dotenv';
 import { DeepSeekApiClient } from '../utils/apiClient';
+import { config } from '../config';
 
-dotenv.config();
-
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+const DEEPSEEK_API_KEY = config.DEEPSEEK_API_KEY;
 if (!DEEPSEEK_API_KEY) {
   throw new Error('DEEPSEEK_API_KEY environment variable is required');
 }
@@ -23,6 +21,16 @@ const deepSeekClient = new DeepSeekApiClient(DEEPSEEK_API_KEY);
  */
 export async function chatWithDeepSeek(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<string> {
   return await deepSeekClient.chatCompletion(messages, {
+    temperature: 0.7,
+    max_tokens: 1024
+  });
+}
+
+/**
+ * 与 DeepSeek 聊天模型流式对话
+ */
+export async function chatWithDeepSeekStream(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<AsyncIterable<string>> {
+  return deepSeekClient.chatCompletionStream(messages, {
     temperature: 0.7,
     max_tokens: 1024
   });
@@ -58,16 +66,17 @@ export async function summarizeChatTitle(content: string): Promise<string> {
 /**
  * 为笔记生成标题和关键词
  */
-export async function summarizeNote(content: string): Promise<{ title: string; keywords: string[] }> {
+export async function summarizeNote(content: string): Promise<{ title: string; keywords: string[] } | null> {
     try {
       const messages = [
         {
           role: 'system',
           content: `作为文本处理专家，请严格遵循以下规则：
                     1. 为用户提供的文本生成一个简洁准确的中文标题（严格≤15字）
-                    2. 提取1-5个最能代表文本核心内容的中文关键词
-                    3. 输出格式必须是纯JSON：{ "title": "标题", "keywords": ["词1", "词2"] }
-                    4. 除了JSON格式的结果外，不要包含任何其他内容或解释`
+                    2. 提取1-4个最能代表文本核心内容的中文关键词（宁缺毋滥，根据内容丰富度动态决定数量，如果内容简单只需1-2个即可）
+                    3. 关键词必须是具体的名词、实体（如产品名、人名、地名、技术名词）或核心概念，严格排除日常动词（如“下单”、“购买”、“学习”）和宽泛词汇
+                    4. 输出格式必须是纯JSON：{ "title": "标题", "keywords": ["词1", "词2"] }
+                    5. 除了JSON格式的结果外，不要包含任何其他内容或解释`
         },
         {
           role: 'user',
@@ -89,7 +98,7 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
       };
     } catch (error: any) {
       console.error('❌ summarizeNote 解析失败：', error.message || error);
-      return { title: '未命名笔记', keywords: [] };
+      return null;
     }
   }
 
@@ -99,17 +108,18 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
  */
 export async function summarizeNoteMeta(
   content: string
-): Promise<{ title: string; keywords: string[]; summary: string }> {
+): Promise<{ title: string; keywords: string[]; summary: string } | null> {
   try {
     const messages = [
       {
         role: 'system',
         content: `作为文本处理专家，请严格遵循以下规则：
 1. 为用户提供的文本生成一个简洁准确的中文标题（严格≤15字）
-2. 提取1-5个最能代表文本核心内容的中文关键词
-3. 生成一段语义摘要 summary（1-2句，尽量≤120字），用于“语义联想/重排”，不得编造原文没有的信息
-4. 输出格式必须是纯JSON：{ "title": "标题", "keywords": ["词1"], "summary": "摘要" }
-5. 除了JSON格式的结果外，不要包含任何其他内容或解释`,
+2. 提取1-4个最能代表文本核心内容的中文关键词（宁缺毋滥，根据内容丰富度动态决定数量，如果内容简单只需1-2个即可）
+3. 关键词必须是具体的名词、实体（如产品名、人名、地名、技术名词）或核心概念，严格排除日常动词（如“下单”、“购买”、“学习”）和宽泛词汇
+4. 生成一段语义摘要 summary（1-2句，尽量≤120字），用于“语义联想/重排”，不得编造原文没有的信息
+5. 输出格式必须是纯JSON：{ "title": "标题", "keywords": ["词1"], "summary": "摘要" }
+6. 除了JSON格式的结果外，不要包含任何其他内容或解释`,
       },
       { role: 'user', content },
     ];
@@ -129,7 +139,7 @@ export async function summarizeNoteMeta(
     };
   } catch (error: any) {
     console.error('❌ summarizeNoteMeta 解析失败：', error.message || error);
-    return { title: '未命名笔记', keywords: [], summary: '' };
+    return null;
   }
 }
 

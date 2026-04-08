@@ -1,11 +1,11 @@
-# Qwen Text-Embedding-V4 集成指南
+# Qwen Embedding 集成指南
 
-本文档介绍如何在 NoteWithAI 项目中集成和使用 Qwen 的 `text-embedding-v4` 模型来实现智能笔记关联功能。
+本文档介绍如何在 NoteWithAI 项目中集成和使用 Qwen 的 `qwen3-vl-embedding` 模型来实现智能笔记关联功能。
 
 ## 🚀 功能概述
 
 - **智能笔记关联**: 在聊天过程中自动推荐相关笔记
-- **高精度向量化**: 使用 Qwen text-embedding-v4 模型
+- **高精度向量化**: 使用 Qwen qwen3-vl-embedding 模型
 - **实时相似度计算**: 基于余弦相似度的智能匹配
 - **优雅的UI展示**: 专门设计的相关笔记卡片组件
 
@@ -29,7 +29,7 @@
 复制 `.env.example` 文件为 `.env`：
 
 ```bash
-cp backend/.env.example backend/.env
+cp .env.example .env
 ```
 
 编辑 `.env` 文件，配置以下变量：
@@ -39,7 +39,7 @@ cp backend/.env.example backend/.env
 DASHSCOPE_API_KEY=your-qwen-dashscope-api-key
 
 # 向量化配置
-EMBEDDING_MODEL=text-embedding-v4
+EMBEDDING_MODEL=qwen3-vl-embedding
 EMBEDDING_DIMENSION=1024
 SIMILARITY_THRESHOLD=0.7
 MAX_RELATED_NOTES=3

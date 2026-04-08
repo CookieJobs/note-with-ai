@@ -23,3 +23,34 @@ backend/dist/
 .env.*.local
 backend/.env
 *.tar.gz
+tsconfig.tsbuildinfo
+
+# 忽略临时报告与备忘文档
+IMPORT_GUIDE.md
+IMPORT_REPORT.md
+IMPROVEMENT_MEMO.md
+
+# AI 助手生成的计划与规范文件
+spec.md
+tasks.md
+checklist.md
+*_plan.md
+
+# 临时测试与验证脚本 (本地验证的草稿文件)
+test_*.ts
+test_*.js
+test-*.ts
+test-*.js
+
+# 测试覆盖率与工具缓存
+coverage/
+.eslintcache
+
+# 包管理器错误日志
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 操作系统生成文件
+Thumbs.db
