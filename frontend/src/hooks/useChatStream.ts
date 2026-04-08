@@ -19,10 +19,8 @@ interface UseChatStreamReturn {
   updateContextRelatedNotes: (
     sessionId: string,
     messages: IMessage[],
-    userId: string,
-    setSessions: React.Dispatch<React.SetStateAction<IChat[]>>,
-    saveSessionToDB: (userId: string, session: IChat) => Promise<string>
-  ) => Promise<void>;
+    userId: string
+  ) => Promise<IRelatedNote[] | undefined>;
 }
 
 export const useChatStream = (): UseChatStreamReturn => {
@@ -32,10 +30,8 @@ export const useChatStream = (): UseChatStreamReturn => {
   const updateContextRelatedNotes = async (
     sessionId: string,
     messages: IMessage[],
-    userId: string,
-    setSessions: React.Dispatch<React.SetStateAction<IChat[]>>,
-    saveSessionToDB: (userId: string, session: IChat) => Promise<string>
-  ) => {
+    userId: string
+  ): Promise<IRelatedNote[] | undefined> => {
     try {
       console.log('🔍 开始异步搜索会话相关笔记...');
 
@@ -49,37 +45,14 @@ export const useChatStream = (): UseChatStreamReturn => {
         const relatedNotes: IRelatedNote[] = (data && data.data && Array.isArray(data.data.relatedNotes) ? data.data.relatedNotes : (data.relatedNotes || []));
 
         console.log('📝 找到会话相关笔记:', relatedNotes.length, '条');
-
-        let updatedSession: IChat | undefined;
-
-        // 更新会话状态
-        setSessions(prevSessions => {
-          const updatedSessions = prevSessions.map(session => {
-            if (session.id === sessionId) {
-              updatedSession = { ...session, relatedNotes };
-              return updatedSession;
-            }
-            return session;
-          });
-
-          // 更新本地存储
-          if (userId) {
-            localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updatedSessions));
-          }
-
-          return updatedSessions;
-        });
-
-        // 持久化到数据库
-        if (updatedSession) {
-          console.log('💾 保存相关笔记到数据库...');
-          await saveSessionToDB(userId, updatedSession);
-        }
+        return relatedNotes;
       } else {
         console.error('搜索会话相关笔记失败');
+        return undefined;
       }
     } catch (error) {
       console.error('搜索会话相关笔记出错:', error);
+      return undefined;
     }
   };
 
@@ -198,68 +171,77 @@ export const useChatStream = (): UseChatStreamReturn => {
       };
       const finalMessages: IMessage[] = [...updatedMessages, assistantMessage];
 
-      // 异步搜索会话相关笔记
-      updateContextRelatedNotes(
-        currentSession.id,
-        finalMessages,
-        userId,
-        setSessions,
-        saveSessionToDB
-      );
+      // 准备异步后台任务：获取相关笔记和生成会话标题
+      const userText = (userMessage.content || '').trim();
+      const aiText = assistantReply.trim();
+      
+      const fetchNotesPromise = updateContextRelatedNotes(currentSession.id, finalMessages, userId);
+      let fetchTitlePromise: Promise<string | undefined> = Promise.resolve(undefined);
 
-      // 自动摘要并更新会话标题
-      try {
-        const userText = (userMessage.content || '').trim();
-        const aiText = assistantReply.trim();
-
-        if (userText && aiText) {
-          const summaryRes = await authFetch('/api/chat/summarizeTitle', {
-            method: 'POST',
-            body: JSON.stringify({
-              userContent: userText,
-              aiContent: aiText
-            })
-          });
-          if (summaryRes.ok) {
-            const summaryData = await summaryRes.json();
-            const title: string = (summaryData && summaryData.data && typeof summaryData.data.title === 'string') ? summaryData.data.title : summaryData.title;
-            // 更新会话标题
-            setSessions(prevSessions => {
-              const updated = prevSessions.map(s =>
-                s.id === currentSession.id ? { ...s, title } : s
-              );
-              // 更新本地存储
-              if (userId) {
-                localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
-              }
-              return updated;
-            });
-
-            // 保存到数据库
-            const sessionToSaveForTitle = { ...currentSession, messages: finalMessages, title };
-            const sessionToSave: IChat = { ...sessionToSaveForTitle, relatedNotes: undefined };
-
-            const newSessionId = await saveSessionToDB(userId, sessionToSave);
-            console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
-          } else {
-            // 摘要失败也要保存消息
-            const sessionToSave: IChat = { ...currentSession, messages: finalMessages, relatedNotes: undefined };
-
-            const newSessionId = await saveSessionToDB(userId, sessionToSave);
-            console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
+      if (userText && aiText) {
+        fetchTitlePromise = authFetch('/api/chat/summarizeTitle', {
+          method: 'POST',
+          body: JSON.stringify({
+            userContent: userText,
+            aiContent: aiText
+          })
+        }).then(async (res) => {
+          if (res.ok) {
+            const summaryData = await res.json();
+            return (summaryData && summaryData.data && typeof summaryData.data.title === 'string') 
+              ? summaryData.data.title 
+              : summaryData.title;
           }
-        } else {
-          // 内容为空，跳过标题摘要但依然保存消息
-          const sessionToSave: IChat = { ...currentSession, messages: finalMessages, relatedNotes: undefined };
+          return undefined;
+        }).catch((err) => {
+          console.error('摘要生成失败:', err);
+          return undefined;
+        });
+      }
 
-          const newSessionId = await saveSessionToDB(userId, sessionToSave);
-          console.log('🚦 sendMessage（跳过摘要）保存会话后返回的ID:', newSessionId);
+      // 等待两个异步任务都执行完毕（无论成功或失败）
+      const [notesResult, titleResult] = await Promise.allSettled([
+        fetchNotesPromise,
+        fetchTitlePromise
+      ]);
+
+      const newRelatedNotes = notesResult.status === 'fulfilled' ? notesResult.value : undefined;
+      const newTitle = titleResult.status === 'fulfilled' ? titleResult.value : undefined;
+
+      // 执行一次性的状态更新
+      let latestSessionToSave: IChat | undefined;
+      setSessions(prevSessions => {
+        const updated = prevSessions.map(s => {
+          if (s.id === currentSession.id) {
+            const updatedSession = { ...s, messages: finalMessages };
+            if (newTitle) updatedSession.title = newTitle;
+            if (newRelatedNotes) updatedSession.relatedNotes = newRelatedNotes;
+            latestSessionToSave = updatedSession;
+            return updatedSession;
+          }
+          return s;
+        });
+        
+        // 更新本地存储
+        if (userId) {
+          localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
         }
-      } catch (e) {
-        const sessionToSave: IChat = { ...currentSession, messages: finalMessages, relatedNotes: undefined };
+        return updated;
+      });
 
+      // 执行一次性的数据库保存
+      const sessionToSave = latestSessionToSave || { 
+        ...currentSession, 
+        messages: finalMessages,
+        ...(newTitle && { title: newTitle }),
+        ...(newRelatedNotes && { relatedNotes: newRelatedNotes })
+      };
+
+      try {
         const newSessionId = await saveSessionToDB(userId, sessionToSave);
-        console.log('🚦 sendMessage 保存会话后返回的ID:', newSessionId);
+        console.log('🚦 sendMessage 最终保存会话后返回的ID:', newSessionId);
+      } catch (saveErr) {
+        console.error('🚦 sendMessage 保存会话失败:', saveErr);
       }
     } catch (err: any) {
       console.error('发送消息失败:', err);

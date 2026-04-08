@@ -13,6 +13,7 @@ import authRoutes from './routes/auth';
 import healthRoutes from './routes/health';
 import cacheRoutes from './routes/cache';
 import performanceRoutes from './routes/performance';
+import feedRoutes from './routes/feedRoutes';
 import { globalErrorHandler } from './utils/errorHandler';
 
 dotenv.config();
@@ -39,9 +40,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ 健康检查
-app.get('/api/health', (_, res) => {
-  res.json({ status: 'ok' });
+// ✅ 轻量存活探针
+app.get('/api/ping', (_, res) => {
+  res.status(200).json({ status: 'ok' });
 });
 
 // ✅ 路由挂载
@@ -50,6 +51,7 @@ app.use('/api/notes', noteRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/chat', chatRelatedNotesRoutes);
 app.use('/api/recommend', recommendRoutes);
+app.use('/api/feed', feedRoutes);
 app.use('/api/cache', cacheRoutes);
 app.use('/api/performance', performanceRoutes);
 app.use('/api', healthRoutes);

@@ -67,7 +67,27 @@ class ChatService {
    * Get all chat sessions for a user
    */
   async getSessions(userId: string): Promise<IChat[]> {
-    const sessions = await Chat.find({ userId }).sort({ updatedAt: -1 }).lean();
+    const sessions = await Chat.find({ userId })
+      .sort({ updatedAt: -1 })
+      .populate({
+        path: 'relatedNotes.noteId',
+        select: '_id'
+      })
+      .lean();
+
+    sessions.forEach((session: any) => {
+      if (session.relatedNotes && session.relatedNotes.length > 0) {
+        // 过滤掉引用的笔记已被删除的关联项 (noteId 为 null)
+        session.relatedNotes = session.relatedNotes.filter((rn: any) => rn.noteId !== null);
+        
+        // 将 populated 的 noteId 对象恢复为其原始的 string/ObjectId 形式，保持接口响应结构一致
+        session.relatedNotes = session.relatedNotes.map((rn: any) => ({
+          ...rn,
+          noteId: rn.noteId._id
+        }));
+      }
+    });
+
     return sessions as unknown as IChat[];
   }
 

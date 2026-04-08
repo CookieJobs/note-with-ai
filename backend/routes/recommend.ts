@@ -51,8 +51,8 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
     noteId,
     recallK = 30,
     finalK = 10,
-    s1Threshold = 0.35,
-    hardThreshold = 0.62,
+    s1Threshold = 0.50, // 收紧阈值
+    hardThreshold = 0.75, // 收紧阈值
   } = req.body || {};
 
   const t0 = Date.now();

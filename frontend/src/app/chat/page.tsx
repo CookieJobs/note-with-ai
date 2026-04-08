@@ -7,6 +7,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import styles from './chat.module.scss';
 import TopNavigation from '../../components/TopNavigation';
@@ -21,10 +22,12 @@ import ChatRelatedNotesPanel from '../../components/ChatRelatedNotesPanel';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
 
 export default function ChatPage() {
+  const router = useRouter();
   const [input, setInput] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string>('');
   const [showCare, setShowCare] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const { user, isClient } = useAuthGuard();
 
@@ -120,12 +123,32 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
 
-  // 如果是服务端渲染，返回加载占位符
-  if (!isClient) {
-    return <div>Loading...</div>;
+  // 如果是服务端渲染，或者正在验证用户身份，返回占位符但保留 TopNavigation 以防闪烁
+  if (!isClient || !user) {
+    return (
+      <div className={`${styles.container} ${styles.emptyContainer}`}>
+        <TopNavigation onMenuClick={() => setIsMobileSidebarOpen(true)} />
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flex: 1, color: '#888' }}>
+          <div className="flex flex-col items-center gap-3">
+            <div className="loading-spinner" style={{
+              width: '24px',
+              height: '24px',
+              border: '3px solid rgba(0,0,0,0.1)',
+              borderTopColor: '#333',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }} />
+            <span>{!isClient ? 'Loading...' : '🚀 正在验证用户身份...'}</span>
+          </div>
+          <style>{`
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      </div>
+    );
   }
-
-  if (!user) return <div>🚀 正在验证用户身份...</div>;
 
   const handleInputChange = (value: string) => {
     setInput(value);
@@ -141,41 +164,48 @@ export default function ChatPage() {
 
   return (
     <div className={`${styles.container} ${messages.length === 0 ? styles.emptyContainer : ''}`}>
-      <TopNavigation />
+      <TopNavigation onMenuClick={() => setIsMobileSidebarOpen(true)} />
       
-      <ChatHistoryPanel
-        sessions={sessions}
-        currentSessionId={currentSessionId}
-        isClient={isClient}
-        onSessionSelect={setCurrentSessionId}
-        onNewSession={startNewSession}
-        onDeleteSession={handleDeleteClick}
-      />
+      <div className={styles.bodyWrapper}>
+        <ChatHistoryPanel
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          isClient={isClient}
+          isOpen={isMobileSidebarOpen}
+          onClose={() => setIsMobileSidebarOpen(false)}
+          onSessionSelect={setCurrentSessionId}
+          onNewSession={startNewSession}
+          onDeleteSession={handleDeleteClick}
+        />
 
-      <ChatMainContent messages={messages} isLoading={loading} />
+        <div className={styles.mainCenter}>
+          <ChatMainContent messages={messages} isLoading={loading} />
 
-      <ChatInputArea
-        input={input}
-        loading={loading}
-        error={error}
-        onInputChange={handleInputChange}
-        onSend={handleSendClick}
-        centered={messages.length === 0}
-        suggestionComponent={
-          showCare ? (
-            <CareAssistantPanel 
-              auto={true} 
-              onInsert={handleCareInsert} 
-              onSend={addCareMessage} 
-            />
-          ) : null
-        }
-      />
+          <ChatInputArea
+            input={input}
+            loading={loading}
+            error={error}
+            onInputChange={handleInputChange}
+            onSend={handleSendClick}
+            centered={messages.length === 0}
+            suggestionComponent={
+              showCare ? (
+                <CareAssistantPanel 
+                  auto={true} 
+                  onInsert={handleCareInsert} 
+                  onSend={addCareMessage} 
+                />
+              ) : null
+            }
+          />
+        </div>
 
-      <ChatRelatedNotesPanel 
-        relatedNotes={currentSession?.relatedNotes || []} 
-        className={styles.rightPanel}
-      />
+        <ChatRelatedNotesPanel 
+          relatedNotes={currentSession?.relatedNotes || []} 
+          className={styles.rightPanel}
+          onNoteClick={(noteId) => router.push(`/notes?highlight=${noteId}`)}
+        />
+      </div>
 
       <DeleteConfirmModal
         show={showDeleteConfirm}

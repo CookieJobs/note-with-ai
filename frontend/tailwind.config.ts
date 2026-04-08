@@ -18,6 +18,15 @@ const config = {
       },
     },
     extend: {
+      spacing: {
+        'top-nav': 'var(--top-nav-height)',
+        'left-panel': 'var(--left-panel-width)',
+        'left-panel-xl': 'var(--left-panel-width-xl)',
+        'right-panel': 'var(--right-panel-width)',
+      },
+      height: {
+        'top-nav': 'var(--top-nav-height)',
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

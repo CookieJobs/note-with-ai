@@ -11,6 +11,8 @@ interface ChatHistoryPanelProps {
   sessions: IChat[];
   currentSessionId: string;
   isClient: boolean;
+  isOpen: boolean;
+  onClose: () => void;
   onSessionSelect: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (e: React.MouseEvent, sessionId: string) => void;
@@ -20,17 +22,37 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
   sessions,
   currentSessionId,
   isClient,
+  isOpen,
+  onClose,
   onSessionSelect,
   onNewSession,
   onDeleteSession,
 }) => {
   // ... rest of the component
   return (
-    <aside className="fixed top-[80px] left-0 bottom-0 w-[320px] flex flex-col border-r border-border/40 bg-background/95 backdrop-blur-xl z-20 transition-all duration-300 shadow-[2px_0_8px_rgba(0,0,0,0.02)]">
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div 
+          className="absolute inset-0 bg-black/20 z-20 md:hidden transition-opacity"
+          onClick={onClose}
+        />
+      )}
+      
+      <aside className={cn(
+        "flex flex-col border-r border-border/40 bg-background/95 backdrop-blur-xl z-30 transition-transform duration-300 shadow-[2px_0_8px_rgba(0,0,0,0.02)] shrink-0",
+        "w-left-panel xl:w-left-panel-xl",
+        // 在移动端使用 absolute 悬浮在内容上方，在桌面端（md及以上）使用 relative 作为 flex 布局的一部分
+        "absolute md:relative inset-y-0 left-0",
+        isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
       {/* Header Area */}
       <div className="flex flex-col gap-4 px-4 py-4 shrink-0">
         <Button 
-          onClick={onNewSession} 
+          onClick={() => {
+            onNewSession();
+            onClose();
+          }} 
           variant="ghost"
           className="w-full justify-start gap-2 h-10 px-2 hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-all duration-200"
         >
@@ -62,7 +84,10 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
             sessions.map((session) => (
               <div
                 key={session.id}
-                onClick={() => onSessionSelect(session.id)}
+                onClick={() => {
+                  onSessionSelect(session.id);
+                  onClose();
+                }}
                 className={cn(
                   "group relative flex items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium rounded-md cursor-pointer transition-all duration-200 border border-transparent select-none text-muted-foreground hover:text-foreground",
                   session.id === currentSessionId 
@@ -101,6 +126,7 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
       {/* Bottom Gradient/Fade (Optional aesthetic touch) */}
       <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background/80 to-transparent pointer-events-none" />
     </aside>
+    </>
   );
 };
 

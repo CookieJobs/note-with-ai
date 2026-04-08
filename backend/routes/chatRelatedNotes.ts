@@ -134,10 +134,11 @@ router.post('/context-related-notes', authenticateToken, asyncHandler(async (req
   const queryEmbedding = await getCachedQwenEmbedding(context, 1024);
 
   // 查找相关笔记
-  const rawResults = await vectorStore.search(user._id.toString(), queryEmbedding, limit);
+  const rawResults = await vectorStore.search(user._id.toString(), queryEmbedding, limit * 2);
   
   const relatedNotes = rawResults
-    .filter(item => item.score >= threshold)
+    .filter(item => item.score >= 0.5) // 将原有的 0.2 宽松阈值提升至合理的 0.5
+    .slice(0, limit)
     .map(item => ({
       note: item.item,
       score: item.score,

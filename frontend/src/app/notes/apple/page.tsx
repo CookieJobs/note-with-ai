@@ -3,17 +3,17 @@
 import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-import TopNavigation from '../../components/TopNavigation';
-import { getUser, isAuthenticated } from '../../utils/auth';
+import TopNavigation from '../../../components/TopNavigation';
+import { getUser, isAuthenticated } from '../../../utils/auth';
 
-import DeleteNoteConfirmModal from './components/v2/DeleteNoteConfirmModal';
-import ModernNoteCard from './components/v2/ModernNoteCard';
-import FloatingQuickCompose from './components/v2/FloatingQuickCompose';
-import RelatedNotesDrawer from './components/v2/RelatedNotesDrawer';
-import { useAuthGuard } from './hooks/useAuthGuard';
-import { useCreateNote } from './hooks/useCreateNote';
-import { useNotes } from './hooks/useNotes';
-import styles from './notes-v2.module.scss';
+import DeleteNoteConfirmModal from '../components/v2/DeleteNoteConfirmModal';
+import ModernNoteCard from '../components/v2/ModernNoteCard';
+import FloatingQuickCompose from '../components/v2/FloatingQuickCompose';
+import RelatedNotesDrawer from '../components/v2/RelatedNotesDrawer';
+import { useAuthGuard } from '../hooks/useAuthGuard';
+import { useCreateNote } from '../hooks/useCreateNote';
+import { useNotes } from '../hooks/useNotes';
+import styles from './notes-apple.module.scss';
 
 // 是 Next.js App Router 的一个“路由段配置”，用来告诉 Next.js：
 // 这个页面要强制走动态渲染（不要被静态生成/缓存成固定 HTML）

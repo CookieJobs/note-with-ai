@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import styles from '../notes.module.scss';
-import TrashIcon from '../../../components/icons/TrashIcon';
-import type { Note } from '../hooks/useNotes';
-import RichTextEditor from './RichTextEditor';
-import RichTextViewer from './RichTextViewer';
-import { useNoteEditor } from '../hooks/useNoteEditor';
+import { useState, useEffect, useRef } from 'react';
+import styles from '../../notes-v2.module.scss';
+import TrashIcon from '../../../../components/icons/TrashIcon';
+import type { Note } from '../../hooks/useNotes';
+import RichTextEditor from '../RichTextEditor';
+import RichTextViewer from '../RichTextViewer';
+import { useNoteEditor } from '../../hooks/useNoteEditor';
 
 interface NoteCardProps {
   note: Note;
@@ -29,6 +29,8 @@ interface NoteCardProps {
   exitEditSignal?: number;
   /** detail: 右侧工作台放大展示（默认展开、禁用“展开/收起”交互） */
   layoutVariant?: 'list' | 'detail';
+  onClick?: () => void;
+  isSelected?: boolean;
 }
 
 function useFocusCursorToEnd(
@@ -75,6 +77,8 @@ export default function ModernNoteCard({
   onDraftChange,
   exitEditSignal,
   layoutVariant = 'list',
+  onClick,
+  isSelected,
 }: NoteCardProps) {
   const {
     state,
@@ -107,6 +111,22 @@ export default function ModernNoteCard({
     onDraftChange,
     exitEditSignal,
   });
+
+  // 控制高亮动画的生命周期
+  const [activeHighlight, setActiveHighlight] = useState(false);
+
+  useEffect(() => {
+    if (isHighlighted) {
+      setActiveHighlight(true);
+      // 动画时间是 2.4s，这里我们等待 2.4s 后自动移除高亮类，使卡片恢复正常
+      const timer = setTimeout(() => {
+        setActiveHighlight(false);
+      }, 2400);
+      return () => clearTimeout(timer);
+    } else {
+      setActiveHighlight(false);
+    }
+  }, [isHighlighted]);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
@@ -414,7 +434,17 @@ export default function ModernNoteCard({
     }
   };
 
-  const cardClassName = `${styles.noteCard} ${layoutVariant === 'detail' ? styles.noteCardDetail : ''} ${isHighlighted ? styles.noteCardHighlight : ''} ${state.content.isEditing ? styles.noteCardEditing : ''}`;
+  const cardClassName = [
+    styles.noteCard,
+    layoutVariant === 'detail' ? styles.noteCardDetail : '',
+    activeHighlight ? styles.noteCardHighlight : '',
+    state.content.isEditing ? styles.noteCardEditing : '',
+    // 当处于高亮状态时，移除 !bg-white 和 !shadow-none 强制覆盖，让 CSS Module 中的动画样式接管
+    !activeHighlight ? '!bg-white !shadow-none' : '',
+    '!border',
+    isSelected ? '!border-blue-500 !ring-1 !ring-blue-500' : '!border-gray-100',
+    '!rounded-xl'
+  ].filter(Boolean).join(' ');
   const hasUnsavedDraft = !!draft?.dirty;
 
   return (
@@ -425,6 +455,24 @@ export default function ModernNoteCard({
       }}
       className={cardClassName}
     >
+      {/* 右侧悬浮把手 */}
+      <button
+        className={`${styles.relatedHandle} ${isSelected ? styles.relatedHandleActive : ''}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick?.();
+        }}
+        title="查看相关笔记"
+        aria-label="查看相关笔记"
+      >
+        <div className={styles.relatedHandleIcon}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="15" y1="3" x2="15" y2="21"></line>
+          </svg>
+        </div>
+      </button>
+
       <div
         className={styles.noteHeader}
         onClick={layoutVariant === 'detail' ? undefined : () => dispatch({ type: 'TOGGLE_EXPANDED' })}
@@ -446,7 +494,7 @@ export default function ModernNoteCard({
           </div>
         ) : (
           <div
-            className={styles.noteTitle}
+            className={`${styles.noteTitle} !font-semibold !text-gray-900 !text-lg`}
             onClick={(e) => {
               e.stopPropagation();
               dispatch({ type: 'ENTER_TITLE_EDIT', value: note.title || '' });
@@ -459,23 +507,23 @@ export default function ModernNoteCard({
             )}
           </div>
         )}
-        <div className={styles.noteActions}>
+        <div className={`${styles.noteActions} !gap-2`}>
           {state.title.isEditing && (
             <button
               onMouseDown={(e) => {
                 e.stopPropagation();
                 handleSaveTitle();
               }}
-              className={styles.noteEditTitleConfirm}
+              className={`${styles.noteEditTitleConfirm} !bg-gray-100 hover:!bg-gray-200 !text-gray-600`}
               aria-label="保存标题"
               disabled={state.title.saving}
             >
               ✓
             </button>
           )}
-          <span className={styles.noteDate}>{formatDate(note.createdAt)}</span>
+          <span className={`${styles.noteDate} !bg-transparent !text-gray-400 !border-none !p-0 !text-sm`}>{formatDate(note.createdAt)}</span>
           <button
-            className={styles.deleteButton}
+            className={`${styles.deleteButton} !bg-transparent !text-gray-400 hover:!text-red-500 hover:!bg-gray-100 !rounded-md !border-none !shadow-none !p-1`}
             onClick={(e) => {
               e.stopPropagation();
               onRequestDelete(note._id);
@@ -514,7 +562,7 @@ export default function ModernNoteCard({
           ) : (
             <div
               ref={textRef as any}
-              className={styles.noteText}
+              className={`${styles.noteText} !leading-relaxed !text-gray-600`}
             >
               {(() => {
                 const draftJson = draft?.dirty ? draft?.json : contentJsonDraft;
@@ -566,7 +614,7 @@ export default function ModernNoteCard({
                 activeKeywordIndex === idx ? (
                   <input
                     key={idx}
-                    className={styles.keywordEditInput}
+                    className={`${styles.keywordEditInput} !rounded-full !text-xs !px-3 !py-1 !border-gray-300 focus:!border-blue-400 focus:!ring-2 focus:!ring-blue-100`}
                     value={tagEditValue}
                     autoFocus
                     onChange={(e) => setTagEditValue(e.target.value)}
@@ -586,7 +634,7 @@ export default function ModernNoteCard({
                 ) : (
                   <span
                     key={idx}
-                    className={styles.keyword}
+                    className={`${styles.keyword} !bg-gray-100 hover:!bg-gray-200 !text-gray-600 !rounded-full !text-xs !border-none !px-3 !py-1`}
                     role="button"
                     tabIndex={0}
                     onClick={() => { setActiveKeywordIndex(idx); setTagEditValue(kw); }}
@@ -595,7 +643,7 @@ export default function ModernNoteCard({
                     {kw}
                     <button
                       type="button"
-                      className={styles.keywordDeleteBtn}
+                      className={`${styles.keywordDeleteBtn} !bg-white !text-gray-500 hover:!text-red-500 !border-gray-200`}
                       aria-label="删除关键词"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -613,7 +661,7 @@ export default function ModernNoteCard({
                   {activeKeywordIndex === addingIndex && (
                     <input
                       key="__add_keyword__"
-                      className={styles.keywordEditInput}
+                      className={`${styles.keywordEditInput} !rounded-full !text-xs !px-3 !py-1 !border-gray-300 focus:!border-blue-400 focus:!ring-2 focus:!ring-blue-100`}
                       value={tagEditValue}
                       autoFocus
                       onChange={(e) => setTagEditValue(e.target.value)}
@@ -635,7 +683,7 @@ export default function ModernNoteCard({
                   {activeKeywordIndex !== addingIndex && (
                     <button
                       type="button"
-                      className={styles.keywordAddBtn}
+                      className={`${styles.keywordAddBtn} !bg-transparent !border !border-dashed !border-gray-300 hover:!border-gray-400 !text-gray-400 hover:!text-gray-600 !rounded-full !w-6 !h-6`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setActiveKeywordIndex(addingIndex);
@@ -666,7 +714,7 @@ export default function ModernNoteCard({
             <div className={styles.noteEditActions} ref={contentEditActionsRef}>
               <button
                 type="button"
-                className={styles.noteEditCancel}
+                className={`${styles.noteEditCancel} !bg-white hover:!bg-gray-50 !text-gray-600 !border !border-gray-200 !rounded-lg !px-3 !py-1 !text-sm`}
                 onClick={handleCancelContent}
                 disabled={state.content.saving}
               >
@@ -674,7 +722,7 @@ export default function ModernNoteCard({
               </button>
               <button
                 type="button"
-                className={styles.noteEditSave}
+                className={`${styles.noteEditSave} !bg-blue-600 hover:!bg-blue-700 !text-white !rounded-lg !px-3 !py-1 !border-none !text-sm`}
                 onClick={handleSaveContent}
                 disabled={state.content.saving}
               >

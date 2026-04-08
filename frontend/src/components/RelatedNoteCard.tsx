@@ -35,17 +35,38 @@ export const RelatedNoteCard: React.FC<RelatedNoteCardProps> = ({
   };
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return '';
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 1) return '昨天';
-    if (diffDays <= 7) return `${diffDays}天前`;
-    if (diffDays <= 30) return `${Math.ceil(diffDays / 7)}周前`;
-    if (diffDays <= 365) return `${Math.ceil(diffDays / 30)}个月前`;
-    return `${Math.ceil(diffDays / 365)}年前`;
+    const now = new Date();
+    
+    // 计算本周一的凌晨 00:00:00
+    const currentDay = now.getDay(); // 0 是周日, 1-6 是周一到周六
+    const distanceToMonday = currentDay === 0 ? 6 : currentDay - 1;
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    // 计算下周一的凌晨 00:00:00
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+    
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const hh = pad(date.getHours());
+    const mm = pad(date.getMinutes());
+    const ss = pad(date.getSeconds());
+    const timeStr = `${hh}:${mm}:${ss}`;
+    
+    if (date >= startOfWeek && date < endOfWeek) {
+      const days = ['日', '一', '二', '三', '四', '五', '六'];
+      const dayStr = days[date.getDay()];
+      return `本周${dayStr} ${timeStr}`;
+    } else {
+      const yyyy = date.getFullYear();
+      const month = pad(date.getMonth() + 1);
+      const dd = pad(date.getDate());
+      return `${yyyy}-${month}-${dd} ${timeStr}`;
+    }
   };
 
   const getSimilarityColor = (similarity: number) => {

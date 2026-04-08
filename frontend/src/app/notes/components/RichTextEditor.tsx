@@ -83,6 +83,7 @@ type Props = {
   onModEnter?: () => void; // Cmd/Ctrl + Enter
   placeholder?: string;
   showToolbar?: boolean; // 展示态可隐藏 toolbar（例如快速记录未 composing 时）
+  toolbarVariant?: 'simple' | 'advanced'; // 简单模式/复杂模式工具栏
   insideRefs?: Array<React.RefObject<HTMLElement | null>>;
   toolbarRight?: ReactNode;
 };
@@ -95,6 +96,7 @@ export default function RichTextEditor({
   onModEnter,
   placeholder,
   showToolbar = true,
+  toolbarVariant = 'advanced',
   insideRefs = [],
   toolbarRight,
 }: Props) {
@@ -299,45 +301,61 @@ export default function RichTextEditor({
     <div ref={rootRef} className={styles.richEditor}>
       {showToolbar && (
         <div className={styles.richToolbar}>
-          <ButtonGroup orientation="horizontal">
-            <MarkButton editor={editor} type="bold" />
-            <MarkButton editor={editor} type="italic" />
-            <MarkButton editor={editor} type="underline" />
-            <MarkButton editor={editor} type="strike" />
-            <MarkButton editor={editor} type="code" />
-            <MarkButton editor={editor} type="superscript" />
-            <MarkButton editor={editor} type="subscript" />
-          </ButtonGroup>
+          {toolbarVariant === 'simple' ? (
+            <>
+              <ButtonGroup orientation="horizontal">
+                <MarkButton editor={editor} type="bold" />
+                <MarkButton editor={editor} type="underline" />
+              </ButtonGroup>
+              <Separator />
+              <ButtonGroup orientation="horizontal">
+                <ListButton editor={editor} type="bulletList" />
+                <ListButton editor={editor} type="orderedList" />
+              </ButtonGroup>
+            </>
+          ) : (
+            <>
+              <ButtonGroup orientation="horizontal">
+                <MarkButton editor={editor} type="bold" />
+                <MarkButton editor={editor} type="italic" />
+                <MarkButton editor={editor} type="underline" />
+                <MarkButton editor={editor} type="strike" />
+                <MarkButton editor={editor} type="code" />
+                <MarkButton editor={editor} type="superscript" />
+                <MarkButton editor={editor} type="subscript" />
+              </ButtonGroup>
 
-          <Separator />
+              <Separator />
 
-          <ButtonGroup orientation="horizontal">
-            <ListButton editor={editor} type="bulletList" />
-            <ListButton editor={editor} type="orderedList" />
-          </ButtonGroup>
+              <ButtonGroup orientation="horizontal">
+                <ListButton editor={editor} type="bulletList" />
+                <ListButton editor={editor} type="orderedList" />
+              </ButtonGroup>
 
-          <Separator />
+              <Separator />
 
-          <ButtonGroup orientation="horizontal">
-            <BlockquoteButton editor={editor} />
-            <CodeBlockButton editor={editor} />
-          </ButtonGroup>
+              <ButtonGroup orientation="horizontal">
+                <BlockquoteButton editor={editor} />
+                <CodeBlockButton editor={editor} />
+              </ButtonGroup>
 
-          <Separator />
+              <Separator />
 
-          <ButtonGroup orientation="horizontal">
-            <TextAlignButton editor={editor} align="left" />
-            <TextAlignButton editor={editor} align="center" />
-            <TextAlignButton editor={editor} align="right" />
-            <TextAlignButton editor={editor} align="justify" />
-          </ButtonGroup>
+              <ButtonGroup orientation="horizontal">
+                <TextAlignButton editor={editor} align="left" />
+                <TextAlignButton editor={editor} align="center" />
+                <TextAlignButton editor={editor} align="right" />
+                <TextAlignButton editor={editor} align="justify" />
+              </ButtonGroup>
 
-          <Separator />
+              <Separator />
 
-          <ButtonGroup orientation="horizontal">
-            <LinkPopover editor={editor} />
-            <ImageUploadButton editor={editor} />
-          </ButtonGroup>
+              <ButtonGroup orientation="horizontal">
+                <LinkPopover editor={editor} />
+                <ImageUploadButton editor={editor} />
+              </ButtonGroup>
+            </>
+          )}
           {toolbarRight ? (
             <>
               <span className={styles.richToolbarSpacer} />

@@ -202,10 +202,10 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
           const server = mergedSessionsMap.get(id);
           
           if (server) {
-            const hasLocalNotes = local.relatedNotes && local.relatedNotes.length > 0;
-            const hasServerNotes = server.relatedNotes && server.relatedNotes.length > 0;
+            // 完全信任服务端的 relatedNotes（后端已过滤被删除的笔记），不再受限于本地旧缓存
+            const mergedNotes = server.relatedNotes || [];
             
-            const mergedNotes = hasServerNotes ? server.relatedNotes : (hasLocalNotes ? local.relatedNotes : server.relatedNotes);
+            // 消息可以保留较长的一方，因为在发送消息瞬间本地可能多一条还没保存完的消息
             const mergedMessages = server.messages.length >= local.messages.length ? server.messages : local.messages;
 
             mergedSessionsMap.set(id, {

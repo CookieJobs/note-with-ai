@@ -38,3 +38,19 @@ export interface INote extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface IUserProfile extends Document {
+  userId: Types.ObjectId;
+  interests: { topic: string; score: number; lastUpdated: Date }[];
+  expertise: { area: string; level: 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert' }[];
+  goals: { description: string; timeframe: 'Short-term' | 'Long-term'; status: 'Active' | 'Completed' | 'Abandoned'; createdAt: Date }[];
+  preferences: {
+    communicationStyle: string;
+    contentFocus: string[];
+    feedbackMode: 'Gentle' | 'Direct';
+  };
+  summary: string;
+  lastAnalyzedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
