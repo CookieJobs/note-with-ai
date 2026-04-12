@@ -31,9 +31,10 @@
 
 - ✍️ **富文本编辑**: 支持 TipTap 编辑器，提供专业的写作体验
 - 🤖 **AI 自动摘要**: 自动生成笔记标题、关键词、语义摘要
-- 🔗 **语义联想**: 基于向量搜索，发现笔记之间的关联关系
+- 🔗 **语义联想**: 基于向量搜索，发现笔记之间的关联关系，并在聊天中召回相关笔记
 - 💬 **AI 对话**: 基于 DeepSeek 的智能聊天助手
 - 📊 **个性化推荐**: 根据用户笔记内容推荐相关文章
+- 🧑‍🎨 **用户画像与个性化 Feed**: 通过 AI 分析用户兴趣、专业领域和目标，提供个性化的内容流
 
 ### 1.2 核心价值
 
@@ -44,6 +45,7 @@
 孤立的笔记存储        →          语义关联发现
 简单的搜索功能        →          向量语义搜索
 单一的文字记录        →          富文本 + AI 对话
+无差别的信息展示      →          基于画像的个性化推荐
 ```
 
 ---
@@ -55,10 +57,11 @@
 | 层级 | 技术选型 | 版本/说明 | 作用 |
 |------|---------|----------|------|
 | **框架** | Next.js | 14+ | React 全栈框架，提供 SSR/SSG 支持 |
-| **UI 库** | React | 18+ | 声明式 UI 组件库 |
-| **富文本编辑器** | TipTap | 2.x | 基于 ProseMirror 的所见即所得编辑器 |
+| **UI 库** | React + Radix UI | 18+ | 声明式 UI 组件库及无头组件基础 |
+| **组件库** | shadcn/ui | - | 可定制的高质量组件集合 |
+| **富文本编辑器** | TipTap | 3.x | 基于 ProseMirror 的所见即所得编辑器 |
 | **状态管理** | React Hooks | 内置 | useState/useReducer/useContext |
-| **样式方案** | CSS Modules / Styled-jsx | 内置 | 组件级样式隔离 |
+| **样式方案** | Tailwind CSS + CSS Modules | 3.x | 实用优先 CSS 框架与组件级样式隔离 |
 | **HTTP 客户端** | Fetch API | 内置 | 原生请求库 |
 | **构建工具** | Webpack/Turbo | Next.js 内置 | 打包优化 |
 | **代码质量** | ESLint | 8.x | 代码规范检查 |
@@ -69,11 +72,14 @@
 | 层级 | 技术选型 | 版本/说明 | 作用 |
 |------|---------|----------|------|
 | **运行时** | Node.js | 18+ | JavaScript 运行环境 |
-| **Web 框架** | Express.js | 4.x | 经典的 Node.js Web 框架 |
-| **数据库** | MongoDB | 6.x | 文档型 NoSQL 数据库 |
+| **Web 框架** | Express.js | 4.x / 5.x | 经典的 Node.js Web 框架 |
+| **数据库** | MongoDB | 6.x / 7.x | 文档型 NoSQL 数据库 |
 | **ODM** | Mongoose | 8.x | MongoDB 对象建模工具 |
-| **认证** | JWT (jsonwebtoken) | - | Token 认证机制 |
-| **密码加密** | bcryptjs | - | 密码哈希 |
+| **认证** | JWT (jsonwebtoken) | 9.x | Token 认证机制 |
+| **密码加密** | bcryptjs | 3.x | 密码哈希 |
+| **数据验证** | Zod | 4.x | API 请求参数的 Schema 验证 |
+| **定时任务** | node-cron | 3.x | 后台数据同步与定时处理 |
+| **网页解析** | cheerio | 1.x | 获取与解析外部文章数据 |
 | **环境配置** | dotenv | - | 环境变量管理 |
 | **跨域** | cors | - | Express 中间件 |
 | **日志** | 原生 console | - | 请求日志记录 |
@@ -165,9 +171,9 @@
 │  │  │  - 密码加密   │ │  - 富文本支持 │ │  - 历史记录        │   │    │
 │  │  └───────────────┘ └───────────────┘ └─────────────────────┘   │    │
 │  │  ┌───────────────┐ ┌───────────────┐ ┌─────────────────────┐   │    │
-│  │  │  智能推荐模块 │ │  嵌入向量模块 │ │  性能/缓存模块      │   │    │
-│  │  │  - 多路召回   │ │  - Qwen 生成  │ │  - Redis 缓存      │   │    │
-│  │  │  - LLM 重排   │ │  - 相似度计算 │ │  - 请求优化        │   │    │
+│  │  │  用户画像模块 │ │  嵌入向量模块 │ │  推荐/Feed模块      │   │    │
+│  │  │  - 分析目标   │ │  - Qwen 生成  │ │  - 多路召回推荐     │   │    │
+│  │  │  - 兴趣提取   │ │  - 相似度计算 │ │  - 个性化信息流     │   │    │
 │  │  └───────────────┘ └───────────────┘ └─────────────────────┘   │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -183,9 +189,9 @@
 │   主数据库   │ │   LLM API   │ │  Qwen API   │ │  (外部文章) │ │  (可选)     │
 │             │ │             │ │             │ │             │ │             │
 │ - Users     │ │ - 聊天对话  │ │ - 文本嵌入  │ │ - 关键词    │ │ - Embedding │
-│ - Notes     │ │ - 摘要生成  │ │ - 向量存储  │ │   搜索      │ │   缓存      │
-│ - Chats     │ │ - 关键词提取 │ │ - 相似度    │ │ - 文章推荐  │ │ - 会话缓存  │
-│             │ │ - 概念扩展   │ │   计算      │ │             │ │             │
+│ - UserProfile││ - 摘要生成  │ │ - 向量存储  │ │   搜索      │ │   缓存      │
+│ - Notes     │ │ - 画像分析  │ │ - 相似度    │ │ - 文章推荐  │ │ - 会话缓存  │
+│ - Chats     │ │ - 概念扩展   │ │   计算      │ │             │ │             │
 └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘
 ```
 
@@ -245,9 +251,47 @@
 // - email: 唯一索引
 ```
 
-**数据关系**: 一个用户 → 多条笔记、多条聊天会话
+**数据关系**: 一个用户 → 多条笔记、多条聊天会话、一个用户画像
 
-#### 4.1.2 笔记表 (Notes)
+#### 4.1.2 用户画像表 (UserProfiles)
+
+```typescript
+// 文件位置: backend/models/UserProfile.ts
+
+{
+  _id: ObjectId,              // 主键
+  userId: ObjectId,           // 外键 → Users._id
+  interests: [{               // 用户兴趣提取
+    topic: String,
+    score: Number
+  }],
+  expertise: [{               // 专业领域
+    area: String,
+    level: String
+  }],
+  goals: [{                   // 用户目标
+    description: String,
+    timeframe: String,
+    status: String
+  }],
+  preferences: {              // 用户偏好
+    communicationStyle: String,
+    contentFocus: [String],
+    feedbackMode: String
+  },
+  summary: String,            // 用户总结
+  lastAnalyzedAt: Date,       // 最近一次分析时间
+  createdAt: Date,            // 创建时间
+  updatedAt: Date             // 更新时间
+}
+
+// 索引设计
+// - userId: 唯一索引 (一对一关系)
+```
+
+**数据关系**: 一个用户 → 一个用户画像
+
+#### 4.1.3 笔记表 (Notes)
 
 ```typescript
 // 文件位置: backend/models/Note.ts
@@ -278,7 +322,7 @@
 
 **数据关系**: 一个用户 → 多条笔记
 
-#### 4.1.3 聊天会话表 (Chats)
+#### 4.1.4 聊天会话表 (Chats)
 
 ```typescript
 // 文件位置: backend/models/Chat.ts
@@ -313,6 +357,13 @@
 └─────────────────────────────────────────────────────────────────┘
 
 Users (用户)
+  │
+  ├── 1:1 ─── UserProfiles (用户画像)
+  │           │
+  │           ├── interests: [Object]      (兴趣爱好)
+  │           ├── expertise: [Object]      (专业领域)
+  │           ├── goals: [Object]          (用户目标)
+  │           └── summary: String          (画像总结)
   │
   ├── 1:N ─── Notes (笔记)
   │           │
@@ -404,7 +455,12 @@ NoteWithAI API 结构
 │   │   ├── POST   /               # 发送消息并获取 AI 回复
 │   │   ├── POST   /save           # 保存聊天记录
 │   │   ├── DELETE /:sessionId     # 删除聊天会话
-│   │   └── POST   /summarizeTitle # AI 生成聊天标题
+│   │   ├── POST   /summarizeTitle # AI 生成聊天标题
+│   │   └── POST   /related-notes  # 根据聊天内容获取相关笔记
+│   │
+│   ├── /feed              # 用户个性化信息流
+│   │   ├── GET    /               # 获取个性化推荐 Feed
+│   │   └── POST   /analyze        # 手动触发用户画像分析
 │   │
 │   ├── /recommend         # 智能推荐
 │   │   ├── GET    /                # 获取推荐文章
@@ -734,6 +790,36 @@ Response (200):
     ├── 向量缓存（LRU + TTL）
     ├── 并行查询
     └── 异步写入
+```
+
+### 6.5 用户画像与个性化信息流模块
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         用户画像与 Feed 功能架构                          │
+└─────────────────────────────────────────────────────────────────────────┘
+
+用户画像与信息流模块
+│
+├── 1. 画像分析 (User Profile)
+│   ├── 异步收集用户笔记数据
+│   ├── DeepSeek LLM 深度分析
+│   │   ├── 提取核心兴趣 (Interests)
+│   │   ├── 评估专业领域 (Expertise)
+│   │   ├── 识别短期/长期目标 (Goals)
+│   │   └── 推断用户偏好 (Preferences)
+│   └── 画像数据持久化 (UserProfile 模型)
+│
+├── 2. 个性化信息流 (Feed)
+│   ├── 兴趣召回 (Redis匹配旧笔记)
+│   ├── 目标追踪 (基于目标的笔记推荐)
+│   ├── 外部内容抓取 (基于画像的实时文章)
+│   └── 混合排序与展示
+│
+└── 3. 触发与更新机制
+    ├── 首次访问自动触发分析
+    ├── 定时任务定期更新画像
+    └── 手动触发重新分析
 ```
 
 ---
@@ -1111,46 +1197,37 @@ frontend/
 │   ├── app/                   # Next.js App Router
 │   │   ├── layout.tsx         # 全局布局
 │   │   ├── page.tsx           # 首页
+│   │   ├── auth/              # 认证页
 │   │   ├── login/             # 登录页
-│   │   │   └── page.tsx
 │   │   ├── register/          # 注册页
-│   │   │   └── page.tsx
+│   │   ├── profile/           # 用户画像页
 │   │   ├── notes/             # 笔记管理
-│   │   │   ├── page.tsx       # 笔记列表页
-│   │   │   ├── hooks/         # 笔记相关 hooks
-│   │   │   │   ├── useNotes.ts
-│   │   │   │   ├── useCreateNote.ts
-│   │   │   │   └── useAuthGuard.ts
-│   │   │   ├── components/    # 笔记组件
-│   │   │   │   ├── RichTextEditor.tsx
-│   │   │   │   ├── RichTextViewer.tsx
-│   │   │   │   ├── FloatingQuickCompose.tsx
-│   │   │   │   └── WorkspaceGrid.tsx
-│   │   │   └── types.ts       # 笔记类型定义
+│   │   │   ├── apple/         # Apple备忘录风格视图
+│   │   │   ├── view/          # 笔记查看页
+│   │   │   ├── components/    # 笔记专属组件 (v2, tiptap等)
+│   │   │   ├── hooks/         # 笔记专属 hooks
+│   │   │   └── page.tsx       # 笔记列表页
 │   │   └── chat/              # 聊天页面
-│   │       └── page.tsx
 │   ├── components/            # 公共组件
-│   │   ├── ChatInputArea.tsx
-│   │   ├── ChatHistoryPanel.tsx
-│   │   ├── ChatMessage.tsx
-│   │   ├── RelatedNotesContainer.tsx
-│   │   ├── RelatedNoteCard.tsx
-│   │   ├── TopNavigation.tsx
-│   │   ├── NoteCard.tsx
-│   │   ├── CareAssistantPanel.tsx
-│   │   ├── GlobalKeybindings.tsx
-│   │   └── icons/             # 图标组件
+│   │   ├── ui/                # shadcn/ui 基础组件
+│   │   ├── tiptap-icons/      # TipTap 图标
+│   │   ├── tiptap-node/       # TipTap 节点扩展
+│   │   ├── tiptap-ui/         # TipTap UI 交互组件
+│   │   ├── tiptap-ui-primitive/# TipTap 基础 UI
+│   │   ├── ChatInputArea.tsx  # 聊天输入
+│   │   ├── ChatHistoryPanel.tsx# 历史会话面板
+│   │   ├── ChatRelatedNotesPanel.tsx # 聊天关联笔记面板
+│   │   ├── CareAssistantPanel.tsx# 关怀助手
+│   │   ├── TopNavigation.tsx  # 顶部导航
+│   │   └── ...
 │   ├── hooks/                 # 公共 hooks
-│   │   ├── useChatMessages.ts
-│   │   ├── useChatSessions.ts
-│   │   └── use-tiptap-editor.ts
-│   ├── lib/                   # 工具库
-│   │   ├── api.ts             # API 封装
-│   │   └── tiptap-utils.ts    # TipTap 工具
+│   ├── lib/                   # 工具库 (api, tiptap-utils)
+│   ├── services/              # 前端服务 (feedService)
 │   ├── utils/                 # 工具函数
-│   │   ├── auth.ts            # 认证相关
-│   │   └── uuid.ts            # UUID 生成
-│   └── styles/                # 样式文件
+│   ├── types/                 # TS 类型定义
+│   └── styles/                # 样式文件 (globals.scss, variables)
+├── components.json            # shadcn/ui 配置
+├── tailwind.config.ts         # Tailwind CSS 配置
 ├── next.config.js             # Next.js 配置
 ├── package.json
 └── tsconfig.json

@@ -3538,8 +3538,10 @@
 }
 
 .keywordAddIcon {
-  display: inline-block;
-  transform: translateY(0.5px); /* 光学校正：+ 字形略偏上，向下挪一点 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
 }
 
 .keywordAddBtn:active {

@@ -16,12 +16,14 @@ const inter = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
+  fallback: ['system-ui', 'arial'],
 });
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
   display: 'swap',
+  fallback: ['monospace'],
 });
 
 export const metadata: Metadata = {

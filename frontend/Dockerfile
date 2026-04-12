@@ -17,6 +17,11 @@ COPY . .
 ARG BACKEND_URL
 ENV BACKEND_URL=$BACKEND_URL
 
+# 禁用 Next.js 遥测，避免网络请求导致构建挂起
+ENV NEXT_TELEMETRY_DISABLED=1
+# 限制 Node.js 的内存使用（防止构建时 OOM）
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+
 # 构建 Next.js 应用
 RUN npm run build
 

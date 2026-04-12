@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import styles from '../../notes-v2.module.scss';
 import TrashIcon from '../../../../components/icons/TrashIcon';
+import PlusIcon from '../../../../components/icons/PlusIcon';
 import type { Note } from '../../hooks/useNotes';
 import RichTextEditor from '../RichTextEditor';
 import RichTextViewer from '../RichTextViewer';
@@ -565,20 +566,17 @@ export default function ModernNoteCard({
               className={`${styles.noteText} !leading-relaxed !text-gray-600`}
             >
               {(() => {
-                const draftJson = draft?.dirty ? draft?.json : contentJsonDraft;
                 const draftText = draft?.dirty ? draft?.text : contentTextDraft;
                 const hasDraft =
                   !!draft?.dirty ||
-                  (!!draftJson || !!draftText); // Simplified check, relying on draft.dirty primarily
+                  (!!draftText);
 
-                if (hasDraft && draft?.dirty) { // Only show draft if it is dirty
-                  if (draftJson) {
-                    return <RichTextViewer value={draftJson} />;
-                  }
-                  return draftText || '';
+                if (hasDraft && draft?.dirty) {
+                  return <RichTextViewer value={draftText} />;
                 }
 
-                return note.contentJson ? <RichTextViewer value={note.contentJson} /> : getNotePlainText();
+                const finalMarkdown = note.contentText || note.content || '';
+                return <RichTextViewer value={finalMarkdown} />;
               })()}
             </div>
           )}
@@ -683,7 +681,7 @@ export default function ModernNoteCard({
                   {activeKeywordIndex !== addingIndex && (
                     <button
                       type="button"
-                      className={`${styles.keywordAddBtn} !bg-transparent !border !border-dashed !border-gray-300 hover:!border-gray-400 !text-gray-400 hover:!text-gray-600 !rounded-full !w-6 !h-6`}
+                      className={`${styles.keywordAddBtn} flex items-center justify-center !bg-transparent !border !border-dashed !border-gray-300 hover:!border-gray-400 !text-gray-400 hover:!text-gray-600 !rounded-full !w-6 !h-6`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setActiveKeywordIndex(addingIndex);
@@ -691,7 +689,9 @@ export default function ModernNoteCard({
                       }}
                       aria-label="添加关键词"
                     >
-                      <span className={styles.keywordAddIcon}>+</span>
+                      <span className={styles.keywordAddIcon}>
+                        <PlusIcon size={14} strokeWidth={2} />
+                      </span>
                     </button>
                   )}
                 </>
