@@ -1,8 +1,8 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 前端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+Input: localStorage token/user + relative or absolute request URL
+Output: auth helpers and authenticated fetch wrapper for frontend API calls
+Pos: frontend/src/utils
+Note: Prefer same-origin `/api/...` requests so Next.js rewrites can proxy to backend safely.
 */
 // frontend/src/utils/auth.ts
 
@@ -67,11 +67,19 @@ export const getAuthHeaders = (): HeadersInit => {
   };
 };
 
+const resolveAuthUrl = (url: string): string => {
+  // Keep same-origin API calls on the frontend origin so Next rewrites can proxy
+  // them to the backend. This avoids direct browser requests to localhost:3001.
+  if (!url || url.startsWith('http')) return url;
+  if (url.startsWith('/api/')) return url;
+
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+  return baseUrl ? `${baseUrl}${url}` : url;
+};
+
 // 认证的fetch请求（统一处理401/403）
 export const authFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  // 拼接完整的后端地址以绕过 Next.js 代理缓冲（若在客户端或环境变量已设置）
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-  const fullUrl = (url.startsWith('http') || !baseUrl) ? url : `${baseUrl}${url}`;
+  const fullUrl = resolveAuthUrl(url);
 
   const response = await fetch(fullUrl, {
     ...options,

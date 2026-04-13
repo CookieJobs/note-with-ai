@@ -74,7 +74,9 @@ export const getFeed = async (req: Request, res: Response) => {
 
   } catch (error) {
     console.error('Error getting feed:', error);
-    res.status(500).json({ error: 'Failed to get feed' });
+    const statusCode = typeof (error as any)?.statusCode === 'number' ? (error as any).statusCode : 500;
+    const message = statusCode >= 500 ? ((error as any)?.message || 'Failed to get feed') : 'Failed to get feed';
+    res.status(statusCode).json({ error: message });
   }
 };
 
@@ -85,6 +87,8 @@ export const triggerAnalysis = async (req: Request, res: Response) => {
     res.json({ message: 'Analysis triggered successfully' });
   } catch (error) {
     console.error('Error triggering analysis:', error);
-    res.status(500).json({ error: 'Failed to trigger analysis' });
+    const statusCode = typeof (error as any)?.statusCode === 'number' ? (error as any).statusCode : 500;
+    const message = (error as any)?.message || 'Failed to trigger analysis';
+    res.status(statusCode).json({ error: message });
   }
 };

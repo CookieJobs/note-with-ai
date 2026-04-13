@@ -81,21 +81,6 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
 
         {/* 右侧用户信息 */}
         <div className={styles.rightSection}>
-          {/* 仅在开发环境下显示旧版/新版视图切换入口 */}
-          {process.env.NODE_ENV === 'development' && (
-            <>
-              {pathname === '/notes' && (
-                <Link href="/notes/view" className={`${styles.extraLink} !text-gray-500 hover:!text-gray-900 !bg-transparent !border-none hover:!bg-gray-100`}>
-                  进入新视图
-                </Link>
-              )}
-              {pathname === '/notes/view' && (
-                <Link href="/notes" className={`${styles.extraLink} !text-gray-500 hover:!text-gray-900 !bg-transparent !border-none hover:!bg-gray-100`}>
-                  返回旧版
-                </Link>
-              )}
-            </>
-          )}
           {user && (
             <div className={styles.userSection}>
               <div 

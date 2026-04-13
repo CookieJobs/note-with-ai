@@ -1,26 +1,44 @@
 /*
-Input: 待补充
-Output: 待补充
+Input: DeepSeek 聊天/摘要/重排所需的消息内容、笔记文本与候选数据
+Output: 聊天文本、流式响应、标题/关键词/摘要/概念词及重排结果
 Pos: 后端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+Note: 统一封装 DeepSeek 惰性初始化、降级错误与调试日志收敛
 */
 // backend/services/deepseek.ts
 import { DeepSeekApiClient } from '../utils/apiClient';
 import { config } from '../config';
+import { ErrorHandler } from '../utils/errorHandler';
 
-const DEEPSEEK_API_KEY = config.DEEPSEEK_API_KEY;
-if (!DEEPSEEK_API_KEY) {
-  throw new Error('DEEPSEEK_API_KEY environment variable is required');
+let deepSeekClient: DeepSeekApiClient | null = null;
+
+function getDebugPreview(text: string, limit = 200): string {
+  return String(text || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
-// 创建DeepSeek API客户端实例
-const deepSeekClient = new DeepSeekApiClient(DEEPSEEK_API_KEY);
+function debugLog(label: string, text: string): void {
+  if (config.NODE_ENV === 'production') return;
+  console.log(`${label}:`, getDebugPreview(text));
+}
+
+export function getDeepSeekClient(): DeepSeekApiClient {
+  if (deepSeekClient) {
+    return deepSeekClient;
+  }
+
+  if (!config.DEEPSEEK_API_KEY) {
+    throw ErrorHandler.createExternalApiError('AI 服务未配置，请稍后再试', 'DeepSeek');
+  }
+
+  deepSeekClient = new DeepSeekApiClient(config.DEEPSEEK_API_KEY);
+  return deepSeekClient;
+}
 
 /**
  * 与 DeepSeek 聊天模型对话
  */
 export async function chatWithDeepSeek(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<string> {
-  return await deepSeekClient.chatCompletion(messages, {
+  const client = getDeepSeekClient();
+  return await client.chatCompletion(messages, {
     temperature: 0.7,
     max_tokens: 1024
   });
@@ -30,7 +48,8 @@ export async function chatWithDeepSeek(messages: { role: 'user' | 'assistant' | 
  * 与 DeepSeek 聊天模型流式对话
  */
 export async function chatWithDeepSeekStream(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<AsyncIterable<string>> {
-  return deepSeekClient.chatCompletionStream(messages, {
+  const client = getDeepSeekClient();
+  return client.chatCompletionStream(messages, {
     temperature: 0.7,
     max_tokens: 1024
   });
@@ -53,7 +72,8 @@ export async function summarizeChatTitle(content: string): Promise<string> {
       }
     ];
     
-    return await deepSeekClient.chatCompletion(messages, {
+    const client = getDeepSeekClient();
+    return await client.chatCompletion(messages, {
       max_tokens: 50,
       temperature: 0.1
     });
@@ -84,12 +104,13 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
         }
       ];
   
-      const text = await deepSeekClient.chatCompletion(messages, {
+      const client = getDeepSeekClient();
+      const text = await client.chatCompletion(messages, {
         max_tokens: 500,
         temperature: 0.1,
         response_format: { type: 'json_object' }
       });
-      console.log('🧠 AI原始返回:', text);
+      debugLog('🧠 AI原始返回', text);
   
       const parsed = JSON.parse(text);
       return {
@@ -124,12 +145,13 @@ export async function summarizeNoteMeta(
       { role: 'user', content },
     ];
 
-    const text = await deepSeekClient.chatCompletion(messages, {
+    const client = getDeepSeekClient();
+    const text = await client.chatCompletion(messages, {
       max_tokens: 600,
       temperature: 0.1,
       response_format: { type: 'json_object' },
     });
-    console.log('🧠 AI原始返回(meta):', text);
+    debugLog('🧠 AI原始返回(meta)', text);
     const parsed = JSON.parse(text);
     const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
     return {
@@ -161,7 +183,8 @@ export async function summarizeNoteSummary(content: string): Promise<string> {
       },
       { role: 'user', content },
     ];
-    const text = await deepSeekClient.chatCompletion(messages, {
+    const client = getDeepSeekClient();
+    const text = await client.chatCompletion(messages, {
       max_tokens: 200,
       temperature: 0.1,
       stream: false,
@@ -190,7 +213,8 @@ export async function expandNoteConcepts(content: string): Promise<string[]> {
       },
       { role: 'user', content },
     ];
-    const text = await deepSeekClient.chatCompletion(messages, {
+    const client = getDeepSeekClient();
+    const text = await client.chatCompletion(messages, {
       max_tokens: 300,
       temperature: 0.2,
       response_format: { type: 'json_object' },
@@ -247,7 +271,8 @@ export async function rerankRecommendedNotes(params: {
       { role: 'user', content: JSON.stringify(payload) },
     ];
 
-    const text = await deepSeekClient.chatCompletion(messages, {
+    const client = getDeepSeekClient();
+    const text = await client.chatCompletion(messages, {
       max_tokens: 900,
       temperature: 0.2,
       response_format: { type: 'json_object' },
@@ -312,7 +337,8 @@ export async function checkOrUpdateSummaryConcepts(params: {
       { role: 'user', content: JSON.stringify(payload) },
     ];
 
-    const textOut = await deepSeekClient.chatCompletion(messages, {
+    const client = getDeepSeekClient();
+    const textOut = await client.chatCompletion(messages, {
       max_tokens: 600,
       temperature: 0.1,
       response_format: { type: 'json_object' },
@@ -353,7 +379,8 @@ export async function extractSearchKeywords(content: string): Promise<string[]> 
       }
     ];
 
-    const text = await deepSeekClient.chatCompletion(messages, {
+    const client = getDeepSeekClient();
+    const text = await client.chatCompletion(messages, {
       max_tokens: 200,
       temperature: 0.1,
       response_format: { type: 'json_object' }

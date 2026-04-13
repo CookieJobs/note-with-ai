@@ -10,21 +10,11 @@ import GlobalKeybindings from '../components/GlobalKeybindings';
 import UUIDPolyfill from '../components/UUIDPolyfill';
 import { Toaster } from 'sonner';
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+// 由于国内网络拉取 Google 字体常出现超时，这里移除 next/font/google 依赖
+// 转而使用普通的 CSS 类配合系统字体作为默认策略
 
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-sans',
-  display: 'swap',
-  fallback: ['system-ui', 'arial'],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  display: 'swap',
-  fallback: ['monospace'],
-});
+const interVariable = 'font-sans';
+const jetbrainsMonoVariable = 'font-mono';
 
 export const metadata: Metadata = {
   title: 'NoteWithAI',
@@ -35,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN">
       {/* 主题背景/文字由 globals.scss 控制，避免被固定的 tailwind 背景色“压成纯色” */}
-      <body className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <body className={`${interVariable} ${jetbrainsMonoVariable}`}>
         <UUIDPolyfill />
         <GlobalKeybindings />
         <Toaster position="top-center" />

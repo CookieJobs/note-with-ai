@@ -26,12 +26,6 @@
   overflow: visible;
 }
 
-/* 仅工作台允许选中文本（预览 + 编辑） */
-.workspaceOverlayPanel,
-.workspaceOverlayPanel * {
-  user-select: text;
-}
-
 .mainContent {
   flex: 1;
   display: flex;
@@ -600,506 +594,6 @@
   display: none;
 }
 
-/* 右侧工作台 slot：只负责占位与滚动，不做“面板容器”视觉 */
-.detailSlot {
-  min-height: 0;
-  min-width: 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden; /* 工作台本身不滚动：只允许正文区域滚动 */
-  padding: 0;
-  position: relative;
-}
-
-/* 右侧：网格工作区（深色画布 + 小矩形格子） */
-.workspacePane {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  position: relative;
-  overflow: hidden;
-  border-radius: 18px;
-  /* 画布透明：让方块像直接“放在全局背景上” */
-  border: none;
-  background: transparent;
-  box-shadow: none;
-}
-
-.workspaceScroll {
-  position: absolute;
-  inset: 0;
-  overflow: auto;
-  padding: 18px;
-  /* 与左侧历史栏一致：默认"隐形"，hover 才出现 */
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-/* 注意：网格已经合并成单层（不再有 workspaceGridContainer） */
-
-.workspaceLegendDock {
-  position: fixed;
-  right: 18px; /* fallback：若没有 inline left/width 时仍靠右 */
-  /* 必须高于 TopNavigation(1000)，否则会被顶栏盖住 */
-  z-index: 1200;
-  width: 240px; /* fallback：实际宽度会被 inline style 覆盖 */
-  /* 外层不裁切：让“列表”自己滚动，避免出现半个元素被裁切 */
-  overflow: visible;
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  /* 关键：让图例本体贴近右侧（避免 dock 变宽后内容看起来更靠中心） */
-  align-items: flex-end;
-  gap: 10px;
-  /* 底部与历史栏一致：不能低于底部悬浮快速记录的上部（使用页面安全区变量） */
-  bottom: var(--page-bottom-safe, 76px);
-  /* DEBUG（可选）：想看图例面板范围的话打开 */
-  /* border: 1px dashed rgba(255,255,255,0.25); */
-}
-
-/* 联想面板：仅工作台打开时显示（顶部与工作台顶部对齐） */
-.workspaceRecommendDock {
-  position: fixed;
-  z-index: 1200;
-  pointer-events: auto;
-  overflow: visible;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  bottom: var(--page-bottom-safe, 76px);
-}
-
-/* ------------------------------------------------------------
-   图例下方：联想笔记容器（占位 debug）
-   - 列表
-   - 背景透明
-   - 底部不低于快速记录：由 workspaceLegendDock 的 bottom 限制
-------------------------------------------------------------- */
-.workspaceRecommendList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.workspaceRecommendList:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
-}
-
-.workspaceRecommendList::-webkit-scrollbar {
-  width: 6px;
-}
-.workspaceRecommendList::-webkit-scrollbar-track {
-  background: transparent;
-}
-.workspaceRecommendList::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 999px;
-}
-.workspaceRecommendList:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.45);
-}
-
-.workspaceRecommendItem {
-  width: 100%;
-  background: transparent;
-  /* 让卡片能用 cqw（container query width）来做“最大高度=自身宽度” */
-  container-type: inline-size;
-  /* 新增出现动画（延迟由 inline style 控制） */
-  opacity: 0;
-  transform: translateY(8px);
-  animation: wsRecommendIn 420ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
-}
-
-@keyframes wsRecommendIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workspaceRecommendItem {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* 联想卡片：磨砂玻璃灰白质感 */
-.workspaceRecommendCard {
-  position: relative;
-  width: 100%;
-  /* 高度随内容变化，但最高不超过“正方形形态”（=自身宽度） */
-  max-height: 100cqw;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: 6px 1fr;
-  gap: 10px;
-  align-items: stretch;
-
-  padding: 10px 10px 10px 8px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  -webkit-backdrop-filter: blur(14px) saturate(145%);
-  backdrop-filter: blur(14px) saturate(145%);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
-
-  /* 统一高亮色：竖条颜色 = 理由背景颜色 */
-  --ws-recommend-hl: rgba(18, 225, 255, 0.08);
-  
-  cursor: pointer;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
-}
-
-.workspaceRecommendCard:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
-  border-color: rgba(18, 225, 255, 0.28);
-}
-
-.workspaceRecommendCard:active {
-  transform: translateY(0);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.26);
-}
-
-/* 左侧竖向高亮边缘：类似引用效果 */
-.workspaceRecommendAccent {
-  width: 4px;
-  border-radius: 4px;
-  /* 与“联想理由”背景同色 */
-  background: var(--ws-recommend-hl);
-  box-shadow: 0 0 0 1px rgba(18, 225, 255, 0.12);
-}
-
-.workspaceRecommendContent {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.workspaceRecommendTitleRow {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.workspaceRecommendTitle {
-  font-size: 13px;
-  line-height: 1.15;
-  font-weight: 800;
-  color: rgba(226, 232, 240, 0.88);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.workspaceRecommendReason {
-  padding: 4px 6px;
-  border-radius: 10px;
-  font-size: 12px;
-  line-height: 1.25;
-  font-weight: 600;
-  color: rgba(203, 213, 225, 0.82);
-  /* 背景与文本长度相同：只包住文字，不撑满整行 */
-  display: inline-flex;
-  align-self: flex-start;
-  width: fit-content;
-  max-width: 100%;
-  white-space: normal;
-  word-break: break-word;
-  /* 与卡片左侧竖条同色 */
-  background: var(--ws-recommend-hl);
-  border: 1px solid rgba(18, 225, 255, 0.10);
-}
-
-.workspaceRecommendBody {
-  font-size: 12px;
-  line-height: 1.35;
-  color: rgba(203, 213, 225, 0.72);
-  /* 正文随内容增长，但过长用省略号截断（最多 6 行，结合卡片 max-height 形成“最多不超过正方形”） */
-  line-clamp: 6;
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.workspaceLegend {
-  position: relative;
-  width: 240px;
-  margin: 0;
-  /* 给右上角 hover 文本留出空间（避免它被顶栏或自身上方裁切） */
-  padding-top: 14px; /* 上部留白缩小：只够放一行 hover 文本 */
-  padding-left: 0;
-  padding-right: 0;
-  padding-bottom: 0;
-  border-radius: 12px;
-  background: transparent;
-  border: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
-}
-
-.workspaceLegendHeader { display: none; }
-
-.workspaceLegendStrip {
-  display: flex;
-  width: 100%;
-  /* 横向图例：粗细缩小一半 */
-  height: 7px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: transparent;
-  background-image: none; /* 由 inline style 注入 linear-gradient(90deg, ...) */
-  background-size: 100% 100%;
-  border: none; /* 无明显边框 */
-  margin-bottom: 6px;
-  cursor: pointer;
-  /* 默认状态降低亮度（更“嵌入式”） */
-  filter: brightness(0.82) saturate(0.92);
-  transition: filter 160ms ease;
-}
-
-.workspaceLegendStrip:hover {
-  filter: brightness(0.92) saturate(0.98);
-}
-
-.workspaceLegendSeg {
-  position: relative;
-  height: 100%;
-  border: none;
-  background: transparent;
-  padding: 0;
-  cursor: default;
-}
-
-.workspaceLegendSeg:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.workspaceLegendSegActive {
-  /* hover/active 不要亮边，但需要“可见”的同步高亮（来自历史/方块 hover） */
-  outline: none;
-  background: rgba(255, 255, 255, 0.10);
-  /* 让高亮更像“叠加在色带里”，而不是一条边框 */
-  box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.02);
-}
-
-.workspaceLegendHoverLabel {
-  position: absolute;
-  top: -2px; /* 向上 2px */
-  right: 6px; /* 向左 6px（增大 right 偏移） */
-  left: auto;
-  transform: none;
-  padding: 0;
-  border-radius: 0;
-  font-size: 13px; /* 字体大小 +1 */
-  line-height: 1.1;
-  color: rgba(226, 232, 240, 0.78);
-  background: transparent; /* 去掉黑色背景 */
-  border: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
-  pointer-events: none;
-  max-width: 230px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.workspaceLegendList {
-  /* 目标：正好显示 4 条（且只在列表内部滚动） */
-  --legend-item-h: 28px;
-  --legend-item-half-h: 14px; /* 列表长度减少半个元素高度 */
-  --legend-item-gap: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--legend-item-gap); /* 更紧凑 */
-  /*
-    严格按公式：
-    列表高度 = 4 * itemHeight + 3 * gap
-    注意：calc 里不能写乘法，改用“重复相加”的形式
-  */
-  height: calc(
-    var(--legend-item-h) + var(--legend-item-h) + var(--legend-item-h) + var(--legend-item-h) +
-    var(--legend-item-gap) + var(--legend-item-gap) + var(--legend-item-gap)
-    - var(--legend-item-half-h)
-  );
-  max-height: calc(
-    var(--legend-item-h) + var(--legend-item-h) + var(--legend-item-h) + var(--legend-item-h) +
-    var(--legend-item-gap) + var(--legend-item-gap) + var(--legend-item-gap)
-    - var(--legend-item-half-h)
-  );
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 2px;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.workspaceLegendList:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
-}
-
-.workspaceLegendList::-webkit-scrollbar {
-  width: 6px;
-}
-.workspaceLegendList::-webkit-scrollbar-track {
-  background: transparent;
-}
-.workspaceLegendList::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 999px;
-}
-.workspaceLegendList:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.45);
-}
-
-.workspaceLegendItem {
-  display: grid;
-  grid-template-columns: 12px 1fr auto;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  height: var(--legend-item-h);
-  box-sizing: border-box;
-  padding: 4px 6px; /* 更紧凑 */
-  border-radius: 9px;
-  border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(226, 232, 240, 0.88);
-  cursor: default;
-}
-
-.workspaceLegendItem:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.10);
-}
-
-.workspaceLegendItemActive {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(56, 228, 255, 0.18);
-}
-
-.workspaceLegendSwatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
-}
-
-.workspaceLegendLabel {
-  font-size: 12px;
-  line-height: 1.2;
-  color: rgba(226, 232, 240, 0.88);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.workspaceLegendMeta {
-  font-size: 11px;
-  color: rgba(203, 213, 225, 0.70);
-}
-
-.workspaceScroll::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.workspaceScroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.workspaceScroll::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 999px;
-}
-
-.workspaceScroll:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.55) transparent; /* Firefox */
-}
-.workspaceScroll:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
-}
-
-/* 工作台右侧所有“内容滚动容器”统一滚动条样式（默认隐形、hover 显示） */
-.noteCard.noteCardDetail .noteTextWrapper,
-.noteCard.noteCardDetail .richEditorScroller,
-.noteCardDetail .richEditorContent {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.noteCard.noteCardDetail .noteTextWrapper::-webkit-scrollbar,
-.noteCard.noteCardDetail .richEditorScroller::-webkit-scrollbar,
-.noteCardDetail .richEditorContent::-webkit-scrollbar {
-  width: 6px;
-}
-
-.noteCard.noteCardDetail .noteTextWrapper::-webkit-scrollbar-track,
-.noteCard.noteCardDetail .richEditorScroller::-webkit-scrollbar-track,
-.noteCardDetail .richEditorContent::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.noteCard.noteCardDetail .noteTextWrapper::-webkit-scrollbar-thumb,
-.noteCard.noteCardDetail .richEditorScroller::-webkit-scrollbar-thumb,
-.noteCardDetail .richEditorContent::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 999px;
-}
-
-.noteCard.noteCardDetail .noteTextWrapper:hover,
-.noteCard.noteCardDetail .richEditorScroller:hover,
-.noteCardDetail .richEditorContent:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.55) transparent; /* Firefox */
-}
-
-.noteCard.noteCardDetail .noteTextWrapper:hover::-webkit-scrollbar-thumb,
-.noteCard.noteCardDetail .richEditorScroller:hover::-webkit-scrollbar-thumb,
-.noteCardDetail .richEditorContent:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
-}
-
-/* ProseMirror 兜底：有时滚动落在 .ProseMirror 上 */
-.noteCardDetail :global(.ProseMirror) {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-.noteCardDetail :global(.ProseMirror)::-webkit-scrollbar {
-  width: 6px;
-}
-.noteCardDetail :global(.ProseMirror)::-webkit-scrollbar-track {
-  background: transparent;
-}
-.noteCardDetail :global(.ProseMirror)::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 999px;
-}
-.noteCardDetail :global(.ProseMirror):hover {
-  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
-}
-.noteCardDetail :global(.ProseMirror):hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
-}
-
 /* 快速记录编辑器滚动条：与工作台统一风格 */
 .floatingComposeEditor :global(.richEditorScroller),
 .floatingComposeEditor :global(.ProseMirror) {
@@ -1133,693 +627,6 @@
   background: rgba(148, 163, 184, 0.55);
 }
 
-.workspaceGrid {
-  --cell-w: 44px;
-  --cell-h: 28px;
-  --cell-gap: 12px;
-  /* 固定坐标容器 + 网格本体合一：直接在这一层做 fixed 定位与滚动 */
-  position: fixed;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* 无描边 */
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
-
-  display: grid;
-  /* 保持原始：列数由容器宽度决定（不要改数量逻辑），这里只加 debug 虚线 */
-  grid-template-columns: repeat(auto-fill, var(--cell-w));
-  grid-auto-rows: var(--cell-h);
-  gap: var(--cell-gap);
-  align-content: start;
-  box-sizing: border-box;
-  /* 不要覆盖容器的 debug 边框（容器本身负责描边） */
-}
-
-.workspaceCell {
-  width: var(--cell-w);
-  height: var(--cell-h);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
-  cursor: pointer;
-  padding: 0;
-  outline: none;
-  background: transparent; /* 颜色由内部层渲染，便于做“晃动”不干扰 push */
-  /* hover “膨胀 + 挤压”：由 CSS 变量驱动（WorkspaceGrid.tsx 写入） */
-  transform:
-    translate3d(var(--ws-flip-x, 0px), var(--ws-flip-y, 0px), 0)
-    translate3d(var(--ws-tx, 0px), var(--ws-ty, 0px), 0)
-    scale(var(--ws-scale, 1));
-  z-index: var(--ws-z, 0);
-  filter: brightness(calc(1 - var(--ws-dim, 0)));
-  will-change: transform;
-  transition:
-    /* 挤压/膨胀：稍微更慢、更“液态” */
-    transform 1120ms cubic-bezier(0.18, 0.9, 0.22, 1),
-    box-shadow 180ms ease,
-    filter 180ms ease;
-}
-
-.workspaceCellInner {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  position: relative;
-  overflow: hidden;
-  /* 预览卡片的“雾感”：在不改色相的前提下，叠一层很弱的白雾，让黑感减轻 */
-  background:
-    /* 透光度↑：把雾层调薄一点，让底部背景透出来更多 */
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 100%),
-    radial-gradient(120% 90% at 18% 10%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.00) 58%),
-    var(--ws-bg, rgba(255, 255, 255, 0.18));
-  transform-origin: 50% 60%;
-  /* 玻璃色更“灰”一点：轻微降饱和，不破坏簇之间的色相连续性 */
-  filter: saturate(0.86);
-}
-
-.workspaceCellInner::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  /* 非彩色的轻雾：更像磨砂玻璃 */
-  background:
-    radial-gradient(110% 80% at 70% 18%, rgba(235, 240, 244, 0.06) 0%, rgba(235, 240, 244, 0.00) 55%),
-    radial-gradient(90% 70% at 25% 75%, rgba(225, 232, 238, 0.045) 0%, rgba(225, 232, 238, 0.00) 58%),
-    linear-gradient(180deg, rgba(210, 218, 224, 0.03) 0%, rgba(210, 218, 224, 0.00) 70%);
-  /* 透光度↑：降低这层覆盖强度；灰度↑：去掉 screen 叠加避免“发白” */
-  opacity: 0.52;
-  mix-blend-mode: normal;
-}
-
-/* ------------------------------------------------------------
-   工作区长方块 Tooltip（两段式：立即标题 / 停留后扩展）
-   - 采用 portal 渲染到 body，避免被 workspaceScroll 的 overflow 裁切
------------------------------------------------------------- */
-.workspaceHoverTip {
-  position: fixed;
-  z-index: 1300; /* 高于 overlay(60) / legend(3) / 低于系统弹窗(2000)，且不挡快速记录交互（pointer-events:none） */
-  pointer-events: none;
-  max-width: 280px;
-  min-width: 168px;
-  border-radius: 14px;
-  padding: 9px 10px 9px;
-  color: rgba(226, 232, 240, 0.88);
-  background: rgba(10, 14, 18, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  -webkit-backdrop-filter: blur(18px) saturate(170%) contrast(110%);
-  backdrop-filter: blur(18px) saturate(170%) contrast(110%);
-  box-shadow:
-    0 22px 64px rgba(0, 0, 0, 0.46),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10);
-  transform: translate(-50%, calc(-100% - 10px));
-  opacity: 0;
-  animation: wsHoverTipIn 140ms ease-out both;
-}
-
-.workspaceHoverTipTop {
-  transform: translate(-50%, calc(-100% - 10px));
-}
-
-.workspaceHoverTipBottom {
-  transform: translate(-50%, 10px);
-}
-
-.workspaceHoverTip::after {
-  content: none;
-}
-
-/* 边缘 loading（1.5s）：SVG stroke-dashoffset，比 conic-gradient + @property 更顺滑且兼容性更好 */
-.workspaceHoverTipProgress {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: visible;
-}
-
-.workspaceHoverTipProgressRect {
-  fill: transparent;
-  stroke: var(--ws-tip-accent, rgba(56, 228, 255, 0.85));
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-  opacity: 0.55;
-  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.30));
-  /* 周长由 JS 按“初始 tooltip 实际宽高”计算，确保描边贴合盒子 */
-  stroke-dasharray: var(--ws-tip-perimeter, 420);
-  stroke-dashoffset: var(--ws-tip-perimeter, 420);
-}
-
-.workspaceHoverTipLoading .workspaceHoverTipProgressRect {
-  animation: wsTipStrokeProgress 1000ms linear both;
-}
-
-@keyframes wsTipStrokeProgress {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-/* 头部高光已移除：避免与主描边在不同缩放/抗锯齿下出现“分离” */
-
-@keyframes wsHoverTipIn {
-  from {
-    opacity: 0;
-    filter: blur(1px);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-  }
-}
-
-.workspaceHoverTipHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.workspaceHoverTipDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--ws-tip-accent, rgba(56, 228, 255, 0.85));
-  box-shadow:
-    0 0 0 2px rgba(18, 225, 255, 0.14),
-    0 10px 18px rgba(0, 0, 0, 0.28);
-  flex: 0 0 auto;
-}
-
-.workspaceHoverTipTitle {
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(226, 232, 240, 0.90);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 第二段：默认收起，停留后再展开（由 JS 在 350ms 后加 class 控制） */
-.workspaceHoverTipExpand {
-  margin-top: 0;
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  transform: translateY(-2px);
-  transition: max-height 360ms ease, opacity 320ms ease, transform 360ms ease, margin-top 360ms ease;
-}
-
-.workspaceHoverTipExpanded .workspaceHoverTipExpand {
-  margin-top: 7px;
-  max-height: 160px;
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.workspaceHoverTipMeta {
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(203, 213, 225, 0.76);
-  margin-bottom: 6px;
-}
-
-.workspaceHoverTipPreview {
-  font-size: 12px;
-  line-height: 1.35;
-  color: rgba(226, 232, 240, 0.84);
-  display: -webkit-box;
-  line-clamp: 1;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.workspaceHoverTipKws {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.workspaceHoverTipKw,
-.workspaceHoverTipKwMore {
-  font-size: 11px;
-  font-weight: 700;
-  color: rgba(203, 213, 225, 0.82);
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-}
-
-.workspaceHoverTipKwMore {
-  color: rgba(203, 213, 225, 0.70);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-}
-
-/* 仅 hover 时做非常轻微的晃动（不影响外层 push/scale），避免“抖动感”过强 */
-.workspaceCellHovered .workspaceCellInner {
-   /* 呼吸式：晃一下停一下（不要持续抖动） */
-   animation: wsWobbleBreath 2400ms ease-in-out infinite;
-}
-
-/* 新增笔记入场：像从“人群”里挤出来一样（先出现，再轻微弹一下） */
-.workspaceCellEntering .workspaceCellInner {
-  animation: wsCrowdPopIn 1040ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
-}
-
-/* 删除：先灰化，再“玻璃碎裂” */
-.workspaceCellDeleting {
-  pointer-events: none;
-}
-
-.workspaceCellDeleting .workspaceCellInner {
-  animation: wsDeleteFade 1760ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
-}
-
-.workspaceCellShards {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  /* 灰化后再出现碎片 */
-  animation: wsDeleteShardsShow 1760ms linear both;
-}
-
-@keyframes wsDeleteShardsShow {
-  0% { opacity: 0; }
-  18% { opacity: 0; }
-  22% { opacity: 1; }
-  100% { opacity: 1; }
-}
-
-.workspaceCellShard {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  /* 玻璃碎片：主色 + 很弱的折射高光（不要彩色“晕染中心”，只做细薄反射） */
-  background:
-    linear-gradient(
-      145deg,
-      rgba(255, 255, 255, 0.22) 0%,
-      rgba(255, 255, 255, 0.06) 42%,
-      rgba(56, 228, 255, 0.07) 72%,
-      rgba(0, 0, 0, 0.10) 100%
-    ),
-    var(--ws-bg, rgba(255, 255, 255, 0.18));
-  box-shadow:
-    /* 细高光边：更像玻璃薄片的“切面” */
-    inset 0 0 0 0.6px rgba(255, 255, 255, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10),
-    0 16px 26px rgba(0, 0, 0, 0.26);
-  filter: saturate(0.86) brightness(1.02);
-  transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-  opacity: 0;
-  animation: wsShardFly 1440ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
-  animation-delay: 320ms; /* 先灰化，再碎裂 */
-  transform-origin: var(--ox, 50%) var(--oy, 50%);
-}
-
-/* 11 片更不规则碎片：更贴近“玻璃裂纹”而不是均匀切块 */
-.workspaceCellShard:nth-child(1)  { clip-path: polygon(0% 0%, 38% 0%, 24% 22%, 0% 28%); }
-.workspaceCellShard:nth-child(2)  { clip-path: polygon(38% 0%, 70% 0%, 52% 28%, 24% 22%); }
-.workspaceCellShard:nth-child(3)  { clip-path: polygon(70% 0%, 100% 0%, 100% 30%, 78% 22%, 52% 28%); }
-.workspaceCellShard:nth-child(4)  { clip-path: polygon(0% 28%, 24% 22%, 20% 60%, 0% 58%); }
-.workspaceCellShard:nth-child(5)  { clip-path: polygon(24% 22%, 52% 28%, 48% 54%, 20% 60%); }
-.workspaceCellShard:nth-child(6)  { clip-path: polygon(52% 28%, 78% 22%, 72% 60%, 48% 54%); }
-.workspaceCellShard:nth-child(7)  { clip-path: polygon(78% 22%, 100% 30%, 100% 58%, 72% 60%); }
-.workspaceCellShard:nth-child(8)  { clip-path: polygon(0% 58%, 20% 60%, 32% 100%, 0% 100%); }
-.workspaceCellShard:nth-child(9)  { clip-path: polygon(20% 60%, 48% 54%, 60% 100%, 32% 100%); }
-.workspaceCellShard:nth-child(10) { clip-path: polygon(48% 54%, 72% 60%, 60% 100%); }
-.workspaceCellShard:nth-child(11) { clip-path: polygon(72% 60%, 100% 58%, 100% 100%, 60% 100%); }
-
-@keyframes wsShardFly {
-  0% {
-    opacity: 0;
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-    filter: saturate(0.80) brightness(0.98);
-  }
-  8% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1.01);
-    filter: saturate(0.92) brightness(1.08);
-  }
-  34% {
-    opacity: 1;
-    transform:
-      translate3d(calc(var(--dx, 0px) * 0.55), calc(var(--dy, 0px) * 0.55), 0)
-      rotate(calc(var(--rot, 0deg) * 0.72))
-      scale(0.98);
-    filter: saturate(0.98) brightness(1.12);
-  }
-  100% {
-    opacity: 0;
-    transform:
-      translate3d(calc(var(--dx, 0px) * 2.6), calc(var(--dy, 0px) * 2.6), 0)
-      rotate(calc(var(--rot, 0deg) * 2.2))
-      scale(0.78);
-    filter: saturate(0.88) brightness(1.06) blur(0.45px);
-  }
-}
-
-.workspaceCellShard:nth-child(1)  { --dx: -34px; --dy: -26px; --rot: -28deg; --ox: 30%; --oy: 32%; }
-.workspaceCellShard:nth-child(2)  { --dx: -6px;  --dy: -34px; --rot: 18deg;  --ox: 55%; --oy: 26%; }
-.workspaceCellShard:nth-child(3)  { --dx: 40px;  --dy: -26px; --rot: 26deg;  --ox: 72%; --oy: 24%; }
-.workspaceCellShard:nth-child(4)  { --dx: -42px; --dy: 6px;   --rot: -22deg; --ox: 22%; --oy: 54%; }
-.workspaceCellShard:nth-child(5)  { --dx: -10px; --dy: 8px;   --rot: 16deg;  --ox: 44%; --oy: 50%; }
-.workspaceCellShard:nth-child(6)  { --dx: 12px;  --dy: 6px;   --rot: -18deg; --ox: 58%; --oy: 52%; }
-.workspaceCellShard:nth-child(7)  { --dx: 46px;  --dy: 10px;  --rot: 22deg;  --ox: 78%; --oy: 54%; }
-.workspaceCellShard:nth-child(8)  { --dx: -36px; --dy: 34px;  --rot: 30deg;  --ox: 26%; --oy: 78%; }
-.workspaceCellShard:nth-child(9)  { --dx: -6px;  --dy: 42px;  --rot: -26deg; --ox: 46%; --oy: 78%; }
-.workspaceCellShard:nth-child(10) { --dx: 18px;  --dy: 40px;  --rot: 24deg;  --ox: 58%; --oy: 74%; }
-.workspaceCellShard:nth-child(11) { --dx: 44px;  --dy: 34px;  --rot: -30deg; --ox: 76%; --oy: 80%; }
-
-@keyframes wsDeleteFade {
-  0% {
-    opacity: 1;
-    filter: none;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  18% {
-    opacity: 1;
-    filter: grayscale(1) saturate(0.15) brightness(0.72);
-    transform: translate3d(0, 0, 0) scale(0.98);
-  }
-  42% {
-    opacity: 0.65;
-    filter: grayscale(1) saturate(0.05) brightness(0.62);
-    transform: translate3d(0, 3px, 0) scale(0.92);
-  }
-  100% {
-    opacity: 0;
-    filter: grayscale(1) saturate(0) brightness(0.55);
-    transform: translate3d(0, 8px, 0) scale(0.74);
-  }
-}
-
-@keyframes wsCrowdPopIn {
-  0% {
-    opacity: 0;
-    transform: translate3d(0, 26px, 0) scale(0.26) rotate(-3.2deg);
-    filter:
-      brightness(1.22)
-      saturate(1.28)
-      contrast(1.08)
-      drop-shadow(0 14px 22px rgba(18, 225, 255, 0.18));
-  }
-  35% {
-    opacity: 1;
-    transform: translate3d(0, 6px, 0) scale(0.88) rotate(0.9deg);
-  }
-  62% {
-    opacity: 1;
-    transform: translate3d(0, -6px, 0) scale(1.32) rotate(0deg);
-    filter:
-      brightness(1.34)
-      saturate(1.32)
-      drop-shadow(0 18px 26px rgba(18, 225, 255, 0.22));
-  }
-  78% {
-    transform: translate3d(0, 2px, 0) scale(0.90);
-    filter:
-      brightness(1.08)
-      saturate(1.08)
-      drop-shadow(0 10px 16px rgba(18, 225, 255, 0.10));
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-    filter: none;
-  }
-}
-
- @keyframes wsWobbleBreath {
-   /* 各占 50%：0%~50% 晃一下，50%~100% 停一下 */
-   0%    { transform: translate3d(0, 0, 0) rotate(0deg); }
-   12.5% { transform: translate3d(0.55px, -0.30px, 0) rotate(1.1deg); }
-   25%   { transform: translate3d(-0.45px, 0.45px, 0) rotate(-0.95deg); }
-   37.5% { transform: translate3d(0.35px, 0.25px, 0) rotate(0.75deg); }
-   50%   { transform: translate3d(0, 0, 0) rotate(0deg); }
- 
-   100%  { transform: translate3d(0, 0, 0) rotate(0deg); }
- }
-
-@media (prefers-reduced-motion: reduce) {
-  .workspaceCellHovered .workspaceCellInner {
-    animation: none;
-  }
-  .workspaceCellEntering .workspaceCellInner {
-    animation: none;
-  }
-  .workspaceCellDeleting .workspaceCellInner {
-    animation: none;
-  }
-  .workspaceCellShard {
-    animation: none;
-    opacity: 0;
-  }
-}
-
-.workspaceCell:hover {
-  /* 兜底：如果 JS 未生效，也给一点轻微反馈 */
-  --ws-scale: 1.08;
-  filter: saturate(1.06) brightness(1.02);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workspaceCell {
-    transition: none;
-  }
-}
-
-.workspaceCellSelected {
-  border-color: rgba(56, 228, 255, 0.45);
-  box-shadow:
-    0 12px 24px rgba(0, 0, 0, 0.30),
-    0 0 0 3px rgba(56, 228, 255, 0.18);
-}
-
-.workspaceCellHovered {
-  box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.34);
-  filter: saturate(1.08) brightness(1.06);
-}
-
-/* hover 任意一个方块/历史笔记时：整簇一起“被点亮”（但强度低于单个 hovered 方块） */
-.workspaceCellClusterHovered {
-  filter: saturate(1.06) brightness(1.035);
-  box-shadow:
-    0 14px 30px rgba(0, 0, 0, 0.30);
-}
-
-/* 选中后：浮层展示详情卡片，背景网格保持 */
-.workspaceOverlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-end;
-  pointer-events: none;
-  /* 必须盖住网格与图例（图例有 z-index:3），避免 hover 仍然触发 */
-  z-index: 50;
-}
-
-.workspaceOverlayBackdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(2, 6, 10, 0.55);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-  border: none;
-  pointer-events: auto;
-  z-index: 50;
-}
-
-.workspaceOverlayPanel {
-  /* 工作台大小固定：与簇长方块容器完全一致 */
-  position: fixed;
-  left: var(--ws-grid-left, 0px);
-  top: var(--ws-grid-top, 0px);
-  width: var(--ws-grid-width, 0px);
-  height: var(--ws-grid-height, 0px);
-  min-width: 0;
-  /* 不要用外层 padding 缩小卡片：卡片自己控制布局/留白 */
-  padding: 0;
-  pointer-events: auto;
-  overflow: visible;
-  background: transparent;
-  border-left: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
-  z-index: 60;
-}
-
-.workspaceOverlayPanel::before {
-  /* 外层不做玻璃效果（避免三层容器叠加） */
-  content: none;
-}
-
-.workspaceOverlayPanel::after {
-  /* 外层不做玻璃效果（避免三层容器叠加） */
-  content: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* 保留：未来如果再加动画，这里兜底关闭 */
-}
-
-/* 浮层内的详情卡片（ModernNoteCard detail 变体）：整体暗色皮肤 */
-.workspaceOverlayPanel .noteCard.noteCardDetail {
-  /* 这里才是“高透玻璃卡片” */
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.14);
-  -webkit-backdrop-filter: blur(30px) saturate(185%) contrast(112%);
-  backdrop-filter: blur(30px) saturate(185%) contrast(112%);
-  box-shadow:
-    0 26px 80px rgba(0, 0, 0, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-/* 卡片自己的极弱折射/冷色晕染：与主题青蓝一致，但非常克制 */
-.workspaceOverlayPanel .noteCard.noteCardDetail::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(520px 380px at 18% 18%, rgba(18, 225, 255, 0.08), rgba(18, 225, 255, 0) 72%),
-    radial-gradient(460px 360px at 82% 32%, rgba(56, 228, 255, 0.05), rgba(56, 228, 255, 0) 74%),
-    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.00) 62%, rgba(255,255,255,0.01));
-  opacity: 0.12;
-  mix-blend-mode: soft-light;
-}
-
-.workspaceOverlayPanel .noteCard.noteCardDetail::after {
-  content: '';
-  position: absolute;
-  inset: -45%;
-  pointer-events: none;
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.05), rgba(255,255,255,0) 62%);
-  opacity: 0.03;
-  mix-blend-mode: overlay;
-}
-
-.workspaceOverlayPanel .noteCard.noteCardDetail:focus-within {
-  border-color: rgba(18, 225, 255, 0.22);
-  box-shadow:
-    0 18px 56px rgba(0, 0, 0, 0.38),
-    0 0 0 3px rgba(18, 225, 255, 0.12);
-}
-
-.workspaceOverlayPanel .noteTitle,
-.workspaceOverlayPanel .noteText {
-  color: rgba(226, 232, 240, 0.88);
-}
-
-.workspaceOverlayPanel .noteDate {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(203, 213, 225, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-}
-
-.workspaceOverlayPanel .noteTitleInput {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(18, 225, 255, 0.26);
-  color: rgba(226, 232, 240, 0.88);
-}
-
-.workspaceOverlayPanel .noteContentInput {
-  /* 取消“第三层玻璃”：正文编辑区不要再单独做玻璃背景 */
-  background: transparent;
-  border: none;
-  color: rgba(226, 232, 240, 0.88);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
-}
-
-.workspaceOverlayPanel .richToolbar {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
-/* TipTap 按钮：在磨砂玻璃面板里再“柔和”一档（覆盖官方变量） */
-.workspaceOverlayPanel :global(.tiptap-button) {
-  --tt-button-default-bg-color: rgba(255, 255, 255, 0.045);
-  --tt-button-hover-bg-color: rgba(255, 255, 255, 0.075);
-  --tt-button-active-bg-color: rgba(255, 255, 255, 0.16);
-  --tt-button-active-bg-color-subdued: rgba(255, 255, 255, 0.10);
-  --tt-button-active-hover-bg-color: rgba(255, 255, 255, 0.20);
-  --tt-button-default-icon-color: rgba(203, 213, 225, 0.76);
-  --tt-button-hover-icon-color: rgba(226, 232, 240, 0.86);
-  --tt-button-disabled-icon-color: rgba(148, 163, 184, 0.55);
-  --tt-button-active-icon-color: rgba(255, 255, 255, 0.98);
-  --tt-button-active-icon-color-subdued: rgba(255, 255, 255, 0.92);
-  --tt-button-active-icon-color-emphasized: rgba(255, 255, 255, 0.98);
-  --tt-button-active-text-color: rgba(255, 255, 255, 0.98);
-  --tt-button-active-text-color-emphasized: rgba(255, 255, 255, 0.98);
-  --tt-button-active-text-color-subdued: rgba(255, 255, 255, 0.92);
-}
-
-.workspaceOverlayPanel :global(.tiptap-button[data-state="active"]),
-.workspaceOverlayPanel :global(.tiptap-button[data-active="true"]),
-.workspaceOverlayPanel :global(.tiptap-button[data-selected="true"]),
-.workspaceOverlayPanel :global(.tiptap-button[aria-pressed="true"]) {
-  color: #fff !important;
-  background-color: rgba(255, 255, 255, 0.16) !important;
-}
-
-.workspaceOverlayPanel :global(.tiptap-button[data-state="active"]) .tiptap-button-icon,
-.workspaceOverlayPanel :global(.tiptap-button[data-active="true"]) .tiptap-button-icon,
-.workspaceOverlayPanel :global(.tiptap-button[data-selected="true"]) .tiptap-button-icon,
-.workspaceOverlayPanel :global(.tiptap-button[aria-pressed="true"]) .tiptap-button-icon {
-  color: #fff !important;
-}
-
-.workspaceOverlayPanel :global(.tiptap-button[data-state="active"]) .tiptap-button-icon svg,
-.workspaceOverlayPanel :global(.tiptap-button[data-active="true"]) .tiptap-button-icon svg,
-.workspaceOverlayPanel :global(.tiptap-button[data-selected="true"]) .tiptap-button-icon svg,
-.workspaceOverlayPanel :global(.tiptap-button[aria-pressed="true"]) .tiptap-button-icon svg {
-  stroke: #fff !important;
-  fill: #fff !important;
-}
-
-.workspaceOverlayPanel :global(.tiptap-button[data-state="active"]) .tiptap-button-icon svg * ,
-.workspaceOverlayPanel :global(.tiptap-button[data-active="true"]) .tiptap-button-icon svg * ,
-.workspaceOverlayPanel :global(.tiptap-button[data-selected="true"]) .tiptap-button-icon svg * ,
-.workspaceOverlayPanel :global(.tiptap-button[aria-pressed="true"]) .tiptap-button-icon svg * {
-  stroke: #fff !important;
-  fill: #fff !important;
-}
-
-.workspaceOverlayPanel .keyword {
-  background: rgba(18, 225, 255, 0.10);
-  border-color: rgba(18, 225, 255, 0.18);
-  color: rgba(226, 232, 240, 0.84);
-}
-
-.workspaceOverlayPanel .keywordAddBtn {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.10);
-  color: rgba(203, 213, 225, 0.78);
-}
-
-.workspaceOverlayPanel .relatedNotesSection {
-  background: rgba(12, 18, 22, 0.56);
-  border-left-color: rgba(18, 225, 255, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
 
 /* 写作区域 */
 .composeArea {
@@ -2124,128 +931,6 @@
   background: transparent;
 }
 
-/* 右侧详情里用到的 ModernNoteCard 变体 */
-.noteCardDetail {
-  cursor: default;
-  width: 100%;
-  height: auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.noteCardDetail:hover {
-  transform: none;
-}
-
-/* 右侧工作台：彻底取消 hover 视觉（不抬升、不加阴影、不变描边） */
-.noteCard.noteCardDetail:hover {
-  transform: none;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
-  border-color: rgba(15, 23, 42, 0.06);
-}
-
-/* detail 模式：让正文区域占满右侧剩余空间 */
-.noteCardDetail .noteContent {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.noteCardDetail .noteTextWrapperEditing {
-  flex: 1;
-  min-height: 0;
-}
-
-.noteCardDetail .noteContentInput {
-  /* 编辑态容器：用 flex 链条约束出“固定可滚动高度” */
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.noteCard.noteCardDetail {
-  /* detail 模式：卡片自身不滚动，避免把按钮滚走 */
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-  /* 工作台整卡更“轻薄”&更高信息密度（你说的“占用率太低”主要来自 padding/外框过重） */
-  /* 左右留白恢复；顶部再收紧一点，让编辑器更靠上 */
-  padding: 12px 16px 10px;
-  border-radius: 18px;
-  border-color: rgba(15, 23, 42, 0.06);
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
-}
-
-/* 只有在内部有焦点时才给一圈“轻提示”，不靠粗边框刷存在感 */
-.noteCard.noteCardDetail:focus-within {
-  border-color: rgba(23, 112, 232, 0.16);
-  box-shadow:
-    0 12px 34px rgba(15, 23, 42, 0.10),
-    0 0 0 3px rgba(23, 112, 232, 0.12);
-}
-
-/* detail 预览态：正文区域内部滚动（工作台不滚） */
-.noteCard.noteCardDetail .noteTextWrapper {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  max-height: none !important;
-}
-
-.noteCardDetail .richEditor {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-/* TipTap EditorContent 结构：.richEditor -> .tiptap(wrapper) -> ProseMirror(.richEditorContent)
-   需要让 wrapper 也成为可伸缩容器，否则正文区拿不到固定高度，滚动不会生效 */
-.noteCardDetail .richEditor :global(.tiptap) {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.noteCardDetail .richEditorContent {
-  /* 关键：编辑态让 ProseMirror（它自己就是 EditorContent 根节点）吃到 flex 高度 */
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  max-height: none;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  caret-color: #ffffff;
-}
-
-/* 让 ProseMirror 节点实际填满 wrapper，滚动发生在正文区 */
-.noteCardDetail .richEditor :global(.tiptap) .richEditorContent {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-}
-
-/* 兜底：直接约束 ProseMirror（TipTap 永远会带这个 class）——编辑态滚动应发生在这里 */
-.noteCardDetail :global(.tiptap) {
-  min-height: 0;
-}
-
-.noteCardDetail :global(.ProseMirror) {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  caret-color: #ffffff;
-}
 
 /* 笔记卡片样式 */
 .noteCard {
@@ -2279,15 +964,6 @@
   }
 }
 
-/* detail 模式：编辑栏固定在卡片底部，避免“提交按钮看不到” */
-.noteCard.noteCardDetail .noteEditBar {
-  position: sticky;
-  bottom: 0;
-  z-index: 20;
-  padding-top: 10px;
-  /* 轻微遮罩，避免内容贴到按钮后面 */
-  background: linear-gradient(to bottom, rgba(255,255,255,0.0), rgba(255,255,255,0.96) 45%, rgba(255,255,255,0.98));
-  }
 
 /* 正文编辑态：避免 hover 的 transform 干扰“吸顶/吸底”对齐计算 */
 .noteCardEditing {
@@ -2311,11 +987,6 @@
 }
 
 /* detail 工作台：标题/操作区加分隔线，让层次更“高级”且更紧凑 */
-.noteCard.noteCardDetail .noteHeader {
-  margin-bottom: 6px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-}
 
 /* 恢复标题样式 */
 .noteTitle {
@@ -2462,63 +1133,6 @@
   position: relative;
 }
 
-.noteCard.noteCardDetail .noteContent {
-  margin-bottom: 8px;
-}
-
-/* detail 工作台：让工具栏/关键词区域更紧凑，给正文更多空间 */
-.noteCard.noteCardDetail .richEditor {
-  gap: 6px;
-}
-
-.noteCard.noteCardDetail .richToolbar {
-  /* toolbar 更贴近上边缘，整体更紧凑 */
-  padding: 0 0 1px;
-}
-
-/* detail 工作台：收紧编辑器“内边距/排版密度”，把空间还给正文 */
-.noteCard.noteCardDetail .noteContentInput {
-  /* 上边距再缩一点：让 toolbar 更贴近容器上沿 */
-  padding: 4px 8px 6px;
-  /* 与预览态保持一致，避免切换编辑/预览时布局跳动 */
-  font-size: 14px;
-}
-
-.noteCard.noteCardDetail .richEditorScroller {
-  /* 把“省下来的上边距”还给正文区，避免内容贴得太紧 */
-  padding-top: 4px;
-}
-
-.noteCard.noteCardDetail .richEditorContent {
-  line-height: 1.6;
-}
-
-.noteCard.noteCardDetail .richEditorContent :global(> * + *) {
-  margin-top: 10px;
-}
-
-.noteCard.noteCardDetail .richEditorContent :global(ul),
-.noteCard.noteCardDetail .richEditorContent :global(ol) {
-  padding-left: 20px;
-}
-
-/* detail 工作台：toolbar 按钮/图标再缩小一档（官方 primitives 的 class 名是 .tiptap-button） */
-.noteCard.noteCardDetail .richToolbar :global(.tiptap-button) {
-  height: 1.75rem;
-  min-width: 1.75rem;
-  padding: 0.375rem;
-  border-radius: var(--tt-radius-md, 0.5rem);
-}
-
-.noteCard.noteCardDetail .richToolbar :global(.tiptap-button-icon),
-.noteCard.noteCardDetail .richToolbar :global(.tiptap-button-icon-sub) {
-  width: 0.875rem;
-  height: 0.875rem;
-}
-
-.noteCard.noteCardDetail .richToolbar :global(.tiptap-button-group[data-orientation="horizontal"]) {
-  gap: 0.0625rem;
-}
 
 /* keywords 行尾草稿标记 */
 .draftUnsavedInline {
@@ -2588,11 +1202,20 @@
 .richEditorScroller {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   border-radius: 8px;
-  overflow: hidden;
+  cursor: text;
+}
+
+.richEditorFrame {
+  flex: 1;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .richToolbar {
@@ -2663,19 +1286,48 @@
 }
 
 .richEditorContent {
+  flex: 1;
   min-height: 120px;
+  height: 100%;
+  overflow-x: hidden;
   overflow-y: auto; /* 让“高度计算”生效后，内容在编辑器内部滚动 */
   outline: none;
   white-space: pre-wrap;
   line-height: 1.6;
   border-radius: 8px;
-  overflow: hidden;
+  caret-color: currentColor;
+  cursor: text;
 }
 
 /* TipTap 外层 .tiptap（EditorContent wrapper）也需要圆角与裁切 */
 .richEditor :global(.tiptap) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   border-radius: 8px;
   overflow: hidden;
+  min-height: 100%;
+  height: 100%;
+}
+
+.floatingComposeEditor :global(.tiptap) {
+  flex: 1;
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.floatingComposeEditor :global([data-rich-text-editor-content="true"]),
+.floatingComposeEditor :global(.ProseMirror) {
+  flex: 1;
+  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  caret-color: currentColor;
+  cursor: text;
 }
 
 /* 块级“单元”间距：单元之间略大于单元内部 */
@@ -3104,57 +1756,6 @@
   white-space: nowrap;
 }
 
-/* detail 工作台：keywords 行是“底部操作行”，不再额外留大空白 */
-.noteCard.noteCardDetail .noteKeywords {
-  margin-bottom: 0;
-  margin-top: 6px;
-}
-
-.chipSkeleton {
-  width: 60px;
-  height: 20px;
-  border-radius: 12px;
-  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-}
-
-.keywordsEditorRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-.keywordsInput {
-  flex: 1;
-  padding: 6px 10px;
-  border: 2px solid rgb(23,112,232);
-  border-radius: 8px;
-  font-size: 14px;
-  color: #1f2937;
-  font-family: inherit;
-  background: rgba(255, 255, 255, 0.92);
-}
-
-/* 工作台浮层：新增关键词输入框不要白底，统一冷色玻璃主题 */
-.workspaceOverlayPanel .keywordsInput {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(226, 232, 240, 0.88);
-  -webkit-backdrop-filter: blur(12px) saturate(170%);
-  backdrop-filter: blur(12px) saturate(170%);
-}
-
-.workspaceOverlayPanel .keywordsInput::placeholder {
-  color: rgba(148, 163, 184, 0.72);
-}
-
-.workspaceOverlayPanel .keywordsInput:focus {
-  outline: none;
-  border-color: rgba(18, 225, 255, 0.32);
-  box-shadow: 0 0 0 2px rgba(18, 225, 255, 0.10);
-}
 
 .keywordsSave {
   padding: 6px 12px;
@@ -3189,62 +1790,11 @@
 /* 编辑态包裹，取消高度限制，完整展示输入框 */
 .noteTextWrapperEditing { overflow: visible; max-height: none; }
 
-/* 右侧 detail 模式：编辑态不能 overflow:visible，否则会把布局“撑炸” */
-.noteCard.noteCardDetail .noteTextWrapperEditing {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden !important;
-  max-height: none !important;
-}
-
-.noteCard.noteCardDetail .noteTextWrapperEditing .noteContentInput {
-  flex: 1;
-  min-height: 0;
-}
-
-/* 编辑模式：正文区域呈现“液态玻璃”质感（仅编辑态生效，避免预览态也发玻璃） */
-.workspaceOverlayPanel .noteCard.noteCardDetail.noteCardEditing .noteTextWrapperEditing {
-  position: relative;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.03);
-  -webkit-backdrop-filter: blur(18px) saturate(170%) contrast(110%);
-  backdrop-filter: blur(18px) saturate(170%) contrast(110%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.workspaceOverlayPanel .noteCard.noteCardDetail.noteCardEditing .noteTextWrapperEditing::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  /* 与主题色一致的冷色调晕染：很弱，只做“液态”氛围 */
-  background:
-    radial-gradient(520px 260px at 18% 12%, rgba(18, 225, 255, 0.10), rgba(18, 225, 255, 0) 70%),
-    radial-gradient(420px 260px at 86% 28%, rgba(56, 228, 255, 0.06), rgba(56, 228, 255, 0) 72%),
-    linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.00) 55%, rgba(255,255,255,0.01));
-  opacity: 0.12;
-  mix-blend-mode: soft-light;
-}
-
-.workspaceOverlayPanel .noteCard.noteCardDetail.noteCardEditing .noteTextWrapperEditing::after {
-  content: '';
-  position: absolute;
-  inset: -45%;
-  pointer-events: none;
-  /* 静态、极弱的高光（不要“白亮一层”） */
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.045), rgba(255,255,255,0) 62%);
-  opacity: 0.03;
-  mix-blend-mode: overlay;
-}
 
 /* 正文编辑操作按钮 */
 .noteEditActions { display: flex; align-items: center; gap: 12px; }
 
-/* 基础样式：默认做成轻量玻璃按钮（可被 workspaceOverlayPanel 主题覆盖） */
+/* 基础样式：默认按钮外观，可被页面覆盖 */
 .noteEditCancel {
   padding: 6px 12px;
   border-radius: 10px;
@@ -3300,26 +1850,6 @@
   opacity: 0.55;
   cursor: not-allowed;
   transform: none;
-}
-
-/* 工作台浮层：进一步对齐当前冷色主题（更“青蓝”一点点，但保持克制） */
-.workspaceOverlayPanel .noteEditCancel {
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: rgba(203, 213, 225, 0.80);
-}
-
-.workspaceOverlayPanel .noteEditCancel:hover {
-  border-color: rgba(18, 225, 255, 0.26);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.workspaceOverlayPanel .noteEditSave {
-  border-color: rgba(18, 225, 255, 0.26);
-  background:
-    linear-gradient(180deg, rgba(18, 225, 255, 0.22), rgba(18, 225, 255, 0.12));
-  box-shadow:
-    0 12px 34px rgba(0, 0, 0, 0.34);
 }
 
 .keyword {
@@ -3406,24 +1936,6 @@
   font-family: inherit;
   background: rgba(255, 255, 255, 0.92);
   outline: none;
-}
-
-/* 工作台浮层：新增/编辑关键词 input 统一冷色玻璃主题（避免白底跳出来） */
-.workspaceOverlayPanel .keywordEditInput {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: rgba(226, 232, 240, 0.88);
-  -webkit-backdrop-filter: blur(12px) saturate(170%);
-  backdrop-filter: blur(12px) saturate(170%);
-}
-
-.workspaceOverlayPanel .keywordEditInput::placeholder {
-  color: rgba(148, 163, 184, 0.72);
-}
-
-.workspaceOverlayPanel .keywordEditInput:focus {
-  border-color: rgba(18, 225, 255, 0.32);
-  box-shadow: 0 0 0 2px rgba(18, 225, 255, 0.10);
 }
 
 .keywordAddBtn {
@@ -4057,42 +2569,6 @@
   mix-blend-mode: overlay;
 }
 
-/* 联想出现时：顶部左侧“撑出一块”，底部仍保持完整 */
-.floatingComposeExpandedHasSuggest {
-  --floating-suggest-item-h: 52px;
-  --floating-suggest-step: calc(var(--floating-suggest-item-h) * 2 + 14px);
-  --floating-suggest-width: 100%;
-  --floating-notch-r: 8px;
-  clip-path: polygon(
-    0 0,
-    var(--floating-suggest-width) 0,
-    var(--floating-suggest-width) var(--floating-suggest-step),
-    100% var(--floating-suggest-step),
-    100% 100%,
-    0 100%
-  );
-  filter: drop-shadow(0 0 0.6px rgba(255, 255, 255, 0.16));
-}
-
-.floatingComposeExpandedHasSuggest::before,
-.floatingComposeExpandedHasSuggest::after {
-  clip-path: inherit;
-}
-
-.floatingComposeExpandedHasSuggest {
-  border-radius: 18px;
-}
-
-@supports (clip-path: path('M0 0')) {
-  .floatingComposeExpandedHasSuggest {
-    clip-path: path("M var(--floating-notch-r) 0 H calc(var(--floating-suggest-width) - var(--floating-notch-r)) Q var(--floating-suggest-width) 0 var(--floating-suggest-width) var(--floating-notch-r) V calc(var(--floating-suggest-step) - var(--floating-notch-r)) Q var(--floating-suggest-width) var(--floating-suggest-step) calc(var(--floating-suggest-width) + var(--floating-notch-r)) var(--floating-suggest-step) H calc(100% - var(--floating-notch-r)) Q 100% var(--floating-suggest-step) 100% calc(var(--floating-suggest-step) + var(--floating-notch-r)) V calc(100% - var(--floating-notch-r)) Q 100% 100% calc(100% - var(--floating-notch-r)) 100% H var(--floating-notch-r) Q 0 100% 0 calc(100% - var(--floating-notch-r)) V var(--floating-notch-r) Q 0 0 var(--floating-notch-r) 0 Z");
-  }
-}
-
-.floatingComposeMaximized .floatingComposeExpandedHasSuggest {
-  clip-path: none;
-}
-
 .floatingComposeMaximized .floatingComposeExpanded {
   height: 100%;
   display: flex;
@@ -4162,211 +2638,6 @@
   line-height: 1;
 }
 
-.floatingComposeSuggest {
-  margin-bottom: 6px;
-  padding: 4px 0;
-  border-radius: 0;
-  border: none;
-  background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
-  animation: floatingComposeSuggestIn 260ms ease-out both;
-  position: relative;
-  overflow: hidden;
-  width: 100%;
-}
-
-.floatingComposeMaximized .floatingComposeSuggest {
-  position: absolute;
-  right: 12px;
-  bottom: calc(6px + 34px + 6px);
-  width: 33.333%;
-  margin: 0;
-  z-index: 2;
-}
-
-.floatingComposeSuggestRow {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  --suggest-item-h: 52px;
-  max-height: calc(var(--suggest-item-h) * 2 + 10px);
-  overflow-y: auto;
-  padding-right: 2px;
-  scrollbar-width: none; /* Firefox */
-  scrollbar-color: transparent transparent;
-}
-
-.floatingComposeSuggestRow::-webkit-scrollbar {
-  width: 0;
-}
-.floatingComposeSuggestRow::-webkit-scrollbar-track {
-  background: transparent;
-}
-.floatingComposeSuggestRow::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-}
-.floatingComposeSuggestRow:hover {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-}
-.floatingComposeSuggestRow:hover::-webkit-scrollbar {
-  width: 6px;
-}
-.floatingComposeSuggestRow:hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.24);
-}
-
-.floatingComposeSuggestItem {
-  border-radius: 8px;
-  padding: 6px 10px 2px 16px;
-  background: rgba(20, 24, 28, 0.42);
-  border: none;
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10);
-  -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(0.98);
-  backdrop-filter: blur(22px) saturate(170%) brightness(0.98);
-  min-width: 0;
-  min-height: var(--suggest-item-h);
-  position: relative;
-  transition: transform 160ms ease, box-shadow 160ms ease;
-  opacity: 0;
-  animation: floatingComposeSuggestItemIn 220ms ease-out both;
-  font-family: "FangSong", "仿宋", "FZFSJW", "STFangsong", "Songti SC", serif;
-}
-
-.floatingComposeSuggestItem:nth-child(1) { animation-delay: 0s; }
-.floatingComposeSuggestItem:nth-child(2) { animation-delay: 0.5s; }
-.floatingComposeSuggestItem:nth-child(3) { animation-delay: 1s; }
-.floatingComposeSuggestItem:nth-child(4) { animation-delay: 1.5s; }
-.floatingComposeSuggestItem:nth-child(5) { animation-delay: 2s; }
-
-.floatingComposeSuggestItem::before {
-  content: '';
-  position: absolute;
-  left: 8px;
-  top: 6px;
-  bottom: 6px;
-  width: 4px;
-  background: rgba(18, 225, 255, 0.48);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.12),
-    0 0 12px rgba(18, 225, 255, 0.18);
-}
-
-.floatingComposeSuggestItem::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.00) 60%);
-  opacity: 0.5;
-}
-
-.floatingComposeSuggestItem:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.48),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10);
-}
-
-.floatingComposeSuggestItem .floatingComposeSuggestTitle,
-.floatingComposeSuggestItem .floatingComposeSuggestPreview {
-  position: relative;
-  animation: floatingComposeSuggestTextIn 220ms ease-out both;
-  animation-delay: inherit;
-}
-
-.floatingComposeSuggestItem .floatingComposeSuggestTitle::after {
-  content: '';
-  position: absolute;
-  left: -12px;
-  right: -12px;
-  bottom: -6px;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.00) 60%);
-  opacity: 0.35;
-  transform: translateZ(8px);
-  pointer-events: none;
-}
-
-.floatingComposeSuggestTitle {
-  font-size: 14.5px;
-  font-weight: 700;
-  letter-spacing: 0.005em;
-  color: rgba(210, 220, 230, 0.86);
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.2;
-  margin-bottom: -2px;
-  margin-top: 2px;
-  font-family: "KaiTi", "STKaiti", "Kaiti SC", "KaiTi_GB2312", "SimKai", serif;
-}
-
-.floatingComposeSuggestPreview {
-  margin-top: -2px;
-  font-size: 12px;
-  letter-spacing: 0.01em;
-  color: rgba(178, 188, 198, 0.76);
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.2;
-}
-
-.floatingComposeSuggestMatch {
-  color: rgba(226, 232, 240, 0.92);
-  background: rgba(255, 255, 255, 0.06);
-  padding: 0 2px;
-}
-
-.floatingComposeSuggestEmpty {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: rgba(150, 198, 216, 0.78);
-  padding: 6px 10px;
-}
-
-@keyframes floatingComposeSuggestIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes floatingComposeSuggestTextIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes floatingComposeSuggestItemIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .floatingComposeEditor {
   /* 快速记录：直接就是编辑态，所以这里要对齐工作台“进入编辑模式后的液态玻璃正文区” */
   position: relative;
@@ -4389,7 +2660,7 @@
 /* 快速记录：光标与选中颜色（dark） */
 .floatingComposeEditor .richEditorContent,
 .floatingComposeEditor :global(.ProseMirror) {
-  caret-color: #ffffff;
+  caret-color: currentColor;
 }
 
 .floatingComposeEditor .richEditorContent ::selection,
@@ -4464,15 +2735,27 @@
   z-index: 1;
 }
 
-.floatingComposeEditor :global(.richEditor) {
+.floatingComposeEditor :global([data-rich-text-editor-root="true"]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   position: relative;
   z-index: 1;
 }
 
-.floatingComposeEditor :global(.richEditorScroller) {
+.floatingComposeEditor :global([data-rich-text-editor-scroller="true"]),
+.floatingComposeEditor :global([data-rich-text-editor-frame="true"]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   position: relative;
   z-index: 1;
+}
+
+.floatingComposeEditor :global([data-rich-text-editor-scroller="true"]) {
   max-height: var(--floating-editor-max, none);
 }
 
@@ -4496,7 +2779,9 @@
   flex-direction: column;
 }
 
-.floatingComposeMaximized .floatingComposeEditor :global(.richEditor) {
+.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-root="true"]),
+.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-scroller="true"]),
+.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-frame="true"]) {
   flex: 1;
   min-height: 0;
   display: flex;

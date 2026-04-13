@@ -119,6 +119,9 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
   } catch (error: any) {
     console.error('❌ 聊天接口流式错误:', error);
     if (!res.headersSent) {
+      if (error instanceof Error && (error as any).statusCode) {
+        throw error;
+      }
       if (error.message && error.message.includes('API请求错误')) {
         throw ErrorHandler.createExternalApiError('AI服务暂时不可用，请稍后重试', 'DeepSeek');
       } else {

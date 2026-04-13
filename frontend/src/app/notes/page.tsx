@@ -191,7 +191,6 @@ function NotesContent() {
                   <FloatingQuickCompose
                     valueJson={newContentJson ?? buildJsonFromPlain(newContentText)}
                     valueText={newContentText}
-                    allNotes={notes}
                     onChange={({ json, text }) => {
                       setNewContentJson(json);
                       setNewContentText(text);
@@ -223,7 +222,6 @@ function NotesContent() {
                         isHighlighted={note._id === highlightId}
                         isSelected={note._id === selectedNoteId}
                         onClick={() => setSelectedNoteId(note._id)}
-                        layoutVariant="list"
                         onContentEditingChange={(id, isEditing) => {
                           if (isEditing) setEditingNoteId(id);
                           else setEditingNoteId((cur) => (cur === id ? null : cur));

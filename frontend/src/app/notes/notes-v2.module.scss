@@ -2198,7 +2198,10 @@
   max-height: none !important;
 }
 
-.noteCardDetail .richEditor {
+.noteCardDetail .richEditor,
+.noteCardDetail :global([data-rich-text-editor-root="true"]),
+.noteCardDetail :global([data-rich-text-editor-scroller="true"]),
+.noteCardDetail :global([data-rich-text-editor-frame="true"]) {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -2207,9 +2210,11 @@
 
 /* TipTap EditorContent 结构：.richEditor -> .tiptap(wrapper) -> ProseMirror(.richEditorContent)
    需要让 wrapper 也成为可伸缩容器，否则正文区拿不到固定高度，滚动不会生效 */
-.noteCardDetail .richEditor :global(.tiptap) {
+.noteCardDetail .richEditor :global(.tiptap),
+.noteCardDetail :global(.tiptap) {
   flex: 1;
   min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -2217,12 +2222,13 @@
 .noteCardDetail .richEditorContent {
   /* 关键：编辑态让 ProseMirror（它自己就是 EditorContent 根节点）吃到 flex 高度 */
   flex: 1;
-  min-height: 0;
+  min-height: 100%;
   height: 100%;
   max-height: none;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
-  caret-color: #ffffff;
+  caret-color: currentColor;
 }
 
 /* 让 ProseMirror 节点实际填满 wrapper，滚动发生在正文区 */
@@ -2239,12 +2245,12 @@
 
 .noteCardDetail :global(.ProseMirror) {
   flex: 1;
-  min-height: 0;
+  min-height: 100%;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  caret-color: #ffffff;
+  caret-color: currentColor;
 }
 
 /* 笔记卡片样式 */
@@ -2670,11 +2676,13 @@
 .richEditorScroller {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   border-radius: 8px;
-  overflow: hidden;
+  cursor: text;
 }
 
 .richToolbar {
@@ -2745,19 +2753,59 @@
 }
 
 .richEditorContent {
+  flex: 1;
   min-height: 120px;
+  height: 100%;
+  overflow-x: hidden;
   overflow-y: auto; /* 让“高度计算”生效后，内容在编辑器内部滚动 */
   outline: none;
   white-space: pre-wrap;
   line-height: 1.6;
   border-radius: 8px;
-  overflow: hidden;
+  caret-color: currentColor;
+  cursor: text;
 }
 
 /* TipTap 外层 .tiptap（EditorContent wrapper）也需要圆角与裁切 */
 .richEditor :global(.tiptap) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   border-radius: 8px;
   overflow: hidden;
+  min-height: 100%;
+  height: 100%;
+}
+
+.noteCardDetail :global([data-rich-text-editor-content="true"]) {
+  flex: 1;
+  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  caret-color: currentColor;
+  cursor: text;
+}
+
+.floatingComposeEditor :global(.tiptap) {
+  flex: 1;
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.floatingComposeEditor :global([data-rich-text-editor-content="true"]),
+.floatingComposeEditor :global(.ProseMirror) {
+  flex: 1;
+  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  caret-color: currentColor;
+  cursor: text;
 }
 
 /* 块级“单元”间距：单元之间略大于单元内部 */
@@ -4195,42 +4243,6 @@
   mix-blend-mode: overlay;
 }
 
-/* 联想出现时：顶部左侧“撑出一块”，底部仍保持完整 */
-.floatingComposeExpandedHasSuggest {
-  --floating-suggest-item-h: 52px;
-  --floating-suggest-step: calc(var(--floating-suggest-item-h) * 2 + 14px);
-  --floating-suggest-width: 100%;
-  --floating-notch-r: 8px;
-  clip-path: polygon(
-    0 0,
-    var(--floating-suggest-width) 0,
-    var(--floating-suggest-width) var(--floating-suggest-step),
-    100% var(--floating-suggest-step),
-    100% 100%,
-    0 100%
-  );
-  filter: drop-shadow(0 0 0.6px rgba(255, 255, 255, 0.16));
-}
-
-.floatingComposeExpandedHasSuggest::before,
-.floatingComposeExpandedHasSuggest::after {
-  clip-path: inherit;
-}
-
-.floatingComposeExpandedHasSuggest {
-  border-radius: 18px;
-}
-
-@supports (clip-path: path('M0 0')) {
-  .floatingComposeExpandedHasSuggest {
-    clip-path: path("M var(--floating-notch-r) 0 H calc(var(--floating-suggest-width) - var(--floating-notch-r)) Q var(--floating-suggest-width) 0 var(--floating-suggest-width) var(--floating-notch-r) V calc(var(--floating-suggest-step) - var(--floating-notch-r)) Q var(--floating-suggest-width) var(--floating-suggest-step) calc(var(--floating-suggest-width) + var(--floating-notch-r)) var(--floating-suggest-step) H calc(100% - var(--floating-notch-r)) Q 100% var(--floating-suggest-step) 100% calc(var(--floating-suggest-step) + var(--floating-notch-r)) V calc(100% - var(--floating-notch-r)) Q 100% 100% calc(100% - var(--floating-notch-r)) 100% H var(--floating-notch-r) Q 0 100% 0 calc(100% - var(--floating-notch-r)) V var(--floating-notch-r) Q 0 0 var(--floating-notch-r) 0 Z");
-  }
-}
-
-.floatingComposeMaximized .floatingComposeExpandedHasSuggest {
-  clip-path: none;
-}
-
 .floatingComposeMaximized .floatingComposeExpanded {
   height: 100%;
   display: flex;
@@ -4300,211 +4312,6 @@
   line-height: 1;
 }
 
-.floatingComposeSuggest {
-  margin-bottom: 6px;
-  padding: 4px 0;
-  border-radius: 0;
-  border: none;
-  background: transparent;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
-  animation: floatingComposeSuggestIn 260ms ease-out both;
-  position: relative;
-  overflow: hidden;
-  width: 100%;
-}
-
-.floatingComposeMaximized .floatingComposeSuggest {
-  position: absolute;
-  right: 12px;
-  bottom: calc(6px + 34px + 6px);
-  width: 33.333%;
-  margin: 0;
-  z-index: 2;
-}
-
-.floatingComposeSuggestRow {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  --suggest-item-h: 52px;
-  max-height: calc(var(--suggest-item-h) * 2 + 10px);
-  overflow-y: auto;
-  padding-right: 2px;
-  scrollbar-width: none; /* Firefox */
-  scrollbar-color: transparent transparent;
-}
-
-.floatingComposeSuggestRow::-webkit-scrollbar {
-  width: 0;
-}
-.floatingComposeSuggestRow::-webkit-scrollbar-track {
-  background: transparent;
-}
-.floatingComposeSuggestRow::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-}
-.floatingComposeSuggestRow:hover {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-}
-.floatingComposeSuggestRow:hover::-webkit-scrollbar {
-  width: 6px;
-}
-.floatingComposeSuggestRow:hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.24);
-}
-
-.floatingComposeSuggestItem {
-  border-radius: 8px;
-  padding: 6px 10px 2px 16px;
-  background: rgba(20, 24, 28, 0.42);
-  border: none;
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10);
-  -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(0.98);
-  backdrop-filter: blur(22px) saturate(170%) brightness(0.98);
-  min-width: 0;
-  min-height: var(--suggest-item-h);
-  position: relative;
-  transition: transform 160ms ease, box-shadow 160ms ease;
-  opacity: 0;
-  animation: floatingComposeSuggestItemIn 220ms ease-out both;
-  font-family: "FangSong", "仿宋", "FZFSJW", "STFangsong", "Songti SC", serif;
-}
-
-.floatingComposeSuggestItem:nth-child(1) { animation-delay: 0s; }
-.floatingComposeSuggestItem:nth-child(2) { animation-delay: 0.5s; }
-.floatingComposeSuggestItem:nth-child(3) { animation-delay: 1s; }
-.floatingComposeSuggestItem:nth-child(4) { animation-delay: 1.5s; }
-.floatingComposeSuggestItem:nth-child(5) { animation-delay: 2s; }
-
-.floatingComposeSuggestItem::before {
-  content: '';
-  position: absolute;
-  left: 8px;
-  top: 6px;
-  bottom: 6px;
-  width: 4px;
-  background: rgba(18, 225, 255, 0.48);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.12),
-    0 0 12px rgba(18, 225, 255, 0.18);
-}
-
-.floatingComposeSuggestItem::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.00) 60%);
-  opacity: 0.5;
-}
-
-.floatingComposeSuggestItem:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.48),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10);
-}
-
-.floatingComposeSuggestItem .floatingComposeSuggestTitle,
-.floatingComposeSuggestItem .floatingComposeSuggestPreview {
-  position: relative;
-  animation: floatingComposeSuggestTextIn 220ms ease-out both;
-  animation-delay: inherit;
-}
-
-.floatingComposeSuggestItem .floatingComposeSuggestTitle::after {
-  content: '';
-  position: absolute;
-  left: -12px;
-  right: -12px;
-  bottom: -6px;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.00) 60%);
-  opacity: 0.35;
-  transform: translateZ(8px);
-  pointer-events: none;
-}
-
-.floatingComposeSuggestTitle {
-  font-size: 14.5px;
-  font-weight: 700;
-  letter-spacing: 0.005em;
-  color: rgba(210, 220, 230, 0.86);
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.2;
-  margin-bottom: -2px;
-  margin-top: 2px;
-  font-family: "KaiTi", "STKaiti", "Kaiti SC", "KaiTi_GB2312", "SimKai", serif;
-}
-
-.floatingComposeSuggestPreview {
-  margin-top: -2px;
-  font-size: 12px;
-  letter-spacing: 0.01em;
-  color: rgba(178, 188, 198, 0.76);
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.2;
-}
-
-.floatingComposeSuggestMatch {
-  color: rgba(226, 232, 240, 0.92);
-  background: rgba(255, 255, 255, 0.06);
-  padding: 0 2px;
-}
-
-.floatingComposeSuggestEmpty {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: rgba(150, 198, 216, 0.78);
-  padding: 6px 10px;
-}
-
-@keyframes floatingComposeSuggestIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes floatingComposeSuggestTextIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes floatingComposeSuggestItemIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .floatingComposeEditor {
   /* 快速记录：直接就是编辑态，所以这里要对齐工作台“进入编辑模式后的液态玻璃正文区” */
   position: relative;
@@ -4527,7 +4334,7 @@
 /* 快速记录：光标与选中颜色（dark） */
 .floatingComposeEditor .richEditorContent,
 .floatingComposeEditor :global(.ProseMirror) {
-  caret-color: #ffffff;
+  caret-color: currentColor;
 }
 
 .floatingComposeEditor .richEditorContent ::selection,
@@ -4602,15 +4409,27 @@
   z-index: 1;
 }
 
-.floatingComposeEditor :global(.richEditor) {
+.floatingComposeEditor :global([data-rich-text-editor-root="true"]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   position: relative;
   z-index: 1;
 }
 
-.floatingComposeEditor :global(.richEditorScroller) {
+.floatingComposeEditor :global([data-rich-text-editor-scroller="true"]),
+.floatingComposeEditor :global([data-rich-text-editor-frame="true"]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   position: relative;
   z-index: 1;
+}
+
+.floatingComposeEditor :global([data-rich-text-editor-scroller="true"]) {
   max-height: var(--floating-editor-max, none);
 }
 
@@ -4619,6 +4438,12 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+
+  & > div {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
 }
 
 .floatingComposeEditor :global(.richEditorContent img) {
@@ -4634,7 +4459,9 @@
   flex-direction: column;
 }
 
-.floatingComposeMaximized .floatingComposeEditor :global(.richEditor) {
+.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-root="true"]),
+.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-scroller="true"]),
+.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-frame="true"]) {
   flex: 1;
   min-height: 0;
   display: flex;

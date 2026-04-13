@@ -1,16 +1,11 @@
 import { Note } from '../models/Note';
 import UserProfile from '../models/UserProfile';
 import { DeepSeekApiClient } from '../utils/apiClient';
-import { config } from '../config';
+import { getDeepSeekClient } from './deepseek';
 
 export class UserAnalysisService {
-  private apiClient: DeepSeekApiClient;
-
-  constructor() {
-    if (!config.DEEPSEEK_API_KEY) {
-      throw new Error('DEEPSEEK_API_KEY is not set');
-    }
-    this.apiClient = new DeepSeekApiClient(config.DEEPSEEK_API_KEY);
+  private getApiClient(): DeepSeekApiClient {
+    return getDeepSeekClient();
   }
 
   /**
@@ -57,7 +52,7 @@ export class UserAnalysisService {
         ${notesText}
       `;
 
-      const response = await this.apiClient.chatCompletion([
+      const response = await this.getApiClient().chatCompletion([
         { role: 'system', content: 'You are a helpful assistant that outputs JSON. You MUST use Chinese (简体中文) for all text content.' },
         { role: 'user', content: prompt }
       ], {
