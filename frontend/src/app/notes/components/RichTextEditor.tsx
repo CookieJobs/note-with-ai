@@ -11,6 +11,9 @@ import {
   EditorBubble,
   EditorBubbleItem,
   useEditor,
+  GlobalDragHandle,
+  Command,
+  renderItems,
 } from 'novel';
 
 const EDITOR_FOCUS_SELECTOR = '.ProseMirror, [contenteditable="true"]';
@@ -231,8 +234,26 @@ function AutoFocus({
 
 import { StarterKit } from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
+import { Link } from '@tiptap/extension-link';
+import { TaskList } from '@tiptap/extension-task-list';
+import { TaskItem } from '@tiptap/extension-task-item';
+import { Highlight } from '@tiptap/extension-highlight';
+import { TextAlign } from '@tiptap/extension-text-align';
+import { Table } from '@tiptap/extension-table';
+import { TableRow } from '@tiptap/extension-table-row';
+import { TableHeader } from '@tiptap/extension-table-header';
+import { TableCell } from '@tiptap/extension-table-cell';
+import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
+import { common, createLowlight } from 'lowlight';
+import { ResizableImage } from './tiptap/ResizableImage';
 import styles from '../notes.module.scss';
-import { Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3, List, ListOrdered } from 'lucide-react';
+import {
+  Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3,
+  List, ListOrdered, Link as LinkIcon, Highlighter, AlignLeft, AlignCenter,
+  AlignRight, Quote, Minus, CheckSquare, FileCode2, Table as TableIcon
+} from 'lucide-react';
+
+const lowlight = createLowlight(common);
 
 type Props = {
   value: any; // Markdown text or JSON
@@ -267,21 +288,21 @@ const extensions = [
     },
     blockquote: {
       HTMLAttributes: {
-        class: 'border-l-4 border-stone-700',
+        class: 'border-l-4 border-stone-700 pl-4',
       },
     },
-    codeBlock: {
-      HTMLAttributes: {
-        class: 'rounded-sm bg-stone-100 p-5 font-mono font-medium text-stone-800',
-      },
-    },
+    codeBlock: false,
     code: {
       HTMLAttributes: {
         class: 'rounded-md bg-stone-200 px-1.5 py-1 font-mono font-medium text-stone-900',
         spellcheck: 'false',
       },
     },
-    horizontalRule: false,
+    horizontalRule: {
+      HTMLAttributes: {
+        class: 'mt-4 mb-6 border-t border-stone-300',
+      },
+    },
     dropcursor: {
       color: '#DBEAFE',
       width: 4,
@@ -289,7 +310,67 @@ const extensions = [
     gapcursor: false,
   }),
   Markdown,
-];
+  Link?.configure({
+    openOnClick: false,
+    HTMLAttributes: {
+      class: 'text-blue-500 hover:underline',
+    },
+  }),
+  TaskList?.configure({
+    HTMLAttributes: {
+      class: 'not-prose pl-2',
+    },
+  }),
+  TaskItem?.configure({
+    HTMLAttributes: {
+      class: 'flex items-start my-4',
+    },
+    nested: true,
+  }),
+  ResizableImage?.configure({
+    HTMLAttributes: {
+      class: 'rounded-lg border border-muted',
+    },
+  }),
+  CodeBlockLowlight?.configure({
+    lowlight,
+    HTMLAttributes: {
+      class: 'rounded-sm bg-stone-100 p-5 font-mono font-medium text-stone-800',
+    },
+  }),
+  Highlight?.configure({
+    multicolor: true,
+  }),
+  TextAlign?.configure({
+    types: ['heading', 'paragraph'],
+  }),
+  Table?.configure({
+    resizable: true,
+    HTMLAttributes: {
+      class: 'border-collapse table-auto w-full',
+    },
+  }),
+  TableRow,
+  TableHeader,
+  TableCell,
+  GlobalDragHandle?.configure({
+    dragHandleWidth: 20,
+    scrollTreshold: 100,
+  }),
+  Command?.configure({
+    suggestion: {
+      items: () => [
+        {
+          title: 'dummy',
+          command: ({ editor, range }: { editor: any; range: any }) => {
+            editor.chain().focus().deleteRange(range).run();
+          },
+        },
+      ],
+      render: renderItems,
+    },
+  }),
+].filter(Boolean);
 
 export default function RichTextEditor({
   value,
@@ -397,81 +478,210 @@ export default function RichTextEditor({
                   >
                     <Code className="w-4 h-4" />
                   </EditorBubbleItem>
+                  <EditorBubbleItem
+                    onSelect={(editor) => {
+                      const previousUrl = editor.getAttributes('link').href;
+                      const url = window.prompt('URL', previousUrl);
+                      if (url === null) return;
+                      if (url === '') {
+                        editor.chain().focus().extendMarkRange('link').unsetLink().run();
+                        return;
+                      }
+                      editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+                    }}
+                    className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+                  >
+                    <LinkIcon className="w-4 h-4" />
+                  </EditorBubbleItem>
+                  <EditorBubbleItem
+                    onSelect={(editor) => editor.chain().focus().toggleHighlight().run()}
+                    className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+                  >
+                    <Highlighter className="w-4 h-4" />
+                  </EditorBubbleItem>
+                  <div className="w-px h-8 bg-muted mx-1" />
+                  <EditorBubbleItem
+                    onSelect={(editor) => editor.chain().focus().setTextAlign('left').run()}
+                    className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+                  >
+                    <AlignLeft className="w-4 h-4" />
+                  </EditorBubbleItem>
+                  <EditorBubbleItem
+                    onSelect={(editor) => editor.chain().focus().setTextAlign('center').run()}
+                    className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+                  >
+                    <AlignCenter className="w-4 h-4" />
+                  </EditorBubbleItem>
+                  <EditorBubbleItem
+                    onSelect={(editor) => editor.chain().focus().setTextAlign('right').run()}
+                    className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+                  >
+                    <AlignRight className="w-4 h-4" />
+                  </EditorBubbleItem>
                 </div>
               </EditorBubble>
 
               {/* Slash Command Menu */}
-              <EditorCommand className="z-50 h-auto max-h-[330px] overflow-y-auto rounded-md border border-muted bg-background px-1 py-2 shadow-md transition-all">
-                <EditorCommandEmpty className="px-2 text-muted-foreground">No results</EditorCommandEmpty>
+              <EditorCommand className="z-50 h-auto max-h-[330px] overflow-y-auto rounded-md border border-slate-200 bg-white px-1 py-2 shadow-lg text-slate-900">
+                <EditorCommandEmpty className="px-2 text-slate-500">No results</EditorCommandEmpty>
                 <EditorCommandList>
                   <EditorCommandItem
                     onCommand={({ editor, range }) => {
                       editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run();
                     }}
-                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent cursor-pointer"
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
                   >
                     <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
                       <Heading1 className="h-4 w-4" />
                     </div>
                     <div>
                       <p className="font-medium">Heading 1</p>
-                      <p className="text-xs text-muted-foreground">Big section heading.</p>
+                      <p className="text-xs text-slate-500">Big section heading.</p>
                     </div>
                   </EditorCommandItem>
                   <EditorCommandItem
                     onCommand={({ editor, range }) => {
                       editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run();
                     }}
-                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent cursor-pointer"
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
                   >
                     <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
                       <Heading2 className="h-4 w-4" />
                     </div>
                     <div>
                       <p className="font-medium">Heading 2</p>
-                      <p className="text-xs text-muted-foreground">Medium section heading.</p>
+                      <p className="text-xs text-slate-500">Medium section heading.</p>
                     </div>
                   </EditorCommandItem>
                   <EditorCommandItem
                     onCommand={({ editor, range }) => {
                       editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run();
                     }}
-                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent cursor-pointer"
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
                   >
                     <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
                       <Heading3 className="h-4 w-4" />
                     </div>
                     <div>
                       <p className="font-medium">Heading 3</p>
-                      <p className="text-xs text-muted-foreground">Small section heading.</p>
+                      <p className="text-xs text-slate-500">Small section heading.</p>
                     </div>
                   </EditorCommandItem>
                   <EditorCommandItem
                     onCommand={({ editor, range }) => {
                       editor.chain().focus().deleteRange(range).toggleBulletList().run();
                     }}
-                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent cursor-pointer"
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
                   >
                     <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
                       <List className="h-4 w-4" />
                     </div>
                     <div>
                       <p className="font-medium">Bullet List</p>
-                      <p className="text-xs text-muted-foreground">Create a simple bulleted list.</p>
+                      <p className="text-xs text-slate-500">Create a simple bulleted list.</p>
                     </div>
                   </EditorCommandItem>
                   <EditorCommandItem
                     onCommand={({ editor, range }) => {
                       editor.chain().focus().deleteRange(range).toggleOrderedList().run();
                     }}
-                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent aria-selected:bg-accent cursor-pointer"
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
                   >
                     <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
                       <ListOrdered className="h-4 w-4" />
                     </div>
                     <div>
                       <p className="font-medium">Numbered List</p>
-                      <p className="text-xs text-muted-foreground">Create a list with numbering.</p>
+                      <p className="text-xs text-slate-500">Create a list with numbering.</p>
+                    </div>
+                  </EditorCommandItem>
+                  <EditorCommandItem
+                    onCommand={({ editor, range }) => {
+                      editor.chain().focus().deleteRange(range).toggleBlockquote().run();
+                    }}
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
+                      <Quote className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Blockquote</p>
+                      <p className="text-xs text-slate-500">Capture a quote.</p>
+                    </div>
+                  </EditorCommandItem>
+                  <EditorCommandItem
+                    onCommand={({ editor, range }) => {
+                      editor.chain().focus().deleteRange(range).setHorizontalRule().run();
+                    }}
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
+                      <Minus className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Divider</p>
+                      <p className="text-xs text-slate-500">Visually divide blocks.</p>
+                    </div>
+                  </EditorCommandItem>
+                  <EditorCommandItem
+                    onCommand={({ editor, range }) => {
+                      editor.chain().focus().deleteRange(range).toggleTaskList().run();
+                    }}
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
+                      <CheckSquare className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Task List</p>
+                      <p className="text-xs text-slate-500">Track tasks with a to-do list.</p>
+                    </div>
+                  </EditorCommandItem>
+                  <EditorCommandItem
+                    onCommand={({ editor, range }) => {
+                      editor.chain().focus().deleteRange(range).toggleCodeBlock().run();
+                    }}
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
+                      <FileCode2 className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Code Block</p>
+                      <p className="text-xs text-slate-500">Capture a code snippet.</p>
+                    </div>
+                  </EditorCommandItem>
+                  <EditorCommandItem
+                    onCommand={({ editor, range }) => {
+                      editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+                    }}
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
+                      <TableIcon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Table</p>
+                      <p className="text-xs text-slate-500">Insert a table.</p>
+                    </div>
+                  </EditorCommandItem>
+                  <EditorCommandItem
+                    onCommand={({ editor, range }) => {
+                      const url = window.prompt('Image URL');
+                      if (url) {
+                        editor.chain().focus().deleteRange(range).setImage({ src: url }).run();
+                      } else {
+                        editor.chain().focus().deleteRange(range).run();
+                      }
+                    }}
+                    className="flex w-full items-center space-x-2 rounded-md px-2 py-1 text-left text-sm cursor-pointer text-slate-900 hover:bg-slate-50 aria-selected:bg-slate-100"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-muted bg-background">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinelinejoin="round" className="h-4 w-4"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                    </div>
+                    <div>
+                      <p className="font-medium">Image</p>
+                      <p className="text-xs text-slate-500">Insert an image.</p>
                     </div>
                   </EditorCommandItem>
                 </EditorCommandList>

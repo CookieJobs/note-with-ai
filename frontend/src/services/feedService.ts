@@ -18,6 +18,12 @@ export interface UserProfile {
   summary: string;
   expertise?: { area: string; level: string }[];
   goals?: { description: string; timeframe: string; status: string }[];
+  theme?: {
+    themeName: string;
+    cssType: string;
+    cssValue: string;
+    reasoning: string;
+  };
 }
 
 export interface FeedResponse {

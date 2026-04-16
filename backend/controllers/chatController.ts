@@ -67,28 +67,47 @@ export const deleteChatSession = async (req: Request, res: Response): Promise<vo
 };
 
 export const streamChat = async (req: Request, res: Response): Promise<void> => {
-  // We need to handle authentication manually here if not using middleware, 
-  // but typically routes use middleware. 
-  // However, since we are moving logic from routes/chat.ts which used middleware,
-  // we can assume req.user is populated OR use UserValidator.
-  // Let's use UserValidator to be safe and consistent with other controller methods.
-  
   let userId: string;
   try {
     const user = await UserValidator.authenticateUser(req);
     userId = user._id.toString();
   } catch (err) {
-    // If validation fails, we should return 401
-    // But since this is a stream, we might need to handle it differently if headers are sent?
-    // No, headers are not sent yet.
     throw err;
   }
 
   const { messages, sessionId, title } = req.body;
   console.log('🟢 收到聊天请求 (流式):', messages?.length, '条消息, sessionId:', sessionId, 'userId:', userId);
 
+  let clientClosed = false;
+  let stream: any;
+
+  const isWritable = () =>
+    !clientClosed && !res.writableEnded && !res.destroyed && (res as any).writable !== false;
+
+  const safeWrite = (data: string) => {
+    if (!isWritable()) return false;
+    try {
+      return res.write(data);
+    } catch {
+      clientClosed = true;
+      return false;
+    }
+  };
+
+  const stopStream = async (s: any) => {
+    try {
+      if (s && typeof s.return === 'function') {
+        await s.return();
+      }
+    } catch {}
+  };
+
+  req.once('close', () => {
+    clientClosed = true;
+  });
+
   try {
-    const stream = await chatService.streamChat(messages);
+    stream = await chatService.streamChat(messages);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -98,40 +117,46 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
 
     let fullReply = '';
     for await (const chunk of stream) {
+      if (!isWritable()) {
+        await stopStream(stream);
+        break;
+      }
       fullReply += chunk;
-      res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      safeWrite(`data: ${JSON.stringify({ chunk })}\n\n`);
     }
 
-    res.write('data: [DONE]\n\n');
-    res.end();
+    if (isWritable()) {
+      safeWrite('data: [DONE]\n\n');
+      res.end();
+    }
 
-    console.log('🤖 DeepSeek 回复完成，开始保存到数据库...');
-    const finalMessages = [...messages, { role: 'assistant', content: fullReply }];
-    
-    // Save to DB in background (awaiting it here to ensure it completes, but response is already sent)
-    try {
+    if (!clientClosed) {
+      console.log('🤖 DeepSeek 回复完成，开始保存到数据库...');
+      const finalMessages = [...messages, { role: 'assistant', content: fullReply }];
+      try {
         await chatService.saveSession(userId, sessionId, finalMessages, title);
-    } catch (saveError) {
+      } catch (saveError) {
         console.error('❌ 保存会话失败 (流式响应后):', saveError);
-        // We cannot send error to client as stream is closed.
+      }
     }
-
   } catch (error: any) {
     console.error('❌ 聊天接口流式错误:', error);
+
     if (!res.headersSent) {
       if (error instanceof Error && (error as any).statusCode) {
         throw error;
       }
-      if (error.message && error.message.includes('API请求错误')) {
+      if (error?.message && String(error.message).includes('API请求错误')) {
         throw ErrorHandler.createExternalApiError('AI服务暂时不可用，请稍后重试', 'DeepSeek');
-      } else {
-        throw ErrorHandler.createInternalError('聊天失败，请稍后重试');
       }
-    } else {
-      if (!res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ error: 'AI 服务暂时不可用，请稍后重试' })}\n\n`);
-        res.end();
-      }
+      throw ErrorHandler.createInternalError('聊天失败，请稍后重试');
+    }
+
+    await stopStream(stream);
+
+    if (isWritable()) {
+      safeWrite(`data: ${JSON.stringify({ error: 'AI 服务暂时不可用，请稍后重试' })}\n\n`);
+      res.end();
     }
   }
 };

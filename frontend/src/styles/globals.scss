@@ -120,14 +120,14 @@ body {
 /* 全局选中背景（避免浏览器默认紫色） */
 ::selection,
 *::selection {
-  background: rgba(255, 255, 255, 0.22) !important;
-  color: #fff !important;
+  background: rgba(0, 122, 255, 0.3);
+  color: inherit;
 }
 
 ::-moz-selection,
 *::-moz-selection {
-  background: rgba(255, 255, 255, 0.22) !important;
-  color: #fff !important;
+  background: rgba(0, 122, 255, 0.3);
+  color: inherit;
 }
 
 /* 确保容器正确继承宽度 */

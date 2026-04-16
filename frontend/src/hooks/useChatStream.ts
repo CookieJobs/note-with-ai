@@ -119,8 +119,9 @@ export const useChatStream = (): UseChatStreamReturn => {
       updateSessionMessages(currentSession.id, currentMessages, userId);
 
       let buffer = '';
+      let shouldStop = false;
       try {
-        while (true) {
+        while (!shouldStop) {
           const { done, value } = await reader.read();
           if (done) break;
 
@@ -137,7 +138,10 @@ export const useChatStream = (): UseChatStreamReturn => {
             if (!match) continue;
 
             const dataStr = match[1].trim();
-            if (dataStr === '[DONE]') break;
+            if (dataStr === '[DONE]') {
+              shouldStop = true;
+              break;
+            }
 
             try {
               const data = JSON.parse(dataStr);
@@ -150,10 +154,12 @@ export const useChatStream = (): UseChatStreamReturn => {
                 ];
                 updateSessionMessages(currentSession.id, currentMessages, userId);
               } else if (data.error) {
+                shouldStop = true;
                 throw new Error(data.error);
               }
             } catch (e: any) {
               if (dataStr.includes('"error":')) {
+                shouldStop = true;
                 throw e;
               }
               console.warn('SSE 解析警告:', e.message, '数据:', dataStr);
@@ -161,7 +167,12 @@ export const useChatStream = (): UseChatStreamReturn => {
           }
         }
       } finally {
-        // 流读取完毕
+        try {
+          await reader.cancel();
+        } catch {}
+        try {
+          reader.releaseLock();
+        } catch {}
       }
 
 

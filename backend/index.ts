@@ -61,16 +61,26 @@ app.use(globalErrorHandler);
 
 // ✅ 启动服务
 const connectDB = async () => {
+  const g = globalThis as any;
+
   if (mongoose.connection.readyState >= 1) {
     return;
   }
-  try {
-    await mongoose.connect(MONGODB_URI);
-    console.log('✅ MongoDB 连接成功');
-  } catch (err) {
-    console.error('❌ MongoDB 连接失败:', err);
-    throw err;
+
+  if (!g.__mongoConnectPromise) {
+    g.__mongoConnectPromise = mongoose
+      .connect(MONGODB_URI)
+      .then(() => {
+        console.log('✅ MongoDB 连接成功');
+      })
+      .catch((err: any) => {
+        g.__mongoConnectPromise = undefined;
+        console.error('❌ MongoDB 连接失败:', err);
+        throw err;
+      });
   }
+
+  await g.__mongoConnectPromise;
 };
 
 // Vercel Serverless Handler

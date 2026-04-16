@@ -27,7 +27,6 @@ export default function FloatingQuickCompose({
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
   const [maximized, setMaximized] = useState(false);
-  const [toolbarVariant, setToolbarVariant] = useState<'simple' | 'advanced'>('simple');
   const bounceTimerRef = useRef<number | null>(null);
   const [bouncing, setBouncing] = useState(false);
   const expandedRef = useRef<HTMLDivElement | null>(null);
@@ -139,19 +138,9 @@ export default function FloatingQuickCompose({
                 placeholder="此刻的想法、待办或总结..."
                 showToolbar
                 autoFocus="end"
-                toolbarVariant={toolbarVariant}
+                toolbarVariant="advanced"
                 toolbarRight={
                   <>
-                    <button
-                      type="button"
-                      className="!text-xs !px-2 !py-1 !rounded-md hover:!bg-gray-100 !text-gray-500 !bg-transparent !border-none !cursor-pointer !whitespace-nowrap !flex !items-center !justify-center !h-8 !transition-colors"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setToolbarVariant((v) => (v === 'simple' ? 'advanced' : 'simple'))}
-                      aria-label={toolbarVariant === 'simple' ? '切换到复杂模式' : '切换到简单模式'}
-                      title={toolbarVariant === 'simple' ? '切换到复杂模式' : '切换到简单模式'}
-                    >
-                      {toolbarVariant === 'simple' ? '复杂模式' : '简单模式'}
-                    </button>
                     <button
                       type="button"
                       className={styles.floatingComposeMaxBtn}

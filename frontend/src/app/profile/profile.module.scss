@@ -1,3 +1,11 @@
+.page {
+  min-height: 100vh;
+  background: var(--profile-background);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
 .container {
   max-width: 1200px;
   margin: 0 auto;

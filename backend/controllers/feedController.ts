@@ -68,7 +68,9 @@ export const getFeed = async (req: Request, res: Response) => {
       feed: finalFeed,
       userProfile: {
         interests: profile.interests,
-        summary: profile.summary
+        summary: profile.summary,
+        expertise: profile.expertise,
+        theme: profile.theme
       }
     });
 

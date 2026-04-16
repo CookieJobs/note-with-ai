@@ -83,34 +83,43 @@ function NotesContent() {
 
   // 监听 highlightId 的变化，如果存在则自动滚动到对应的笔记
   useEffect(() => {
-    if (highlightId && noteRefs.current[highlightId] && scrollContainerRef.current) {
-      // 延迟确保 DOM 完全挂载并获取准确位置
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          const el = noteRefs.current[highlightId];
-          const container = scrollContainerRef.current;
-          if (el && container) {
-            // 计算相对容器的滚动位置
-            // el.offsetTop 是相对于最近的定位父元素（或者body，如果没有），这里我们假设列表项相对于容器布局
-            // 如果列表结构复杂，可以通过计算 bounding rect 差值来得到精确滚动量
-            const containerRect = container.getBoundingClientRect();
-            const elRect = el.getBoundingClientRect();
-            
-            // 目标笔记元素距离容器顶部的距离 = 元素顶部视口距离 - 容器顶部视口距离 + 容器当前已滚动的距离
-            const relativeTop = elRect.top - containerRect.top + container.scrollTop;
-            
-            // 考虑上方留出一点安全边距（偏移量）
-            const yOffset = 40;
-            const targetScrollTop = relativeTop - yOffset;
-            
-            container.scrollTo({
-              top: targetScrollTop,
-              behavior: 'smooth'
-            });
-          }
-        }, 50); // 微小的延迟，让 React 渲染完 className
-      });
+    if (!highlightId) return;
+
+    let rafId: number | null = null;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
+    const scheduleScroll = () => {
+      timerId = setTimeout(() => {
+        if (cancelled) return;
+
+        const el = noteRefs.current[highlightId];
+        const container = scrollContainerRef.current;
+        if (!el || !container) return;
+
+        const containerRect = container.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const relativeTop = elRect.top - containerRect.top + container.scrollTop;
+
+        const yOffset = 40;
+        const targetScrollTop = relativeTop - yOffset;
+
+        container.scrollTo({
+          top: targetScrollTop,
+          behavior: 'smooth'
+        });
+      }, 50);
+    };
+
+    if (noteRefs.current[highlightId] && scrollContainerRef.current) {
+      rafId = requestAnimationFrame(scheduleScroll);
     }
+
+    return () => {
+      cancelled = true;
+      if (rafId != null) cancelAnimationFrame(rafId);
+      if (timerId != null) clearTimeout(timerId);
+    };
   }, [highlightId, notes]);
 
   const handleDraftChange = (id: string, draft: { json: any; text: string; dirty: boolean }) => {
@@ -157,28 +166,8 @@ function NotesContent() {
           )}
 
           {isLoading && notes.length === 0 ? (
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              alignItems: 'center', 
-              height: '100%', 
-              color: '#888',
-              flexDirection: 'column',
-              gap: '12px'
-            }}>
-              <div className="loading-spinner" style={{
-                width: '24px',
-                height: '24px',
-                border: '3px solid rgba(0,0,0,0.1)',
-                borderTopColor: '#333',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite'
-              }} />
-              <style jsx>{`
-                @keyframes spin {
-                  to { transform: rotate(360deg); }
-                }
-              `}</style>
+            <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-sm text-gray-500">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-gray-900" />
               <span>正在加载笔记...</span>
             </div>
           ) : (

@@ -18,6 +18,13 @@ const GoalSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 }, { _id: false });
 
+const ThemeSchema = new mongoose.Schema({
+  themeName: { type: String, required: true },
+  cssType: { type: String, required: true },
+  cssValue: { type: String, required: true },
+  reasoning: { type: String, required: true }
+}, { _id: false });
+
 const UserProfileSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
@@ -40,6 +47,9 @@ const UserProfileSchema = new mongoose.Schema(
     
     // Long-term Biography / Summary
     summary: { type: String, default: '' },
+    
+    // AI Generated Background Theme
+    theme: ThemeSchema,
     
     // Track when the profile was last updated by the analysis job
     lastAnalyzedAt: { type: Date, default: Date.now }

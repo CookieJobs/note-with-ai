@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, isAuthenticated } from '../../utils/auth';
 import { getFeed, triggerAnalysis, FeedResponse, FeedItem } from '../../services/feedService';
 import TopNavigation from '../../components/TopNavigation';
 import styles from './profile.module.scss';
 import { toast } from 'sonner';
+import { defaultProfileBackgroundTheme, mapUserProfileToBackgroundTheme } from './profileBackgroundTheme';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -14,6 +15,32 @@ export default function ProfilePage() {
   const [data, setData] = useState<FeedResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+
+  const theme = useMemo(() => {
+    // 优先使用后端大模型生成的 AI 专属主题
+    if (data?.userProfile?.theme && data.userProfile.theme.cssValue) {
+      // 简单正则校验：必须是 linear-gradient 或包含 HEX/RGBA
+      const isValid = /^linear-gradient|^radial-gradient|#|rgba?/i.test(data.userProfile.theme.cssValue.trim());
+      if (isValid) {
+        return {
+          id: 'ai-generated' as any,
+          background: data.userProfile.theme.cssValue.trim()
+        };
+      }
+    }
+
+    // 后端没有生成主题时，降级使用前端工具函数匹配的关键词主题
+    const computed = mapUserProfileToBackgroundTheme(data?.userProfile, {
+      seed: user?.email || user?.username,
+    });
+    if (loading || !data?.userProfile || data?.profileStatus === 'analyzing') return defaultProfileBackgroundTheme;
+    return computed;
+  }, [data?.profileStatus, data?.userProfile, loading, user?.email, user?.username]);
+
+  const pageStyle = useMemo(
+    () => ({ ['--profile-background' as any]: theme.background }) as CSSProperties,
+    [theme.background]
+  );
 
   useEffect(() => {
     // Auth Check
@@ -64,7 +91,7 @@ export default function ProfilePage() {
 
   if (!user) {
     return (
-      <div className="!min-h-screen !bg-gray-50">
+      <div className={`${styles.page} !min-h-screen`} style={pageStyle}>
         <TopNavigation />
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 60px)', color: '#888' }}>
           <div className="flex flex-col items-center gap-3">
@@ -89,7 +116,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="!min-h-screen !bg-gray-50">
+    <div className={`${styles.page} !min-h-screen`} style={pageStyle}>
       <TopNavigation />
       <div className={`${styles.container} !max-w-5xl !mx-auto !px-6 !py-8 !mt-16`}>
         {/* Left Column: User Profile */}
@@ -124,6 +151,20 @@ export default function ProfilePage() {
               <div className={`${styles.sectionTitle} !text-base !font-semibold !text-gray-900 !mb-3`}>个人传记</div>
               <div className={`${styles.biography} !text-sm !leading-relaxed !text-gray-600 !whitespace-pre-wrap`}>
                 {data.userProfile.summary}
+              </div>
+            </div>
+          )}
+
+          {/* AI Theme Card */}
+          {data?.userProfile?.theme && data.userProfile.theme.themeName && (
+            <div className={`${styles.card} !bg-white !shadow-sm !border !border-gray-100 !rounded-2xl !p-6`}>
+              <div className={`${styles.sectionTitle} !text-base !font-semibold !text-gray-900 !mb-3`}>
+                <span className="!flex !items-center !gap-2">
+                  <span className="!text-lg">✨</span> 专属氛围色：{data.userProfile.theme.themeName}
+                </span>
+              </div>
+              <div className={`${styles.biography} !text-sm !leading-relaxed !text-gray-600 !whitespace-pre-wrap`}>
+                {data.userProfile.theme.reasoning}
               </div>
             </div>
           )}
