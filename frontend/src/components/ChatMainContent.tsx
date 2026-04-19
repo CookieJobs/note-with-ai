@@ -37,6 +37,10 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages, isLoading }
     }
   }, [safeMessages]);
 
+  if (safeMessages.length === 0) {
+    return null;
+  }
+
   return (
     <main className={styles.mainContent}>
       <div className={styles.messagesContainer} ref={messagesContainerRef}>

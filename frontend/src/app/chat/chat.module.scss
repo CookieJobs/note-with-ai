@@ -665,10 +665,9 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 
 @media (max-width: 768px) {
   .inputContainer {
-    left: 0;
-    right: 0;
+    width: 100%;
     max-width: 100%;
-    margin: 0 16px;
+    padding: 0 16px 16px 16px;
   }
   
   .inputWrapper {
@@ -965,160 +964,9 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 .inputContainerCentered {
   width: 100%;
   max-width: 800px;
-  margin: auto; /* 在 flex 列容器中配合 margin: auto 可以实现垂直居中 */
+  margin: auto !important; /* 强制覆盖常规的 margin */
   padding: 0 24px;
   z-index: 100;
-}
-
-@media (max-width: 992px) {
-  .inputContainerCentered {
-    left: 24px;
-    right: 24px;
-  }
-}
-
-@media (max-width: 768px) {
-  .inputContainerCentered {
-    left: 16px;
-    right: 16px;
-  }
-}
-
-.inputWrapper {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  background: #ffffff;
-  padding: 16px;
-  border-radius: 24px 24px 24px 24px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.disclaimer {
-  text-align: center;
-  font-size: 12px;
-  color: #9ca3af;
-  padding: 8px 16px 12px;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  border-radius: 0;
-}
-
-.inputField {
-  flex: 1;
-  background: #ffffff;
-  border: none;
-  border-radius: 8px;
-  padding: 12px 16px;
-  font-size: 15px;
-  line-height: 1.5;
-  color: #374151;
-  resize: none;
-  outline: none;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  min-height: 24px;
-  max-height: 120px;
-  
-  &::placeholder {
-    color: #9ca3af;
-  }
-  
-  &:focus {
-    outline: none;
-  }
-}
-
-.submitButton {
-  background: #10a37f;
-  color: #ffffff;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  
-  &:hover:not(:disabled) {
-    background: #0d8f6f;
-  }
-  
-  &:disabled {
-    background: #d1d5db;
-    cursor: not-allowed;
-  }
-}
-
-.errorText {
-  position: fixed;
-  top: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  color: #dc2626;
-  font-size: 14px;
-  font-weight: 500;
-  padding: 16px 24px;
-  background: rgba(254, 226, 226, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  box-shadow: 0 8px 32px rgba(239, 68, 68, 0.15);
-  z-index: 1000;
-  animation: slideDown 0.3s ease;
-  max-width: 400px;
-  text-align: center;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-@media (max-width: 768px) {
-  .inputContainer {
-    left: 0;
-    right: 0;
-    max-width: 100%;
-    margin: 0 16px;
-  }
-  
-  .inputWrapper {
-    padding: 12px;
-    margin-bottom: 6px;
-  }
-  
-  .disclaimer {
-    padding: 6px 12px 10px;
-    font-size: 11px;
-  }
-}
-
-.submitButton:hover {
-  background: #005fd1;
-}
-
-.submitButton:disabled {
-  background: #c0c0c0;
-  cursor: not-allowed;
-}
-
-.errorText {
-  color: red;
-  font-size: 12px;
-  margin-top: 8px;
 }
 
 /* 聊天记录面板样式 - 现代化设计 */

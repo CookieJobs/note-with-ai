@@ -1,6 +1,7 @@
 'use client';
 
-import { EditorRoot, EditorContent } from 'novel';
+import { useState, useEffect } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import styles from '../notes.module.scss';
@@ -48,24 +49,30 @@ const extensions = [
 ];
 
 export default function RichTextViewer({ value }: { value: string }) {
-  if (typeof value !== 'string') {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const editor = useEditor({
+    extensions: extensions as any,
+    content: value,
+    editable: false,
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm sm:prose-base max-w-full focus:outline-none',
+      },
+    },
+  });
+
+  if (typeof value !== 'string' || !editor || !mounted) {
     return null;
   }
 
   return (
     <div className={styles.richViewerContent}>
-      <EditorRoot>
-        <EditorContent
-          editable={false}
-          initialContent={value as any}
-          extensions={extensions as any}
-          editorProps={{
-            attributes: {
-              class: 'prose prose-sm sm:prose-base max-w-full focus:outline-none',
-            },
-          }}
-        />
-      </EditorRoot>
+      <EditorContent editor={editor} />
     </div>
   );
 }

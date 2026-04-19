@@ -167,7 +167,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
       <Button
         variant="ghost"
         size="icon"
-        className="relative z-10 h-8 w-8 shrink-0 rounded-full border border-border/50 bg-background/60 text-muted-foreground shadow-sm backdrop-blur hover:text-primary hover:border-primary/40 hover:bg-primary/10 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+        className="relative z-10 h-8 w-8 shrink-0 rounded-full border border-border/50 bg-background/60 text-muted-foreground shadow-sm backdrop-blur hover:text-primary hover:border-primary/40 hover:bg-primary/10 transition-all"
         onClick={(e) => { 
           e.stopPropagation(); 
           fetchIntro(); 

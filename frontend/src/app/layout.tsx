@@ -19,6 +19,11 @@ const jetbrainsMonoVariable = 'font-mono';
 export const metadata: Metadata = {
   title: 'NoteWithAI',
   description: 'AI assisted note-taking app',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon-192.png',
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

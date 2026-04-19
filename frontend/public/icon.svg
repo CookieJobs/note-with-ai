@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="64" x2="448" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F46E5" />
+      <stop offset="1" stop-color="#7C3AED" />
+    </linearGradient>
+    <linearGradient id="paper" x1="150" y1="118" x2="362" y2="394" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#EEF2FF" />
+    </linearGradient>
+    <filter id="shadow" x="102" y="90" width="332" height="364" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#312E81" flood-opacity="0.26" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <circle cx="402" cy="116" r="84" fill="#A78BFA" fill-opacity="0.18" />
+  <circle cx="122" cy="406" r="94" fill="#C4B5FD" fill-opacity="0.14" />
+
+  <g filter="url(#shadow)">
+    <path
+      d="M158 118C158 104.745 168.745 94 182 94H290.118C296.483 94 302.587 96.5286 307.088 101.029L364.971 158.912C369.471 163.413 372 169.517 372 175.882V370C372 383.255 361.255 394 348 394H182C168.745 394 158 383.255 158 370V118Z"
+      fill="url(#paper)"
+    />
+    <path
+      d="M304 96V152C304 165.255 314.745 176 328 176H370"
+      stroke="#C7D2FE"
+      stroke-width="18"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M304 96V152C304 165.255 314.745 176 328 176H370"
+      fill="#E0E7FF"
+    />
+    <rect x="196" y="214" width="122" height="18" rx="9" fill="#C7D2FE" />
+    <rect x="196" y="256" width="138" height="18" rx="9" fill="#C7D2FE" />
+    <rect x="196" y="298" width="102" height="18" rx="9" fill="#C7D2FE" />
+  </g>
+
+  <path
+    d="M384 154L395.428 184.572L426 196L395.428 207.428L384 238L372.572 207.428L342 196L372.572 184.572L384 154Z"
+    fill="#F8FAFC"
+  />
+  <path
+    d="M384 168L391.471 188.529L412 196L391.471 203.471L384 224L376.529 203.471L356 196L376.529 188.529L384 168Z"
+    fill="#A78BFA"
+  />
+</svg>
