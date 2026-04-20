@@ -198,8 +198,8 @@ export default function FloatingQuickCompose({
             canSubmit={canSubmit}
             loading={loading}
           />
-          <div className="flex-1 overflow-y-auto bg-gray-50/30" ref={expandedRef}>
-            <div className="max-w-4xl mx-auto w-full h-full p-4">
+          <div className="flex-1 overflow-y-auto bg-white" ref={expandedRef}>
+            <div className="max-w-4xl mx-auto w-full h-full p-4 text-gray-900">
               <RichTextEditor
                 value={valueJson}
                 onChange={onChange}
@@ -208,6 +208,7 @@ export default function FloatingQuickCompose({
                 autoFocus="end"
                 toolbarVariant="advanced"
                 onModEnter={submitAndClose}
+                className="text-gray-900"
               />
             </div>
           </div>

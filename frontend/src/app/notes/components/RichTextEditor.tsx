@@ -37,6 +37,7 @@ type Props = {
   insideRefs?: Array<React.RefObject<HTMLElement | null>>;
   toolbarRight?: React.ReactNode;
   autoFocus?: boolean | 'start' | 'end' | 'all';
+  className?: string;
 };
 
 const extensions = [
@@ -140,6 +141,7 @@ export default function RichTextEditor({
   insideRefs = [],
   toolbarRight,
   autoFocus,
+  className = '',
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -151,8 +153,8 @@ export default function RichTextEditor({
   const isFullscreen = searchParams?.get('mode') === 'fullscreen';
 
   const editorContentClassName = React.useMemo(
-    () => `${styles.richEditorContent} prose prose-sm sm:prose-base focus:outline-none max-w-full ${isFullscreen ? '!max-w-[800px] !mx-auto !px-6 !py-10' : ''}`,
-    [isFullscreen]
+    () => `${styles.richEditorContent} prose prose-sm sm:prose-base focus:outline-none max-w-full ${className} ${isFullscreen ? '!max-w-[800px] !mx-auto !px-6 !py-10' : ''}`,
+    [isFullscreen, className]
   );
 
   const memoizedExtensions = React.useMemo(() => extensions as any, []);
