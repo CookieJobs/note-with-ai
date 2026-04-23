@@ -153,7 +153,7 @@ export default function RichTextEditor({
   const isFullscreen = searchParams?.get('mode') === 'fullscreen';
 
   const editorContentClassName = React.useMemo(
-    () => `${styles.richEditorContent} prose prose-sm sm:prose-base focus:outline-none max-w-full ${className} ${isFullscreen ? '!max-w-[800px] !mx-auto !px-6 !py-10' : ''}`,
+    () => `${styles.richEditorContent} prose prose-sm sm:prose-base focus:outline-none ${className} ${isFullscreen ? '!max-w-[800px] !mx-auto !px-6 !py-10' : ''}`,
     [isFullscreen, className]
   );
 

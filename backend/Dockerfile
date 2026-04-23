@@ -1,5 +1,6 @@
 # 使用 Node.js 20 Alpine 作为基础镜像
 FROM node:20-alpine
+RUN apk add --no-cache libc6-compat
 
 # 设置工作目录
 WORKDIR /app
@@ -8,6 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # 安装依赖
+RUN npm config set registry https://registry.npmmirror.com
 RUN npm install
 
 # 复制源代码

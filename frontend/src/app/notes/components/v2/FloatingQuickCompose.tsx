@@ -235,7 +235,7 @@ export default function FloatingQuickCompose({
                 key="collapsed"
                 layout
                 type="button"
-                className={`${styles.floatingComposeBar} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !px-6 !py-4 !h-auto`}
+                className={`${styles.floatingComposeBar} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !px-6 !py-4 !h-auto flex items-center justify-center`}
                 onClick={() => {
                   setOpen(true);
                   setBouncing(true);
@@ -244,13 +244,13 @@ export default function FloatingQuickCompose({
                 }}
                 aria-label="打开快速记录"
               >
-              <span className={styles.floatingComposeBarInner}>
+              <span className={`${styles.floatingComposeBarInner} w-full flex items-center justify-center`}>
                 <motion.span
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: { duration: 0.1 } }}
                   transition={{ delay: 0.15, duration: 0.2 }}
-                  className={`${styles.floatingComposeBarText} !text-gray-500 !font-normal`}
+                  className={`${styles.floatingComposeBarText} !text-gray-500 !font-normal text-center`}
                 >
                   {valueText && valueText.trim().length > 0 ? '继续编辑草稿…' : '发送消息...'}
                 </motion.span>
@@ -260,7 +260,7 @@ export default function FloatingQuickCompose({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0, transition: { duration: 0.1 } }}
                     transition={{ delay: 0.15, duration: 0.2 }}
-                    className={styles.floatingComposeDraftDot}
+                    className={`${styles.floatingComposeDraftDot} absolute right-4`}
                     aria-label="有草稿"
                     title="有草稿"
                   />
@@ -305,6 +305,7 @@ export default function FloatingQuickCompose({
                   onModEnter={() => {
                     submitAndClose();
                   }}
+                  className="text-gray-900 !mx-auto"
                 />
               </motion.div>
 
