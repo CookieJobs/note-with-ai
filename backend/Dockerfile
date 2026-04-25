@@ -1,25 +1,37 @@
-# 使用 Node.js 20 Alpine 作为基础镜像
-FROM node:20-alpine
+# 1. Install dependencies only when needed
+FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
-
-# 设置工作目录
 WORKDIR /app
-
-# 复制 package.json 和 package-lock.json
-COPY package*.json ./
-
-# 安装依赖
+COPY package.json package-lock.json ./
 RUN npm config set registry https://registry.npmmirror.com
-RUN npm install
+RUN npm ci
 
-# 复制源代码
+# 2. Build source code
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-# 构建 TypeScript 代码
 RUN npm run build
 
-# 暴露端口
+# 3. Production image
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Set correct permissions
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 backenduser
+
+# Install production dependencies
+COPY package.json package-lock.json ./
+RUN npm config set registry https://registry.npmmirror.com
+RUN npm ci --omit=dev
+
+# Copy compiled source code
+COPY --from=builder --chown=backenduser:nodejs /app/dist ./dist
+
+USER backenduser
+
 EXPOSE 3001
 
-# 启动命令
-CMD ["npm", "run", "start"]
+CMD ["node", "dist/index.js"]

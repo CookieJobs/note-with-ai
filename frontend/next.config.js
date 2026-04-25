@@ -17,6 +17,7 @@ const nextConfig = {
       // your project has type errors.
       ignoreBuildErrors: true,
     },
+    output: 'standalone',
     async rewrites() {
       const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
       console.log(`🛠️ 代理规则加载中... 目标后端: ${backendUrl}`);

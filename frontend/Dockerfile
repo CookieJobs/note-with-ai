@@ -1,34 +1,52 @@
-# 使用 Node.js 20 Alpine 作为基础镜像
-FROM node:20-alpine
+# 1. Install dependencies only when needed
+FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
-
-# 设置工作目录
 WORKDIR /app
-
-# 复制 package.json 和 package-lock.json
-COPY package*.json ./
-
-# 安装依赖
+COPY package.json package-lock.json ./
 RUN npm config set registry https://registry.npmmirror.com
-RUN npm install
+RUN npm ci
 
-# 复制源代码
+# 2. Rebuild the source code only when needed
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# 新增这两行，接收构建参数
+# Receive build arguments
 ARG BACKEND_URL
 ENV BACKEND_URL=$BACKEND_URL
 
-# 禁用 Next.js 遥测，避免网络请求导致构建挂起
+# Disable telemetry and set memory limit
 ENV NEXT_TELEMETRY_DISABLED=1
-# 限制 Node.js 的内存使用（防止构建时 OOM）
 ENV NODE_OPTIONS="--max-old-space-size=1024"
 
-# 构建 Next.js 应用
+# Build Next.js application
 RUN npm run build
 
-# 暴露端口
+# 3. Production image, copy all the files and run next
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Set correct permissions
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+
+# Set the correct permission for prerender cache
+RUN mkdir .next && chown nextjs:nodejs .next
+
+# Automatically leverage output traces to reduce image size
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
 EXPOSE 3000
 
-# 启动命令
-CMD ["npm", "run", "start"]
+CMD ["node", "server.js"]
