@@ -9,6 +9,18 @@ import { Request, Response, NextFunction } from 'express';
 import { PerformanceMonitor } from './performance';
 import { logger } from './logger';
 
+function hasMessage(value: unknown): value is { message: string } {
+  return typeof value === 'object' && value !== null && 'message' in value && typeof (value as { message: unknown }).message === 'string';
+}
+
+function hasErrorBag(value: unknown): value is { errors: Record<string, unknown> } {
+  return typeof value === 'object' && value !== null && 'errors' in value && typeof (value as { errors: unknown }).errors === 'object';
+}
+
+function hasCode(value: unknown): value is { code: string } {
+  return typeof value === 'object' && value !== null && 'code' in value && typeof (value as { code: unknown }).code === 'string';
+}
+
 // 错误类型枚举
 export enum ErrorType {
   VALIDATION = 'VALIDATION_ERROR',
@@ -74,7 +86,7 @@ export class ErrorHandler {
       ErrorType.DATABASE,
       500,
       true,
-      { originalError: originalError?.message }
+      { originalError: hasMessage(originalError) ? originalError.message : undefined }
     );
   }
 
@@ -85,7 +97,7 @@ export class ErrorHandler {
       ErrorType.EXTERNAL_API,
       502,
       true,
-      { service, originalError: originalError?.message }
+      { service, originalError: hasMessage(originalError) ? originalError.message : undefined }
     );
   }
 
@@ -96,7 +108,7 @@ export class ErrorHandler {
       ErrorType.PAYLOAD_TOO_LARGE,
       413,
       true,
-      { originalError: originalError?.message || originalError?.type }
+      { originalError: hasMessage(originalError) ? originalError.message : undefined }
     );
   }
 
@@ -107,7 +119,7 @@ export class ErrorHandler {
       ErrorType.INTERNAL,
       500,
       false,
-      { originalError: originalError?.message }
+      { originalError: hasMessage(originalError) ? originalError.message : undefined }
     );
   }
 
@@ -134,7 +146,7 @@ export class ErrorHandler {
       if ((error as Error).name === 'ValidationError') {
         throw ErrorHandler.createValidationError(
           errorMessage || '数据验证失败',
-          error.errors
+          hasErrorBag(error) ? error.errors : undefined
         );
       }
       
@@ -145,7 +157,7 @@ export class ErrorHandler {
         );
       }
       
-      if ((error as any).code === 'ECONNREFUSED' || (error as any).code === 'ENOTFOUND') {
+      if (hasCode(error) && (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND')) {
         throw ErrorHandler.createExternalApiError(
           errorMessage || '外部服务连接失败',
           'unknown',

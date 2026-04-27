@@ -140,12 +140,10 @@ class NoteService {
       }
     
       const apiClient = new DeepSeekApiClient(process.env.DEEPSEEK_API_KEY!);
-      const data = await apiClient.chatCompletion(messages, {
+      const reply = await apiClient.chatCompletion(messages, {
         temperature: 0.7,
         stream: false
       });
-    
-      const reply = data.choices?.[0]?.message?.content || 'AI 没有返回结果';
       return reply;
   }
 

@@ -106,7 +106,7 @@ export class PerformanceMonitor {
 
   // 获取系统整体性能报告
   static getSystemPerformanceReport(): {
-    cache: Record<string, unknown>;
+    cache: ReturnType<typeof getCacheStats>;
     operations: { [key: string]: Record<string, unknown> };
     systemHealth: {
       memoryUsage: NodeJS.MemoryUsage;

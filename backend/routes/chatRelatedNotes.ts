@@ -14,6 +14,7 @@ import { UserValidator } from '../utils/userValidation';
 import { logger } from '../utils/logger';
 
 const router = express.Router();
+type VectorNote = { _id: { toString(): string }; title?: string; content?: string; createdAt?: Date };
 
 /**
  * 获取与聊天消息相关的笔记
@@ -36,7 +37,7 @@ router.post('/related-notes', authenticateToken, asyncHandler(async (req, res): 
   let relatedNotes = rawResults.filter(item => item.score >= threshold);
 
   if (excludeNoteId) {
-    relatedNotes = relatedNotes.filter(item => item.item._id.toString() !== excludeNoteId);
+    relatedNotes = relatedNotes.filter(item => (item.item as VectorNote)._id.toString() !== excludeNoteId);
   }
 
   // Limit results
@@ -44,7 +45,7 @@ router.post('/related-notes', authenticateToken, asyncHandler(async (req, res): 
 
   // Format response
   const formattedNotes = relatedNotes.map(item => ({
-    note: item.item,
+    note: item.item as VectorNote,
     score: item.score,
     matchType: 'vector' as const
   }));
@@ -81,7 +82,7 @@ router.post('/batch-related-notes', authenticateToken, asyncHandler(async (req, 
         const relatedNotes = rawResults
           .filter(item => item.score >= threshold)
           .map(item => ({
-            note: item.item,
+            note: item.item as VectorNote,
             score: item.score,
             matchType: 'vector' as const
           }));
@@ -141,7 +142,7 @@ router.post('/context-related-notes', authenticateToken, asyncHandler(async (req
     .filter(item => item.score >= 0.5) // 将原有的 0.2 宽松阈值提升至合理的 0.5
     .slice(0, limit)
     .map(item => ({
-      note: item.item,
+      note: item.item as VectorNote,
       score: item.score,
       matchType: 'vector' as const
     }));

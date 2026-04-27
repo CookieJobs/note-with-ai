@@ -17,6 +17,21 @@ import { rerankRecommendedNotes } from '../services/deepseek';
 import { logger } from '../utils/logger';
 
 const router = express.Router();
+type NoteSummaryRecord = {
+  _id: unknown;
+  title?: unknown;
+  summary?: unknown;
+  content?: unknown;
+  contentText?: unknown;
+  updatedAt?: unknown;
+};
+
+type RecommendCacheEntry = {
+  s2?: unknown;
+  type?: unknown;
+  reason?: unknown;
+  candidateUpdatedAt?: unknown;
+};
 
 router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   // 获取当前用户，确保只查询自己的笔记
@@ -178,13 +193,14 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
 
   // LLM 重排输入（仅 TopK）
   const candidates = topForLLM.map((x) => {
-    const n = x.note as Record<string, unknown> | undefined;
+    const n = x.note as NoteSummaryRecord | undefined;
+    if (!n) return null;
     const title = String(n.title || '').trim();
     const summary = String(n.summary || '').trim();
     const contentText = String(n.contentText || n.content || '').trim();
     const excerpt = (summary || contentText).slice(0, 260);
     return { id: String(n._id), title, summary, excerpt };
-  });
+  }).filter((item): item is { id: string; title: string; summary: string; excerpt: string } => item !== null);
 
   const currentForLLM = {
     id: String((currentNote as any)._id),
@@ -203,7 +219,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
   let cacheHits = 0;
 
   for (const c of candidates) {
-    const cached = cacheById?.[c.id];
+    const cached = cacheById?.[c.id] as RecommendCacheEntry | undefined;
     // 只有当候选笔记 updatedAt 未变化时才复用（避免候选内容变了理由/打分过期）
     const candUpdatedAt = String((topForLLM.find((x: { note?: Record<string, unknown> }) => String(x.note?._id) === c.id)?.note)?.updatedAt || '');
     const cachedCandUpdatedAt = String(cached?.candidateUpdatedAt || '');

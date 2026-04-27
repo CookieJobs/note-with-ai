@@ -11,10 +11,11 @@ import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
 
 const router = express.Router();
+type PerformanceReport = ReturnType<typeof PerformanceMonitor.getSystemPerformanceReport>;
 
 // 获取系统性能报告
 router.get('/report', asyncHandler(async (req: Request, res: Response) => {
-  const report = PerformanceMonitor.getSystemPerformanceReport();
+  const report: PerformanceReport = PerformanceMonitor.getSystemPerformanceReport();
   
   const responseData = {
     ...report,

@@ -9,6 +9,15 @@ import { Request } from 'express';
 import User from '../models/User';
 import { ErrorHandler } from './errorHandler';
 
+type UserResponseShape = {
+  _id: unknown;
+  username: unknown;
+  email: unknown;
+  avatar?: unknown;
+  createdAt: unknown;
+  lastLogin: unknown;
+};
+
 /**
  * 用户验证工具类
  */
@@ -107,7 +116,7 @@ export class UserValidator {
   /**
    * 格式化用户响应数据
    */
-  static formatUserResponse(user: { _id: unknown; username: unknown; email: unknown; createdAt: unknown; lastLogin: unknown }) {
+  static formatUserResponse(user: UserResponseShape) {
     return {
       id: user._id,
       username: user.username,
@@ -161,7 +170,7 @@ export class ResourceValidator {
   /**
    * 验证资源所有权
    */
-  static async validateOwnership(Model: { findById: (id: string) => Promise<{ userId: { toString: () => string } } | null> }, resourceId: string, userId: string, resourceName: string = '资源') {
+  static async validateOwnership(Model: { findById: (id: string) => Promise<{ userId?: { toString: () => string } } | null> }, resourceId: string, userId: string, resourceName: string = '资源') {
     const resource = await Model.findById(resourceId);
     
     if (!resource) {
@@ -179,11 +188,11 @@ export class ResourceValidator {
    * 验证批量资源所有权
    */
   static async validateBatchOwnership(
-    resourceModel: { findById: (id: string) => Promise<{ userId: { toString: () => string } } | null> },
+    resourceModel: { find: (query: Record<string, unknown>) => Promise<unknown[]> },
     resourceIds: string[],
     userId: string,
     resourceName: string = '资源'
-  ): Promise<any[]> {
+  ): Promise<unknown[]> {
     const resources = await resourceModel.find({ 
       _id: { $in: resourceIds }, 
       userId 

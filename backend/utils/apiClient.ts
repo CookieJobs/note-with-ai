@@ -9,6 +9,15 @@ import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import { ErrorHandler } from './errorHandler';
 import { logger } from './logger';
 
+type DeepSeekResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string;
+      reasoning_content?: string;
+    };
+  }>;
+};
+
 /**
  * 通用API客户端配置
  */
@@ -43,7 +52,7 @@ export class ApiClient {
   /**
    * 执行HTTP请求，带重试机制
    */
-  async request<T = any>(
+  async request<T = unknown>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     endpoint: string,
     data?: Record<string, unknown>,
@@ -90,7 +99,7 @@ export class ApiClient {
   /**
    * GET请求
    */
-  async get<T = any>(endpoint: string, options?: AxiosRequestConfig): Promise<T> {
+  async get<T = unknown>(endpoint: string, options?: AxiosRequestConfig): Promise<T> {
     return this.request<T>('GET', endpoint, undefined, options);
   }
 
@@ -111,7 +120,7 @@ export class ApiClient {
   /**
    * DELETE请求
    */
-  async delete<T = any>(endpoint: string, options?: AxiosRequestConfig): Promise<T> {
+  async delete<T = unknown>(endpoint: string, options?: AxiosRequestConfig): Promise<T> {
     return this.request<T>('DELETE', endpoint, undefined, options);
   }
 
@@ -161,7 +170,7 @@ export class DeepSeekApiClient extends ApiClient {
   /**
    * 聊天完成请求
    */
-  async chatCompletion(messages: { role: string; content: string }[], options: Record<string, unknown> = {}): Promise<unknown> {
+  async chatCompletion(messages: { role: string; content: string }[], options: Record<string, unknown> = {}): Promise<string> {
     const payload = {
       model: 'deepseek-chat',
       messages,
@@ -171,7 +180,7 @@ export class DeepSeekApiClient extends ApiClient {
       ...options
     };
 
-    const response = await this.post('/chat/completions', payload);
+    const response = await this.post<DeepSeekResponse>('/chat/completions', payload);
     
     const reply = response.choices?.[0]?.message?.content?.trim();
     if (!reply) {
@@ -256,13 +265,13 @@ export class DeepSeekApiClient extends ApiClient {
   /**
    * 推理模式聊天完成
    */
-  async reasoningCompletion(messages: { role: string; content: string }[]): Promise<unknown> {
+  async reasoningCompletion(messages: { role: string; content: string }[]): Promise<string> {
     const payload = {
       model: 'deepseek-reasoner',
       messages
     };
 
-    const response = await this.post('/chat/completions', payload);
-    return response.choices[0].message.reasoning_content;
+    const response = await this.post<DeepSeekResponse>('/chat/completions', payload);
+    return response.choices?.[0]?.message?.reasoning_content?.trim() || '';
   }
 }

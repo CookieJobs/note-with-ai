@@ -21,7 +21,7 @@ export const getChatSessions = async (req: Request, res: Response): Promise<void
   const sessions = await chatService.getSessions(userId);
   
   // Format sessions for frontend
-  const formatted = sessions.map((s: IChat) => ({
+  const formatted = sessions.map((s) => ({
     ...s,
     id: s._id.toString(),
     _id: s._id.toString(),
@@ -117,7 +117,7 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
       if (error instanceof Error && (error as any).statusCode) {
         throw error;
       }
-      if (error?.message && String((error as Error).message).includes('API请求错误')) {
+      if (error instanceof Error && error.message.includes('API请求错误')) {
         throw ErrorHandler.createExternalApiError('AI服务暂时不可用，请稍后重试', 'DeepSeek');
       }
       throw ErrorHandler.createInternalError('聊天失败，请稍后重试');

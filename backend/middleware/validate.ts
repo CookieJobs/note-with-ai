@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { AnyZodObject, ZodError } from 'zod';
+import { ZodError, ZodTypeAny } from 'zod';
 import { ErrorHandler } from '../utils/errorHandler';
 
-export const validate = (schema: AnyZodObject) => {
+export const validate = (schema: ZodTypeAny) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       await schema.parseAsync({
@@ -13,11 +13,11 @@ export const validate = (schema: AnyZodObject) => {
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        const errors = error.errors.map(err => ({
+        const errors = error.issues.map((err) => ({
           path: err.path.join('.'),
-          message: (err as Error).message
+          message: err.message
         }));
-        next(ErrorHandler.createValidationError('数据验证失败', errors));
+        next(ErrorHandler.createValidationError('数据验证失败', { errors }));
       } else {
         next(error);
       }

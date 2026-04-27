@@ -3,6 +3,22 @@ import { getCachedQwenEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 import { rerankRecommendedNotes } from './deepseek';
 
+type NoteSummaryRecord = {
+  _id: unknown;
+  title?: unknown;
+  summary?: unknown;
+  content?: unknown;
+  contentText?: unknown;
+  updatedAt?: unknown;
+};
+
+type RecommendCacheEntry = {
+  s2?: unknown;
+  type?: unknown;
+  reason?: unknown;
+  candidateUpdatedAt?: unknown;
+};
+
 export interface RecommendationOptions {
   recallK?: number;
   finalK?: number;
@@ -158,13 +174,14 @@ export async function updateNoteRecommendations(
 
   // 6. 准备 LLM 输入 & 缓存检查
   const candidates = topForLLM.map((x) => {
-    const n = x.note as Record<string, unknown> | undefined;
+    const n = x.note as NoteSummaryRecord | undefined;
+    if (!n) return null;
     const title = String(n.title || '').trim();
     const summary = String(n.summary || '').trim();
     const contentText = String(n.contentText || n.content || '').trim();
     const excerpt = (summary || contentText).slice(0, 260);
     return { id: String(n._id), title, summary, excerpt };
-  });
+  }).filter((item): item is { id: string; title: string; summary: string; excerpt: string } => item !== null);
 
   const currentForLLM = {
     id: String((currentNote as any)._id),
@@ -182,7 +199,7 @@ export async function updateNoteRecommendations(
   let cacheHits = 0;
 
   for (const c of candidates) {
-    const cached = cacheById?.[c.id];
+    const cached = cacheById?.[c.id] as RecommendCacheEntry | undefined;
     const candUpdatedAt = String((topForLLM.find((x: { note?: Record<string, unknown> }) => String(x.note?._id) === c.id)?.note)?.updatedAt || '');
     const cachedCandUpdatedAt = String(cached?.candidateUpdatedAt || '');
     

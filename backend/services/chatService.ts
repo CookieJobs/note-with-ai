@@ -1,6 +1,6 @@
 import Chat from '../models/Chat';
 import { Note } from '../models/Note';
-import { IChat, IMessage, IRelatedNote } from '../types';
+import { IChat, IMessage, IRelatedNote, INote } from '../types';
 import { ErrorHandler } from '../utils/errorHandler';
 import { chatWithDeepSeekStream, summarizeChatTitle, chatWithDeepSeek } from './deepseek';
 import { getCachedQwenEmbedding } from '../utils/embedding';
@@ -8,6 +8,18 @@ import { vectorStore } from './vectorStore';
 import mongoose from 'mongoose';
 import { measureDatabaseQuery, measureEmbeddingOperation } from '../utils/performance';
 import { logger } from '../utils/logger';
+
+type RelatedNoteRecord = Omit<IRelatedNote, 'noteId'> & {
+  noteId: string | { _id?: string | null } | null;
+};
+
+type ChatSessionRecord = {
+  _id: { toString(): string } | string;
+  relatedNotes?: RelatedNoteRecord[];
+  [key: string]: unknown;
+};
+
+type SearchableNote = Pick<INote, '_id' | 'title' | 'content' | 'createdAt'>;
 
 class ChatService {
   /**
@@ -67,7 +79,7 @@ class ChatService {
   /**
    * Get all chat sessions for a user
    */
-  async getSessions(userId: string): Promise<IChat[]> {
+  async getSessions(userId: string): Promise<ChatSessionRecord[]> {
     const sessions = await Chat.find({ userId })
       .sort({ updatedAt: -1 })
       .populate({
@@ -76,22 +88,23 @@ class ChatService {
       })
       .lean();
 
-    sessions.forEach((session: IChat) => {
-      if (session.relatedNotes && session.relatedNotes.length > 0) {
-        // 过滤掉引用的笔记已被删除的关联项 (noteId 为 null)
-        session.relatedNotes = session.relatedNotes.filter((rn: IRelatedNote) => rn.noteId !== null);
-        
-        // 将 populated 的 noteId 对象恢复为其原始的 string/ObjectId 形式，保持接口响应结构一致
-        session.relatedNotes = session.relatedNotes.map((rn: IRelatedNote & { noteId: { _id?: string } | string }) => ({
+    return (sessions as ChatSessionRecord[]).map((session) => {
+      const relatedNotes = Array.isArray(session.relatedNotes)
+        ? session.relatedNotes
+            .filter((rn) => rn.noteId !== null)
+            .map((rn) => ({
           ...rn,
           noteId: typeof rn.noteId === 'object' && rn.noteId !== null && '_id' in rn.noteId
             ? String(rn.noteId._id)
             : String(rn.noteId),
-        })) as IRelatedNote[];
-      }
-    });
+            }))
+        : undefined;
 
-    return sessions as unknown as IChat[];
+      return {
+        ...(session as Record<string, unknown>),
+        relatedNotes,
+      } as ChatSessionRecord;
+    });
   }
 
   /**
@@ -241,14 +254,15 @@ class ChatService {
       ]);
 
       // 3. Merge results
-      const allMatches = new Map<string, { note: INote; score: number; matchType: 'vector' | 'keyword' }>();
+      const allMatches = new Map<string, { note: SearchableNote; score: number; matchType: 'vector' | 'keyword' }>();
 
-      const processResults = (results: { item: INote; score: number }[]) => {
+      const processResults = (results: Array<{ item: Record<string, unknown>; score: number }>) => {
         results.forEach(({ item, score }) => {
           if (score < threshold) return;
-          const noteId = item._id.toString();
+          const note = item as unknown as SearchableNote;
+          const noteId = note._id.toString();
           if (!allMatches.has(noteId) || allMatches.get(noteId)!.score < score) {
-            allMatches.set(noteId, { note: item, score, matchType: 'vector' });
+            allMatches.set(noteId, { note, score, matchType: 'vector' });
           }
         });
       };
@@ -261,7 +275,7 @@ class ChatService {
         .sort((a, b) => b.score - a.score)
         .slice(0, maxResults);
 
-      return relatedNotes.map((item: { note: INote; score: number; matchType: 'vector' | 'keyword' }) => ({
+      return relatedNotes.map((item) => ({
         id: item.note._id,
         title: item.note.title,
         content: item.note.content,

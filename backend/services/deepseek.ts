@@ -12,6 +12,8 @@ import { logger } from '../utils/logger';
 
 let deepSeekClient: DeepSeekApiClient | null = null;
 
+type JsonObject = Record<string, unknown>;
+
 function getDebugPreview(text: string, limit = 200): string {
   return String(text || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
@@ -221,13 +223,17 @@ export async function expandNoteConcepts(content: string): Promise<string[]> {
       response_format: { type: 'json_object' },
     });
     // 兼容：有些模型会返回 { concepts: [...] } 或直接返回数组
-    let arr: string[] | null = null;
+    let arr: unknown = null;
     try {
       arr = JSON.parse(text);
     } catch {
       arr = null;
     }
-    const concepts = Array.isArray(arr) ? arr : Array.isArray(arr?.concepts) ? arr.concepts : [];
+    const concepts = Array.isArray(arr)
+      ? arr
+      : (arr && typeof arr === 'object' && Array.isArray((arr as JsonObject).concepts))
+        ? (arr as JsonObject).concepts as unknown[]
+        : [];
     return concepts.filter((x: unknown) => typeof x === 'string' && x.trim()).map((s: unknown) => (s as string).trim()).slice(0, 12);
   } catch (error: unknown) {
     logger.error('❌ expandNoteConcepts 调用失败：', (error as Error).message || error);
@@ -278,8 +284,8 @@ export async function rerankRecommendedNotes(params: {
       temperature: 0.2,
       response_format: { type: 'json_object' },
     });
-    const parsed = JSON.parse(text);
-    const results = Array.isArray(parsed?.results) ? parsed.results : [];
+    const parsed = JSON.parse(text) as JsonObject;
+    const results = Array.isArray(parsed.results) ? parsed.results : [];
     return results
       .map((r: { id: string; reason: string; related_concepts?: string[]; s2?: number; type?: string }) => ({
         id: String(r.id || ''),
@@ -344,11 +350,11 @@ export async function checkOrUpdateSummaryConcepts(params: {
       temperature: 0.1,
       response_format: { type: 'json_object' },
     });
-    const parsed = JSON.parse(textOut);
-    const is_ok = Boolean(parsed?.is_ok);
+    const parsed = JSON.parse(textOut) as JsonObject;
+    const is_ok = Boolean(parsed.is_ok);
     if (is_ok) return { is_ok: true, summary: '', concepts: [] };
-    const summary = typeof parsed?.summary === 'string' ? parsed.summary.trim() : '';
-    const concepts = Array.isArray(parsed?.concepts)
+    const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+    const concepts = Array.isArray(parsed.concepts)
       ? parsed.concepts.filter((x: unknown) => typeof x === 'string' && x.trim()).map((s: unknown) => (s as string).trim()).slice(0, 12)
       : [];
     return { is_ok: false, summary, concepts };
