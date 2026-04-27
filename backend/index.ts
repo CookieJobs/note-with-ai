@@ -1,6 +1,6 @@
 // backend/index.ts
 
-import express from 'express';
+import express, { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import cors from 'cors';
@@ -15,6 +15,7 @@ import cacheRoutes from './routes/cache';
 import performanceRoutes from './routes/performance';
 import feedRoutes from './routes/feedRoutes';
 import { globalErrorHandler } from './utils/errorHandler';
+import { logger } from './utils/logger';
 
 dotenv.config();
 
@@ -36,7 +37,7 @@ app.use(express.json({ limit: '5mb' }));
 
 // 添加请求日志中间件
 app.use((req, res, next) => {
-  console.log(`📝 ${req.method} ${req.path} - ${new Date().toISOString()}`);
+  logger.info(`📝 ${req.method} ${req.path} - ${new Date().toISOString()}`);
   next();
 });
 
@@ -71,11 +72,11 @@ const connectDB = async () => {
     g.__mongoConnectPromise = mongoose
       .connect(MONGODB_URI)
       .then(() => {
-        console.log('✅ MongoDB 连接成功');
+        logger.info('✅ MongoDB 连接成功');
       })
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         g.__mongoConnectPromise = undefined;
-        console.error('❌ MongoDB 连接失败:', err);
+        logger.error('❌ MongoDB 连接失败:', err);
         throw err;
       });
   }
@@ -84,7 +85,7 @@ const connectDB = async () => {
 };
 
 // Vercel Serverless Handler
-export default async (req: any, res: any) => {
+export default async (req: Request, res: Response) => {
   await connectDB();
   return app(req, res);
 };
@@ -93,7 +94,7 @@ export default async (req: any, res: any) => {
 if (require.main === module) {
   connectDB().then(() => {
     app.listen(PORT, () => {
-      console.log(`🚀 Backend running at http://localhost:${PORT}`);
+      logger.info(`🚀 Backend running at http://localhost:${PORT}`);
     });
   });
 }

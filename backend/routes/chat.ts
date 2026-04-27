@@ -17,26 +17,28 @@ import {
 } from '../controllers/chatController';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/errorHandler';
+import { validate } from '../middleware/validate';
+import { saveSessionSchema, deleteSessionSchema, streamChatSchema, summarizeTitleSchema, searchRelatedNotesSchema } from '../schemas/chatSchemas';
 
 const router = express.Router();
 
 // 保存聊天记录
-router.post('/save', authenticateToken, asyncHandler(saveChatSession));
+router.post('/save', authenticateToken, validate(saveSessionSchema), asyncHandler(saveChatSession));
 
 // 获取所有聊天记录
 router.get('/sessions', authenticateToken, asyncHandler(getChatSessions));
 
 // 删除聊天记录
-router.delete('/:sessionId', authenticateToken, asyncHandler(deleteChatSession));
+router.delete('/:sessionId', authenticateToken, validate(deleteSessionSchema), asyncHandler(deleteChatSession));
 
 // 聊天标题自动摘要接口
-router.post('/summarizeTitle', authenticateToken, asyncHandler(summarizeTitle));
+router.post('/summarizeTitle', authenticateToken, validate(summarizeTitleSchema), asyncHandler(summarizeTitle));
 
 // 发送给 DeepSeek 聊天接口（支持流式响应）
-router.post('/', authenticateToken, asyncHandler(streamChat));
+router.post('/', authenticateToken, validate(streamChatSchema), asyncHandler(streamChat));
 
 // 搜索相关笔记接口（异步调用）
-router.post('/search-related-notes', authenticateToken, asyncHandler(searchRelatedNotes));
+router.post('/search-related-notes', authenticateToken, validate(searchRelatedNotesSchema), asyncHandler(searchRelatedNotes));
 
 // AI 关怀助手开场白
 router.get('/robot/intro', authenticateToken, asyncHandler(generateIntro));

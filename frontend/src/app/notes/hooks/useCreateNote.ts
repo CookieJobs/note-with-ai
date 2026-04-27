@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { JSONContent } from '@tiptap/react';
 import { authFetch } from '../../../utils/auth';
 import { generateUUID } from '../../../utils/uuid';
 import type { Note } from './useNotes';
@@ -15,7 +16,7 @@ export function useCreateNote(
   const { onError } = options;
 
   const [newContentText, setNewContentText] = useState('');
-  const [newContentJson, setNewContentJson] = useState<any | null>(null);
+  const [newContentJson, setNewContentJson] = useState<JSONContent | null>(null);
   const [loading, setLoading] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
 
@@ -147,7 +148,7 @@ export function useCreateNote(
             if (relatedData.success && Array.isArray(relatedData.data?.relatedNotes)) {
               const list = relatedData.data.relatedNotes;
               if (list.length > 0) {
-                const formattedNotes = list.map((item: any) => ({
+                const formattedNotes = list.map((item: { note: INote; score: number }) => ({
                   ...item.note,
                   similarity: item.score,
                 }));
@@ -171,7 +172,7 @@ export function useCreateNote(
       } else {
         console.warn('未知的创建返回结构:', data);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('创建笔记失败:', err);
       onError?.(err?.message || '创建笔记失败，请稍后重试');
       // 回滚临时笔记

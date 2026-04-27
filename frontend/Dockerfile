@@ -3,8 +3,8 @@ FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm config set registry https://registry.npmmirror.com
-RUN npm ci
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm ci --no-audit --no-fund
 
 # 2. Rebuild the source code only when needed
 FROM node:20-alpine AS builder

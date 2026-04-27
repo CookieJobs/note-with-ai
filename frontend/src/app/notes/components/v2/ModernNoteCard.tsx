@@ -1,14 +1,35 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState, useEffect, useRef } from 'react';
 import styles from '../../notes-v2.module.scss';
 import TrashIcon from '../../../../components/icons/TrashIcon';
 import PlusIcon from '../../../../components/icons/PlusIcon';
 import type { Note } from '../../hooks/useNotes';
 import { focusProseMirrorWithin } from '../focusProseMirror';
-import RichTextEditor from '../RichTextEditor';
 import RichTextViewer from '../RichTextViewer';
 import { useNoteEditor } from '../../hooks/useNoteEditor';
+import { JSONContent } from '@tiptap/react';
+
+function EditorLoadingPlaceholder() {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white/90 shadow-sm">
+      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+        <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
+        <div className="h-4 w-16 animate-pulse rounded bg-gray-100" />
+      </div>
+      <div className="space-y-3 p-4">
+        <div className="h-4 w-28 animate-pulse rounded bg-gray-100" />
+        <div className="min-h-[180px] rounded-xl border border-dashed border-gray-200 bg-gray-50" />
+      </div>
+    </div>
+  );
+}
+
+const RichTextEditor = dynamic(() => import('../RichTextEditor'), {
+  ssr: false,
+  loading: () => <EditorLoadingPlaceholder />,
+});
 
 interface NoteCardProps {
   note: Note;
@@ -19,14 +40,14 @@ interface NoteCardProps {
     id: string,
     newContent: string,
     updatedAt?: string,
-    contentJson?: any,
+    contentJson?: JSONContent,
     contentText?: string,
     embedding?: number[]
   ) => void;
   onUpdateKeywords?: (id: string, newKeywords: string[], updatedAt?: string) => void;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
-  draft?: { json: any; text: string; dirty: boolean };
-  onDraftChange?: (id: string, draft: { json: any; text: string; dirty: boolean }) => void;
+  draft?: { json: JSONContent; text: string; dirty: boolean };
+  onDraftChange?: (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => void;
   exitEditSignal?: number;
   onClick?: () => void;
   isSelected?: boolean;
@@ -212,7 +233,7 @@ export default function ModernNoteCard({
     // fullH：正文全部展开需要的高度
     el.style.height = 'auto';
     el.style.maxHeight = 'none';
-    const fullH = (el as any).scrollHeight as number;
+    const fullH = (el as HTMLElement).scrollHeight as number;
 
     // 关键约束：卡片高度不能超过滚动容器可视高度（避免被上方快速记录挡住）
     // => textarea 最大高度 = sr.height - fixedH
@@ -528,7 +549,7 @@ export default function ModernNoteCard({
             </div>
           ) : (
             <div
-              ref={textRef as any}
+              ref={textRef as React.RefObject<HTMLDivElement>}
               className={`${styles.noteText} !leading-relaxed !text-gray-600`}
             >
               {(() => {

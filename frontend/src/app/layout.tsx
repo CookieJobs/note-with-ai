@@ -10,6 +10,7 @@ import GlobalKeybindings from '../components/GlobalKeybindings';
 import UUIDPolyfill from '../components/UUIDPolyfill';
 import { Toaster } from 'sonner';
 import type { Metadata } from 'next';
+import Providers from './providers';
 // 由于国内网络拉取 Google 字体常出现超时，这里移除 next/font/google 依赖
 // 转而使用普通的 CSS 类配合系统字体作为默认策略
 
@@ -31,10 +32,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-CN">
       {/* 主题背景/文字由 globals.scss 控制，避免被固定的 tailwind 背景色“压成纯色” */}
       <body className={`${interVariable} ${jetbrainsMonoVariable}`}>
-        <UUIDPolyfill />
-        <GlobalKeybindings />
-        <Toaster position="top-center" />
-        {children}
+        <Providers>
+          <UUIDPolyfill />
+          <GlobalKeybindings />
+          <Toaster position="top-center" />
+          {children}
+        </Providers>
       </body>
     </html>
   );

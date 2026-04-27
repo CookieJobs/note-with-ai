@@ -3,7 +3,9 @@ import { BubbleMenu } from '@tiptap/react/menus';
 import { Bold, Italic, Strikethrough, Code, Link as LinkIcon, Highlighter, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import { UrlPopover } from './UrlPopover';
 
-export function RichTextBubbleMenu({ editor }: { editor: any }) {
+import { Editor } from '@tiptap/react';
+
+export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
   if (!editor) return null;
 
   return (

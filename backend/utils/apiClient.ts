@@ -7,6 +7,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 // backend/utils/apiClient.ts
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
 import { ErrorHandler } from './errorHandler';
+import { logger } from './logger';
 
 /**
  * 通用API客户端配置
@@ -45,11 +46,11 @@ export class ApiClient {
   async request<T = any>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     endpoint: string,
-    data?: any,
+    data?: Record<string, unknown>,
     options?: AxiosRequestConfig
   ): Promise<T> {
     const url = `${this.config.baseURL}${endpoint}`;
-    let lastError: any;
+    let lastError: unknown;
 
     for (let attempt = 1; attempt <= (this.config.retries || 1); attempt++) {
       try {
@@ -67,12 +68,12 @@ export class ApiClient {
 
         const response: AxiosResponse<T> = await axios(config);
         return response.data;
-      } catch (error: any) {
+      } catch (error: unknown) {
         lastError = error;
-        console.warn(`❌ API请求失败 (尝试 ${attempt}/${this.config.retries}):`, {
+        logger.warn(`❌ API请求失败 (尝试 ${attempt}/${this.config.retries}):`, {
           url,
           method,
-          error: error.message
+          error: (error as Error).message
         });
 
         // 如果不是最后一次尝试，等待后重试
@@ -96,14 +97,14 @@ export class ApiClient {
   /**
    * POST请求
    */
-  async post<T = any>(endpoint: string, data?: any, options?: AxiosRequestConfig): Promise<T> {
+  async post<T = unknown>(endpoint: string, data?: Record<string, unknown>, options?: AxiosRequestConfig): Promise<T> {
     return this.request<T>('POST', endpoint, data, options);
   }
 
   /**
    * PUT请求
    */
-  async put<T = any>(endpoint: string, data?: any, options?: AxiosRequestConfig): Promise<T> {
+  async put<T = unknown>(endpoint: string, data?: Record<string, unknown>, options?: AxiosRequestConfig): Promise<T> {
     return this.request<T>('PUT', endpoint, data, options);
   }
 
@@ -124,9 +125,9 @@ export class ApiClient {
   /**
    * 创建API错误
    */
-  private createApiError(error: any, endpoint: string): Error {
-    const message = error.response?.data?.message || error.message || '未知错误';
-    const statusCode = error.response?.status;
+  private createApiError(error: unknown, endpoint: string): Error {
+    const message = (error as any).response?.data?.message || (error as Error).message || '未知错误';
+    const statusCode = (error as any).response?.status;
     
     if (statusCode >= 400 && statusCode < 500) {
       return ErrorHandler.createValidationError(`API请求错误: ${message}`);
@@ -160,7 +161,7 @@ export class DeepSeekApiClient extends ApiClient {
   /**
    * 聊天完成请求
    */
-  async chatCompletion(messages: any[], options: any = {}): Promise<any> {
+  async chatCompletion(messages: { role: string; content: string }[], options: Record<string, unknown> = {}): Promise<unknown> {
     const payload = {
       model: 'deepseek-chat',
       messages,
@@ -184,7 +185,7 @@ export class DeepSeekApiClient extends ApiClient {
    * 流式聊天完成请求
    * 使用原生 fetch 代替 axios，确保 DeepSeek SSE 数据流逐 chunk 返回，不被缓冲
    */
-  async *chatCompletionStream(messages: any[], options: any = {}): AsyncIterable<string> {
+  async *chatCompletionStream(messages: { role: string; content: string }[], options: Record<string, unknown> = {}): AsyncIterable<string> {
     const payload = {
       model: 'deepseek-chat',
       messages,
@@ -255,7 +256,7 @@ export class DeepSeekApiClient extends ApiClient {
   /**
    * 推理模式聊天完成
    */
-  async reasoningCompletion(messages: any[]): Promise<any> {
+  async reasoningCompletion(messages: { role: string; content: string }[]): Promise<unknown> {
     const payload = {
       model: 'deepseek-reasoner',
       messages

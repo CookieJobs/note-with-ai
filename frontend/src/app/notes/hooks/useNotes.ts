@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { JSONContent } from '@tiptap/react';
 import { authFetch } from '../../../utils/auth';
-import type { INote } from '../../../types';
+import type { INote, IUserProfile } from '../../../types';
 
 export type Note = INote & { enriching?: boolean };
 
@@ -8,78 +10,73 @@ type UseNotesOptions = {
   onError?: (message: string) => void;
 };
 
-export function useNotes(user: any | null, options: UseNotesOptions = {}) {
+export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {}) {
   const { onError } = options;
+  const queryClient = useQueryClient();
 
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: notes = [], isLoading, error } = useQuery({
+    queryKey: ['notes'],
+    queryFn: async () => {
+      const res = await authFetch('/api/notes');
+      if (!res.ok) throw new Error(`请求失败: ${res.status}`);
+      const response = await res.json();
 
-  // 加载笔记列表（随 user 就绪触发）
+      if (response.success && response.data && Array.isArray(response.data.notes)) {
+        return response.data.notes as Note[];
+      } else if (Array.isArray(response?.notes)) {
+        return response.notes as Note[];
+      } else {
+        console.warn('⚠️ /api/notes 返回格式错误:', response);
+        return [];
+      }
+    },
+    enabled: !!user,
+  });
+
   useEffect(() => {
-    if (!user) return;
+    if (error) {
+      console.error('加载失败:', error);
+      onError?.('加载失败，请稍后重试');
+    }
+  }, [error, onError]);
 
-    setIsLoading(true);
-    const controller = new AbortController();
-    let mounted = true;
-
-    authFetch('/api/notes', { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error(`请求失败: ${res.status}`);
-        return res.json();
-      })
-      .then((response) => {
-        if (!mounted) return;
-
-        if (response.success && response.data && Array.isArray(response.data.notes)) {
-          setNotes(response.data.notes);
-        } else if (Array.isArray(response?.notes)) {
-          setNotes(response.notes);
-        } else {
-          console.warn('⚠️ /api/notes 返回格式错误:', response);
-          setNotes([]);
-        }
-      })
-      .catch((err: any) => {
-        if (err?.name === 'AbortError') return;
-        console.error('加载失败:', err);
-        onError?.('加载失败，请稍后重试');
-      })
-      .finally(() => {
-        if (mounted) setIsLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-      controller.abort();
-    };
-  }, [user, onError]);
-
-  const deleteNote = async (id: string) => {
-    try {
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
       const res = await authFetch(`/api/notes/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('删除失败');
-      setNotes((prev) => prev.filter((n) => n._id !== id));
-    } catch (err) {
+      return id;
+    },
+    onSuccess: (deletedId) => {
+      queryClient.setQueryData(['notes'], (old: Note[] | undefined) => {
+        if (!old) return [];
+        return old.filter((n) => n._id !== deletedId);
+      });
+    },
+    onError: (err) => {
       console.error('删除失败:', err);
       onError?.('删除失败，请稍后重试');
     }
-  };
+  });
 
-  const updateTitle = (id: string, newTitle: string, updatedAt?: string) => {
-    setNotes((prev) =>
+  const setNotes = useCallback((updater: React.SetStateAction<Note[]>) => {
+    queryClient.setQueryData(['notes'], updater);
+  }, [queryClient]);
+
+  const updateTitle = useCallback((id: string, newTitle: string, updatedAt?: string) => {
+    setNotes((prev: Note[] = []) =>
       prev.map((n) => (n._id === id ? { ...n, title: newTitle, updatedAt: updatedAt || n.updatedAt } : n))
     );
-  };
+  }, [setNotes]);
 
-  const updateContent = (
+  const updateContent = useCallback((
     id: string,
     newContent: string,
     updatedAt?: string,
-    contentJson?: any,
+    contentJson?: JSONContent,
     contentText?: string,
     embedding?: number[]
   ) => {
-    setNotes((prev) =>
+    setNotes((prev: Note[] = []) =>
       prev.map((n) =>
         n._id === id
           ? {
@@ -93,19 +90,19 @@ export function useNotes(user: any | null, options: UseNotesOptions = {}) {
           : n
       )
     );
-  };
+  }, [setNotes]);
 
-  const updateKeywords = (id: string, newKeywords: string[], updatedAt?: string) => {
-    setNotes((prev) =>
+  const updateKeywords = useCallback((id: string, newKeywords: string[], updatedAt?: string) => {
+    setNotes((prev: Note[] = []) =>
       prev.map((n) => (n._id === id ? { ...n, keywords: newKeywords, updatedAt: updatedAt || n.updatedAt } : n))
     );
-  };
+  }, [setNotes]);
 
   return {
     notes,
     setNotes, // 给页面保留灵活性（例如快速记录的乐观插入/回滚）
     isLoading,
-    deleteNote,
+    deleteNote: deleteMutation.mutateAsync,
     updateTitle,
     updateContent,
     updateKeywords,

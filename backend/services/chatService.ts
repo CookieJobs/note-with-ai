@@ -7,6 +7,7 @@ import { getCachedQwenEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 import mongoose from 'mongoose';
 import { measureDatabaseQuery, measureEmbeddingOperation } from '../utils/performance';
+import { logger } from '../utils/logger';
 
 class ChatService {
   /**
@@ -25,7 +26,7 @@ class ChatService {
       .map(m => ({ role: m.role, content: m.content.trim() }));
 
     let chat;
-    const updateData: any = { messages: cleanedMessages, updatedAt: new Date() };
+    const updateData: Partial<IChat> = { messages: cleanedMessages, updatedAt: new Date() };
     if (title) updateData.title = title;
     if (relatedNotes) updateData.relatedNotes = relatedNotes;
 
@@ -75,16 +76,18 @@ class ChatService {
       })
       .lean();
 
-    sessions.forEach((session: any) => {
+    sessions.forEach((session: IChat) => {
       if (session.relatedNotes && session.relatedNotes.length > 0) {
         // 过滤掉引用的笔记已被删除的关联项 (noteId 为 null)
-        session.relatedNotes = session.relatedNotes.filter((rn: any) => rn.noteId !== null);
+        session.relatedNotes = session.relatedNotes.filter((rn: IRelatedNote) => rn.noteId !== null);
         
         // 将 populated 的 noteId 对象恢复为其原始的 string/ObjectId 形式，保持接口响应结构一致
-        session.relatedNotes = session.relatedNotes.map((rn: any) => ({
+        session.relatedNotes = session.relatedNotes.map((rn: IRelatedNote & { noteId: { _id?: string } | string }) => ({
           ...rn,
-          noteId: rn.noteId._id
-        }));
+          noteId: typeof rn.noteId === 'object' && rn.noteId !== null && '_id' in rn.noteId
+            ? String(rn.noteId._id)
+            : String(rn.noteId),
+        })) as IRelatedNote[];
       }
     });
 
@@ -238,9 +241,9 @@ class ChatService {
       ]);
 
       // 3. Merge results
-      const allMatches = new Map<string, { note: any; score: number; matchType: 'vector' | 'keyword' }>();
+      const allMatches = new Map<string, { note: INote; score: number; matchType: 'vector' | 'keyword' }>();
 
-      const processResults = (results: any[]) => {
+      const processResults = (results: { item: INote; score: number }[]) => {
         results.forEach(({ item, score }) => {
           if (score < threshold) return;
           const noteId = item._id.toString();
@@ -258,7 +261,7 @@ class ChatService {
         .sort((a, b) => b.score - a.score)
         .slice(0, maxResults);
 
-      return relatedNotes.map((item: any) => ({
+      return relatedNotes.map((item: { note: INote; score: number; matchType: 'vector' | 'keyword' }) => ({
         id: item.note._id,
         title: item.note.title,
         content: item.note.content,
@@ -267,7 +270,7 @@ class ChatService {
         createdAt: item.note.createdAt
       }));
     } catch (error) {
-      console.error('Error searching related notes:', error);
+      logger.error('Error searching related notes:', error);
       return [];
     }
   }

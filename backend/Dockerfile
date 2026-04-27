@@ -3,8 +3,12 @@ FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm config set registry https://registry.npmmirror.com
-RUN npm ci
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm ci --no-audit --no-fund
+
+# 1.5 Prune dev dependencies once so runner can reuse production-only modules
+FROM deps AS prod-deps
+RUN npm prune --omit=dev
 
 # 2. Build source code
 FROM node:20-alpine AS builder
@@ -22,10 +26,9 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 backenduser
 
-# Install production dependencies
+# Copy production dependencies prepared in a dedicated stage
 COPY package.json package-lock.json ./
-RUN npm config set registry https://registry.npmmirror.com
-RUN npm ci --omit=dev
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 # Copy compiled source code
 COPY --from=builder --chown=backenduser:nodejs /app/dist ./dist

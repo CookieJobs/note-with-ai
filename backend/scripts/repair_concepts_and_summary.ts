@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import { Note } from '../models/Note';
 import User from '../models/User';
 import { checkOrUpdateSummaryConcepts } from '../services/deepseek';
+import { logger } from '../utils/logger';
 
 // 加载环境变量
 dotenv.config();
@@ -18,9 +19,9 @@ const connectDB = async () => {
   try {
     const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-with-ai';
     await mongoose.connect(MONGODB_URI);
-    console.log('✅ 数据库连接成功');
+    logger.info('✅ 数据库连接成功');
   } catch (error) {
-    console.error('❌ 数据库连接失败:', error);
+    logger.error('❌ 数据库连接失败:', error);
     process.exit(1);
   }
 };
@@ -37,10 +38,10 @@ const runRepair = async () => {
     // 1. 查找用户
     const user = await User.findOne({ username: TARGET_USERNAME });
     if (!user) {
-      console.error(`❌ 用户 '${TARGET_USERNAME}' 不存在!`);
+      logger.error(`❌ 用户 '${TARGET_USERNAME}' 不存在!`);
       process.exit(1);
     }
-    console.log(`✅ 找到用户: ${user.username} (${user._id})`);
+    logger.info(`✅ 找到用户: ${user.username} (${user._id})`);
 
     // 2. 查找需要修复的笔记
     // 条件：summary 为空 OR concepts 为空/空数组
@@ -54,7 +55,7 @@ const runRepair = async () => {
       ]
     });
 
-    console.log(`🔍 找到 ${notes.length} 条需要补全 summary/concepts 的笔记`);
+    logger.info(`🔍 找到 ${notes.length} 条需要补全 summary/concepts 的笔记`);
 
     let successCount = 0;
     let failCount = 0;
@@ -65,7 +66,7 @@ const runRepair = async () => {
       
       const content = (note as any).contentText || note.content || '';
       if (!content || content.length < 5) {
-        console.log(`[${current}/${notes.length}] ⚠️ 内容过短，跳过: ${note._id}`);
+        logger.info(`[${current}/${notes.length}] ⚠️ 内容过短，跳过: ${note._id}`);
         continue;
       }
 
@@ -91,14 +92,14 @@ const runRepair = async () => {
                     } 
                 }
             );
-            console.log(`✅ 成功 (Concepts: ${result.concepts.length})`);
+            logger.info(`✅ 成功 (Concepts: ${result.concepts.length})`);
             successCount++;
         } else {
-            console.log(`⏭️ AI 未返回有效更新`);
+            logger.info(`⏭️ AI 未返回有效更新`);
         }
 
-      } catch (err: any) {
-        console.log(`❌ 失败: ${err.message}`);
+      } catch (err: unknown) {
+        logger.info(`❌ 失败: ${(err as Error).message}`);
         failCount++;
       }
 
@@ -108,15 +109,15 @@ const runRepair = async () => {
       }
     }
 
-    console.log('\n🎉 字段补全任务完成！');
-    console.log(`✅ 成功更新: ${successCount}`);
-    console.log(`❌ 失败: ${failCount}`);
+    logger.info('\n🎉 字段补全任务完成！');
+    logger.info(`✅ 成功更新: ${successCount}`);
+    logger.info(`❌ 失败: ${failCount}`);
 
   } catch (error) {
-    console.error('❌ 脚本执行出错:', error);
+    logger.error('❌ 脚本执行出错:', error);
   } finally {
     await mongoose.disconnect();
-    console.log('👋 数据库连接已关闭');
+    logger.info('👋 数据库连接已关闭');
   }
 };
 

@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { Note } from '../models/Note';
 import User from '../models/User';
+import { logger } from '../utils/logger';
 
 // 加载环境变量
 dotenv.config();
@@ -17,9 +18,9 @@ const connectDB = async () => {
   try {
     const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-with-ai';
     await mongoose.connect(MONGODB_URI);
-    console.log('✅ 数据库连接成功');
+    logger.info('✅ 数据库连接成功');
   } catch (error) {
-    console.error('❌ 数据库连接失败:', error);
+    logger.error('❌ 数据库连接失败:', error);
     process.exit(1);
   }
 };
@@ -33,10 +34,10 @@ const runClean = async () => {
     // 1. 查找用户
     const user = await User.findOne({ username: TARGET_USERNAME });
     if (!user) {
-      console.error(`❌ 用户 '${TARGET_USERNAME}' 不存在!`);
+      logger.error(`❌ 用户 '${TARGET_USERNAME}' 不存在!`);
       process.exit(1);
     }
-    console.log(`✅ 找到用户: ${user.username} (${user._id})`);
+    logger.info(`✅ 找到用户: ${user.username} (${user._id})`);
 
     // 2. 查找包含 HTML 标签的笔记
     // 这里主要查找包含 <p> 的笔记，因为这是最主要的标签
@@ -45,7 +46,7 @@ const runClean = async () => {
       content: { $regex: /<p>/ }
     });
 
-    console.log(`🔍 找到 ${notes.length} 条可能含有 HTML 标签的笔记`);
+    logger.info(`🔍 找到 ${notes.length} 条可能含有 HTML 标签的笔记`);
 
     let updatedCount = 0;
 
@@ -85,14 +86,14 @@ const runClean = async () => {
       }
     }
 
-    console.log('\n🎉 清洗任务完成！');
-    console.log(`✅ 共更新: ${updatedCount} 条笔记`);
+    logger.info('\n🎉 清洗任务完成！');
+    logger.info(`✅ 共更新: ${updatedCount} 条笔记`);
 
   } catch (error) {
-    console.error('❌ 脚本执行出错:', error);
+    logger.error('❌ 脚本执行出错:', error);
   } finally {
     await mongoose.disconnect();
-    console.log('👋 数据库连接已关闭');
+    logger.info('👋 数据库连接已关闭');
   }
 };
 

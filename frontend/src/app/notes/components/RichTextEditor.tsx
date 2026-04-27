@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, JSONContent, Editor } from '@tiptap/react';
 import { DragHandle } from './DragHandle';
 import Placeholder from '@tiptap/extension-placeholder';
 import { StarterKit } from '@tiptap/starter-kit';
@@ -26,8 +26,8 @@ import { RichTextSlashMenu } from './RichTextSlashMenu';
 const lowlight = createLowlight(common);
 
 type Props = {
-  value: any; // Markdown text or JSON
-  onChange: (next: { json: any; text: string }) => void;
+  value: JSONContent | string | null | undefined; // Markdown text or JSON
+  onChange: (next: { json: JSONContent; text: string }) => void;
   onBlur?: () => void;
   onFocus?: () => void;
   onModEnter?: () => void; // Cmd/Ctrl + Enter
@@ -157,7 +157,7 @@ export default function RichTextEditor({
     [isFullscreen, className]
   );
 
-  const memoizedExtensions = React.useMemo(() => extensions as any, []);
+  const memoizedExtensions = React.useMemo(() => extensions, []);
   
   const memoizedEditorProps = React.useMemo(() => ({
     attributes: {
@@ -165,7 +165,7 @@ export default function RichTextEditor({
       'data-rich-text-editor-content': 'true',
     },
     handleDOMEvents: {
-      keydown: (_view: any, event: Event) => {
+      keydown: (_view: unknown, event: Event) => {
         const e = event as KeyboardEvent;
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
           onModEnter?.();

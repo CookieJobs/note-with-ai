@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 /*
 Input: 待补充
 Output: 待补充
@@ -68,7 +69,7 @@ async function generateQwenEmbedding(text) {
     }
   } catch (error) {
     const errorMsg = error.response?.data?.message || error.message || error;
-    console.error(`❌ Qwen Embedding 生成失败 (${EMBEDDING_MODEL}):`, errorMsg);
+    logger.error(`❌ Qwen Embedding 生成失败 (${EMBEDDING_MODEL}):`, errorMsg);
     return [];
   }
 }
@@ -93,26 +94,26 @@ async function fixNoteEmbedding() {
     const note = await collection.findOne(query);
 
     if (note) {
-      console.log('📝 找到笔记:', note._id);
+      logger.info('📝 找到笔记:', note._id);
       
       if (!note.embedding || note.embedding.length === 0) {
-          console.log('⚙️ 正在生成 Embedding...');
+          logger.info('⚙️ 正在生成 Embedding...');
           const embedding = await generateQwenEmbedding(note.content);
           
           if (embedding.length > 0) {
               await collection.updateOne(query, { $set: { embedding: embedding } });
-              console.log('✅ Embedding 修复成功，长度:', embedding.length);
+              logger.info('✅ Embedding 修复成功，长度:', embedding.length);
           } else {
-              console.error('❌ 生成的 Embedding 为空，修复失败');
+              logger.error('❌ 生成的 Embedding 为空，修复失败');
           }
       } else {
-          console.log('✅ Embedding 已存在且不为空，无需修复');
+          logger.info('✅ Embedding 已存在且不为空，无需修复');
       }
     } else {
-      console.log('❌ 未找到指定 ID 的笔记');
+      logger.info('❌ 未找到指定 ID 的笔记');
     }
   } catch (error) {
-    console.error('❌ 脚本执行出错:', error);
+    logger.error('❌ 脚本执行出错:', error);
   } finally {
     await client.close();
   }

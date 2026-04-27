@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import { Note } from '../models/Note';
 import User from '../models/User';
 import { updateNoteRecommendations } from '../services/recommendService';
+import { logger } from '../utils/logger';
 
 // 加载环境变量
 dotenv.config();
@@ -18,9 +19,9 @@ const connectDB = async () => {
   try {
     const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-with-ai';
     await mongoose.connect(MONGODB_URI);
-    console.log('✅ 数据库连接成功');
+    logger.info('✅ 数据库连接成功');
   } catch (error) {
-    console.error('❌ 数据库连接失败:', error);
+    logger.error('❌ 数据库连接失败:', error);
     process.exit(1);
   }
 };
@@ -37,14 +38,14 @@ const runUpdate = async () => {
     // 1. 查找用户
     const user = await User.findOne({ username: TARGET_USERNAME });
     if (!user) {
-      console.error(`❌ 用户 '${TARGET_USERNAME}' 不存在!`);
+      logger.error(`❌ 用户 '${TARGET_USERNAME}' 不存在!`);
       process.exit(1);
     }
-    console.log(`✅ 找到用户: ${user.username} (${user._id})`);
+    logger.info(`✅ 找到用户: ${user.username} (${user._id})`);
 
     // 2. 获取所有笔记
     const notes = await Note.find({ userId: user._id }).select('_id title');
-    console.log(`🔍 找到 ${notes.length} 条笔记，准备更新关联推荐...`);
+    logger.info(`🔍 找到 ${notes.length} 条笔记，准备更新关联推荐...`);
 
     let successCount = 0;
     let failCount = 0;
@@ -60,15 +61,15 @@ const runUpdate = async () => {
         
         if (result) {
             const recCount = result.recommendations.length;
-            console.log(`✅ 成功 (推荐数: ${recCount}, 缓存命中: ${result.meta.cacheHits}, AI调用: ${result.meta.cacheMisses})`);
+            logger.info(`✅ 成功 (推荐数: ${recCount}, 缓存命中: ${result.meta.cacheHits}, AI调用: ${result.meta.cacheMisses})`);
             successCount++;
         } else {
-            console.log(`⚠️ 无推荐结果 (可能是样本太少或无匹配)`);
+            logger.info(`⚠️ 无推荐结果 (可能是样本太少或无匹配)`);
             // 无结果也算处理成功，只是没有推荐
             successCount++;
         }
-      } catch (err: any) {
-        console.log(`❌ 失败: ${err.message}`);
+      } catch (err: unknown) {
+        logger.info(`❌ 失败: ${(err as Error).message}`);
         failCount++;
       }
 
@@ -78,15 +79,15 @@ const runUpdate = async () => {
       }
     }
 
-    console.log('\n🎉 推荐更新任务完成！');
-    console.log(`✅ 成功处理: ${successCount}`);
-    console.log(`❌ 失败: ${failCount}`);
+    logger.info('\n🎉 推荐更新任务完成！');
+    logger.info(`✅ 成功处理: ${successCount}`);
+    logger.info(`❌ 失败: ${failCount}`);
 
   } catch (error) {
-    console.error('❌ 脚本执行出错:', error);
+    logger.error('❌ 脚本执行出错:', error);
   } finally {
     await mongoose.disconnect();
-    console.log('👋 数据库连接已关闭');
+    logger.info('👋 数据库连接已关闭');
   }
 };
 

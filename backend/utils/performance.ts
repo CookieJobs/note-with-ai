@@ -7,13 +7,14 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 // backend/utils/performance.ts
 import { performance } from 'perf_hooks';
 import { getCacheStats } from './embedding';
+import { logger } from './logger';
 
 export interface PerformanceMetrics {
   operationName: string;
   duration: number;
   timestamp: number;
   success: boolean;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export class PerformanceMonitor {
@@ -24,7 +25,7 @@ export class PerformanceMonitor {
   static async measureOperation<T>(
     operationName: string,
     operation: () => Promise<T>,
-    metadata?: any
+    metadata?: Record<string, unknown>
   ): Promise<T> {
     const startTime = performance.now();
     let success = true;
@@ -50,7 +51,7 @@ export class PerformanceMonitor {
 
       // 输出性能日志
       const status = success ? '✅' : '❌';
-      console.log(`${status} ${operationName}: ${duration.toFixed(2)}ms`);
+      logger.info(`${status} ${operationName}: ${duration.toFixed(2)}ms`);
     }
   }
 
@@ -105,8 +106,8 @@ export class PerformanceMonitor {
 
   // 获取系统整体性能报告
   static getSystemPerformanceReport(): {
-    cache: any;
-    operations: { [key: string]: any };
+    cache: Record<string, unknown>;
+    operations: { [key: string]: Record<string, unknown> };
     systemHealth: {
       memoryUsage: NodeJS.MemoryUsage;
       uptime: number;
@@ -116,7 +117,7 @@ export class PerformanceMonitor {
     
     // 按操作类型分组统计
     const operationTypes = [...new Set(this.metrics.map(m => m.operationName))];
-    const operations: { [key: string]: any } = {};
+    const operations: { [key: string]: Record<string, unknown> } = {};
     
     operationTypes.forEach(opName => {
       operations[opName] = this.getPerformanceStats(opName);
@@ -135,16 +136,16 @@ export class PerformanceMonitor {
   // 清理性能记录
   static clearMetrics(): void {
     this.metrics = [];
-    console.log('🧹 性能监控记录已清理');
+    logger.info('🧹 性能监控记录已清理');
   }
 }
 
 // 便捷的装饰器函数
-export function measurePerformance(operationName: string, metadata?: any) {
-  return function (target: any, propertyName: string, descriptor: PropertyDescriptor) {
+export function measurePerformance(operationName: string, metadata?: Record<string, unknown>) {
+  return function (target: { constructor: { name: string } }, propertyName: string, descriptor: PropertyDescriptor) {
     const method = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function (...args: unknown[]) {
       return PerformanceMonitor.measureOperation(
         `${target.constructor.name}.${propertyName}`,
         () => method.apply(this, args),

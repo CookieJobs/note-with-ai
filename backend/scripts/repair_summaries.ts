@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { Note } from '../models/Note';
 import { summarizeNote } from '../services/deepseek';
+import { logger } from '../utils/logger';
 
 // 加载环境变量
 dotenv.config();
@@ -17,9 +18,9 @@ const connectDB = async () => {
   try {
     const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-with-ai';
     await mongoose.connect(MONGODB_URI);
-    console.log('✅ 数据库连接成功');
+    logger.info('✅ 数据库连接成功');
   } catch (error) {
-    console.error('❌ 数据库连接失败:', error);
+    logger.error('❌ 数据库连接失败:', error);
     process.exit(1);
   }
 };
@@ -38,7 +39,7 @@ const runRepair = async () => {
     let totalUpdated = 0;
     let batchIndex = 1;
 
-    console.log('🚀 开始修复缺失标题和关键词的笔记...');
+    logger.info('🚀 开始修复缺失标题和关键词的笔记...');
 
     while (hasMore) {
       // 查找条件：标题为空/未命名，或者关键词为空
@@ -55,12 +56,12 @@ const runRepair = async () => {
       if (notes.length === 0) {
         hasMore = false;
         if (batchIndex === 1) {
-            console.log('✅ 没有发现需要修复的笔记');
+            logger.info('✅ 没有发现需要修复的笔记');
         }
         break;
       }
 
-      console.log(`\n📦 [Batch ${batchIndex}] 找到 ${notes.length} 条待处理笔记...`);
+      logger.info(`\n📦 [Batch ${batchIndex}] 找到 ${notes.length} 条待处理笔记...`);
       
       let batchSuccess = 0;
 
@@ -71,22 +72,22 @@ const runRepair = async () => {
           
           // 内容太短，跳过或简单处理
           if (!content || content.length < 5) {
-            console.log(`⚠️ 笔记 ${note._id} 内容过短，跳过`);
+            logger.info(`⚠️ 笔记 ${note._id} 内容过短，跳过`);
             continue;
           }
 
-          console.log(`🤖 正在生成摘要: ${note._id} (长度: ${content.length})`);
+          logger.info(`🤖 正在生成摘要: ${note._id} (长度: ${content.length})`);
           
           const result = await summarizeNote(content);
 
           if (!result) {
-            console.log(`⚠️ 笔记 ${note._id} 摘要生成失败，跳过`);
+            logger.info(`⚠️ 笔记 ${note._id} 摘要生成失败，跳过`);
             continue;
           }
           
           // 更新笔记
           if (result.title || result.keywords.length > 0) {
-            const updates: any = {};
+            const updates: Record<string, unknown> = {};
             // 只有当原标题缺失或为默认值时才更新
             if (!note.title || note.title === '未命名笔记' || note.title === '') {
                 updates.title = result.title;
@@ -98,10 +99,10 @@ const runRepair = async () => {
 
             if (Object.keys(updates).length > 0) {
                 await Note.updateOne({ _id: note._id }, { $set: updates });
-                console.log(`✅ 更新成功: ${result.title} [${result.keywords.join(', ')}]`);
+                logger.info(`✅ 更新成功: ${result.title} [${result.keywords.join(', ')}]`);
                 batchSuccess++;
             } else {
-                console.log(`⏭️ 无需更新: ${note._id}`);
+                logger.info(`⏭️ 无需更新: ${note._id}`);
             }
           }
 
@@ -109,7 +110,7 @@ const runRepair = async () => {
           await sleep(500); 
 
         } catch (err) {
-          console.error(`❌ 处理笔记 ${note._id} 失败:`, err);
+          logger.error(`❌ 处理笔记 ${note._id} 失败:`, err);
         }
       }
 
@@ -117,24 +118,24 @@ const runRepair = async () => {
       totalUpdated += batchSuccess;
       batchIndex++;
 
-      console.log(`📊 批次完成。成功更新: ${batchSuccess}/${notes.length}`);
+      logger.info(`📊 批次完成。成功更新: ${batchSuccess}/${notes.length}`);
       
       // 批次间休息
       if (hasMore) {
-        console.log('💤 休息 2 秒...');
+        logger.info('💤 休息 2 秒...');
         await sleep(2000);
       }
     }
 
-    console.log('\n🎉 修复任务完成！');
-    console.log(`总处理: ${totalProcessed}`);
-    console.log(`总更新: ${totalUpdated}`);
+    logger.info('\n🎉 修复任务完成！');
+    logger.info(`总处理: ${totalProcessed}`);
+    logger.info(`总更新: ${totalUpdated}`);
 
   } catch (error) {
-    console.error('❌ 脚本执行出错:', error);
+    logger.error('❌ 脚本执行出错:', error);
   } finally {
     await mongoose.disconnect();
-    console.log('👋 数据库连接已关闭');
+    logger.info('👋 数据库连接已关闭');
   }
 };
 

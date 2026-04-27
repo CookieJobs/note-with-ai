@@ -3,7 +3,9 @@ import { BubbleMenu } from '@tiptap/react/menus';
 import { Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, CheckSquare, FileCode2, Table as TableIcon } from 'lucide-react';
 import { UrlPopover } from './UrlPopover';
 
-export function RichTextSlashMenu({ editor }: { editor: any }) {
+import { Editor } from '@tiptap/react';
+
+export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   if (!editor) return null;

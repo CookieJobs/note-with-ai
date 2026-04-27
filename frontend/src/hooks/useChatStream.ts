@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { authFetch } from '../utils/auth';
 import { IChat, IMessage, IRelatedNote } from '../types';
+import { persistChatSessions } from './chatSessionStore';
 
 interface UseChatStreamReturn {
   loading: boolean;
@@ -17,9 +18,7 @@ interface UseChatStreamReturn {
     setSessions: React.Dispatch<React.SetStateAction<IChat[]>>
   ) => Promise<void>;
   updateContextRelatedNotes: (
-    sessionId: string,
-    messages: IMessage[],
-    userId: string
+    messages: IMessage[]
   ) => Promise<IRelatedNote[] | undefined>;
 }
 
@@ -27,10 +26,32 @@ export const useChatStream = (): UseChatStreamReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const fetchSummaryTitle = async (userContent: string, aiContent: string): Promise<string | undefined> => {
+    try {
+      const response = await authFetch('/api/chat/summarizeTitle', {
+        method: 'POST',
+        body: JSON.stringify({
+          userContent,
+          aiContent,
+        })
+      });
+
+      if (!response.ok) {
+        return undefined;
+      }
+
+      const summaryData = await response.json();
+      return (summaryData && summaryData.data && typeof summaryData.data.title === 'string')
+        ? summaryData.data.title
+        : summaryData.title;
+    } catch (err) {
+      console.error('摘要生成失败:', err);
+      return undefined;
+    }
+  };
+
   const updateContextRelatedNotes = async (
-    sessionId: string,
-    messages: IMessage[],
-    userId: string
+    messages: IMessage[]
   ): Promise<IRelatedNote[] | undefined> => {
     try {
       console.log('🔍 开始异步搜索会话相关笔记...');
@@ -157,7 +178,7 @@ export const useChatStream = (): UseChatStreamReturn => {
                 shouldStop = true;
                 throw new Error(data.error);
               }
-            } catch (e: any) {
+            } catch (e: unknown) {
               if (dataStr.includes('"error":')) {
                 shouldStop = true;
                 throw e;
@@ -186,29 +207,10 @@ export const useChatStream = (): UseChatStreamReturn => {
       const userText = (userMessage.content || '').trim();
       const aiText = assistantReply.trim();
       
-      const fetchNotesPromise = updateContextRelatedNotes(currentSession.id, finalMessages, userId);
-      let fetchTitlePromise: Promise<string | undefined> = Promise.resolve(undefined);
-
-      if (userText && aiText) {
-        fetchTitlePromise = authFetch('/api/chat/summarizeTitle', {
-          method: 'POST',
-          body: JSON.stringify({
-            userContent: userText,
-            aiContent: aiText
-          })
-        }).then(async (res) => {
-          if (res.ok) {
-            const summaryData = await res.json();
-            return (summaryData && summaryData.data && typeof summaryData.data.title === 'string') 
-              ? summaryData.data.title 
-              : summaryData.title;
-          }
-          return undefined;
-        }).catch((err) => {
-          console.error('摘要生成失败:', err);
-          return undefined;
-        });
-      }
+      const fetchNotesPromise = updateContextRelatedNotes(finalMessages);
+      const fetchTitlePromise = userText && aiText
+        ? fetchSummaryTitle(userText, aiText)
+        : Promise.resolve(undefined);
 
       // 等待两个异步任务都执行完毕（无论成功或失败）
       const [notesResult, titleResult] = await Promise.allSettled([
@@ -235,7 +237,7 @@ export const useChatStream = (): UseChatStreamReturn => {
         
         // 更新本地存储
         if (userId) {
-          localStorage.setItem(`chat_sessions_${userId}`, JSON.stringify(updated));
+          persistChatSessions(userId, updated);
         }
         return updated;
       });
@@ -254,7 +256,7 @@ export const useChatStream = (): UseChatStreamReturn => {
       } catch (saveErr) {
         console.error('🚦 sendMessage 保存会话失败:', saveErr);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('发送消息失败:', err);
       // 显示具体的错误信息
       setError(err.message || '发送失败，请稍后重试');

@@ -73,7 +73,7 @@ function NotesContent() {
   };
 
   const highlightId = searchParams.get('highlight') || '';
-  const [drafts, setDrafts] = useState<Record<string, { json: any; text: string; dirty: boolean }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { json: JSONContent; text: string; dirty: boolean }>>({});
   const [exitEditSignal, setExitEditSignal] = useState(0);
   
   // 用于存储笔记 DOM 节点的引用，实现自动滚动
@@ -122,7 +122,7 @@ function NotesContent() {
     };
   }, [highlightId, notes]);
 
-  const handleDraftChange = (id: string, draft: { json: any; text: string; dirty: boolean }) => {
+  const handleDraftChange = (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => {
     setDrafts((prev) => {
       if (!draft.dirty) {
         if (!prev[id]) return prev;
@@ -245,6 +245,8 @@ function NotesContent() {
     </div>
   );
 }
+
+import { JSONContent } from '@tiptap/react';
 
 export default function NotesPage() {
   return (

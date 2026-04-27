@@ -45,7 +45,7 @@ export class UserValidator {
   /**
    * 验证用户输入字段
    */
-  static validateUserInput(data: any, requiredFields: string[]): void {
+  static validateUserInput(data: Record<string, unknown>, requiredFields: string[]): void {
     const missingFields = requiredFields.filter(field => !data[field]);
     
     if (missingFields.length > 0) {
@@ -65,7 +65,7 @@ export class UserValidator {
   ): Promise<void> {
     if (!username && !email) return;
 
-    const query: any = {
+    const query: Record<string, unknown> = {
       $or: [
         ...(username ? [{ username }] : []),
         ...(email ? [{ email }] : [])
@@ -87,7 +87,7 @@ export class UserValidator {
   /**
    * 认证用户并返回用户信息
    */
-  static async authenticateUser(req: any) {
+  static async authenticateUser(req: Request & { user?: { userId: string } }) {
     const userId = req.user?.userId;
     
     if (!userId) {
@@ -107,7 +107,7 @@ export class UserValidator {
   /**
    * 格式化用户响应数据
    */
-  static formatUserResponse(user: any) {
+  static formatUserResponse(user: { _id: unknown; username: unknown; email: unknown; createdAt: unknown; lastLogin: unknown }) {
     return {
       id: user._id,
       username: user.username,
@@ -161,7 +161,7 @@ export class ResourceValidator {
   /**
    * 验证资源所有权
    */
-  static async validateOwnership(Model: any, resourceId: string, userId: string, resourceName: string = '资源') {
+  static async validateOwnership(Model: { findById: (id: string) => Promise<{ userId: { toString: () => string } } | null> }, resourceId: string, userId: string, resourceName: string = '资源') {
     const resource = await Model.findById(resourceId);
     
     if (!resource) {
@@ -179,7 +179,7 @@ export class ResourceValidator {
    * 验证批量资源所有权
    */
   static async validateBatchOwnership(
-    resourceModel: any,
+    resourceModel: { findById: (id: string) => Promise<{ userId: { toString: () => string } } | null> },
     resourceIds: string[],
     userId: string,
     resourceName: string = '资源'

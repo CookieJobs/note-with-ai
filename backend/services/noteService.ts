@@ -2,8 +2,9 @@ import { Note } from '../models/Note';
 import { summarizeNote, summarizeNoteMeta, summarizeNoteSummary, checkOrUpdateSummaryConcepts } from './deepseek';
 import { generateQwenEmbedding } from '../utils/embedding';
 import { DeepSeekApiClient } from '../utils/apiClient';
-import { ErrorHandler } from '../utils/errorHandler';
+import { ErrorHandler, AppError, ErrorType } from '../utils/errorHandler';
 import { INote } from '../types';
+import { logger } from '../utils/logger';
 
 class NoteService {
   private normalizeForEmbedding(text: string) {
@@ -32,7 +33,7 @@ class NoteService {
           { $set: { embedding } }
         );
       } catch (e) {
-        console.warn('⚠️ embedding 异步生成失败（已忽略）:', e);
+        logger.warn('⚠️ embedding 异步生成失败（已忽略）:', e);
       }
     })();
   }
@@ -41,7 +42,7 @@ class NoteService {
     const notes = await Note.find({ userId }).sort({ createdAt: -1 });
 
     // 兼容旧数据：历史记录可能没有 contentText（或为空字符串），前端富文本/展示需要一个可用的纯文本字段
-    const safeNotes = notes.map((n: any) => {
+    const safeNotes = notes.map((n: INote) => {
       const obj = typeof n.toObject === 'function' ? n.toObject() : n;
       if (typeof obj.contentText !== 'string' || obj.contentText.trim().length === 0) {
         obj.contentText = obj.content || '';
@@ -52,7 +53,7 @@ class NoteService {
     return safeNotes;
   }
 
-  async createNote(userId: string, data: { content?: string; contentJson?: any; contentText?: string }): Promise<INote> {
+  async createNote(userId: string, data: { content?: string; contentJson?: Record<string, unknown>; contentText?: string }): Promise<INote> {
     const { content, contentJson, contentText } = data;
     const plain = (typeof contentText === 'string' ? contentText : (typeof content === 'string' ? content : '')).trim();
     if (!plain) {
@@ -128,11 +129,11 @@ class NoteService {
       return { skipped: true };
     }
 
-    console.log('✅ embedding 保存成功');
+    logger.info('✅ embedding 保存成功');
     return { embedding };
   }
 
-  async simpleChat(userId: string, messages: any[]): Promise<string> {
+  async simpleChat(userId: string, messages: { role: string; content: string }[]): Promise<string> {
       // Logic from POST /chat
       if (!Array.isArray(messages) || messages.length === 0) {
         throw ErrorHandler.createValidationError('消息内容无效');
@@ -160,7 +161,7 @@ class NoteService {
 
       note.title = title.trim();
       await note.save();
-      console.log('✅ 笔记标题更新成功');
+      logger.info('✅ 笔记标题更新成功');
       return note as unknown as INote;
   }
 
@@ -196,7 +197,7 @@ class NoteService {
       return { processed: 0, success: 0 };
     }
 
-    const texts = pending.map((n: any) => `${String(n.title || '').trim()} ${String(n.contentText || n.content || '').trim()}`.trim());
+    const texts = pending.map((n: INote) => `${String(n.title || '').trim()} ${String(n.contentText || n.content || '').trim()}`.trim());
 
     let success = 0;
     for (let i = 0; i < pending.length; i++) {
@@ -257,9 +258,9 @@ class NoteService {
     return summary;
   }
 
-  async updateNote(userId: string, noteId: string, data: any): Promise<INote> {
+  async updateNote(userId: string, noteId: string, data: Partial<INote> & { autoSummarize?: boolean; summaryCheck?: boolean }): Promise<INote> {
     const { title, content, contentJson, contentText, keywords, updatedAt, autoSummarize, summaryCheck } = data;
-    console.log('收到笔记局部更新请求，ID:', noteId, 'payload:', { title, content, contentText, keywords, updatedAt, autoSummarize, summaryCheck });
+    logger.info('收到笔记局部更新请求，ID:', noteId, 'payload:', { title, content, contentText, keywords, updatedAt, autoSummarize, summaryCheck });
 
     const note = await Note.findOne({ _id: noteId, userId });
     if (!note) {
@@ -274,12 +275,8 @@ class NoteService {
         throw ErrorHandler.createValidationError('updatedAt 无效');
       }
       if (clientUpdatedAt !== currentUpdatedAt) {
-        // Return conflict error - special handling might be needed in controller or throw special error
-        // throwing Error with status 409
-        const err: any = new Error('笔记已在他处更新');
-        err.statusCode = 409;
-        err.data = { note };
-        throw err;
+        // Return conflict error
+        throw new AppError('笔记已在他处更新', ErrorType.VALIDATION, 409, true, { note });
       }
     }
 
@@ -288,7 +285,7 @@ class NoteService {
     if (content !== undefined && typeof content !== 'string') throw ErrorHandler.createValidationError('内容必须是字符串类型');
     if (contentText !== undefined && typeof contentText !== 'string') throw ErrorHandler.createValidationError('contentText 必须是字符串类型');
     if (contentJson !== undefined && typeof contentJson !== 'object') throw ErrorHandler.createValidationError('contentJson 必须是 JSON 对象');
-    if (keywords !== undefined && (!Array.isArray(keywords) || !keywords.every((k: any) => typeof k === 'string'))) {
+    if (keywords !== undefined && (!Array.isArray(keywords) || !keywords.every((k: unknown) => typeof k === 'string'))) {
         throw ErrorHandler.createValidationError('关键词必须是字符串数组');
     }
     if (summaryCheck !== undefined && typeof summaryCheck !== 'boolean') throw ErrorHandler.createValidationError('summaryCheck 必须是 boolean');
@@ -331,11 +328,8 @@ class NoteService {
           const originalUpdatedTime = new Date(note.updatedAt).getTime();
           
           if (freshUpdatedTime !== originalUpdatedTime) {
-              console.warn(`summaryCheck 期间发生并发修改，放弃覆盖。ID: ${noteId}`);
-              const err: any = new Error('笔记已在他处更新（AI处理期间）');
-              err.statusCode = 409;
-              err.data = { note: freshNote };
-              throw err;
+              logger.warn(`summaryCheck 期间发生并发修改，放弃覆盖。ID: ${noteId}`);
+              throw new AppError('笔记已在他处更新（AI处理期间）', ErrorType.VALIDATION, 409, true, { note: freshNote });
           }
 
           if (title !== undefined) freshNote.title = title.trim();
@@ -373,7 +367,7 @@ class NoteService {
         }
       } catch (e) {
         if ((e as any).statusCode === 409) throw e;
-        console.warn('summaryCheck 失败，忽略：', e);
+        logger.warn('summaryCheck 失败，忽略：', e);
       }
     }
 
@@ -394,10 +388,10 @@ class NoteService {
             const isKeywordsEmpty = !freshNote.keywords || freshNote.keywords.length === 0;
 
             if (!isTitleDefault && !isKeywordsEmpty) {
-              console.warn(`autoSummarize 期间发生实质性并发修改（用户已修改标题/关键词），放弃更新。ID: ${noteId}`);
+              logger.warn(`autoSummarize 期间发生实质性并发修改（用户已修改标题/关键词），放弃更新。ID: ${noteId}`);
               return freshNote as unknown as INote; // Return fresh note without AI update
             }
-            console.log(`autoSummarize 期间发生并发修改，但标题/关键词仍为默认，尝试合并更新。ID: ${noteId}`);
+            logger.info(`autoSummarize 期间发生并发修改，但标题/关键词仍为默认，尝试合并更新。ID: ${noteId}`);
           }
 
           if (title !== undefined) freshNote.title = title.trim();
@@ -441,12 +435,12 @@ class NoteService {
           return freshNote as unknown as INote;
         }
       } catch (e) {
-        console.warn('自动摘要失败，忽略：', e);
+        logger.warn('自动摘要失败，忽略：', e);
       }
     }
 
     await note.save();
-    console.log('✅ 笔记局部更新成功');
+    logger.info('✅ 笔记局部更新成功');
 
     if (contentChanged) {
       this.scheduleEmbeddingUpdate({

@@ -2,84 +2,55 @@ import { Request, Response } from 'express';
 import { chatService } from '../services/chatService';
 import { ResponseHandler, ErrorHandler } from '../utils/errorHandler';
 import { UserValidator } from '../utils/userValidation';
+import { logger } from '../utils/logger';
 
 export const saveChatSession = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = await UserValidator.authenticateUser(req);
-    const { sessionId, title, messages, relatedNotes } = req.body;
-    const userId = user._id.toString();
+  const user = await UserValidator.authenticateUser(req);
+  const { sessionId, title, messages, relatedNotes } = req.body;
+  const userId = user._id.toString();
 
-    const session = await chatService.saveSession(userId, sessionId, messages, title, relatedNotes);
+  const session = await chatService.saveSession(userId, sessionId, messages, title, relatedNotes);
 
-    ResponseHandler.success(res, { sessionId: session._id });
-  } catch (err) {
-    console.error('❌ 保存聊天失败:', err);
-    if (err instanceof Error && (err as any).statusCode) {
-      throw err;
-    }
-    throw ErrorHandler.createInternalError('保存失败');
-  }
+  ResponseHandler.success(res, { sessionId: session._id });
 };
 
 export const getChatSessions = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = await UserValidator.authenticateUser(req);
-    const userId = user._id.toString();
-    
-    const sessions = await chatService.getSessions(userId);
-    
-    // Format sessions for frontend
-    const formatted = sessions.map((s: any) => ({
-      ...s,
-      id: s._id.toString(),
-      _id: s._id.toString(),
-    }));
+  const user = await UserValidator.authenticateUser(req);
+  const userId = user._id.toString();
+  
+  const sessions = await chatService.getSessions(userId);
+  
+  // Format sessions for frontend
+  const formatted = sessions.map((s: IChat) => ({
+    ...s,
+    id: s._id.toString(),
+    _id: s._id.toString(),
+  }));
 
-    const sessionsWithNotes = formatted.filter(s => s.relatedNotes && s.relatedNotes.length > 0).length;
-    console.log(`🔍 getChatSessions: 返回 ${formatted.length} 条会话，其中 ${sessionsWithNotes} 条包含相关笔记`);
-    
-    ResponseHandler.success(res, { sessions: formatted });
-  } catch (err) {
-    console.error('❌ 获取聊天记录失败:', err);
-    throw ErrorHandler.createInternalError('获取失败');
-  }
+  const sessionsWithNotes = formatted.filter(s => s.relatedNotes && s.relatedNotes.length > 0).length;
+  logger.info(`🔍 getChatSessions: 返回 ${formatted.length} 条会话，其中 ${sessionsWithNotes} 条包含相关笔记`);
+  
+  ResponseHandler.success(res, { sessions: formatted });
 };
 
 export const deleteChatSession = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = await UserValidator.authenticateUser(req);
-    const { sessionId } = req.params;
-    const userId = user._id.toString();
+  const user = await UserValidator.authenticateUser(req);
+  const { sessionId } = req.params;
+  const userId = user._id.toString();
 
-    if (!sessionId) {
-      throw ErrorHandler.createValidationError('缺少 sessionId 参数');
-    }
-
-    await chatService.deleteSession(userId, sessionId);
-    ResponseHandler.success(res, {}, '删除成功');
-  } catch (err) {
-    console.error('❌ 删除聊天记录失败:', err);
-    if (err instanceof Error && (err as any).statusCode) {
-      throw err;
-    }
-    throw ErrorHandler.createInternalError('删除失败');
-  }
+  await chatService.deleteSession(userId, sessionId);
+  ResponseHandler.success(res, {}, '删除成功');
 };
 
 export const streamChat = async (req: Request, res: Response): Promise<void> => {
-  let userId: string;
-  try {
-    const user = await UserValidator.authenticateUser(req);
-    userId = user._id.toString();
-  } catch (err) {
-    throw err;
-  }
+  const user = await UserValidator.authenticateUser(req);
+  const userId = user._id.toString();
 
   const { messages, sessionId, title } = req.body;
-  console.log('🟢 收到聊天请求 (流式):', messages?.length, '条消息, sessionId:', sessionId, 'userId:', userId);
+  logger.info('🟢 收到聊天请求 (流式):', messages?.length, '条消息, sessionId:', sessionId, 'userId:', userId);
 
   let clientClosed = false;
-  let stream: any;
+  let stream: AsyncIterable<string> | undefined;
 
   const isWritable = () =>
     !clientClosed && !res.writableEnded && !res.destroyed && (res as any).writable !== false;
@@ -94,10 +65,10 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
     }
   };
 
-  const stopStream = async (s: any) => {
+  const stopStream = async (s: unknown) => {
     try {
-      if (s && typeof s.return === 'function') {
-        await s.return();
+      if (s && typeof (s as AsyncGenerator).return === 'function') {
+        await (s as AsyncGenerator).return('');
       }
     } catch {}
   };
@@ -131,22 +102,22 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
     }
 
     if (!clientClosed) {
-      console.log('🤖 DeepSeek 回复完成，开始保存到数据库...');
+      logger.info('🤖 DeepSeek 回复完成，开始保存到数据库...');
       const finalMessages = [...messages, { role: 'assistant', content: fullReply }];
       try {
         await chatService.saveSession(userId, sessionId, finalMessages, title);
       } catch (saveError) {
-        console.error('❌ 保存会话失败 (流式响应后):', saveError);
+        logger.error('❌ 保存会话失败 (流式响应后):', saveError);
       }
     }
-  } catch (error: any) {
-    console.error('❌ 聊天接口流式错误:', error);
+  } catch (error: unknown) {
+    logger.error('❌ 聊天接口流式错误:', error);
 
     if (!res.headersSent) {
       if (error instanceof Error && (error as any).statusCode) {
         throw error;
       }
-      if (error?.message && String(error.message).includes('API请求错误')) {
+      if (error?.message && String((error as Error).message).includes('API请求错误')) {
         throw ErrorHandler.createExternalApiError('AI服务暂时不可用，请稍后重试', 'DeepSeek');
       }
       throw ErrorHandler.createInternalError('聊天失败，请稍后重试');

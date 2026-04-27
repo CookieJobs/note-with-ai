@@ -113,14 +113,14 @@ export async function updateNoteRecommendations(
   const tEmbMs = Date.now() - tEmb0;
 
   // 4. 多路召回计算
-  const merged = new Map<string, { id: string; updatedAt: any; s1max: number; s1q: number[] }>();
+  const merged = new Map<string, { id: string; updatedAt: string | Date | undefined; s1max: number; s1q: number[] }>();
 
   for (let qi = 0; qi < queryItems.length; qi++) {
     const emb = queryEmbeddings[qi];
     if (!Array.isArray(emb) || emb.length === 0) continue;
     const hits = vectorStore.searchInMemory(emb as any, userNotes as any, Math.max(1, Math.min(100, Number(recallK))), Number(s1Threshold));
     for (const h of hits) {
-      const n: any = h.item as any;
+      const n = h.item as unknown as { _id: string; updatedAt: string | Date | undefined };
       const id = String(n._id);
       const prev = merged.get(id);
       if (!prev) {
@@ -149,7 +149,7 @@ export async function updateNoteRecommendations(
     .lean();
   const tTopDbMs = Date.now() - tTopDb0;
 
-  const topNoteById = new Map<string, any>(topNotes.map((n: any) => [String(n._id), n]));
+  const topNoteById = new Map<string, Record<string, unknown>>(topNotes.map((n: unknown) => [String((n as Record<string, unknown>)._id), n as Record<string, unknown>]));
   const topForLLM = topRaw
     .map((x) => ({ ...x, note: topNoteById.get(x.id) }))
     .filter((x) => x.note);
@@ -158,7 +158,7 @@ export async function updateNoteRecommendations(
 
   // 6. 准备 LLM 输入 & 缓存检查
   const candidates = topForLLM.map((x) => {
-    const n: any = x.note;
+    const n = x.note as Record<string, unknown> | undefined;
     const title = String(n.title || '').trim();
     const summary = String(n.summary || '').trim();
     const contentText = String(n.contentText || n.content || '').trim();
@@ -175,7 +175,7 @@ export async function updateNoteRecommendations(
 
   const cache = (currentNote as any).recommendCache;
   const cacheOk = cache && cache.algoVersion === ALGO_VERSION && String(cache.sourceUpdatedAt) === String(currentUpdatedAt);
-  const cacheById: Record<string, any> = cacheOk && cache.byCandidateId && typeof cache.byCandidateId === 'object' ? cache.byCandidateId : {};
+  const cacheById: Record<string, unknown> = cacheOk && cache.byCandidateId && typeof cache.byCandidateId === 'object' ? cache.byCandidateId : {};
 
   const missing: Array<{ id: string; title: string; summary: string; excerpt: string }> = [];
   const rrMap = new Map<string, { id: string; s2: number; type: string; reason: string }>();
@@ -183,7 +183,7 @@ export async function updateNoteRecommendations(
 
   for (const c of candidates) {
     const cached = cacheById?.[c.id];
-    const candUpdatedAt = String((topForLLM.find((x: any) => String(x.note?._id) === c.id)?.note as any)?.updatedAt || '');
+    const candUpdatedAt = String((topForLLM.find((x: { note?: Record<string, unknown> }) => String(x.note?._id) === c.id)?.note)?.updatedAt || '');
     const cachedCandUpdatedAt = String(cached?.candidateUpdatedAt || '');
     
     // 缓存命中条件：候选笔记未更新
@@ -234,7 +234,7 @@ export async function updateNoteRecommendations(
     .sort((a, b) => b.score - a.score);
 
   // 9. 结果写入数据库（更新 recommendCache）
-  const byCandidateId: Record<string, any> = cacheOk && cacheById ? { ...cacheById } : {};
+  const byCandidateId: Record<string, unknown> = cacheOk && cacheById ? { ...cacheById } : {};
   for (const x of topForLLM) {
     const id = String((x as any).note._id);
     const r = rrMap.get(id);

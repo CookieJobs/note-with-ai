@@ -1,17 +1,39 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Maximize2, Send } from 'lucide-react';
 import styles from '../../notes-v2.module.scss';
-import RichTextEditor from '../RichTextEditor';
 import { focusProseMirrorWithin } from '../focusProseMirror';
 
-type Props = {
-  valueJson: any | null;
+function EditorLoadingPlaceholder() {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white/90 shadow-sm">
+      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+        <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
+        <div className="h-4 w-16 animate-pulse rounded bg-gray-100" />
+      </div>
+      <div className="space-y-3 p-4">
+        <div className="h-4 w-28 animate-pulse rounded bg-gray-100" />
+        <div className="min-h-[220px] rounded-xl border border-dashed border-gray-200 bg-gray-50" />
+      </div>
+    </div>
+  );
+}
+
+const RichTextEditor = dynamic(() => import('../RichTextEditor'), {
+  ssr: false,
+  loading: () => <EditorLoadingPlaceholder />,
+});
+
+import { JSONContent } from '@tiptap/react';
+
+type FloatingQuickComposeProps = {
+  valueJson: JSONContent | null;
   valueText: string;
-  onChange: (next: { json: any; text: string }) => void;
+  onChange: (next: { json: JSONContent; text: string }) => void;
   onSubmit: () => void;
   onCancel: () => void;
   loading?: boolean;
@@ -61,7 +83,7 @@ export default function FloatingQuickCompose({
   onSubmit,
   onCancel,
   loading = false,
-}: Props) {
+}: FloatingQuickComposeProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
@@ -185,6 +207,7 @@ export default function FloatingQuickCompose({
     if (isFullscreen) {
       return (
         <motion.div
+          key="fullscreen"
           layoutId="quick-compose-container"
           className="fixed inset-0 z-[1000] bg-white flex flex-col"
           initial={{ opacity: 0, y: 20 }}
@@ -217,7 +240,8 @@ export default function FloatingQuickCompose({
     }
 
     return (
-      <div
+      <motion.div
+        key="inline"
         ref={rootRef}
         className={`${styles.inlineCompose} ${open ? styles.floatingComposeOpen : ''} ${hover ? styles.floatingComposeHover : ''}`}
         onMouseEnter={() => setHover(true)}
@@ -229,7 +253,7 @@ export default function FloatingQuickCompose({
           className={`${styles.floatingComposeShell} ${bouncing ? styles.floatingComposeBounce : ''}`}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         >
-          <AnimatePresence mode="popLayout">
+          <AnimatePresence>
             {!open ? (
               <motion.button
                 key="collapsed"
@@ -320,10 +344,7 @@ export default function FloatingQuickCompose({
                 <button
                   type="button"
                   className={`${styles.noteEditCancel} !bg-white hover:!bg-gray-50 !text-gray-600 !border !border-gray-200 !rounded-lg !px-4 !py-1.5`}
-                  onClick={() => {
-                    onCancel();
-                    setOpen(false);
-                  }}
+                  onClick={handleCancel}
                   disabled={disabled}
                 >
                   取消
@@ -341,9 +362,9 @@ export default function FloatingQuickCompose({
             )}
           </AnimatePresence>
         </motion.div>
-      </div>
+      </motion.div>
     );
   };
 
-  return <AnimatePresence mode="popLayout">{renderContent()}</AnimatePresence>;
+  return <AnimatePresence>{renderContent()}</AnimatePresence>;
 }

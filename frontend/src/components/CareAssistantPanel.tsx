@@ -50,7 +50,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
       } catch (e) {
         console.error('Failed to save care intro to sessionStorage', e);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('CareAssistantPanel fetch error:', e);
       // 兜底文案
       setIntro({

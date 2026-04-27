@@ -11,6 +11,7 @@ import { vectorStore } from '../services/vectorStore';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
 import { UserValidator } from '../utils/userValidation';
+import { logger } from '../utils/logger';
 
 const router = express.Router();
 
@@ -92,7 +93,7 @@ router.post('/batch-related-notes', authenticateToken, asyncHandler(async (req, 
           count: relatedNotes.length
         };
       } catch (error) {
-        console.error(`❌ 处理消息 ${index} 失败:`, error);
+        logger.error(`❌ 处理消息 ${index} 失败:`, error);
         return {
           messageIndex: index,
           message,
@@ -128,7 +129,7 @@ router.post('/context-related-notes', authenticateToken, asyncHandler(async (req
 
   // 构建上下文：取最后 6 条消息
   const lastMessages = messages.slice(-6);
-  const context = lastMessages.map((m: any) => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}`).join('\n');
+  const context = lastMessages.map((m: { role: string; content: string }) => `${m.role === 'user' ? '用户' : 'AI'}: ${m.content}`).join('\n');
 
   // 生成 embedding
   const queryEmbedding = await getCachedQwenEmbedding(context, 1024);

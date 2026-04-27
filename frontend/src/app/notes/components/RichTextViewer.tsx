@@ -55,7 +55,7 @@ export default function RichTextViewer({ value }: { value: string }) {
   }, []);
 
   const editor = useEditor({
-    extensions: extensions as any,
+    extensions: extensions,
     content: value,
     editable: false,
     immediatelyRender: false,

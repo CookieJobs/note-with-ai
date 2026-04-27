@@ -5,7 +5,7 @@ Pos: 后端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 // backend/routes/performance.ts
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { PerformanceMonitor } from '../utils/performance';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
@@ -13,7 +13,7 @@ import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandl
 const router = express.Router();
 
 // 获取系统性能报告
-router.get('/report', asyncHandler(async (req: any, res: any) => {
+router.get('/report', asyncHandler(async (req: Request, res: Response) => {
   const report = PerformanceMonitor.getSystemPerformanceReport();
   
   const responseData = {
@@ -35,7 +35,7 @@ router.get('/report', asyncHandler(async (req: any, res: any) => {
 }));
 
 // 获取特定操作的性能统计
-router.get('/stats/:operationName', authenticateToken, asyncHandler(async (req: any, res: any) => {
+router.get('/stats/:operationName', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
   const { operationName } = req.params;
   const stats = PerformanceMonitor.getPerformanceStats(operationName);
   
@@ -50,13 +50,13 @@ router.get('/stats/:operationName', authenticateToken, asyncHandler(async (req: 
 }));
 
 // 清理性能记录
-router.post('/clear', authenticateToken, asyncHandler(async (req: any, res: any) => {
+router.post('/clear', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
   PerformanceMonitor.clearMetrics();
   ResponseHandler.success(res, null, '性能记录已清理');
 }));
 
 // 性能测试端点
-router.post('/test', authenticateToken, asyncHandler(async (req: any, res: any) => {
+router.post('/test', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
   const { testType = 'basic' } = req.body;
   const userId = req.user?.userId;
   
@@ -64,7 +64,7 @@ router.post('/test', authenticateToken, asyncHandler(async (req: any, res: any) 
     throw ErrorHandler.createAuthenticationError();
   }
 
-    let testResults: any = {};
+    let testResults: Record<string, unknown> = {};
 
     if (testType === 'database') {
       // 数据库查询性能测试

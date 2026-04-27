@@ -8,6 +8,7 @@ Note: 统一封装 DeepSeek 惰性初始化、降级错误与调试日志收敛
 import { DeepSeekApiClient } from '../utils/apiClient';
 import { config } from '../config';
 import { ErrorHandler } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 let deepSeekClient: DeepSeekApiClient | null = null;
 
@@ -17,7 +18,7 @@ function getDebugPreview(text: string, limit = 200): string {
 
 function debugLog(label: string, text: string): void {
   if (config.NODE_ENV === 'production') return;
-  console.log(`${label}:`, getDebugPreview(text));
+  logger.info(`${label}:`, getDebugPreview(text));
 }
 
 export function getDeepSeekClient(): DeepSeekApiClient {
@@ -77,8 +78,8 @@ export async function summarizeChatTitle(content: string): Promise<string> {
       max_tokens: 50,
       temperature: 0.1
     });
-  } catch (error: any) {
-    console.error('❌ summarizeChatTitle 解析失败：', error.message || error);
+  } catch (error: unknown) {
+    logger.error('❌ summarizeChatTitle 解析失败：', (error as Error).message || error);
     return '未命名对话';
   }
 }
@@ -117,8 +118,8 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
         title: parsed.title || '未命名笔记',
         keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 5) : [],
       };
-    } catch (error: any) {
-      console.error('❌ summarizeNote 解析失败：', error.message || error);
+    } catch (error: unknown) {
+      logger.error('❌ summarizeNote 解析失败：', (error as Error).message || error);
       return null;
     }
   }
@@ -159,8 +160,8 @@ export async function summarizeNoteMeta(
       keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 5) : [],
       summary,
     };
-  } catch (error: any) {
-    console.error('❌ summarizeNoteMeta 解析失败：', error.message || error);
+  } catch (error: unknown) {
+    logger.error('❌ summarizeNoteMeta 解析失败：', (error as Error).message || error);
     return null;
   }
 }
@@ -190,8 +191,8 @@ export async function summarizeNoteSummary(content: string): Promise<string> {
       stream: false,
     });
     return String(text || '').trim();
-  } catch (error: any) {
-    console.error('❌ summarizeNoteSummary 调用失败：', error.message || error);
+  } catch (error: unknown) {
+    logger.error('❌ summarizeNoteSummary 调用失败：', (error as Error).message || error);
     return '';
   }
 }
@@ -220,16 +221,16 @@ export async function expandNoteConcepts(content: string): Promise<string[]> {
       response_format: { type: 'json_object' },
     });
     // 兼容：有些模型会返回 { concepts: [...] } 或直接返回数组
-    let arr: any = null;
+    let arr: string[] | null = null;
     try {
       arr = JSON.parse(text);
     } catch {
       arr = null;
     }
     const concepts = Array.isArray(arr) ? arr : Array.isArray(arr?.concepts) ? arr.concepts : [];
-    return concepts.filter((x: any) => typeof x === 'string' && x.trim()).map((s: string) => s.trim()).slice(0, 12);
-  } catch (error: any) {
-    console.error('❌ expandNoteConcepts 调用失败：', error.message || error);
+    return concepts.filter((x: unknown) => typeof x === 'string' && x.trim()).map((s: unknown) => (s as string).trim()).slice(0, 12);
+  } catch (error: unknown) {
+    logger.error('❌ expandNoteConcepts 调用失败：', (error as Error).message || error);
     return [];
   }
 }
@@ -280,7 +281,7 @@ export async function rerankRecommendedNotes(params: {
     const parsed = JSON.parse(text);
     const results = Array.isArray(parsed?.results) ? parsed.results : [];
     return results
-      .map((r: any) => ({
+      .map((r: { id: string; reason: string; related_concepts?: string[]; s2?: number; type?: string }) => ({
         id: String(r.id || ''),
         s2: Number.isFinite(Number(r.s2)) ? Math.max(0, Math.min(1, Number(r.s2))) : 0,
         type: typeof r.type === 'string' ? r.type : '弱关联',
@@ -294,9 +295,9 @@ export async function rerankRecommendedNotes(params: {
                 .slice(0, 100)
             : '',
       }))
-      .filter((r: any) => r.id);
-  } catch (error: any) {
-    console.error('❌ rerankRecommendedNotes 解析失败：', error.message || error);
+      .filter((r: { id: string }) => r.id);
+  } catch (error: unknown) {
+    logger.error('❌ rerankRecommendedNotes 解析失败：', (error as Error).message || error);
     return [];
   }
 }
@@ -348,11 +349,11 @@ export async function checkOrUpdateSummaryConcepts(params: {
     if (is_ok) return { is_ok: true, summary: '', concepts: [] };
     const summary = typeof parsed?.summary === 'string' ? parsed.summary.trim() : '';
     const concepts = Array.isArray(parsed?.concepts)
-      ? parsed.concepts.filter((x: any) => typeof x === 'string' && x.trim()).map((s: string) => s.trim()).slice(0, 12)
+      ? parsed.concepts.filter((x: unknown) => typeof x === 'string' && x.trim()).map((s: unknown) => (s as string).trim()).slice(0, 12)
       : [];
     return { is_ok: false, summary, concepts };
-  } catch (error: any) {
-    console.error('❌ checkOrUpdateSummaryConcepts 解析失败：', error.message || error);
+  } catch (error: unknown) {
+    logger.error('❌ checkOrUpdateSummaryConcepts 解析失败：', (error as Error).message || error);
     return { is_ok: true, summary: '', concepts: [] }; // 失败时不更新，避免影响保存
   }
 }
@@ -385,7 +386,7 @@ export async function extractSearchKeywords(content: string): Promise<string[]> 
       temperature: 0.1,
       response_format: { type: 'json_object' }
     });
-    console.log('🔍 关键词提取结果:', text);
+    logger.info('🔍 关键词提取结果:', text);
     
     // 尝试解析 JSON
     let keywords: string[] = [];
@@ -397,14 +398,14 @@ export async function extractSearchKeywords(content: string): Promise<string[]> 
         keywords = parsed.keywords;
       }
     } catch (parseError) {
-      console.error('❌ 关键词解析失败，使用备用方案');
+      logger.error('❌ 关键词解析失败，使用备用方案');
       // 备用方案：从原始内容中提取关键词
       keywords = extractKeywordsFromContent(content);
     }
 
     return keywords.slice(0, 4); // 最多返回4个关键词
-  } catch (error: any) {
-    console.error('❌ extractSearchKeywords 调用失败:', error.message || error);
+  } catch (error: unknown) {
+    logger.error('❌ extractSearchKeywords 调用失败:', (error as Error).message || error);
     // 备用方案
     return extractKeywordsFromContent(content);
   }
@@ -433,6 +434,6 @@ function extractKeywordsFromContent(content: string): string[] {
  * @deprecated 废弃：DeepSeek 聊天模型不适合生成向量，请使用 utils/embedding.ts 中的 generateQwenEmbedding
  */
 export async function generateEmbedding(input: string): Promise<number[]> {
-  console.warn('⚠️ 警告：正在调用已废弃的 generateEmbedding (DeepSeek)，请尽快迁移至 Qwen Embedding');
+  logger.warn('⚠️ 警告：正在调用已废弃的 generateEmbedding (DeepSeek)，请尽快迁移至 Qwen Embedding');
   return [];
 }

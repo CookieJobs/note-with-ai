@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 /*
 Input: 待补充
 Output: 待补充
@@ -27,27 +28,27 @@ async function checkNoteEmbedding() {
     try {
         query = { _id: new ObjectId(noteId) };
     } catch (e) {
-        console.log("ID is not valid ObjectId, trying as string");
+        logger.info("ID is not valid ObjectId, trying as string");
         query = { _id: noteId };
     }
 
     const note = await collection.findOne(query);
 
     if (note) {
-      console.log('Note found:');
-      console.log('_id:', note._id);
-      console.log('content:', note.content);
-      console.log('embedding exists:', !!note.embedding);
+      logger.info('Note found:');
+      logger.info('_id:', note._id);
+      logger.info('content:', note.content);
+      logger.info('embedding exists:', !!note.embedding);
       if (note.embedding) {
-          console.log('embedding length:', note.embedding.length);
+          logger.info('embedding length:', note.embedding.length);
       } else {
-          console.log('embedding is null or undefined');
+          logger.info('embedding is null or undefined');
       }
     } else {
-      console.log('Note not found with ID:', noteId);
+      logger.info('Note not found with ID:', noteId);
     }
   } catch (error) {
-    console.error('Error:', error);
+    logger.error('Error:', error);
   } finally {
     await client.close();
   }

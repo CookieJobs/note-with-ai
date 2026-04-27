@@ -27,12 +27,12 @@ export interface IChat extends Document {
 export interface INote extends Document {
   userId: Types.ObjectId;
   content: string;
-  contentJson?: any;
+  contentJson?: Record<string, unknown>;
   contentText?: string;
   title?: string;
   summary?: string;
   concepts?: string[];
-  recommendCache?: any;
+  recommendCache?: Record<string, unknown>;
   keywords?: string[];
   embedding?: number[];
   createdAt: Date;

@@ -2,6 +2,7 @@ import { Note } from '../models/Note';
 import UserProfile from '../models/UserProfile';
 import { DeepSeekApiClient } from '../utils/apiClient';
 import { getDeepSeekClient } from './deepseek';
+import { logger } from '../utils/logger';
 
 export class UserAnalysisService {
   private getApiClient(): DeepSeekApiClient {
@@ -14,14 +15,14 @@ export class UserAnalysisService {
    */
   async analyzeUserProfile(userId: string): Promise<void> {
     try {
-      console.log(`Starting user profile analysis for user: ${userId}`);
+      logger.info(`Starting user profile analysis for user: ${userId}`);
 
       // 1. Fetch recent data (e.g., last 20 notes)
       // TODO: Also fetch recent chat history
       const notes = await Note.find({ userId }).sort({ createdAt: -1 }).limit(20);
       
       if (notes.length < 5) {
-        console.log('Not enough data to analyze.');
+        logger.info('Not enough data to analyze.');
         return;
       }
 
@@ -78,10 +79,10 @@ export class UserAnalysisService {
       
       // Add timestamps
       if (profileData.interests) {
-        profileData.interests.forEach((i: any) => i.lastUpdated = new Date());
+        profileData.interests.forEach((i: { lastUpdated: Date }) => i.lastUpdated = new Date());
       }
       if (profileData.goals) {
-        profileData.goals.forEach((g: any) => g.createdAt = new Date());
+        profileData.goals.forEach((g: { createdAt: Date }) => g.createdAt = new Date());
       }
       profileData.lastAnalyzedAt = new Date();
       profileData.userId = userId;
@@ -93,10 +94,10 @@ export class UserAnalysisService {
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
 
-      console.log(`User profile updated for user: ${userId}`);
+      logger.info(`User profile updated for user: ${userId}`);
 
     } catch (error) {
-      console.error('Error analyzing user profile:', error);
+      logger.error('Error analyzing user profile:', error);
       throw error;
     }
   }

@@ -2,7 +2,7 @@
 import { Note } from '../models/Note';
 
 export interface SearchResult {
-  item: any;
+  item: Record<string, unknown>;
   score: number;
 }
 
@@ -35,7 +35,7 @@ export class InMemoryVectorStore implements IVectorStore {
       .slice(0, limit);
   }
 
-  private async processBatch(notes: any[], queryEmbedding: number[], scores: SearchResult[]): Promise<void> {
+  private async processBatch(notes: Record<string, unknown>[], queryEmbedding: number[], scores: SearchResult[]): Promise<void> {
     return new Promise((resolve) => {
       let index = 0;
 
@@ -85,7 +85,7 @@ export class InMemoryVectorStore implements IVectorStore {
   /**
    * Helper for performing search on in-memory candidates
    */
-  searchInMemory(queryEmbedding: number[], candidates: any[], limit: number, threshold: number = 0): SearchResult[] {
+  searchInMemory(queryEmbedding: number[], candidates: Record<string, unknown>[], limit: number, threshold: number = 0): SearchResult[] {
     return candidates
       .map((item) => {
         const embedding = item.embedding;

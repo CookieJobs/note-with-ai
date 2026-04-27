@@ -1,4 +1,5 @@
 import { useReducer, useRef, useEffect, useState, useCallback } from 'react';
+import { JSONContent } from '@tiptap/react';
 import { authFetch } from '../../../utils/auth';
 import type { INote } from '../../../types';
 import { WORKSPACE_ANIM_DELAY_MS } from '../animationTimings';
@@ -17,14 +18,14 @@ interface UseNoteEditorProps {
     id: string,
     newContent: string,
     updatedAt?: string,
-    contentJson?: any,
+    contentJson?: JSONContent,
     contentText?: string,
     embedding?: number[]
   ) => void;
   onUpdateKeywords?: (id: string, newKeywords: string[], updatedAt?: string) => void;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
-  draft?: { json: any; text: string; dirty: boolean };
-  onDraftChange?: (id: string, draft: { json: any; text: string; dirty: boolean }) => void;
+  draft?: { json: JSONContent; text: string; dirty: boolean };
+  onDraftChange?: (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => void;
   exitEditSignal?: number;
 }
 
@@ -191,7 +192,7 @@ export function useNoteEditor({
 }: UseNoteEditorProps) {
   const [state, dispatch] = useReducer(reducer, note, initState);
 
-  const [contentJsonDraft, setContentJsonDraft] = useState<any | null>(null);
+  const [contentJsonDraft, setContentJsonDraft] = useState<JSONContent | null>(null);
   const [contentTextDraft, setContentTextDraft] = useState<string>('');
   const draftMetaRef = useRef<{ noteId: string | null; dirty: boolean }>({ noteId: null, dirty: false });
   const contentEditBaselineRef = useRef<{ noteId: string | null; jsonStr: string; text: string } | null>(null);
@@ -260,7 +261,7 @@ export function useNoteEditor({
     ],
   });
 
-  const safeStringify = (v: any) => {
+  const safeStringify = (v: unknown) => {
     try {
       return JSON.stringify(v ?? null);
     } catch {
@@ -268,9 +269,9 @@ export function useNoteEditor({
     }
   };
 
-  const extractPlainTextFromJson = (doc: any): string => {
+  const extractPlainTextFromJson = (doc: JSONContent): string => {
     const out: string[] = [];
-    const walk = (node: any) => {
+    const walk = (node: JSONContent) => {
       if (!node || typeof node !== 'object') return;
       const type = node.type;
       if (type === 'text' && typeof node.text === 'string') {
@@ -425,7 +426,7 @@ export function useNoteEditor({
           saveExitTimerRef.current = null;
         }, WORKSPACE_ANIM_DELAY_MS);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (saveExitTimerRef.current) {
         window.clearTimeout(saveExitTimerRef.current);
         saveExitTimerRef.current = null;
@@ -532,7 +533,7 @@ export function useNoteEditor({
     });
   };
 
-  const onEditorChange = ({ json, text }: { json: any; text: string }) => {
+  const onEditorChange = ({ json, text }: { json: JSONContent; text: string }) => {
     const jsonStr = safeStringify(json);
     const baseline = contentEditBaselineRef.current;
     

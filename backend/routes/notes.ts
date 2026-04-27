@@ -9,6 +9,8 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/errorHandler';
 import { noteController } from '../controllers/noteController';
+import { validate } from '../middleware/validate';
+import { createNoteSchema, updateTitleSchema, chatNoteSchema, ensureSchema, updateNoteSchema, noteIdParamSchema } from '../schemas/noteSchemas';
 
 const router = express.Router();
 
@@ -20,34 +22,33 @@ router.get('/test', (req, res) => {
 router.get('/', authenticateToken, asyncHandler((req, res, next) => noteController.getNotes(req, res, next)));
 
 // 添加笔记
-router.post('/', authenticateToken, asyncHandler((req, res, next) => noteController.createNote(req, res, next)));
+router.post('/', authenticateToken, validate(createNoteSchema), asyncHandler((req, res, next) => noteController.createNote(req, res, next)));
 
-// 删除笔记
-router.delete('/:id', authenticateToken, asyncHandler((req, res, next) => noteController.deleteNote(req, res, next)));
-
-// 异步生成 embedding 接口
-router.post('/:id/embed', authenticateToken, asyncHandler((req, res, next) => noteController.generateEmbedding(req, res, next)));
-
-// 聊天接口
-// 注意：必须在 POST /:id 之前定义，否则会被 /:id 捕获
-router.post('/chat', authenticateToken, asyncHandler((req, res, next) => noteController.chat(req, res, next)));
-
-// 更新笔记标题
-router.post('/:id', authenticateToken, asyncHandler((req, res, next) => noteController.updateTitle(req, res, next)));
+// 聊天接口 (必须在 /:id 之前)
+router.post('/chat', authenticateToken, validate(chatNoteSchema), asyncHandler((req, res, next) => noteController.chat(req, res, next)));
 
 // 当前用户 embedding 统计
 router.get('/embedding/stats', authenticateToken, asyncHandler((req, res, next) => noteController.getEmbeddingStats(req, res, next)));
 
-// 当前用户 embedding 补齐
-router.post('/embedding/ensure', authenticateToken, asyncHandler((req, res, next) => noteController.ensureEmbeddings(req, res, next)));
+// 当前用户 embedding 补齐 (必须在 /:id 之前)
+router.post('/embedding/ensure', authenticateToken, validate(ensureSchema), asyncHandler((req, res, next) => noteController.ensureEmbeddings(req, res, next)));
 
-// 当前用户 summary 补齐
-router.post('/summary/ensure', authenticateToken, asyncHandler((req, res, next) => noteController.ensureSummaries(req, res, next)));
+// 当前用户 summary 补齐 (必须在 /:id 之前)
+router.post('/summary/ensure', authenticateToken, validate(ensureSchema), asyncHandler((req, res, next) => noteController.ensureSummaries(req, res, next)));
+
+// 删除笔记
+router.delete('/:id', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.deleteNote(req, res, next)));
+
+// 异步生成 embedding 接口
+router.post('/:id/embed', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.generateEmbedding(req, res, next)));
 
 // 单条笔记 summary 重生成
-router.post('/:id/summary', authenticateToken, asyncHandler((req, res, next) => noteController.regenerateSummary(req, res, next)));
+router.post('/:id/summary', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.regenerateSummary(req, res, next)));
+
+// 更新笔记标题
+router.post('/:id', authenticateToken, validate(updateTitleSchema), asyncHandler((req, res, next) => noteController.updateTitle(req, res, next)));
 
 // 局部更新笔记（正文/标题/关键词），支持乐观并发控制
-router.patch('/:id', authenticateToken, asyncHandler((req, res, next) => noteController.updateNote(req, res, next)));
+router.patch('/:id', authenticateToken, validate(updateNoteSchema), asyncHandler((req, res, next) => noteController.updateNote(req, res, next)));
 
 export default router;

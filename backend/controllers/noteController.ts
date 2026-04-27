@@ -98,21 +98,14 @@ class NoteController {
   async updateNote(req: Request, res: Response, next: NextFunction) {
     const { id } = req.params;
     const user = await UserValidator.authenticateUser(req);
-    try {
-        const note = await noteService.updateNote(user._id.toString(), id, req.body);
-        
-        // Check if autoSummarize was requested to provide a specific message
-        const { autoSummarize } = req.body;
-        const message = autoSummarize ? '笔记更新成功（含自动摘要）' : '笔记更新成功';
-        
-        ResponseHandler.success(res, { note }, message);
-    } catch (error: any) {
-        if (error.statusCode === 409) {
-             res.status(409).json({ success: false, error: error.message, data: error.data });
-        } else {
-             throw error;
-        }
-    }
+    
+    const note = await noteService.updateNote(user._id.toString(), id, req.body);
+    
+    // Check if autoSummarize was requested to provide a specific message
+    const { autoSummarize } = req.body;
+    const message = autoSummarize ? '笔记更新成功（含自动摘要）' : '笔记更新成功';
+    
+    ResponseHandler.success(res, { note }, message);
   }
 }
 

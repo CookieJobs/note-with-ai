@@ -5,7 +5,7 @@ Pos: 后端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 // backend/routes/recommend.ts
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { Note } from '../models/Note';
 import { searchArticlesByKeyword } from '../services/search';
 import { authenticateToken } from '../middleware/auth';
@@ -14,6 +14,7 @@ import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandl
 import { getCachedQwenEmbedding } from '../utils/embedding';
 import { vectorStore } from '../services/vectorStore';
 import { rerankRecommendedNotes } from '../services/deepseek';
+import { logger } from '../utils/logger';
 
 const router = express.Router();
 
@@ -45,7 +46,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
  * POST /api/recommend/semantic-notes
  * body: { noteId, recallK?:30, finalK?:10, s1Threshold?:0.35, hardThreshold?:0.62 }
  */
-router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, res: any) => {
+router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
   const user = await UserValidator.authenticateUser(req);
   const {
     noteId,
@@ -106,7 +107,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
     .lean();
 
   // 多路召回：每一路 TopK=recallK，合并去重，取每条的 s1max
-  const merged = new Map<string, { id: string; updatedAt: any; s1max: number; s1q: number[] }>();
+  const merged = new Map<string, { id: string; updatedAt: string | Date | undefined; s1max: number; s1q: number[] }>();
 
   // 并行获取各路 query embedding（有内置 embedding 的直接复用）
   const tEmb0 = Date.now();
@@ -133,7 +134,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
     if (!Array.isArray(emb) || emb.length === 0) continue;
     const hits = vectorStore.searchInMemory(emb as any, userNotes as any, Math.max(1, Math.min(100, Number(recallK))), Number(s1Threshold));
     for (const h of hits) {
-      const n: any = h.item as any;
+      const n = h.item as unknown as { _id: string; updatedAt: string | Date | undefined };
       const id = String(n._id);
       const prev = merged.get(id);
       if (!prev) {
@@ -165,7 +166,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
     .lean();
   const tTopDbMs = Date.now() - tTopDb0;
 
-  const topNoteById = new Map<string, any>(topNotes.map((n: any) => [String(n._id), n]));
+  const topNoteById = new Map<string, Record<string, unknown>>(topNotes.map((n: unknown) => [String((n as Record<string, unknown>)._id), n as Record<string, unknown>]));
   const topForLLM = topRaw
     .map((x) => ({ ...x, note: topNoteById.get(x.id) }))
     .filter((x) => x.note);
@@ -177,7 +178,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
 
   // LLM 重排输入（仅 TopK）
   const candidates = topForLLM.map((x) => {
-    const n: any = x.note;
+    const n = x.note as Record<string, unknown> | undefined;
     const title = String(n.title || '').trim();
     const summary = String(n.summary || '').trim();
     const contentText = String(n.contentText || n.content || '').trim();
@@ -195,7 +196,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
   // ✅ 候选级缓存：每次都做 embedding 召回；命中缓存的候选直接复用；未命中的才丢给 LLM 打分
   const cache = (currentNote as any).recommendCache;
   const cacheOk = cache && cache.algoVersion === ALGO_VERSION && String(cache.sourceUpdatedAt) === String(currentUpdatedAt);
-  const cacheById: Record<string, any> = cacheOk && cache.byCandidateId && typeof cache.byCandidateId === 'object' ? cache.byCandidateId : {};
+  const cacheById: Record<string, unknown> = cacheOk && cache.byCandidateId && typeof cache.byCandidateId === 'object' ? cache.byCandidateId : {};
 
   const missing: Array<{ id: string; title: string; summary: string; excerpt: string }> = [];
   const rrMap = new Map<string, { id: string; s2: number; type: string; reason: string }>();
@@ -204,7 +205,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
   for (const c of candidates) {
     const cached = cacheById?.[c.id];
     // 只有当候选笔记 updatedAt 未变化时才复用（避免候选内容变了理由/打分过期）
-    const candUpdatedAt = String((topForLLM.find((x: any) => String(x.note?._id) === c.id)?.note as any)?.updatedAt || '');
+    const candUpdatedAt = String((topForLLM.find((x: { note?: Record<string, unknown> }) => String(x.note?._id) === c.id)?.note)?.updatedAt || '');
     const cachedCandUpdatedAt = String(cached?.candidateUpdatedAt || '');
     if (cached && cachedCandUpdatedAt && candUpdatedAt && cachedCandUpdatedAt === candUpdatedAt) {
       rrMap.set(c.id, {
@@ -255,7 +256,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
   // 写回缓存（候选级别；不阻塞返回；并发下用 updatedAt 做乐观保护）
   void (async () => {
     try {
-      const byCandidateId: Record<string, any> = cacheOk && cacheById ? { ...cacheById } : {};
+      const byCandidateId: Record<string, unknown> = cacheOk && cacheById ? { ...cacheById } : {};
       for (const x of topForLLM) {
         const id = String((x as any).note._id);
         const r = rrMap.get(id);
@@ -283,7 +284,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: any, 
         }
       );
     } catch (e) {
-      console.warn('⚠️ recommendCache 写入失败（已忽略）:', e);
+      logger.warn('⚠️ recommendCache 写入失败（已忽略）:', e);
     }
   })();
 

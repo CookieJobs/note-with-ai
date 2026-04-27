@@ -42,12 +42,12 @@ export interface INote {
   _id: string;
   userId: string;
   content: string;
-  contentJson?: any;
+  contentJson?: Record<string, unknown>;
   contentText?: string;
   title?: string;
   summary?: string;
   concepts?: string[];
-  recommendCache?: any;
+  recommendCache?: Record<string, unknown>;
   keywords?: string[];
   embedding?: number[];
   createdAt: string;
