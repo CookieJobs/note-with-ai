@@ -1,0 +1,522 @@
+@keyframes historyPulse {
+  0% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
+  40% { box-shadow: 0 0 0 4px rgba(23,112,232,0.22); }
+  100% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
+}
+
+.floatingComposeEditor :global(.richEditorScroller),
+.floatingComposeEditor :global(.ProseMirror) {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.floatingComposeEditor :global(.richEditorScroller)::-webkit-scrollbar,
+.floatingComposeEditor :global(.ProseMirror)::-webkit-scrollbar {
+  width: 6px;
+}
+
+.floatingComposeEditor :global(.richEditorScroller)::-webkit-scrollbar-track,
+.floatingComposeEditor :global(.ProseMirror)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.floatingComposeEditor :global(.richEditorScroller)::-webkit-scrollbar-thumb,
+.floatingComposeEditor :global(.ProseMirror)::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+
+.floatingComposeEditor :global(.richEditorScroller):hover,
+.floatingComposeEditor :global(.ProseMirror):hover {
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+
+.floatingComposeEditor :global(.richEditorScroller):hover::-webkit-scrollbar-thumb,
+.floatingComposeEditor :global(.ProseMirror):hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+.composeAreaCollapsed .richToolbar {
+  display: none;
+}
+
+.composeAreaCollapsed .richEditorContent {
+  min-height: 32px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.composeAreaCollapsed .richEditorScroller {
+  max-height: 120px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.richEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0; /* 允许内部 scroller 在 flex 容器中收缩，从而产生滚动 */
+  border-radius: 8px;
+  overflow: visible;
+}
+
+.richEditorScroller {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: visible;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 8px;
+  cursor: text;
+  position: relative;
+}
+
+.richEditorFrame {
+  flex: 1;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.richToolbar {
+  display: flex;
+  gap: 0; /* 按钮之间不留缝 */
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start; /* 靠左自然排列 */
+  padding: 6px 0 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08); /* 浅色分割线（按钮在上，线在下） */
+}
+
+.richToolbarSpacer {
+  flex: 1;
+}
+
+.richToolbarRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.richToolbarBtn {
+  width: 28px;
+  height: 28px;
+  padding: 0; /* 按钮内部不留 padding */
+  margin: 0;  /* 按钮之间不留 margin */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none; /* 无边框 */
+  background: transparent; /* 默认无底色 */
+  color: rgba(15, 23, 42, 0.78);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(15, 23, 42, 0.08); /* hover 深色底 */
+    color: rgba(15, 23, 42, 0.9);
+  }
+
+  &:active:not(:disabled) {
+    background: rgba(15, 23, 42, 0.12);
+    transform: scale(0.98);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(23, 112, 232, 0.25);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.richToolbarBtnDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.richToolbarBtnActive {
+  color: rgb(23,112,232);
+  background: rgba(23, 112, 232, 0.14);
+}
+
+.richEditorContent {
+  flex: 1;
+  min-height: 120px;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto; /* 让“高度计算”生效后，内容在编辑器内部滚动 */
+  outline: none;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  border-radius: 8px;
+  caret-color: currentColor;
+  cursor: text;
+  padding-left: 2.5rem; /* 为 drag-handle 留出左侧空间（替代原 Tailwind pl-10） */
+}
+
+.richEditor :global(.tiptap) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 100%;
+  height: 100%;
+}
+
+.richEditor :global(.drag-handle) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: grab;
+  position: fixed;
+  opacity: 1;
+  transition: opacity ease-in 0.2s, background-color 0.2s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' style='fill: rgba(0, 0, 0, 0.4)'%3E%3Cpath d='M3,2 C2.4477,2 2,1.5523 2,1 C2,0.4477 2.4477,0 3,0 C3.5523,0 4,0.4477 4,1 C4,1.5523 3.5523,2 3,2 Z M3,6 C2.4477,6 2,5.5523 2,5 C2,4.4477 2.4477,4 3,4 C3.5523,4 4,4.4477 4,5 C4,5.5523 3.5523,6 3,6 Z M3,10 C2.4477,10 2,9.5523 2,9 C2,8.4477 2.4477,8 3,8 C3.5523,8 4,8.4477 4,9 C4,9.5523 3.5523,10 3,10 Z M7,2 C6.4477,2 6,1.5523 6,1 C6,0.4477 6.4477,0 7,0 C7.5523,0 8,0.4477 8,1 C8,1.5523 7.5523,2 7,2 Z M7,6 C6.4477,6 6,5.5523 6,5 C6,4.4477 6.4477,4 7,4 C7.5523,4 8,4.4477 8,5 C8,5.5523 7.5523,6 7,6 Z M7,10 C6.4477,10 6,9.5523 6,9 C6,8.4477 6.4477,8 7,8 C7.5523,8 8,8.4477 8,9 C8,9.5523 7.5523,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E");
+  background-size: 10px 10px;
+  background-repeat: no-repeat;
+  background-position: center;
+  z-index: 50;
+}
+
+.richEditor :global(.drag-handle:hover) {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.richEditor :global(.drag-handle:active) {
+  background-color: rgba(0, 0, 0, 0.1);
+  cursor: grabbing;
+}
+
+.richEditor :global(.drag-handle.hide) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.richEditor :global(ul[data-type="taskList"]) {
+  list-style: none;
+  padding: 0;
+}
+
+.richEditor :global(ul[data-type="taskList"] li) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.richEditor :global(ul[data-type="taskList"] li > label) {
+  margin-top: 4px;
+  user-select: none;
+}
+
+.richEditor :global(ul[data-type="taskList"] li > div) {
+  flex: 1;
+}
+
+.richEditor :global(.ProseMirror table) {
+  border-collapse: collapse;
+  margin: 0;
+  overflow: hidden;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.richEditor :global(.ProseMirror table td),
+.richEditor :global(.ProseMirror table th) {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+  min-width: 1em;
+  padding: 6px 8px;
+  position: relative;
+  vertical-align: top;
+}
+
+.richEditor :global(.ProseMirror table th) {
+  background-color: rgba(0, 0, 0, 0.05);
+  font-weight: bold;
+  text-align: left;
+}
+
+.richEditorContent :global(> * + *) {
+  margin-top: 10px;
+}
+
+.richEditorContent :global(p) {
+  margin: 0;
+}
+
+.richEditorContent :global(ul),
+.richEditorContent :global(ol) {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.richEditorContent :global(li) {
+  margin: 2px 0;
+}
+
+.richEditorContent :global(li p) {
+  margin: 0;
+}
+
+.richEditorContent :global(ul ul),
+.richEditorContent :global(ol ol),
+.richEditorContent :global(ul ol),
+.richEditorContent :global(ol ul) {
+  margin: 4px 0 0;
+}
+
+.richEditorContent :global(blockquote) {
+  margin: 0;
+  padding: 2px 8px 2px 10px;
+  border-left: 3px solid rgba(18, 225, 255, 0.48);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  color: rgba(226, 232, 240, 0.86);
+}
+
+.richEditorContent :global(blockquote p) {
+  margin: 0;
+}
+
+.richEditorContent :global(p.is-editor-empty:first-child)::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: #9ca3af;
+}
+
+.richViewerContent {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.richViewerContent :global(> * + *) {
+  margin-top: 10px;
+}
+
+.richViewerContent :global(p) {
+  margin: 0;
+}
+
+.richViewerContent :global(h1),
+.richEditorContent :global(h1) {
+  font-size: 1.875em;
+  font-weight: 700;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.3;
+}
+
+.richViewerContent :global(h2),
+.richEditorContent :global(h2) {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-top: 1.2em;
+  margin-bottom: 0.5em;
+  line-height: 1.35;
+}
+
+.richViewerContent :global(h3),
+.richEditorContent :global(h3) {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  line-height: 1.4;
+}
+
+.richViewerContent :global(h1:first-child),
+.richViewerContent :global(h2:first-child),
+.richViewerContent :global(h3:first-child),
+.richEditorContent :global(h1:first-child),
+.richEditorContent :global(h2:first-child),
+.richEditorContent :global(h3:first-child) {
+  margin-top: 0;
+}
+
+.richViewerContent :global(ul),
+.richViewerContent :global(ol) {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.richViewerContent :global(li) {
+  margin: 2px 0;
+}
+
+.richViewerContent :global(li p) {
+  margin: 0;
+}
+
+.richViewerContent :global(ul ul),
+.richViewerContent :global(ol ol),
+.richViewerContent :global(ul ol),
+.richViewerContent :global(ol ul) {
+  margin: 4px 0 0;
+}
+
+.richViewerContent :global(ul[data-list-indent="1"]),
+.richViewerContent :global(ol[data-list-indent="1"]) { margin-left: 12px; }
+
+.richViewerContent :global(ul[data-list-indent="2"]),
+.richViewerContent :global(ol[data-list-indent="2"]) { margin-left: 24px; }
+
+.richViewerContent :global(ul[data-list-indent="3"]),
+.richViewerContent :global(ol[data-list-indent="3"]) { margin-left: 36px; }
+
+.richViewerContent :global(ul[data-list-indent="4"]),
+.richViewerContent :global(ol[data-list-indent="4"]) { margin-left: 48px; }
+
+.richViewerContent :global(ul[data-list-indent="5"]),
+.richViewerContent :global(ol[data-list-indent="5"]) { margin-left: 60px; }
+
+.richViewerContent :global(ul[data-list-indent="6"]),
+.richViewerContent :global(ol[data-list-indent="6"]) { margin-left: 72px; }
+
+.richViewerContent :global(blockquote) {
+  margin: 0;
+  padding: 2px 8px 2px 10px;
+  border-left: 3px solid rgba(18, 225, 255, 0.48);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  color: rgba(226, 232, 240, 0.86);
+}
+
+.richViewerContent :global(blockquote p) {
+  margin: 0;
+}
+
+.richViewerContent :global(li[data-empty-parent="true"])::marker {
+  content: '';
+}
+
+.richViewerContent :global(li[data-empty-parent="true"] > p) {
+  margin: 0;
+  padding: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.richViewerContent :global(li[data-empty-parent="true"] > ul),
+.richViewerContent :global(li[data-empty-parent="true"] > ol) {
+  margin-top: 0;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+@keyframes draftBreath {
+  0% { opacity: 0.15; filter: brightness(0.9); }
+  8% { opacity: 1; filter: brightness(1.05); }
+  83% { opacity: 1; filter: brightness(1.05); }
+  100% { opacity: 0.1; filter: brightness(0.85); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes notePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(23,112,232,0.0), 0 0 0 rgba(0,0,0,0);
+    background-color: rgba(23,112,232,0.05);
+  }
+  40% {
+    box-shadow: 0 0 0 4px rgba(23,112,232,0.25), 0 8px 20px rgba(23,112,232,0.2);
+    background-color: rgba(23,112,232,0.08);
+  }
+  100% {
+    box-shadow: 0 0 0 2px rgba(23,112,232,0.25), 0 4px 12px rgba(0,0,0,0.06);
+    background-color: transparent;
+  }
+}
+
+@keyframes floatingComposeBounce {
+  /* 更顺滑：先轻微放大（幅度更小），再进入回弹 */
+  0% { transform: translateY(10px) scale(0.99); }
+  22% { transform: translateY(4px) scale(1.006); }
+  55% { transform: translateY(-6px) scale(1.012); }
+  78% { transform: translateY(2px) scale(0.998); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+@keyframes floatingComposeExpand {
+  0% { transform: translateY(8px) scale(0.98); opacity: 0.0; }
+  70% { transform: translateY(-4px) scale(1.01); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.floatingComposeEditor .richEditorContent,
+.floatingComposeEditor :global(.ProseMirror),
+.richEditorContent,
+.richEditor :global(.ProseMirror) {
+  caret-color: rgb(23, 112, 232);
+}
+
+.floatingComposeEditor .richEditorContent ::selection,
+.floatingComposeEditor :global(.ProseMirror) ::selection,
+.richEditorContent ::selection,
+.richEditor :global(.ProseMirror) ::selection {
+  background: rgba(23, 112, 232, 0.25);
+  color: inherit;
+}
+
+.floatingComposeEditor .richToolbar {
+  padding: 0 0 1px;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.floatingComposeEditor .richEditorContent {
+  min-height: 60px;
+}
+
+.floatingComposeEditor :global(.richEditorContent img) {
+  max-height: var(--floating-editor-max, 60vh);
+  width: auto;
+  object-fit: contain;
+}
+
+.floatingComposeMaximized .floatingComposeEditor :global(.richEditorContent) {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}

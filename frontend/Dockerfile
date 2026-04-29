@@ -14,14 +14,16 @@ COPY . .
 
 # Receive build arguments
 ARG BACKEND_URL
+ARG NODE_BUILD_MEMORY=2048
 ENV BACKEND_URL=$BACKEND_URL
 
 # Disable telemetry and set memory limit
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_OPTIONS="--max-old-space-size=1024"
+ENV NODE_OPTIONS="--max-old-space-size=${NODE_BUILD_MEMORY}"
 
 # Build Next.js application
-RUN npm run build
+RUN echo "Building frontend with NODE_OPTIONS=${NODE_OPTIONS}" \
+    && npm run build
 
 # 3. Production image, copy all the files and run next
 FROM node:20-alpine AS runner

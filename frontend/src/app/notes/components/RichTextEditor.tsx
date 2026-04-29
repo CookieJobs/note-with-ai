@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useEditor, EditorContent, JSONContent, Editor } from '@tiptap/react';
+import { useEditor, EditorContent, JSONContent } from '@tiptap/react';
 import { DragHandle } from './DragHandle';
 import Placeholder from '@tiptap/extension-placeholder';
 import { StarterKit } from '@tiptap/starter-kit';
@@ -19,7 +19,7 @@ import { TableCell } from '@tiptap/extension-table-cell';
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { ResizableImage } from './tiptap/ResizableImage';
-import styles from '../notes.module.scss';
+import styles from '../styles/rich-editor.module.scss';
 import { RichTextBubbleMenu } from './RichTextBubbleMenu';
 import { RichTextSlashMenu } from './RichTextSlashMenu';
 
@@ -98,11 +98,7 @@ const extensions = [
     },
     nested: true,
   }),
-  ResizableImage?.configure({
-    HTMLAttributes: {
-      class: 'rounded-lg border border-muted',
-    },
-  }),
+  ResizableImage,
   CodeBlockLowlight?.configure({
     lowlight,
     HTMLAttributes: {
@@ -158,6 +154,11 @@ export default function RichTextEditor({
   );
 
   const memoizedExtensions = React.useMemo(() => extensions, []);
+  const getMarkdown = React.useCallback(
+    (instance: NonNullable<typeof editor>) =>
+      ((instance.storage as { markdown?: { getMarkdown?: () => string } }).markdown?.getMarkdown?.() ?? ''),
+    []
+  );
   
   const memoizedEditorProps = React.useMemo(() => ({
     attributes: {
@@ -188,7 +189,7 @@ export default function RichTextEditor({
     content: initialContentRef.current,
     immediatelyRender: false,
     onUpdate: ({ editor }) => {
-      const markdown = editor.storage.markdown.getMarkdown();
+      const markdown = getMarkdown(editor);
       const json = editor.getJSON();
       onChange({ json, text: markdown });
     },
@@ -204,7 +205,7 @@ export default function RichTextEditor({
     const incomingStr = typeof value === 'string' ? value : JSON.stringify(value);
     if (incomingStr === lastUpdateRef.current) return;
     
-    const curMarkdown = editor.storage.markdown?.getMarkdown();
+    const curMarkdown = getMarkdown(editor);
     const curJsonStr = JSON.stringify(editor.getJSON());
     
     if (incomingStr === curMarkdown || incomingStr === curJsonStr) {
@@ -215,7 +216,7 @@ export default function RichTextEditor({
     if (editor.isFocused) return;
 
     try {
-      editor.commands.setContent(value, false);
+      editor.commands.setContent(value, { emitUpdate: false });
       lastUpdateRef.current = incomingStr;
     } catch (e) {
       console.error('SyncValue setContent error:', e);

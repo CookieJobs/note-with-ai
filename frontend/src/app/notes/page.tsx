@@ -13,7 +13,15 @@ import RelatedNotesDrawer from './components/v2/RelatedNotesDrawer';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
 import { useNotes } from './hooks/useNotes';
-import styles from './notes-v2.module.scss';
+import layoutStyles from './styles/layout.module.scss';
+import cardStyles from './styles/note-card.module.scss';
+import composeStyles from './styles/floating-compose.module.scss';
+
+const styles = {
+  ...layoutStyles,
+  ...cardStyles,
+  ...composeStyles,
+};
 
 // 是 Next.js App Router 的一个“路由段配置”，用来告诉 Next.js：
 // 这个页面要强制走动态渲染（不要被静态生成/缓存成固定 HTML）

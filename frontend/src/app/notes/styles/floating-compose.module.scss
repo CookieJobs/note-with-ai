@@ -1,0 +1,653 @@
+@keyframes historyPulse {
+  0% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
+  40% { box-shadow: 0 0 0 4px rgba(23,112,232,0.22); }
+  100% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
+}
+
+@keyframes wsRecommendIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.floatingComposeEditor :global(.richEditorScroller),
+.floatingComposeEditor :global(.ProseMirror) {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.floatingComposeEditor :global(.richEditorScroller)::-webkit-scrollbar,
+.floatingComposeEditor :global(.ProseMirror)::-webkit-scrollbar {
+  width: 6px;
+}
+
+.floatingComposeEditor :global(.richEditorScroller)::-webkit-scrollbar-track,
+.floatingComposeEditor :global(.ProseMirror)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.floatingComposeEditor :global(.richEditorScroller)::-webkit-scrollbar-thumb,
+.floatingComposeEditor :global(.ProseMirror)::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+
+.floatingComposeEditor :global(.richEditorScroller):hover,
+.floatingComposeEditor :global(.ProseMirror):hover {
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+
+.floatingComposeEditor :global(.richEditorScroller):hover::-webkit-scrollbar-thumb,
+.floatingComposeEditor :global(.ProseMirror):hover::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+@keyframes wsTipStrokeProgress {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes wsHoverTipIn {
+  from {
+    opacity: 0;
+    filter: blur(1px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes wsDeleteShardsShow {
+  0% { opacity: 0; }
+  18% { opacity: 0; }
+  22% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+@keyframes wsShardFly {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    filter: saturate(0.80) brightness(0.98);
+  }
+  8% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1.01);
+    filter: saturate(0.92) brightness(1.08);
+  }
+  34% {
+    opacity: 1;
+    transform:
+      translate3d(calc(var(--dx, 0px) * 0.55), calc(var(--dy, 0px) * 0.55), 0)
+      rotate(calc(var(--rot, 0deg) * 0.72))
+      scale(0.98);
+    filter: saturate(0.98) brightness(1.12);
+  }
+  100% {
+    opacity: 0;
+    transform:
+      translate3d(calc(var(--dx, 0px) * 2.6), calc(var(--dy, 0px) * 2.6), 0)
+      rotate(calc(var(--rot, 0deg) * 2.2))
+      scale(0.78);
+    filter: saturate(0.88) brightness(1.06) blur(0.45px);
+  }
+}
+
+@keyframes wsDeleteFade {
+  0% {
+    opacity: 1;
+    filter: none;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  18% {
+    opacity: 1;
+    filter: grayscale(1) saturate(0.15) brightness(0.72);
+    transform: translate3d(0, 0, 0) scale(0.98);
+  }
+  42% {
+    opacity: 0.65;
+    filter: grayscale(1) saturate(0.05) brightness(0.62);
+    transform: translate3d(0, 3px, 0) scale(0.92);
+  }
+  100% {
+    opacity: 0;
+    filter: grayscale(1) saturate(0) brightness(0.55);
+    transform: translate3d(0, 8px, 0) scale(0.74);
+  }
+}
+
+@keyframes wsCrowdPopIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 26px, 0) scale(0.26) rotate(-3.2deg);
+    filter:
+      brightness(1.22)
+      saturate(1.28)
+      contrast(1.08)
+      drop-shadow(0 14px 22px rgba(18, 225, 255, 0.18));
+  }
+  35% {
+    opacity: 1;
+    transform: translate3d(0, 6px, 0) scale(0.88) rotate(0.9deg);
+  }
+  62% {
+    opacity: 1;
+    transform: translate3d(0, -6px, 0) scale(1.32) rotate(0deg);
+    filter:
+      brightness(1.34)
+      saturate(1.32)
+      drop-shadow(0 18px 26px rgba(18, 225, 255, 0.22));
+  }
+  78% {
+    transform: translate3d(0, 2px, 0) scale(0.90);
+    filter:
+      brightness(1.08)
+      saturate(1.08)
+      drop-shadow(0 10px 16px rgba(18, 225, 255, 0.10));
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: none;
+  }
+}
+
+@keyframes wsWobbleBreath {
+   /* 各占 50%：0%~50% 晃一下，50%~100% 停一下 */
+   0%    { transform: translate3d(0, 0, 0) rotate(0deg); }
+   12.5% { transform: translate3d(0.55px, -0.30px, 0) rotate(1.1deg); }
+   25%   { transform: translate3d(-0.45px, 0.45px, 0) rotate(-0.95deg); }
+   37.5% { transform: translate3d(0.35px, 0.25px, 0) rotate(0.75deg); }
+   50%   { transform: translate3d(0, 0, 0) rotate(0deg); }
+ 
+   100%  { transform: translate3d(0, 0, 0) rotate(0deg); }
+ }
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.floatingComposeEditor :global(.tiptap) {
+  flex: 1;
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.floatingComposeEditor :global([data-rich-text-editor-content="true"]),
+.floatingComposeEditor :global(.ProseMirror) {
+  flex: 1;
+  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  caret-color: currentColor;
+  cursor: text;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+@keyframes draftBreath {
+  0% { opacity: 0.15; filter: brightness(0.9); }
+  8% { opacity: 1; filter: brightness(1.05); }
+  83% { opacity: 1; filter: brightness(1.05); }
+  100% { opacity: 0.1; filter: brightness(0.85); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes elegantDoublePulse {
+  /* 0%：起始状态，无高亮 */
+  0% {
+    box-shadow: 0 0 0 0 rgba(23, 112, 232, 0), 0 0 0 0 rgba(23, 112, 232, 0);
+    border-color: rgba(23, 112, 232, 0.1);
+    background-color: transparent;
+    transform: scale(1);
+  }
+  
+  /* 20%：第一次脉冲波峰（明亮） */
+  20% {
+    box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.4), 0 12px 32px rgba(23, 112, 232, 0.15);
+    border-color: rgba(23, 112, 232, 0.6) !important;
+    background-color: rgba(23, 112, 232, 0.04);
+    transform: scale(1.005);
+  }
+
+  /* 45%：第一次脉冲波谷（微弱暗去，不完全熄灭） */
+  45% {
+    box-shadow: 0 0 0 1px rgba(23, 112, 232, 0.15), 0 4px 12px rgba(23, 112, 232, 0.05);
+    border-color: rgba(23, 112, 232, 0.2) !important;
+    background-color: rgba(23, 112, 232, 0.01);
+    transform: scale(1);
+  }
+
+  /* 70%：第二次脉冲波峰（明亮） */
+  70% {
+    box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.4), 0 12px 32px rgba(23, 112, 232, 0.15);
+    border-color: rgba(23, 112, 232, 0.6) !important;
+    background-color: rgba(23, 112, 232, 0.04);
+    transform: scale(1.005);
+  }
+
+  /* 100%：平滑熄灭，回归日常态 */
+  100% {
+    box-shadow: 0 0 0 0 rgba(23, 112, 232, 0), 0 0 0 0 rgba(23, 112, 232, 0);
+    border-color: rgba(15, 23, 42, 0.08) !important; /* 回归卡片默认边框色 */
+    background-color: transparent;
+    transform: scale(1);
+  }
+}
+
+.inlineCompose {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto 20px;
+  position: relative;
+  z-index: 100;
+}
+
+.floatingComposeShell {
+  width: 100%;
+}
+
+.floatingComposeMaximized .floatingComposeShell {
+  height: 100%;
+}
+
+.floatingComposeBounce {
+  /* Removed transform animation to avoid containing block issues with position: fixed */
+}
+
+@keyframes floatingComposeBounce {
+  /* 更顺滑：先轻微放大（幅度更小），再进入回弹 */
+  0% { transform: translateY(10px) scale(0.99); }
+  22% { transform: translateY(4px) scale(1.006); }
+  55% { transform: translateY(-6px) scale(1.012); }
+  78% { transform: translateY(2px) scale(0.998); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+.floatingComposeBar {
+  position: relative;
+  width: 100%;
+  height: 44px;
+  border-radius: 14px;
+  /* 专业一点：边框更克制（偏蓝灰），同时用 inset 高光增加“玻璃边缘感” */
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  /* 主题统一：冷色暗玻璃（与右侧工作台/历史栏一致） */
+  background:
+    /* 默认态：不要“上方高亮反光”，改成更均匀的液态玻璃底 */
+    linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.03) 100%),
+    rgba(8, 12, 16, 0.56);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  /* 外发光要非常克制：让它“浮起来”，但不发飘 */
+  box-shadow:
+    0 18px 44px rgba(0,0,0,0.30),
+    inset 0 1px 0 rgba(255,255,255,0.10);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.floatingComposeBar::before {
+  /* 默认态：独自晕染的液态玻璃（不做顶部“反光条”） */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  pointer-events: none;
+  background:
+    radial-gradient(520px 220px at 18% 35%, rgba(18, 225, 255, 0.12), rgba(18, 225, 255, 0) 70%),
+    radial-gradient(420px 220px at 82% 60%, rgba(56, 228, 255, 0.07), rgba(56, 228, 255, 0) 72%),
+    radial-gradient(600px 260px at 50% 110%, rgba(255,255,255,0.03), rgba(255,255,255,0) 62%);
+  opacity: 0.22;
+  mix-blend-mode: soft-light;
+}
+
+.floatingComposeBarText {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(203, 213, 225, 0.80);
+}
+
+.floatingComposeBarInner {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative; /* 让 ::before 覆盖在按钮上但不影响布局 */
+  z-index: 1;
+}
+
+.floatingComposeDraftDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(18, 225, 255, 0.92);
+  box-shadow: 0 0 0 2px rgba(18, 225, 255, 0.12), 0 10px 22px rgba(18, 225, 255, 0.14);
+  animation: draftBreath 6s ease-in-out infinite;
+}
+
+.floatingComposeHover .floatingComposeBar {
+  /* hover：仍然偏白雾，但蓝色氛围更明显一点点（不抢卡片白） */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%),
+    rgba(8, 12, 16, 0.62);
+  border-color: rgba(18, 225, 255, 0.22);
+  box-shadow:
+    0 22px 56px rgba(0,0,0,0.34),
+    inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+.floatingComposeHover .floatingComposeBar::before {
+  /* hover：晕染稍微增强，但仍避免顶部“反光条” */
+  opacity: 0.32;
+}
+
+.floatingComposeOpen .floatingComposeBar {
+  background: rgba(8, 12, 16, 0.64);
+  border-color: rgba(18, 225, 255, 0.22);
+}
+
+.floatingComposeExpanded {
+  /* 与工作台详情卡片的编辑模式保持一致（同一套高透玻璃卡片） */
+  position: relative;
+  overflow: visible; /* 不裁切：backdrop-filter 会创建 containing block，overflow:hidden 会裁切 fixed 定位的 drag-handle */
+  display: flex;
+  flex-direction: column;
+  max-height: var(--floating-expanded-max, none);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  padding: 6px;
+}
+
+.floatingComposeExpandedNoSuggest {
+  padding: 6px;
+}
+
+.floatingComposeExpanded::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: -1;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(30px) saturate(185%) contrast(112%);
+  backdrop-filter: blur(30px) saturate(185%) contrast(112%);
+  background:
+    radial-gradient(520px 380px at 18% 18%, rgba(18, 225, 255, 0.08), rgba(18, 225, 255, 0) 72%),
+    radial-gradient(460px 360px at 82% 32%, rgba(56, 228, 255, 0.05), rgba(56, 228, 255, 0) 74%),
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.00) 62%, rgba(255,255,255,0.01));
+  opacity: 0.12;
+  mix-blend-mode: soft-light;
+}
+
+.floatingComposeExpanded::after {
+  content: '';
+  position: absolute;
+  inset: -45%;
+  pointer-events: none;
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.05), rgba(255,255,255,0) 62%);
+  opacity: 0.03;
+  mix-blend-mode: overlay;
+}
+
+.floatingComposeMaximized .floatingComposeExpanded {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+@keyframes floatingComposeExpand {
+  0% { opacity: 0.0; }
+  100% { opacity: 1; }
+}
+
+.floatingComposeMaxBtn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: rgba(203, 213, 225, 0.78);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.floatingComposeMaxBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.floatingComposeMaxBtn:active {
+  transform: scale(0.98);
+}
+
+.floatingComposeHint {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(203, 213, 225, 0.70);
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  line-height: 1;
+}
+
+.floatingComposeEditor {
+  /* 快速记录：直接就是编辑态，所以这里要对齐工作台“进入编辑模式后的液态玻璃正文区” */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
+  -webkit-backdrop-filter: blur(18px) saturate(170%) contrast(110%);
+  backdrop-filter: blur(18px) saturate(170%) contrast(110%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* 内边距交给“液态玻璃正文区”，让编辑体验更像工作台 */
+  padding: 10px 10px 8px;
+}
+
+.floatingComposeEditor .richEditorContent,
+.floatingComposeEditor :global(.ProseMirror) {
+  caret-color: currentColor;
+}
+
+.floatingComposeEditor .richEditorContent ::selection,
+.floatingComposeEditor :global(.ProseMirror) ::selection {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.floatingComposeEditor :global(.tiptap-button) {
+  --tt-button-active-bg-color: rgba(255, 255, 255, 0.16);
+  --tt-button-active-bg-color-subdued: rgba(255, 255, 255, 0.10);
+  --tt-button-active-hover-bg-color: rgba(255, 255, 255, 0.20);
+  --tt-button-active-icon-color: rgba(255, 255, 255, 0.98);
+  --tt-button-active-icon-color-emphasized: rgba(255, 255, 255, 0.98);
+  --tt-button-active-icon-color-subdued: rgba(255, 255, 255, 0.92);
+  --tt-button-active-text-color: rgba(255, 255, 255, 0.98);
+  --tt-button-active-text-color-emphasized: rgba(255, 255, 255, 0.98);
+  --tt-button-active-text-color-subdued: rgba(255, 255, 255, 0.92);
+}
+
+.floatingComposeEditor :global(.tiptap-button[data-active-state="on"]),
+.floatingComposeEditor :global(.tiptap-button[data-state="open"]),
+.floatingComposeEditor :global(.tiptap-button[aria-pressed="true"]) {
+  color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.floatingComposeEditor :global(.tiptap-button[data-active-state="on"]) .tiptap-button-icon,
+.floatingComposeEditor :global(.tiptap-button[data-state="open"]) .tiptap-button-icon,
+.floatingComposeEditor :global(.tiptap-button[aria-pressed="true"]) .tiptap-button-icon {
+  color: #fff !important;
+}
+
+.floatingComposeEditor :global(.tiptap-button[data-active-state="on"]) .tiptap-button-icon svg,
+.floatingComposeEditor :global(.tiptap-button[data-state="open"]) .tiptap-button-icon svg,
+.floatingComposeEditor :global(.tiptap-button[aria-pressed="true"]) .tiptap-button-icon svg {
+  stroke: #fff !important;
+  fill: #fff !important;
+}
+
+.floatingComposeEditor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(520px 260px at 18% 12%, rgba(18, 225, 255, 0.10), rgba(18, 225, 255, 0) 70%),
+    radial-gradient(420px 260px at 86% 28%, rgba(56, 228, 255, 0.06), rgba(56, 228, 255, 0) 72%),
+    linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.00) 55%, rgba(255,255,255,0.01));
+  opacity: 0.12;
+  mix-blend-mode: soft-light;
+}
+
+.floatingComposeEditor::after {
+  content: '';
+  position: absolute;
+  inset: -45%;
+  pointer-events: none;
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.045), rgba(255,255,255,0) 62%);
+  opacity: 0.03;
+  mix-blend-mode: overlay;
+}
+
+.floatingComposeEditor .richToolbar {
+  padding: 0 0 1px;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.floatingComposeEditor :global([data-rich-text-editor-root="true"]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  z-index: 1;
+}
+
+.floatingComposeEditor :global([data-rich-text-editor-scroller="true"]),
+.floatingComposeEditor :global([data-rich-text-editor-frame="true"]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 1;
+}
+
+.floatingComposeEditor :global([data-rich-text-editor-scroller="true"]) {
+  max-height: var(--floating-editor-max, none);
+}
+
+.floatingComposeEditor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  & > div {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+.floatingComposeEditor .richEditorContent {
+  min-height: 60px;
+}
+
+.floatingComposeEditor :global(.richEditorContent img) {
+  max-height: var(--floating-editor-max, 60vh);
+  width: auto;
+  object-fit: contain;
+}
+
+.floatingComposeMaximized .floatingComposeEditor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-root="true"]),
+.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-scroller="true"]),
+.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-frame="true"]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.floatingComposeMaximized .floatingComposeEditor :global(.richEditorContent) {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.floatingComposeActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}

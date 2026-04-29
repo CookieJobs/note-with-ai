@@ -1,6 +1,6 @@
 'use client';
 
-import styles from '../../notes-v2.module.scss';
+import styles from '../../styles/modals.module.scss';
 
 type DeleteNoteConfirmModalProps = {
   open: boolean;
@@ -46,5 +46,4 @@ export default function DeleteNoteConfirmModal({
     </div>
   );
 }
-
 

@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useRef } from 'react';
-import styles from '../../notes-v2.module.scss';
+import cardStyles from '../../styles/note-card.module.scss';
+import editorStyles from '../../styles/rich-editor.module.scss';
 import TrashIcon from '../../../../components/icons/TrashIcon';
 import PlusIcon from '../../../../components/icons/PlusIcon';
 import type { Note } from '../../hooks/useNotes';
@@ -203,8 +204,8 @@ export default function ModernNoteCard({
   const applyTextareaSize = (opts: { align: boolean }) => {
     const card = rootRef.current;
     if (!card) return;
-    // TipTap：操作 ProseMirror DOM（class = styles.richEditorContent）
-    const el = card.querySelector(`.${styles.richEditorContent}`) as HTMLElement | null;
+    // TipTap：操作 ProseMirror DOM（class = editorStyles.richEditorContent）
+    const el = card.querySelector(`.${editorStyles.richEditorContent}`) as HTMLElement | null;
     if (!el) return;
     const scroller = findScrollParent(card);
     if (!scroller) return;
@@ -262,7 +263,7 @@ export default function ModernNoteCard({
   useEffect(() => {
     if (!state.content.isEditing) {
       const card = rootRef.current;
-      const el = card ? (card.querySelector(`.${styles.richEditorContent}`) as HTMLElement | null) : null;
+      const el = card ? (card.querySelector(`.${editorStyles.richEditorContent}`) as HTMLElement | null) : null;
       if (el) {
         el.style.height = '';
         el.style.maxHeight = '';
@@ -428,9 +429,9 @@ export default function ModernNoteCard({
   };
 
   const cardClassName = [
-    styles.noteCard,
-    activeHighlight ? styles.noteCardHighlight : '',
-    state.content.isEditing ? styles.noteCardEditing : '',
+    cardStyles.noteCard,
+    activeHighlight ? cardStyles.noteCardHighlight : '',
+    state.content.isEditing ? cardStyles.noteCardEditing : '',
     // 当处于高亮状态时，移除 !bg-white 和 !shadow-none 强制覆盖，让 CSS Module 中的动画样式接管
     !activeHighlight ? '!bg-white !shadow-none' : '',
     '!border',
@@ -446,7 +447,7 @@ export default function ModernNoteCard({
     >
       {/* 右侧悬浮把手 */}
       <button
-        className={`${styles.relatedHandle} ${isSelected ? styles.relatedHandleActive : ''}`}
+        className={`${cardStyles.relatedHandle} ${isSelected ? cardStyles.relatedHandleActive : ''}`}
         onClick={(e) => {
           e.stopPropagation();
           onClick?.();
@@ -454,7 +455,7 @@ export default function ModernNoteCard({
         title="查看相关笔记"
         aria-label="查看相关笔记"
       >
-        <div className={styles.relatedHandleIcon}>
+        <div className={cardStyles.relatedHandleIcon}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <line x1="15" y1="3" x2="15" y2="21"></line>
@@ -463,7 +464,7 @@ export default function ModernNoteCard({
       </button>
 
       <div
-        className={styles.noteHeader}
+        className={cardStyles.noteHeader}
         onClick={() => dispatch({ type: 'TOGGLE_EXPANDED' })}
       >
         {state.title.isEditing ? (
@@ -476,43 +477,43 @@ export default function ModernNoteCard({
               onChange={(e) => dispatch({ type: 'CHANGE_TITLE', value: e.target.value })}
               onKeyDown={handleTitleKeyDown}
               onBlur={() => dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' })}
-              className={styles.noteTitleInput}
+              className={cardStyles.noteTitleInput}
               placeholder="添加标题..."
               maxLength={100}
             />
           </div>
         ) : (
           <div
-            className={`${styles.noteTitle} !font-semibold !text-gray-900 !text-lg`}
+            className={`${cardStyles.noteTitle} !font-semibold !text-gray-900 !text-lg`}
             onClick={(e) => {
               e.stopPropagation();
               dispatch({ type: 'ENTER_TITLE_EDIT', value: note.title || '' });
             }}
           >
             {note.enriching && (!note.title || note.title.trim().length === 0) ? (
-              <div className={styles.titleSkeleton} />
+              <div className={cardStyles.titleSkeleton} />
             ) : (
               note.title || '点击添加标题'
             )}
           </div>
         )}
-        <div className={`${styles.noteActions} !gap-2`}>
+        <div className={`${cardStyles.noteActions} !gap-2`}>
           {state.title.isEditing && (
             <button
               onMouseDown={(e) => {
                 e.stopPropagation();
                 handleSaveTitle();
               }}
-              className={`${styles.noteEditTitleConfirm} !bg-gray-100 hover:!bg-gray-200 !text-gray-600`}
+              className={`${cardStyles.noteEditTitleConfirm} !bg-gray-100 hover:!bg-gray-200 !text-gray-600`}
               aria-label="保存标题"
               disabled={state.title.saving}
             >
               ✓
             </button>
           )}
-          <span className={`${styles.noteDate} !bg-transparent !text-gray-400 !border-none !p-0 !text-sm`}>{formatDate(note.createdAt)}</span>
+          <span className={`${cardStyles.noteDate} !bg-transparent !text-gray-400 !border-none !p-0 !text-sm`}>{formatDate(note.createdAt)}</span>
           <button
-            className={`${styles.deleteButton} !bg-transparent !text-gray-400 hover:!text-red-500 hover:!bg-gray-100 !rounded-md !border-none !shadow-none !p-1`}
+            className={`${cardStyles.deleteButton} !bg-transparent !text-gray-400 hover:!text-red-500 hover:!bg-gray-100 !rounded-md !border-none !shadow-none !p-1`}
             onClick={(e) => {
               e.stopPropagation();
               onRequestDelete(note._id);
@@ -523,10 +524,10 @@ export default function ModernNoteCard({
         </div>
       </div>
 
-      <div className={styles.noteContent} ref={contentAreaRef}>
+      <div className={cardStyles.noteContent} ref={contentAreaRef}>
         <div
           ref={wrapperRef}
-          className={state.content.isEditing ? styles.noteTextWrapperEditing : styles.noteTextWrapper}
+          className={state.content.isEditing ? cardStyles.noteTextWrapperEditing : cardStyles.noteTextWrapper}
           style={{
             maxHeight:
               state.content.isEditing
@@ -536,7 +537,7 @@ export default function ModernNoteCard({
           onClick={state.content.isEditing ? undefined : (e) => enterContentEdit(e)}
         >
           {state.content.isEditing ? (
-            <div className={styles.noteContentInput}>
+            <div className={cardStyles.noteContentInput}>
               <RichTextEditor
                 value={contentJsonDraft}
                 onChange={onEditorChange}
@@ -550,7 +551,7 @@ export default function ModernNoteCard({
           ) : (
             <div
               ref={textRef as React.RefObject<HTMLDivElement>}
-              className={`${styles.noteText} !leading-relaxed !text-gray-600`}
+              className={`${cardStyles.noteText} !leading-relaxed !text-gray-600`}
             >
               {(() => {
                 const draftText = draft?.dirty ? draft?.text : contentTextDraft;
@@ -569,23 +570,23 @@ export default function ModernNoteCard({
           )}
         </div>
         {!state.content.isEditing && state.layout.canExpand && (
-          <div className={`${styles.fadeOverlay} ${!state.expanded ? styles.fadeOverlayVisible : ''}`} />
+          <div className={`${cardStyles.fadeOverlay} ${!state.expanded ? cardStyles.fadeOverlayVisible : ''}`} />
         )}
         {state.layout.canExpand && !state.content.isEditing && (
-          <button type="button" className={styles.expandPill} onClick={() => dispatch({ type: 'TOGGLE_EXPANDED' })}>
+          <button type="button" className={cardStyles.expandPill} onClick={() => dispatch({ type: 'TOGGLE_EXPANDED' })}>
             {state.expanded ? '收起' : '展开'}
           </button>
         )}
 
       </div>
 
-      <div className={styles.noteKeywords}>
-        <div className={styles.keywordsWrap}>
+      <div className={cardStyles.noteKeywords}>
+        <div className={cardStyles.keywordsWrap}>
         {note.enriching && (!(note.keywords && note.keywords.length)) ? (
           <>
-            <span className={styles.chipSkeleton} />
-            <span className={styles.chipSkeleton} />
-            <span className={styles.chipSkeleton} />
+            <span className={cardStyles.chipSkeleton} />
+            <span className={cardStyles.chipSkeleton} />
+            <span className={cardStyles.chipSkeleton} />
           </>
         ) : (
           <>
@@ -599,7 +600,7 @@ export default function ModernNoteCard({
                 activeKeywordIndex === idx ? (
                   <input
                     key={idx}
-                    className={`${styles.keywordEditInput} !rounded-full !text-xs !px-3 !py-1 !border-gray-300 focus:!border-blue-400 focus:!ring-2 focus:!ring-blue-100`}
+                    className={`${cardStyles.keywordEditInput} !rounded-full !text-xs !px-3 !py-1 !border-gray-300 focus:!border-blue-400 focus:!ring-2 focus:!ring-blue-100`}
                     value={tagEditValue}
                     autoFocus
                     onChange={(e) => setTagEditValue(e.target.value)}
@@ -619,7 +620,7 @@ export default function ModernNoteCard({
                 ) : (
                   <span
                     key={idx}
-                    className={`${styles.keyword} !bg-gray-100 hover:!bg-gray-200 !text-gray-600 !rounded-full !text-xs !border-none !px-3 !py-1`}
+                    className={`${cardStyles.keyword} !bg-gray-100 hover:!bg-gray-200 !text-gray-600 !rounded-full !text-xs !border-none !px-3 !py-1`}
                     role="button"
                     tabIndex={0}
                     onClick={() => { setActiveKeywordIndex(idx); setTagEditValue(kw); }}
@@ -628,7 +629,7 @@ export default function ModernNoteCard({
                     {kw}
                     <button
                       type="button"
-                      className={`${styles.keywordDeleteBtn} !bg-white !text-gray-500 hover:!text-red-500 !border-gray-200`}
+                      className={`${cardStyles.keywordDeleteBtn} !bg-white !text-gray-500 hover:!text-red-500 !border-gray-200`}
                       aria-label="删除关键词"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -646,7 +647,7 @@ export default function ModernNoteCard({
                   {activeKeywordIndex === addingIndex && (
                     <input
                       key="__add_keyword__"
-                      className={`${styles.keywordEditInput} !rounded-full !text-xs !px-3 !py-1 !border-gray-300 focus:!border-blue-400 focus:!ring-2 focus:!ring-blue-100`}
+                      className={`${cardStyles.keywordEditInput} !rounded-full !text-xs !px-3 !py-1 !border-gray-300 focus:!border-blue-400 focus:!ring-2 focus:!ring-blue-100`}
                       value={tagEditValue}
                       autoFocus
                       onChange={(e) => setTagEditValue(e.target.value)}
@@ -668,7 +669,7 @@ export default function ModernNoteCard({
                   {activeKeywordIndex !== addingIndex && (
                     <button
                       type="button"
-                      className={`${styles.keywordAddBtn} flex items-center justify-center !bg-transparent !border !border-dashed !border-gray-300 hover:!border-gray-400 !text-gray-400 hover:!text-gray-600 !rounded-full !w-6 !h-6`}
+                      className={`${cardStyles.keywordAddBtn} flex items-center justify-center !bg-transparent !border !border-dashed !border-gray-300 hover:!border-gray-400 !text-gray-400 hover:!text-gray-600 !rounded-full !w-6 !h-6`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setActiveKeywordIndex(addingIndex);
@@ -676,7 +677,7 @@ export default function ModernNoteCard({
                       }}
                       aria-label="添加关键词"
                     >
-                      <span className={styles.keywordAddIcon}>
+                      <span className={cardStyles.keywordAddIcon}>
                         <PlusIcon size={14} strokeWidth={2} />
                       </span>
                     </button>
@@ -688,20 +689,20 @@ export default function ModernNoteCard({
         )}
         </div>
 
-        <div className={styles.noteKeywordsRight}>
+        <div className={cardStyles.noteKeywordsRight}>
           {/* 草稿提示：固定在 keywords 行尾（编辑/非编辑都显示） */}
           {contentSavedFlash ? (
-            <div className={styles.draftSavedInline}>修改已提交 ✔</div>
+            <div className={cardStyles.draftSavedInline}>修改已提交 ✔</div>
           ) : (
-            hasUnsavedDraft && <div className={styles.draftUnsavedInline}>草稿未保存 ！</div>
+            hasUnsavedDraft && <div className={cardStyles.draftUnsavedInline}>草稿未保存 ！</div>
           )}
 
           {/* 编辑态操作：放在 keywords 行尾（在草稿提示之后），避免占用正文高度 */}
           {state.content.isEditing && (
-            <div className={styles.noteEditActions} ref={contentEditActionsRef}>
+            <div className={cardStyles.noteEditActions} ref={contentEditActionsRef}>
               <button
                 type="button"
-                className={`${styles.noteEditCancel} !bg-white hover:!bg-gray-50 !text-gray-600 !border !border-gray-200 !rounded-lg !px-3 !py-1 !text-sm`}
+                className={`${cardStyles.noteEditCancel} !bg-white hover:!bg-gray-50 !text-gray-600 !border !border-gray-200 !rounded-lg !px-3 !py-1 !text-sm`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -713,7 +714,7 @@ export default function ModernNoteCard({
               </button>
               <button
                 type="button"
-                className={`${styles.noteEditSave} !bg-blue-600 hover:!bg-blue-700 !text-white !rounded-lg !px-3 !py-1 !border-none !text-sm`}
+                className={`${cardStyles.noteEditSave} !bg-blue-600 hover:!bg-blue-700 !text-white !rounded-lg !px-3 !py-1 !border-none !text-sm`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -723,7 +724,7 @@ export default function ModernNoteCard({
               >
                 保存
               </button>
-              {state.content.error && <span className={styles.errorInline}>{state.content.error}</span>}
+              {state.content.error && <span className={cardStyles.errorInline}>{state.content.error}</span>}
             </div>
           )}
         </div>

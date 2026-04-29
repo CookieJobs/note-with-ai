@@ -5,7 +5,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Maximize2, Send } from 'lucide-react';
-import styles from '../../notes-v2.module.scss';
+import composeStyles from '../../styles/floating-compose.module.scss';
+import cardStyles from '../../styles/note-card.module.scss';
+import editorStyles from '../../styles/rich-editor.module.scss';
 import { focusProseMirrorWithin } from '../focusProseMirror';
 
 function EditorLoadingPlaceholder() {
@@ -161,7 +163,7 @@ export default function FloatingQuickCompose({
     if (!expanded) return;
 
     const compute = () => {
-      const scroller = expanded.querySelector(`.${styles.richEditorScroller}`) as HTMLElement | null;
+      const scroller = expanded.querySelector(`.${editorStyles.richEditorScroller}`) as HTMLElement | null;
       if (!scroller) return;
       const rect = expanded.getBoundingClientRect();
       const scrollerRect = scroller.getBoundingClientRect();
@@ -243,14 +245,14 @@ export default function FloatingQuickCompose({
       <motion.div
         key="inline"
         ref={rootRef}
-        className={`${styles.inlineCompose} ${open ? styles.floatingComposeOpen : ''} ${hover ? styles.floatingComposeHover : ''}`}
+        className={`${composeStyles.inlineCompose} ${open ? composeStyles.floatingComposeOpen : ''} ${hover ? composeStyles.floatingComposeHover : ''}`}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
       >
         <motion.div
           layout
           layoutId="quick-compose-container"
-          className={`${styles.floatingComposeShell} ${bouncing ? styles.floatingComposeBounce : ''}`}
+          className={`${composeStyles.floatingComposeShell} ${bouncing ? composeStyles.floatingComposeBounce : ''}`}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         >
           <AnimatePresence>
@@ -259,7 +261,7 @@ export default function FloatingQuickCompose({
                 key="collapsed"
                 layout
                 type="button"
-                className={`${styles.floatingComposeBar} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !px-6 !py-4 !h-auto flex items-center justify-center`}
+                className={`${composeStyles.floatingComposeBar} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !px-6 !py-4 !h-auto flex items-center justify-center`}
                 onClick={() => {
                   setOpen(true);
                   setBouncing(true);
@@ -268,13 +270,13 @@ export default function FloatingQuickCompose({
                 }}
                 aria-label="打开快速记录"
               >
-              <span className={`${styles.floatingComposeBarInner} w-full flex items-center justify-center`}>
+              <span className={`${composeStyles.floatingComposeBarInner} w-full flex items-center justify-center`}>
                 <motion.span
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: { duration: 0.1 } }}
                   transition={{ delay: 0.15, duration: 0.2 }}
-                  className={`${styles.floatingComposeBarText} !text-gray-500 !font-normal text-center`}
+                  className={`${composeStyles.floatingComposeBarText} !text-gray-500 !font-normal text-center`}
                 >
                   {valueText && valueText.trim().length > 0 ? '继续编辑草稿…' : '发送消息...'}
                 </motion.span>
@@ -284,7 +286,7 @@ export default function FloatingQuickCompose({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0, transition: { duration: 0.1 } }}
                     transition={{ delay: 0.15, duration: 0.2 }}
-                    className={`${styles.floatingComposeDraftDot} absolute right-4`}
+                    className={`${composeStyles.floatingComposeDraftDot} absolute right-4`}
                     aria-label="有草稿"
                     title="有草稿"
                   />
@@ -295,7 +297,7 @@ export default function FloatingQuickCompose({
               <motion.div
                 key="expanded"
                 layout
-                className={`${styles.floatingComposeExpanded} ${styles.floatingComposeExpandedNoSuggest} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !p-4`}
+                className={`${composeStyles.floatingComposeExpanded} ${composeStyles.floatingComposeExpandedNoSuggest} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !p-4`}
                 ref={expandedRef}
               >
               <motion.div 
@@ -303,7 +305,7 @@ export default function FloatingQuickCompose({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: { duration: 0.1 } }}
                   transition={{ delay: 0.1, duration: 0.2 }}
-                  className={`${styles.floatingComposeEditor} !bg-transparent !border-none !shadow-none !text-gray-900 !p-0`}
+                  className={`${composeStyles.floatingComposeEditor} !bg-transparent !border-none !shadow-none !text-gray-900 !p-0`}
                 >
                 <RichTextEditor
                   value={valueJson}
@@ -316,7 +318,7 @@ export default function FloatingQuickCompose({
                     <>
                       <button
                         type="button"
-                        className={styles.floatingComposeMaxBtn}
+                        className={composeStyles.floatingComposeMaxBtn}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={enterFullscreen}
                         aria-label="全屏编辑"
@@ -338,12 +340,12 @@ export default function FloatingQuickCompose({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: { duration: 0.1 } }}
                   transition={{ delay: 0.1, duration: 0.2 }}
-                  className={`${styles.floatingComposeActions} !border-t !border-gray-100 !pt-3 !mt-3`}
+                  className={`${composeStyles.floatingComposeActions} !border-t !border-gray-100 !pt-3 !mt-3`}
                 >
-                <div className={`${styles.floatingComposeHint} !text-gray-400`}>Cmd/Ctrl + Enter 保存</div>
+                <div className={`${composeStyles.floatingComposeHint} !text-gray-400`}>Cmd/Ctrl + Enter 保存</div>
                 <button
                   type="button"
-                  className={`${styles.noteEditCancel} !bg-white hover:!bg-gray-50 !text-gray-600 !border !border-gray-200 !rounded-lg !px-4 !py-1.5`}
+                  className={`${cardStyles.noteEditCancel} !bg-white hover:!bg-gray-50 !text-gray-600 !border !border-gray-200 !rounded-lg !px-4 !py-1.5`}
                   onClick={handleCancel}
                   disabled={disabled}
                 >
@@ -351,7 +353,7 @@ export default function FloatingQuickCompose({
                 </button>
                 <button
                   type="button"
-                  className={`${styles.noteEditSave} !bg-blue-600 hover:!bg-blue-700 !text-white !rounded-lg !px-4 !py-1.5 !border-none`}
+                  className={`${cardStyles.noteEditSave} !bg-blue-600 hover:!bg-blue-700 !text-white !rounded-lg !px-4 !py-1.5 !border-none`}
                   onClick={submitAndClose}
                   disabled={!canSubmit}
                 >

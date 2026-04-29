@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import styles from '../notes.module.scss';
+import styles from '../styles/rich-editor.module.scss';
 
 const extensions = [
   StarterKit.configure({
@@ -76,5 +76,4 @@ export default function RichTextViewer({ value }: { value: string }) {
     </div>
   );
 }
-
 
