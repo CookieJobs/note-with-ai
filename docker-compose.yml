@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MongoDB 服务
   mongo:
@@ -35,7 +33,8 @@ services:
       context: ./frontend
       args:
         - BACKEND_URL=http://backend:3001
-        - NODE_BUILD_MEMORY=${FRONTEND_NODE_BUILD_MEMORY:-2048}
+        - NODE_BUILD_MEMORY=${FRONTEND_NODE_BUILD_MEMORY:-768}
+        - NEXT_BUILD_WORKERS=${FRONTEND_NEXT_BUILD_WORKERS:-1}
     container_name: note-frontend
     ports:
       - "3000:3000"

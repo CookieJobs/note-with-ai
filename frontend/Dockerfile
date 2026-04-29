@@ -14,15 +14,17 @@ COPY . .
 
 # Receive build arguments
 ARG BACKEND_URL
-ARG NODE_BUILD_MEMORY=2048
+ARG NODE_BUILD_MEMORY=768
+ARG NEXT_BUILD_WORKERS=1
 ENV BACKEND_URL=$BACKEND_URL
+ENV NEXT_BUILD_WORKERS=$NEXT_BUILD_WORKERS
 
 # Disable telemetry and set memory limit
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-old-space-size=${NODE_BUILD_MEMORY}"
 
 # Build Next.js application
-RUN echo "Building frontend with NODE_OPTIONS=${NODE_OPTIONS}" \
+RUN echo "Building frontend with NODE_OPTIONS=${NODE_OPTIONS}, NEXT_BUILD_WORKERS=${NEXT_BUILD_WORKERS}" \
     && npm run build
 
 # 3. Production image, copy all the files and run next
