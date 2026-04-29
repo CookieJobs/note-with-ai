@@ -59,6 +59,23 @@ docker-compose up -d --build
 ```
 > **提示**: 如果只是修改 Nginx 配置，不需要执行这一步。
 
+### 低内存服务器构建说明
+前端 Docker 构建默认使用较保守的参数，避免 Next.js 在低配服务器上卡在 `Creating an optimized production build ...`：
+
+```bash
+FRONTEND_NODE_BUILD_MEMORY=768
+FRONTEND_NEXT_BUILD_WORKERS=1
+```
+
+如果服务器内存充足，可以在项目根目录 `.env` 中调高，例如：
+
+```bash
+FRONTEND_NODE_BUILD_MEMORY=1536
+FRONTEND_NEXT_BUILD_WORKERS=2
+```
+
+如果仍然卡住，先保持 `FRONTEND_NEXT_BUILD_WORKERS=1`，再按服务器实际内存逐步调整 `FRONTEND_NODE_BUILD_MEMORY`。
+
 ---
 
 ## 2. 服务器操作指南
