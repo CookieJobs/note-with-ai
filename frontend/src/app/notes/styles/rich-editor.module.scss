@@ -256,12 +256,19 @@
 }
 
 .richEditorContent :global(p) {
-  margin: 0;
+  margin-top: 0;
+  margin-bottom: 10px;/* 这个值决定段落间距（段间距） */
+  line-height: 1.4; /* 调整为飞书风格的行高 *//* 这个值决定段落内的行间距（行间距） */
+}
+
+.richEditorContent :global(p:last-child) {
+  margin-bottom: 0;
 }
 
 .richEditorContent :global(ul),
 .richEditorContent :global(ol) {
-  margin: 0;
+  margin-top: 0;
+  margin-bottom: 10px;/* 这个值决定列表间距（列表间距） */
   padding-left: 20px;
 }
 
@@ -311,7 +318,13 @@
 }
 
 .richViewerContent :global(p) {
-  margin: 0;
+  margin-top: 0;
+  margin-bottom: 10px;/* 这个值决定段落间距（段间距） */
+  line-height: 1.4; /* 调整为飞书风格的行高 *//* 这个值决定段落内的行间距（行间距） */
+}
+
+.richViewerContent :global(p:last-child) {
+  margin-bottom: 0;
 }
 
 .richViewerContent :global(h1),
@@ -352,7 +365,8 @@
 
 .richViewerContent :global(ul),
 .richViewerContent :global(ol) {
-  margin: 0;
+  margin-top: 0;
+  margin-bottom: 10px;/* 这个值决定列表间距（列表间距） */
   padding-left: 20px;
 }
 
