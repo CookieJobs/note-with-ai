@@ -7,7 +7,7 @@ Note: 用于批量修复缺失标题和关键词的笔记
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { Note } from '../models/Note';
-import { summarizeNote } from '../services/deepseek';
+import { summarizeNote, summarizeNoteSummary } from '../services/llmService';
 import { logger } from '../utils/logger';
 
 // 加载环境变量

@@ -4,7 +4,7 @@ Output: 聊天文本、流式响应、标题/关键词/摘要/概念词及重排
 Pos: 后端 模块
 Note: 统一封装 DeepSeek 惰性初始化、降级错误与调试日志收敛
 */
-// backend/services/deepseek.ts
+// backend/services/llmService.ts
 import { DeepSeekApiClient } from '../utils/apiClient';
 import { config } from '../config';
 import { ErrorHandler } from '../utils/errorHandler';

@@ -1,7 +1,8 @@
 import { Note } from '../models/Note';
+import { logger } from '../utils/logger';
 import { getCachedQwenEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
-import { rerankRecommendedNotes } from './deepseek';
+import { rerankRecommendedNotes } from './llmService';
 
 type NoteSummaryRecord = {
   _id: unknown;
@@ -19,11 +20,73 @@ type RecommendCacheEntry = {
   candidateUpdatedAt?: unknown;
 };
 
+type RecommendCandidate = {
+  id: string;
+  updatedAt: string | Date | undefined;
+  s1max: number;
+  s1q: number[];
+  note?: Record<string, unknown>;
+};
+
+type ResolvedRecommendCandidate = RecommendCandidate & {
+  note: Record<string, unknown>;
+};
+
+type QueryItem = {
+  text: string;
+  embedding?: number[];
+};
+
+type RerankCandidate = {
+  id: string;
+  title: string;
+  summary: string;
+  excerpt: string;
+};
+
+type CurrentNoteContext = {
+  currentNote: any;
+  currentText: string;
+  currentTitle: string;
+  currentSummaryDb: string;
+  currentUpdatedAt: unknown;
+  queryItems: QueryItem[];
+  currentForLLM: {
+    id: string;
+    title: string;
+    summary: string;
+    content: string;
+  };
+  tNoteMs: number;
+};
+
+type RecallStageResult = {
+  queryCount: number;
+  poolSize: number;
+  topForLLM: ResolvedRecommendCandidate[];
+  tDbMs: number;
+  tEmbMs: number;
+  tRecallMs: number;
+  tTopDbMs: number;
+};
+
+type RerankStageResult = {
+  rrMap: Map<string, { id: string; s2: number; type: string; reason: string }>;
+  cacheHits: number;
+  cacheMisses: number;
+  cacheOk: unknown;
+  cacheById: Record<string, unknown>;
+  tRerankMs: number;
+};
+
+export type RecommendationWriteMode = 'await' | 'background';
+
 export interface RecommendationOptions {
   recallK?: number;
   finalK?: number;
   s1Threshold?: number;
   hardThreshold?: number;
+  writeMode?: RecommendationWriteMode;
 }
 
 export interface RecommendationResult {
@@ -51,61 +114,107 @@ export interface RecommendationResult {
     algoVersion: string;
     timingsMs: Record<string, number>;
   };
+  message?: string;
 }
 
-/**
- * 核心推荐服务：计算并更新笔记的关联推荐
- * - 包含多路召回、DeepSeek 重排、缓存复用、结果落库
- */
-export async function updateNoteRecommendations(
-  noteId: string,
-  userId: string,
-  options: RecommendationOptions = {}
-): Promise<RecommendationResult | null> {
-  const {
-    recallK = 30,
-    finalK = 10,
-    s1Threshold = 0.50, // 收紧第一阶段向量召回阈值（从 0.35 -> 0.50）
-    hardThreshold = 0.75, // 收紧最终融合得分阈值（从 0.62 -> 0.75）
-  } = options;
+const ALGO_VERSION = 'semantic-notes-v3';
 
-  const t0 = Date.now();
-  const ALGO_VERSION = 'semantic-notes-v3';
+function buildEmptyResult(message: string, meta: Partial<RecommendationResult['meta']> = {}): RecommendationResult {
+  return {
+    recommendations: [],
+    meta: {
+      recallQueries: 0,
+      poolSize: 0,
+      finalInput: 0,
+      finalOutput: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      algoVersion: ALGO_VERSION,
+      timingsMs: {},
+      ...meta,
+    },
+    message,
+  };
+}
 
-  // 1. 获取当前笔记
+async function loadCurrentNoteContext(params: {
+  noteId: string;
+  userId: string;
+  t0: number;
+}): Promise<{ context?: CurrentNoteContext; emptyResult?: RecommendationResult }> {
+  const { noteId, userId, t0 } = params;
   const tNote0 = Date.now();
   const currentNote = await Note.findOne({ _id: noteId, userId });
-  if (!currentNote) return null;
+
+  if (!currentNote) {
+    return {
+      emptyResult: buildEmptyResult('笔记不存在或已无权访问', {
+        timingsMs: { total: Date.now() - t0 },
+      }),
+    };
+  }
 
   const currentText = String((currentNote as any).contentText || (currentNote as any).content || '').trim();
   const currentTitle = String((currentNote as any).title || '').trim();
   const currentSummaryDb = String((currentNote as any).summary || '').trim();
   const currentUpdatedAt = (currentNote as any).updatedAt;
-  const tNoteMs = Date.now() - tNote0;
-
-  // 2. 构造查询向量
-  // ⚡ 性能关键：只使用 DB 已有字段；没有就跳过该路召回
-  const q0 = `${currentTitle} ${currentText}`.trim();
   const conceptsDb: string[] = Array.isArray((currentNote as any).concepts) ? (currentNote as any).concepts : [];
+  const q0 = `${currentTitle} ${currentText}`.trim();
   const q2 = conceptsDb.length ? conceptsDb.join(' ') : '';
-
-  // 优先复用当前笔记 embedding 作为主查询向量
   const q0Embedding: number[] =
     Array.isArray((currentNote as any).embedding) && (currentNote as any).embedding.length > 0
       ? (currentNote as any).embedding
       : [];
-
-  const queryItems: Array<{ text: string; embedding?: number[] }> = [
+  const queryItems: QueryItem[] = [
     q0 ? { text: q0, embedding: q0Embedding.length ? q0Embedding : undefined } : null,
     currentSummaryDb ? { text: currentSummaryDb } : null,
     q2 ? { text: q2 } : null,
-  ].filter(Boolean) as any;
+  ].filter(Boolean) as QueryItem[];
+  const tNoteMs = Date.now() - tNote0;
 
-  if (queryItems.length === 0) return null;
+  if (queryItems.length === 0) {
+    return {
+      emptyResult: buildEmptyResult('无可用查询文本', {
+        timingsMs: {
+          total: Date.now() - t0,
+          currentNote: tNoteMs,
+        },
+      }),
+    };
+  }
 
-  // 3. 候选池召回（仅取 embedding）
+  return {
+    context: {
+      currentNote,
+      currentText,
+      currentTitle,
+      currentSummaryDb,
+      currentUpdatedAt,
+      queryItems,
+      currentForLLM: {
+        id: String((currentNote as any)._id),
+        title: currentTitle,
+        summary: currentSummaryDb,
+        content: currentText.slice(0, 600),
+      },
+      tNoteMs,
+    },
+  };
+}
+
+async function recallTopCandidates(params: {
+  noteId: string;
+  userId: string;
+  queryItems: QueryItem[];
+  recallK: number;
+  finalK: number;
+  s1Threshold: number;
+  t0: number;
+  tNoteMs: number;
+}): Promise<{ stage?: RecallStageResult; emptyResult?: RecommendationResult }> {
+  const { noteId, userId, queryItems, recallK, finalK, s1Threshold, t0, tNoteMs } = params;
   const tDb0 = Date.now();
-  const userNotes = await Note.find({
+  const userNotesPromise = Note.find({
     userId,
     _id: { $ne: noteId },
     'embedding.0': { $exists: true },
@@ -113,28 +222,44 @@ export async function updateNoteRecommendations(
     .select('_id updatedAt embedding')
     .lean();
 
-  if (!Array.isArray(userNotes) || userNotes.length === 0) return null;
-
-  // 并行获取各路 query embedding
   const tEmb0 = Date.now();
-  const queryEmbeddings = await Promise.all(
+  const queryEmbeddingsPromise = Promise.all(
     queryItems.map(async (q) => {
       if (Array.isArray(q.embedding) && q.embedding.length > 0) return q.embedding;
-      const qt = String(q.text || '').trim();
-      const emb = await getCachedQwenEmbedding(qt, 1024);
+      const emb = await getCachedQwenEmbedding(String(q.text || '').trim(), 1024);
       return Array.isArray(emb) ? emb : [];
     })
   );
+
+  const [userNotes, queryEmbeddings] = await Promise.all([userNotesPromise, queryEmbeddingsPromise]);
   const tDbMs = Date.now() - tDb0;
   const tEmbMs = Date.now() - tEmb0;
 
-  // 4. 多路召回计算
-  const merged = new Map<string, { id: string; updatedAt: string | Date | undefined; s1max: number; s1q: number[] }>();
+  if (!Array.isArray(userNotes) || userNotes.length === 0) {
+    return {
+      emptyResult: buildEmptyResult('没有可用于联想的向量笔记', {
+        recallQueries: queryItems.length,
+        timingsMs: {
+          total: Date.now() - t0,
+          currentNote: tNoteMs,
+          dbEmbeddings: tDbMs,
+          queryEmbeddings: tEmbMs,
+        },
+      }),
+    };
+  }
 
+  const merged = new Map<string, RecommendCandidate>();
   for (let qi = 0; qi < queryItems.length; qi++) {
     const emb = queryEmbeddings[qi];
     if (!Array.isArray(emb) || emb.length === 0) continue;
-    const hits = vectorStore.searchInMemory(emb as any, userNotes as any, Math.max(1, Math.min(100, Number(recallK))), Number(s1Threshold));
+    const hits = vectorStore.searchInMemory(
+      emb as any,
+      userNotes as any,
+      Math.max(1, Math.min(100, Number(recallK))),
+      Number(s1Threshold)
+    );
+
     for (const h of hits) {
       const n = h.item as unknown as { _id: string; updatedAt: string | Date | undefined };
       const id = String(n._id);
@@ -155,9 +280,22 @@ export async function updateNoteRecommendations(
   const topRaw = pool.slice(0, Math.max(1, Math.min(50, Number(finalK))));
   const tRecallMs = Date.now() - tRecall0;
 
-  if (topRaw.length === 0) return null;
+  if (topRaw.length === 0) {
+    return {
+      emptyResult: buildEmptyResult('无满足阈值的候选', {
+        recallQueries: queryItems.length,
+        poolSize: pool.length,
+        timingsMs: {
+          total: Date.now() - t0,
+          currentNote: tNoteMs,
+          dbEmbeddings: tDbMs,
+          queryEmbeddings: tEmbMs,
+          recall: tRecallMs,
+        },
+      }),
+    };
+  }
 
-  // 5. 二次查询：获取 TopK 详情
   const tTopDb0 = Date.now();
   const topIds = topRaw.map((x) => x.id);
   const topNotes = await Note.find({ userId, _id: { $in: topIds } })
@@ -165,45 +303,80 @@ export async function updateNoteRecommendations(
     .lean();
   const tTopDbMs = Date.now() - tTopDb0;
 
-  const topNoteById = new Map<string, Record<string, unknown>>(topNotes.map((n: unknown) => [String((n as Record<string, unknown>)._id), n as Record<string, unknown>]));
+  const topNoteById = new Map<string, Record<string, unknown>>(
+    topNotes.map((n: unknown) => [String((n as Record<string, unknown>)._id), n as Record<string, unknown>])
+  );
   const topForLLM = topRaw
     .map((x) => ({ ...x, note: topNoteById.get(x.id) }))
-    .filter((x) => x.note);
+    .filter((x): x is ResolvedRecommendCandidate => Boolean(x.note));
 
-  if (topForLLM.length === 0) return null;
+  if (topForLLM.length === 0) {
+    return {
+      emptyResult: buildEmptyResult('候选详情缺失', {
+        recallQueries: queryItems.length,
+        poolSize: pool.length,
+        timingsMs: {
+          total: Date.now() - t0,
+          currentNote: tNoteMs,
+          dbEmbeddings: tDbMs,
+          queryEmbeddings: tEmbMs,
+          recall: tRecallMs,
+          dbTopNotes: tTopDbMs,
+        },
+      }),
+    };
+  }
 
-  // 6. 准备 LLM 输入 & 缓存检查
-  const candidates = topForLLM.map((x) => {
-    const n = x.note as NoteSummaryRecord | undefined;
-    if (!n) return null;
-    const title = String(n.title || '').trim();
-    const summary = String(n.summary || '').trim();
-    const contentText = String(n.contentText || n.content || '').trim();
-    const excerpt = (summary || contentText).slice(0, 260);
-    return { id: String(n._id), title, summary, excerpt };
-  }).filter((item): item is { id: string; title: string; summary: string; excerpt: string } => item !== null);
-
-  const currentForLLM = {
-    id: String((currentNote as any)._id),
-    title: currentTitle,
-    summary: currentSummaryDb,
-    content: currentText.slice(0, 600),
+  return {
+    stage: {
+      queryCount: queryItems.length,
+      poolSize: pool.length,
+      topForLLM,
+      tDbMs,
+      tEmbMs,
+      tRecallMs,
+      tTopDbMs,
+    },
   };
+}
 
+function buildRerankCandidates(topForLLM: ResolvedRecommendCandidate[]): RerankCandidate[] {
+  return topForLLM
+    .map((x) => {
+      const n = x.note as NoteSummaryRecord | undefined;
+      if (!n) return null;
+      const title = String(n.title || '').trim();
+      const summary = String(n.summary || '').trim();
+      const contentText = String(n.contentText || n.content || '').trim();
+      const excerpt = (summary || contentText).slice(0, 260);
+      return { id: String(n._id), title, summary, excerpt };
+    })
+    .filter((item): item is RerankCandidate => item !== null);
+}
+
+async function resolveRerankStage(params: {
+  currentNote: any;
+  currentUpdatedAt: unknown;
+  currentForLLM: CurrentNoteContext['currentForLLM'];
+  topForLLM: ResolvedRecommendCandidate[];
+}): Promise<RerankStageResult> {
+  const { currentNote, currentUpdatedAt, currentForLLM, topForLLM } = params;
+  const candidates = buildRerankCandidates(topForLLM);
+  const topNoteById = new Map<string, ResolvedRecommendCandidate>(topForLLM.map((item) => [String(item.note._id), item]));
   const cache = (currentNote as any).recommendCache;
   const cacheOk = cache && cache.algoVersion === ALGO_VERSION && String(cache.sourceUpdatedAt) === String(currentUpdatedAt);
-  const cacheById: Record<string, unknown> = cacheOk && cache.byCandidateId && typeof cache.byCandidateId === 'object' ? cache.byCandidateId : {};
+  const cacheById: Record<string, unknown> =
+    cacheOk && cache.byCandidateId && typeof cache.byCandidateId === 'object' ? cache.byCandidateId : {};
 
-  const missing: Array<{ id: string; title: string; summary: string; excerpt: string }> = [];
+  const missing: RerankCandidate[] = [];
   const rrMap = new Map<string, { id: string; s2: number; type: string; reason: string }>();
   let cacheHits = 0;
 
   for (const c of candidates) {
-    const cached = cacheById?.[c.id] as RecommendCacheEntry | undefined;
-    const candUpdatedAt = String((topForLLM.find((x: { note?: Record<string, unknown> }) => String(x.note?._id) === c.id)?.note)?.updatedAt || '');
+    const cached = cacheById[c.id] as RecommendCacheEntry | undefined;
+    const candidate = topNoteById.get(c.id);
+    const candUpdatedAt = String(candidate?.note.updatedAt || '');
     const cachedCandUpdatedAt = String(cached?.candidateUpdatedAt || '');
-    
-    // 缓存命中条件：候选笔记未更新
     if (cached && cachedCandUpdatedAt && candUpdatedAt && cachedCandUpdatedAt === candUpdatedAt) {
       rrMap.set(c.id, {
         id: c.id,
@@ -217,7 +390,6 @@ export async function updateNoteRecommendations(
     }
   }
 
-  // 7. LLM 重排（仅针对未命中的候选）
   const tRerank0 = Date.now();
   if (missing.length > 0) {
     const rr = await rerankRecommendedNotes({ current: currentForLLM, candidates: missing });
@@ -225,22 +397,38 @@ export async function updateNoteRecommendations(
   }
   const tRerankMs = Date.now() - tRerank0;
 
-  // 8. 融合分数与排序
-  const out = topForLLM
+  return {
+    rrMap,
+    cacheHits,
+    cacheMisses: missing.length,
+    cacheOk,
+    cacheById,
+    tRerankMs,
+  };
+}
+
+function buildRecommendations(params: {
+  topForLLM: ResolvedRecommendCandidate[];
+  rrMap: RerankStageResult['rrMap'];
+  hardThreshold: number;
+}): RecommendationResult['recommendations'] {
+  const { topForLLM, rrMap, hardThreshold } = params;
+  return topForLLM
     .map((x) => {
-      const id = String((x as any).note._id);
+      const id = String((x.note as Record<string, unknown>)._id);
       const r = rrMap.get(id);
       const s2 = r?.s2 ?? 0;
-      const s = 0.3 * x.s1max + 0.7 * s2;
       return {
         note: {
           _id: id,
-          title: String((x as any).note.title || '').trim(),
-          summary: String((x as any).note.summary || '').trim(),
-          contentText: String((x as any).note.contentText || (x as any).note.content || '').trim(),
-          updatedAt: (x as any).note.updatedAt,
+          title: String((x.note as Record<string, unknown>).title || '').trim(),
+          summary: String((x.note as Record<string, unknown>).summary || '').trim(),
+          contentText: String(
+            (x.note as Record<string, unknown>).contentText || (x.note as Record<string, unknown>).content || ''
+          ).trim(),
+          updatedAt: (x.note as Record<string, unknown>).updatedAt as Date,
         },
-        score: s,
+        score: 0.3 * x.s1max + 0.7 * s2,
         s1: x.s1max,
         s2,
         type: r?.type || '弱关联',
@@ -249,19 +437,36 @@ export async function updateNoteRecommendations(
     })
     .filter((x) => x.score >= Number(hardThreshold))
     .sort((a, b) => b.score - a.score);
+}
 
-  // 9. 结果写入数据库（更新 recommendCache）
-  const byCandidateId: Record<string, unknown> = cacheOk && cacheById ? { ...cacheById } : {};
+async function persistRecommendCache(params: {
+  noteId: string;
+  userId: string;
+  currentUpdatedAt: unknown;
+  cacheOk: unknown;
+  cacheById: Record<string, unknown>;
+  topForLLM: RecommendCandidate[];
+  rrMap: Map<string, { id: string; s2: number; type: string; reason: string }>;
+  recommendationParams: {
+    recallK: number;
+    finalK: number;
+    s1Threshold: number;
+    hardThreshold: number;
+  };
+}) {
+  const { noteId, userId, currentUpdatedAt, cacheOk, cacheById, topForLLM, rrMap, recommendationParams } = params;
+  const byCandidateId: Record<string, unknown> = cacheOk ? { ...cacheById } : {};
+
   for (const x of topForLLM) {
-    const id = String((x as any).note._id);
+    const id = String((x.note as Record<string, unknown>)._id);
     const r = rrMap.get(id);
     if (!r) continue;
     byCandidateId[id] = {
-      s1: x.s1max, // 缓存第一阶段向量召回最高得分
+      s1: x.s1max,
       s2: r.s2,
       type: r.type,
       reason: r.reason,
-      candidateUpdatedAt: String(((x as any).note as any).updatedAt || ''),
+      candidateUpdatedAt: String((x.note as Record<string, unknown>).updatedAt || ''),
       cachedAt: new Date().toISOString(),
     };
   }
@@ -274,32 +479,103 @@ export async function updateNoteRecommendations(
           algoVersion: ALGO_VERSION,
           sourceUpdatedAt: currentUpdatedAt,
           generatedAt: new Date().toISOString(),
-          params: { recallK, finalK, s1Threshold, hardThreshold },
+          params: recommendationParams,
           byCandidateId,
         },
       },
     }
   );
+}
+
+/**
+ * 核心推荐服务：统一编排在线接口与批处理脚本的推荐计算与缓存写回。
+ */
+export async function updateNoteRecommendations(
+  noteId: string,
+  userId: string,
+  options: RecommendationOptions = {}
+): Promise<RecommendationResult> {
+  const {
+    recallK = 30,
+    finalK = 10,
+    s1Threshold = 0.50,
+    hardThreshold = 0.75,
+    writeMode = 'await',
+  } = options;
+
+  const t0 = Date.now();
+  const currentNoteStage = await loadCurrentNoteContext({ noteId, userId, t0 });
+  if (currentNoteStage.emptyResult) {
+    return currentNoteStage.emptyResult;
+  }
+
+  const currentContext = currentNoteStage.context!;
+  const recallStageResult = await recallTopCandidates({
+    noteId,
+    userId,
+    queryItems: currentContext.queryItems,
+    recallK,
+    finalK,
+    s1Threshold,
+    t0,
+    tNoteMs: currentContext.tNoteMs,
+  });
+  if (recallStageResult.emptyResult) {
+    return recallStageResult.emptyResult;
+  }
+
+  const recallStage = recallStageResult.stage!;
+  const rerankStage = await resolveRerankStage({
+    currentNote: currentContext.currentNote,
+    currentUpdatedAt: currentContext.currentUpdatedAt,
+    currentForLLM: currentContext.currentForLLM,
+    topForLLM: recallStage.topForLLM,
+  });
+  const recommendations = buildRecommendations({
+    topForLLM: recallStage.topForLLM,
+    rrMap: rerankStage.rrMap,
+    hardThreshold,
+  });
+
+  const cacheWriteTask = persistRecommendCache({
+    noteId,
+    userId,
+    currentUpdatedAt: currentContext.currentUpdatedAt,
+    cacheOk: rerankStage.cacheOk,
+    cacheById: rerankStage.cacheById,
+    topForLLM: recallStage.topForLLM,
+    rrMap: rerankStage.rrMap,
+    recommendationParams: { recallK, finalK, s1Threshold, hardThreshold },
+  });
+
+  if (writeMode === 'background') {
+    void cacheWriteTask.catch((error: unknown) => {
+      logger.warn('⚠️ recommendCache 写入失败（已忽略）:', error);
+    });
+  } else {
+    await cacheWriteTask;
+  }
 
   return {
-    recommendations: out,
+    recommendations,
     meta: {
-      recallQueries: queryItems.length,
-      poolSize: pool.length,
-      finalInput: topForLLM.length,
-      finalOutput: out.length,
-      cacheHits,
-      cacheMisses: missing.length,
+      recallQueries: recallStage.queryCount,
+      poolSize: recallStage.poolSize,
+      finalInput: recallStage.topForLLM.length,
+      finalOutput: recommendations.length,
+      cacheHits: rerankStage.cacheHits,
+      cacheMisses: rerankStage.cacheMisses,
       algoVersion: ALGO_VERSION,
       timingsMs: {
         total: Date.now() - t0,
-        currentNote: tNoteMs,
-        dbEmbeddings: tDbMs,
-        queryEmbeddings: tEmbMs,
-        recall: tRecallMs,
-        dbTopNotes: tTopDbMs,
-        rerank: tRerankMs,
+        currentNote: currentContext.tNoteMs,
+        dbEmbeddings: recallStage.tDbMs,
+        queryEmbeddings: recallStage.tEmbMs,
+        recall: recallStage.tRecallMs,
+        dbTopNotes: recallStage.tTopDbMs,
+        rerank: rerankStage.tRerankMs,
       },
     },
+    message: recommendations.length > 0 ? '语义联想成功' : '无满足阈值的候选',
   };
 }

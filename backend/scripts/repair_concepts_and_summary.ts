@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { Note } from '../models/Note';
 import User from '../models/User';
-import { checkOrUpdateSummaryConcepts } from '../services/deepseek';
+import { checkOrUpdateSummaryConcepts } from '../services/llmService';
 import { logger } from '../utils/logger';
 
 // 加载环境变量

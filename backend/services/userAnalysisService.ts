@@ -1,7 +1,7 @@
 import { Note } from '../models/Note';
 import UserProfile from '../models/UserProfile';
 import { DeepSeekApiClient } from '../utils/apiClient';
-import { getDeepSeekClient } from './deepseek';
+import { getDeepSeekClient } from './llmService';
 import { logger } from '../utils/logger';
 
 export class UserAnalysisService {

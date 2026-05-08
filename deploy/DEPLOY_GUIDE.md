@@ -52,10 +52,10 @@ git pull
 
 ```bash
 # 停止并删除旧容器
-docker-compose down
+docker compose down
 
 # 重新构建并启动 (后台运行)
-docker-compose up -d --build
+docker compose up -d --build
 ```
 > **提示**: 如果只是修改 Nginx 配置，不需要执行这一步。
 
@@ -85,19 +85,19 @@ FRONTEND_NEXT_BUILD_WORKERS=2
 ### 查看服务状态
 ```bash
 # 查看所有容器运行状态
-docker-compose ps
+docker compose ps
 
 # 查看实时日志 (按 Ctrl+C 退出)
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ### 重启特定服务
 ```bash
 # 只重启后端
-docker-compose restart backend
+docker compose restart backend
 
 # 只重启前端
-docker-compose restart frontend
+docker compose restart frontend
 ```
 
 ---

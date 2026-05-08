@@ -2,7 +2,7 @@ import Chat from '../models/Chat';
 import { Note } from '../models/Note';
 import { IChat, IMessage, IRelatedNote, INote } from '../types';
 import { ErrorHandler } from '../utils/errorHandler';
-import { chatWithDeepSeekStream, summarizeChatTitle, chatWithDeepSeek } from './deepseek';
+import { chatWithDeepSeekStream, summarizeChatTitle, chatWithDeepSeek } from './llmService';
 import { getCachedQwenEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 import mongoose from 'mongoose';

@@ -1,5 +1,5 @@
 import { Note } from '../models/Note';
-import { summarizeNote, summarizeNoteMeta, summarizeNoteSummary, checkOrUpdateSummaryConcepts } from './deepseek';
+import { summarizeNoteMeta, summarizeNoteSummary, checkOrUpdateSummaryConcepts } from './llmService';
 import { generateQwenEmbedding } from '../utils/embedding';
 import { DeepSeekApiClient } from '../utils/apiClient';
 import { ErrorHandler, AppError, ErrorType } from '../utils/errorHandler';

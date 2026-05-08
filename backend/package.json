@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --trace-deprecation --respawn --transpile-only index.ts",
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "start": "node dist/index.js",
     "replace-logger": "node replace_logger.js",
     "repair:embeddings": "ts-node scripts/repair_embeddings.ts"

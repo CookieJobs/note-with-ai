@@ -58,16 +58,14 @@ const runUpdate = async () => {
 
       try {
         const result = await updateNoteRecommendations(note._id.toString(), user._id.toString());
-        
-        if (result) {
-            const recCount = result.recommendations.length;
-            logger.info(`✅ 成功 (推荐数: ${recCount}, 缓存命中: ${result.meta.cacheHits}, AI调用: ${result.meta.cacheMisses})`);
-            successCount++;
+
+        const recCount = result.recommendations.length;
+        if (recCount > 0) {
+          logger.info(`✅ 成功 (推荐数: ${recCount}, 缓存命中: ${result.meta.cacheHits}, AI调用: ${result.meta.cacheMisses})`);
         } else {
-            logger.info(`⚠️ 无推荐结果 (可能是样本太少或无匹配)`);
-            // 无结果也算处理成功，只是没有推荐
-            successCount++;
+          logger.info(`⚠️ 无推荐结果: ${result.message || '可能是样本太少或无匹配'}`);
         }
+        successCount++;
       } catch (err: unknown) {
         logger.info(`❌ 失败: ${(err as Error).message}`);
         failCount++;

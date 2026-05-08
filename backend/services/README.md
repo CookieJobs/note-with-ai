@@ -13,6 +13,6 @@
 - `chatService.ts`: 会话保存、流式聊天、开场白与相关笔记检索。
 - `deepseek.ts`: DeepSeek 聊天、摘要、重排与客户端获取入口。
 - `noteService.ts`: 笔记创建、更新、摘要与嵌入协调。
-- `recommendService.ts`: 推荐与重排融合逻辑。
+- `recommendService.ts`: 统一编排语义推荐主流程，供在线接口与批处理脚本共享，并支持同步或后台缓存写回。
 - `userAnalysisService.ts`: 用户画像分析与资料更新。
 - `vectorStore.ts`: 向量检索封装。
