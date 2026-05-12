@@ -255,36 +255,36 @@
   margin-top: 10px;
 }
 
-.richEditorContent :global(p) {
-  margin-top: 0;
-  margin-bottom: 10px;/* 这个值决定段落间距（段间距） */
-  line-height: 1.4; /* 调整为飞书风格的行高 *//* 这个值决定段落内的行间距（行间距） */
+.richEditorContent:global(.prose) :global(p) {
+  margin-top: 0 !important;
+  margin-bottom: 10px !important;/* 这个值决定段落间距（段间距） */
+  line-height: 1.4 !important; /* 调整为飞书风格的行高 *//* 这个值决定段落内的行间距（行间距） */
 }
 
-.richEditorContent :global(p:last-child) {
-  margin-bottom: 0;
+.richEditorContent:global(.prose) :global(p:last-child) {
+  margin-bottom: 0 !important;
 }
 
-.richEditorContent :global(ul),
-.richEditorContent :global(ol) {
-  margin-top: 0;
-  margin-bottom: 10px;/* 这个值决定列表间距（列表间距） */
-  padding-left: 20px;
+.richEditorContent:global(.prose) :global(ul),
+.richEditorContent:global(.prose) :global(ol) {
+  margin-top: 0 !important;
+  margin-bottom: 10px !important;/* 这个值决定列表间距（列表间距） */
+  padding-left: 20px !important;
 }
 
-.richEditorContent :global(li) {
-  margin: 2px 0;
+.richEditorContent:global(.prose) :global(li) {
+  margin: 2px 0 !important;
 }
 
-.richEditorContent :global(li p) {
-  margin: 0;
+.richEditorContent:global(.prose) :global(li p) {
+  margin: 0 !important;
 }
 
-.richEditorContent :global(ul ul),
-.richEditorContent :global(ol ol),
-.richEditorContent :global(ul ol),
-.richEditorContent :global(ol ul) {
-  margin: 4px 0 0;
+.richEditorContent:global(.prose) :global(ul ul),
+.richEditorContent:global(.prose) :global(ol ol),
+.richEditorContent:global(.prose) :global(ul ol),
+.richEditorContent:global(.prose) :global(ol ul) {
+  margin: 4px 0 0 !important;
 }
 
 .richEditorContent :global(blockquote) {
@@ -317,14 +317,14 @@
   margin-top: 10px;
 }
 
-.richViewerContent :global(p) {
-  margin-top: 0;
-  margin-bottom: 10px;/* 这个值决定段落间距（段间距） */
-  line-height: 1.4; /* 调整为飞书风格的行高 *//* 这个值决定段落内的行间距（行间距） */
+.richViewerContent:global(.prose) :global(p) {
+  margin-top: 0 !important;
+  margin-bottom: 10px !important;/* 这个值决定段落间距（段间距） */
+  line-height: 1.4 !important; /* 调整为飞书风格的行高 *//* 这个值决定段落内的行间距（行间距） */
 }
 
-.richViewerContent :global(p:last-child) {
-  margin-bottom: 0;
+.richViewerContent:global(.prose) :global(p:last-child) {
+  margin-bottom: 0 !important;
 }
 
 .richViewerContent :global(h1),
@@ -363,26 +363,26 @@
   margin-top: 0;
 }
 
-.richViewerContent :global(ul),
-.richViewerContent :global(ol) {
-  margin-top: 0;
-  margin-bottom: 10px;/* 这个值决定列表间距（列表间距） */
-  padding-left: 20px;
+.richViewerContent:global(.prose) :global(ul),
+.richViewerContent:global(.prose) :global(ol) {
+  margin-top: 0 !important;
+  margin-bottom: 10px !important;/* 这个值决定列表间距（列表间距） */
+  padding-left: 20px !important;
 }
 
-.richViewerContent :global(li) {
-  margin: 2px 0;
+.richViewerContent:global(.prose) :global(li) {
+  margin: 2px 0 !important;
 }
 
-.richViewerContent :global(li p) {
-  margin: 0;
+.richViewerContent:global(.prose) :global(li p) {
+  margin: 0 !important;
 }
 
-.richViewerContent :global(ul ul),
-.richViewerContent :global(ol ol),
-.richViewerContent :global(ul ol),
-.richViewerContent :global(ol ul) {
-  margin: 4px 0 0;
+.richViewerContent:global(.prose) :global(ul ul),
+.richViewerContent:global(.prose) :global(ol ol),
+.richViewerContent:global(.prose) :global(ul ol),
+.richViewerContent:global(.prose) :global(ol ul) {
+  margin: 4px 0 0 !important;
 }
 
 .richViewerContent :global(ul[data-list-indent="1"]),

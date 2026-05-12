@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Maximize2, Send } from 'lucide-react';
 import composeStyles from '../../styles/floating-compose.module.scss';
 import cardStyles from '../../styles/note-card.module.scss';
@@ -89,8 +89,7 @@ export default function FloatingQuickCompose({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
-  const bounceTimerRef = useRef<number | null>(null);
-  const [bouncing, setBouncing] = useState(false);
+  const [sharedLayoutEnabled, setSharedLayoutEnabled] = useState(true);
   const expandedRef = useRef<HTMLDivElement | null>(null);
 
   const router = useRouter();
@@ -110,10 +109,15 @@ export default function FloatingQuickCompose({
     router.replace(`${pathname}?${nextParams.toString()}`);
   }, [searchParams, router, pathname]);
 
-  const exitToSmallWindow = useCallback(() => {
-    setOpen(true);
+  const exitFullscreenWithoutSharedLayout = useCallback((nextOpen: boolean) => {
+    setSharedLayoutEnabled(false);
+    setOpen(nextOpen);
     exitFullscreen();
   }, [exitFullscreen]);
+
+  const exitToSmallWindow = useCallback(() => {
+    exitFullscreenWithoutSharedLayout(true);
+  }, [exitFullscreenWithoutSharedLayout]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -147,15 +151,17 @@ export default function FloatingQuickCompose({
   }, [open, isFullscreen]);
 
   useEffect(() => {
-    return () => {
-      if (bounceTimerRef.current) window.clearTimeout(bounceTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!open && !isFullscreen) return;
     return focusProseMirrorWithin(expandedRef.current);
   }, [open, isFullscreen]);
+
+  useEffect(() => {
+    if (isFullscreen || sharedLayoutEnabled) return;
+    const raf = requestAnimationFrame(() => {
+      setSharedLayoutEnabled(true);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isFullscreen, sharedLayoutEnabled]);
 
   useLayoutEffect(() => {
     if (!open || isFullscreen) return;
@@ -186,10 +192,37 @@ export default function FloatingQuickCompose({
 
   const disabled = loading;
   const canSubmit = !disabled && (valueText || '').trim().length > 0;
+  const hasDraft = (valueText || '').trim().length > 0;
+  const sharedLayoutId = sharedLayoutEnabled ? 'quick-compose-container' : undefined;
+
+  const shellTransition = {
+    type: 'spring',
+    stiffness: 290,
+    damping: 28,
+    mass: 0.9,
+  } as const;
+
+  const surfaceTransition = {
+    duration: 0.24,
+    ease: [0.22, 1, 0.36, 1] as const,
+  };
+
+  const contentEnterTransition = {
+    duration: 0.18,
+    delay: 0.045,
+    ease: [0.22, 1, 0.36, 1] as const,
+  };
+
+  const actionsEnterTransition = {
+    duration: 0.18,
+    delay: 0.075,
+    ease: [0.22, 1, 0.36, 1] as const,
+  };
 
   const submitAndClose = () => {
     if (!canSubmit) return;
     if (isFullscreen) {
+      setSharedLayoutEnabled(false);
       exitFullscreen();
     }
     setOpen(false);
@@ -198,6 +231,7 @@ export default function FloatingQuickCompose({
 
   const handleCancel = () => {
     if (isFullscreen) {
+      setSharedLayoutEnabled(false);
       exitFullscreen();
     }
     onCancel();
@@ -210,12 +244,12 @@ export default function FloatingQuickCompose({
       return (
         <motion.div
           key="fullscreen"
-          layoutId="quick-compose-container"
+          layoutId={sharedLayoutId}
           className="fixed inset-0 z-[1000] bg-white flex flex-col"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 20 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+          initial={{ opacity: 0, y: 12, scale: 0.992 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 8, scale: 0.995 }}
+          transition={shellTransition}
         >
           <FullscreenHeader
             onBack={exitToSmallWindow}
@@ -251,60 +285,71 @@ export default function FloatingQuickCompose({
       >
         <motion.div
           layout
-          layoutId="quick-compose-container"
-          className={`${composeStyles.floatingComposeShell} ${bouncing ? composeStyles.floatingComposeBounce : ''}`}
-          transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+          layoutId={sharedLayoutId}
+          className={composeStyles.floatingComposeShell}
+          transition={shellTransition}
         >
-          <AnimatePresence>
+          <AnimatePresence initial={false} mode="wait">
             {!open ? (
               <motion.button
                 key="collapsed"
                 layout
                 type="button"
                 className={`${composeStyles.floatingComposeBar} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !px-6 !py-4 !h-auto flex items-center justify-center`}
-                onClick={() => {
-                  setOpen(true);
-                  setBouncing(true);
-                  if (bounceTimerRef.current) window.clearTimeout(bounceTimerRef.current);
-                  bounceTimerRef.current = window.setTimeout(() => setBouncing(false), 520);
-                }}
+                onClick={() => setOpen(true)}
                 aria-label="打开快速记录"
+                initial={{ opacity: 0, y: 8, scale: 0.988 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 5, scale: 0.992 }}
+                transition={surfaceTransition}
+                style={{ transformOrigin: 'center bottom' }}
               >
-              <span className={`${composeStyles.floatingComposeBarInner} w-full flex items-center justify-center`}>
                 <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: { duration: 0.1 } }}
-                  transition={{ delay: 0.15, duration: 0.2 }}
-                  className={`${composeStyles.floatingComposeBarText} !text-gray-500 !font-normal text-center`}
+                  className={`${composeStyles.floatingComposeBarInner} w-full flex items-center justify-center`}
+                  initial={{ opacity: 0.86, y: 3 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0.82, y: 1 }}
+                  transition={contentEnterTransition}
                 >
-                  {valueText && valueText.trim().length > 0 ? '继续编辑草稿…' : '发送消息...'}
-                </motion.span>
-                {valueText && valueText.trim().length > 0 && (
                   <motion.span
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0, transition: { duration: 0.1 } }}
-                    transition={{ delay: 0.15, duration: 0.2 }}
-                    className={`${composeStyles.floatingComposeDraftDot} absolute right-4`}
-                    aria-label="有草稿"
-                    title="有草稿"
-                  />
-                )}
-              </span>
-            </motion.button>
+                    initial={{ opacity: 0, y: 3 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -2 }}
+                    transition={contentEnterTransition}
+                    className={`${composeStyles.floatingComposeBarText} !text-gray-500 !font-normal text-center`}
+                  >
+                    {hasDraft ? '继续编辑草稿…' : '发送消息...'}
+                  </motion.span>
+                  {hasDraft && (
+                    <motion.span
+                      initial={{ opacity: 0, scale: 0.88, y: 2 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9, y: -1 }}
+                      transition={contentEnterTransition}
+                      className={`${composeStyles.floatingComposeDraftDot} absolute right-4`}
+                      aria-label="有草稿"
+                      title="有草稿"
+                    />
+                  )}
+                </motion.span>
+              </motion.button>
             ) : (
               <motion.div
                 key="expanded"
                 layout
                 className={`${composeStyles.floatingComposeExpanded} ${composeStyles.floatingComposeExpandedNoSuggest} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !p-4`}
                 ref={expandedRef}
+                initial={{ opacity: 0, y: 10, scale: 0.988 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 6, scale: 0.992 }}
+                transition={surfaceTransition}
+                style={{ transformOrigin: 'center bottom' }}
               >
-              <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: { duration: 0.1 } }}
-                  transition={{ delay: 0.1, duration: 0.2 }}
+              <motion.div
+                  initial={{ opacity: 0, y: 7, scale: 0.994 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -2, scale: 0.998 }}
+                  transition={contentEnterTransition}
                   className={`${composeStyles.floatingComposeEditor} !bg-transparent !border-none !shadow-none !text-gray-900 !p-0`}
                 >
                 <RichTextEditor
@@ -335,11 +380,11 @@ export default function FloatingQuickCompose({
                 />
               </motion.div>
 
-              <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: { duration: 0.1 } }}
-                  transition={{ delay: 0.1, duration: 0.2 }}
+              <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.996 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.998 }}
+                  transition={actionsEnterTransition}
                   className={`${composeStyles.floatingComposeActions} !border-t !border-gray-100 !pt-3 !mt-3`}
                 >
                 <div className={`${composeStyles.floatingComposeHint} !text-gray-400`}>Cmd/Ctrl + Enter 保存</div>
@@ -368,5 +413,5 @@ export default function FloatingQuickCompose({
     );
   };
 
-  return <AnimatePresence>{renderContent()}</AnimatePresence>;
+  return renderContent();
 }

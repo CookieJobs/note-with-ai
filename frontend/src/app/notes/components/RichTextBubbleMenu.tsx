@@ -9,7 +9,7 @@ export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
   if (!editor) return null;
 
   return (
-    <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }} className="flex w-fit max-w-[90vw] overflow-hidden rounded-md border border-muted bg-background shadow-xl">
+    <BubbleMenu editor={editor} options={{ offset: 8 }} className="flex w-fit max-w-[90vw] overflow-hidden rounded-md border border-muted bg-background shadow-xl">
       <div className="flex px-2 py-1 gap-1">
         <button
           onClick={() => editor.chain().focus().toggleBold().run()}

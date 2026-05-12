@@ -251,15 +251,29 @@ export function useNoteEditor({
     return note.content || '';
   };
 
-  const buildJsonFromPlain = (text: string) => ({
-    type: 'doc',
-    content: [
-      {
+  const buildJsonFromPlain = (text: string) => {
+    if (!text) {
+      return {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [],
+          },
+        ],
+      };
+    }
+
+    // 将纯文本按换行符分割为多个段落，以保证兼容旧版单换行文本
+    const lines = text.split('\n');
+    return {
+      type: 'doc',
+      content: lines.map(line => ({
         type: 'paragraph',
-        content: text ? [{ type: 'text', text }] : [],
-      },
-    ],
-  });
+        content: line ? [{ type: 'text', text: line }] : [],
+      })),
+    };
+  };
 
   const safeStringify = (v: unknown) => {
     try {
@@ -431,7 +445,7 @@ export function useNoteEditor({
         window.clearTimeout(saveExitTimerRef.current);
         saveExitTimerRef.current = null;
       }
-      dispatch({ type: 'SAVE_CONTENT_FAIL', error: e?.message || '保存失败' });
+      dispatch({ type: 'SAVE_CONTENT_FAIL', error: e instanceof Error ? e.message : '保存失败' });
     }
   };
 

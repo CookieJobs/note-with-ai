@@ -560,11 +560,11 @@ export default function ModernNoteCard({
                   (!!draftText);
 
                 if (hasDraft && draft?.dirty) {
-                  return <RichTextViewer value={draftText} />;
+                  return <RichTextViewer value={draft?.json || draftText} />;
                 }
 
-                const finalMarkdown = note.contentText || note.content || '';
-                return <RichTextViewer value={finalMarkdown} />;
+                const finalContent = note.contentJson || note.contentText || note.content || '';
+                return <RichTextViewer value={finalContent} />;
               })()}
             </div>
           )}

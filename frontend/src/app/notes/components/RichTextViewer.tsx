@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, JSONContent } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import styles from '../styles/rich-editor.module.scss';
@@ -48,7 +48,7 @@ const extensions = [
   Markdown,
 ];
 
-export default function RichTextViewer({ value }: { value: string }) {
+export default function RichTextViewer({ value }: { value: string | JSONContent }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
@@ -66,7 +66,7 @@ export default function RichTextViewer({ value }: { value: string }) {
     },
   });
 
-  if (typeof value !== 'string' || !editor || !mounted) {
+  if ((typeof value !== 'string' && typeof value !== 'object') || !editor || !mounted) {
     return null;
   }
 
