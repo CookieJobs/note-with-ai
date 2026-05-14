@@ -1,41 +1,21 @@
 import { Note } from '../models/Note';
 import { summarizeNoteMeta, summarizeNoteSummary, checkOrUpdateSummaryConcepts } from './llmService';
-import { generateQwenEmbedding } from '../utils/embedding';
 import { DeepSeekApiClient } from '../utils/apiClient';
 import { ErrorHandler, AppError, ErrorType } from '../utils/errorHandler';
 import { INote } from '../types';
 import { logger } from '../utils/logger';
+import { noteEmbeddingService } from './noteEmbeddingService';
 
 class NoteService {
-  private normalizeForEmbedding(text: string) {
-    return String(text || '').trim();
-  }
-
   private scheduleEmbeddingUpdate(params: {
     noteId: string;
     userId: string;
     updatedAt: Date;
-    text: string;
+    title?: string;
+    content?: string;
+    contentText?: string;
   }) {
-    const { noteId, userId, updatedAt, text } = params;
-    const baseText = this.normalizeForEmbedding(text);
-    if (!baseText) return;
-
-    // 不阻塞请求；失败/跳过都不影响主流程
-    void (async () => {
-      try {
-        const embedding = await generateQwenEmbedding(baseText);
-        if (!Array.isArray(embedding) || embedding.length === 0) return;
-
-        // 防止“生成过程中内容又被改了”导致写入旧 embedding
-        await Note.updateOne(
-          { _id: noteId, userId, updatedAt },
-          { $set: { embedding } }
-        );
-      } catch (e) {
-        logger.warn('⚠️ embedding 异步生成失败（已忽略）:', e);
-      }
-    })();
+    noteEmbeddingService.scheduleEmbeddingUpdate(params);
   }
 
   async getNotes(userId: string): Promise<INote[]> {
@@ -83,7 +63,9 @@ class NoteService {
       noteId: savedNote._id.toString(),
       userId: userId,
       updatedAt: (savedNote as any).updatedAt,
-      text: (savedNote as any).contentText || savedNote.content || '',
+      title: savedNote.title,
+      content: savedNote.content,
+      contentText: (savedNote as any).contentText,
     });
 
     return savedNote as unknown as INote;
@@ -108,29 +90,12 @@ class NoteService {
   }
 
   async generateEmbedding(userId: string, noteId: string): Promise<{ embedding?: number[], skipped?: boolean }> {
-    const note = await Note.findOne({ _id: noteId, userId });
+    const note = await Note.findOne({ _id: noteId, userId }).select('_id');
     if (!note) {
-        throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
+      throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
     }
 
-    // 重要：这里不要用 note.save()，否则在“正文刚更新/AI 异步更新”等并发场景下容易触发 VersionError
-    // 用原子更新写入 embedding，避免版本冲突
-    const baseText = (note as any).contentText || note.content || '';
-    const embedding = await generateQwenEmbedding(baseText);
-
-    // 进一步：避免“生成 embedding 期间正文又被修改”，导致写入旧内容的 embedding
-    // 只有当 updatedAt 未变化（仍是我们刚读到的版本）才写入；否则跳过，等待下一次保存再触发 embed
-    const result = await Note.updateOne(
-      { _id: noteId, userId, updatedAt: (note as any).updatedAt },
-      { $set: { embedding } }
-    );
-
-    if (!result || (result as any).matchedCount === 0) {
-      return { skipped: true };
-    }
-
-    logger.info('✅ embedding 保存成功');
-    return { embedding };
+    return noteEmbeddingService.generateEmbeddingForNote(userId, noteId);
   }
 
   async simpleChat(userId: string, messages: { role: string; content: string }[]): Promise<string> {
@@ -164,52 +129,11 @@ class NoteService {
   }
 
   async getEmbeddingStats(userId: string): Promise<any> {
-    const totalNotes = await Note.countDocuments({ userId });
-    const notesWithEmbedding = await Note.countDocuments({
-      userId,
-      embedding: { $exists: true, $ne: null, $not: { $size: 0 } },
-    });
-    const notesWithoutEmbedding = totalNotes - notesWithEmbedding;
-    const coverage = totalNotes > 0 ? Math.round((notesWithEmbedding / totalNotes) * 100) : 0;
-
-    return {
-      totalNotes,
-      notesWithEmbedding,
-      notesWithoutEmbedding,
-      coverage,
-      timestamp: new Date().toISOString(),
-    };
+    return noteEmbeddingService.getUserEmbeddingStats(userId);
   }
 
   async ensureEmbeddings(userId: string, limitNum: number = 20): Promise<{ processed: number; success: number }> {
-    const limit = Math.max(1, Math.min(50, limitNum));
-
-    const pending = await Note.find({
-      userId,
-      $or: [{ embedding: { $exists: false } }, { embedding: { $size: 0 } }, { embedding: null }],
-    })
-      .select('_id title content contentText updatedAt')
-      .limit(limit);
-
-    if (pending.length === 0) {
-      return { processed: 0, success: 0 };
-    }
-
-    const texts = pending.map((n: INote) => `${String(n.title || '').trim()} ${String(n.contentText || n.content || '').trim()}`.trim());
-
-    let success = 0;
-    for (let i = 0; i < pending.length; i++) {
-      const note = pending[i] as any;
-      const embedding = await generateQwenEmbedding(texts[i]);
-      if (!Array.isArray(embedding) || embedding.length === 0) continue;
-      const r = await Note.updateOne(
-        { _id: note._id, userId, updatedAt: note.updatedAt },
-        { $set: { embedding } }
-      );
-      if (r && (r as any).matchedCount > 0) success++;
-    }
-
-    return { processed: pending.length, success };
+    return noteEmbeddingService.ensureUserEmbeddings(userId, limitNum);
   }
 
   async ensureSummaries(userId: string, limitNum: number = 20): Promise<{ processed: number; success: number }> {
@@ -358,7 +282,9 @@ class NoteService {
             noteId: freshNote._id.toString(),
             userId: userId,
             updatedAt: (freshNote as any).updatedAt,
-            text: (freshNote as any).contentText || freshNote.content || '',
+            title: freshNote.title,
+            content: freshNote.content,
+            contentText: (freshNote as any).contentText,
           });
 
           return freshNote as unknown as INote;
@@ -427,7 +353,9 @@ class NoteService {
             noteId: freshNote._id.toString(),
             userId: userId,
             updatedAt: (freshNote as any).updatedAt,
-            text: (freshNote as any).contentText || freshNote.content || '',
+            title: freshNote.title,
+            content: freshNote.content,
+            contentText: (freshNote as any).contentText,
           });
           
           return freshNote as unknown as INote;
@@ -445,7 +373,9 @@ class NoteService {
         noteId: note._id.toString(),
         userId: userId,
         updatedAt: (note as any).updatedAt,
-        text: (note as any).contentText || note.content || '',
+        title: note.title,
+        content: note.content,
+        contentText: (note as any).contentText,
       });
     }
 

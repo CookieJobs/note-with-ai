@@ -7,8 +7,8 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 // backend/scripts/repair_embeddings.ts
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { maintainAllNoteEmbeddings, getEmbeddingStats } from '../services/noteEmbedding';
 import { validateEmbeddingConfig } from '../config/embedding';
+import { noteEmbeddingService } from '../services/noteEmbeddingService';
 import { logger } from '../utils/logger';
 
 // 加载环境变量
@@ -41,7 +41,7 @@ const runEmbeddingMaintenance = async () => {
   
   try {
     // 获取任务前的统计信息
-    const beforeStats = await getEmbeddingStats();
+    const beforeStats = await noteEmbeddingService.getGlobalEmbeddingStats();
     logger.info('📊 任务前统计:', {
       totalNotes: beforeStats.totalNotes,
       embeddedNotes: beforeStats.notesWithEmbedding,
@@ -50,10 +50,10 @@ const runEmbeddingMaintenance = async () => {
     });
 
     // 执行维护任务
-    const result = await maintainAllNoteEmbeddings();
+    const result = await noteEmbeddingService.repairAllEmbeddings();
     
     // 获取任务后的统计信息
-    const afterStats = await getEmbeddingStats();
+    const afterStats = await noteEmbeddingService.getGlobalEmbeddingStats();
     const endTime = new Date();
     const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
     

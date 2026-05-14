@@ -177,12 +177,6 @@ export default function RichTextEditor({
     },
   }), [editorContentClassName, onModEnter]);
 
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const editor = useEditor({
     extensions: memoizedExtensions,
     editorProps: memoizedEditorProps,
@@ -237,7 +231,7 @@ export default function RichTextEditor({
     });
   }, [editor, autoFocus]);
 
-  if (!editor || !mounted) {
+  if (!editor) {
     return null;
   }
 

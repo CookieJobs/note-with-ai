@@ -12,20 +12,14 @@ import { focusProseMirrorWithin } from '../focusProseMirror';
 
 function EditorLoadingPlaceholder() {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white/90 shadow-sm">
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div className="h-4 w-24 animate-pulse rounded bg-gray-200" />
-        <div className="h-4 w-16 animate-pulse rounded bg-gray-100" />
-      </div>
-      <div className="space-y-3 p-4">
-        <div className="h-4 w-28 animate-pulse rounded bg-gray-100" />
-        <div className="min-h-[220px] rounded-xl border border-dashed border-gray-200 bg-gray-50" />
-      </div>
+    <div className="flex items-center justify-center py-10">
+      <div className="h-5 w-5 animate-spin rounded-full border-[3px] border-gray-200 border-t-gray-400" />
     </div>
   );
 }
 
-const RichTextEditor = dynamic(() => import('../RichTextEditor'), {
+const RichTextEditorPromise = import('../RichTextEditor');
+const RichTextEditor = dynamic(() => RichTextEditorPromise, {
   ssr: false,
   loading: () => <EditorLoadingPlaceholder />,
 });

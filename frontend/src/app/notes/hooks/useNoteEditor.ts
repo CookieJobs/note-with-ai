@@ -203,6 +203,7 @@ export function useNoteEditor({
 
   const [activeKeywordIndex, setActiveKeywordIndex] = useState<number | null>(null);
   const [tagEditValue, setTagEditValue] = useState<string>('');
+  const lastExitSignalRef = useRef(exitEditSignal);
 
 
   // Sync with props
@@ -228,6 +229,8 @@ export function useNoteEditor({
   }, [draft, note._id]);
 
   useEffect(() => {
+    if (exitEditSignal === lastExitSignalRef.current) return;
+    lastExitSignalRef.current = exitEditSignal;
     if (!exitEditSignal) return;
     if (!state.content.isEditing) return;
     dispatch({ type: 'BLUR_CONTENT_EXIT' });

@@ -10,6 +10,7 @@ import DeleteNoteConfirmModal from './components/v2/DeleteNoteConfirmModal';
 import ModernNoteCard from './components/v2/ModernNoteCard';
 import FloatingQuickCompose from './components/v2/FloatingQuickCompose';
 import RelatedNotesDrawer from './components/v2/RelatedNotesDrawer';
+import NoteCounter from './components/v2/NoteCounter';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
 import { useNotes } from './hooks/useNotes';
@@ -199,6 +200,8 @@ function NotesContent() {
                     }}
                     loading={createLoading}
                   />
+
+                  <NoteCounter count={notes.length} />
 
                   {notes.map((note) => (
                     <div 
