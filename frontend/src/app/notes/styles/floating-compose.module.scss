@@ -375,33 +375,33 @@
   100% { opacity: 1; }
 }
 
-.floatingComposeMaxBtn {
-  width: 30px;
-  height: 30px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  color: rgba(203, 213, 225, 0.78);
-  cursor: pointer;
+.fullscreenPill {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
-}
+  gap: 4px;
+  border-radius: 8px;
+  padding: 5px 10px;
+  background: #eff6ff;
+  border: 1px solid rgba(37, 99, 235, 0.15);
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
 
-.floatingComposeMaxBtn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
-}
+  &:hover {
+    background: #dbeafe;
+  }
 
-.floatingComposeMaxBtn:active {
-  transform: scale(0.98);
+  &:active {
+    transform: scale(0.98);
+  }
 }
 
 .floatingComposeHint {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(203, 213, 225, 0.70);
+  font-size: 11px;
+  font-weight: 400;
+  color: #d1d5db;
   display: inline-flex;
   align-items: center;
   height: 30px;
@@ -409,27 +409,16 @@
 }
 
 .floatingComposeEditor {
-  /* 快速记录：直接就是编辑态，所以这里要对齐工作台“进入编辑模式后的液态玻璃正文区” */
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.03);
-  -webkit-backdrop-filter: blur(18px) saturate(170%) contrast(110%);
-  backdrop-filter: blur(18px) saturate(170%) contrast(110%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-
-  /* 内边距交给“液态玻璃正文区”，让编辑体验更像工作台 */
-  padding: 10px 10px 8px;
-  transition:
-    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
 }
 
 .floatingComposeEditor .richEditorContent,
@@ -439,92 +428,14 @@
 
 .floatingComposeEditor .richEditorContent ::selection,
 .floatingComposeEditor :global(.ProseMirror) ::selection {
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  background: rgba(37, 99, 235, 0.15);
+  color: inherit;
 }
 
-.floatingComposeEditor :global(.tiptap-button) {
-  --tt-button-active-bg-color: rgba(255, 255, 255, 0.16);
-  --tt-button-active-bg-color-subdued: rgba(255, 255, 255, 0.10);
-  --tt-button-active-hover-bg-color: rgba(255, 255, 255, 0.20);
-  --tt-button-active-icon-color: rgba(255, 255, 255, 0.98);
-  --tt-button-active-icon-color-emphasized: rgba(255, 255, 255, 0.98);
-  --tt-button-active-icon-color-subdued: rgba(255, 255, 255, 0.92);
-  --tt-button-active-text-color: rgba(255, 255, 255, 0.98);
-  --tt-button-active-text-color-emphasized: rgba(255, 255, 255, 0.98);
-  --tt-button-active-text-color-subdued: rgba(255, 255, 255, 0.92);
-}
 
-.floatingComposeEditor :global(.tiptap-button[data-active-state="on"]),
-.floatingComposeEditor :global(.tiptap-button[data-state="open"]),
-.floatingComposeEditor :global(.tiptap-button[aria-pressed="true"]) {
-  color: #fff !important;
-  background-color: rgba(255, 255, 255, 0.16) !important;
-}
-
-.floatingComposeEditor :global(.tiptap-button[data-active-state="on"]) .tiptap-button-icon,
-.floatingComposeEditor :global(.tiptap-button[data-state="open"]) .tiptap-button-icon,
-.floatingComposeEditor :global(.tiptap-button[aria-pressed="true"]) .tiptap-button-icon {
-  color: #fff !important;
-}
-
-.floatingComposeEditor :global(.tiptap-button[data-active-state="on"]) .tiptap-button-icon svg,
-.floatingComposeEditor :global(.tiptap-button[data-state="open"]) .tiptap-button-icon svg,
-.floatingComposeEditor :global(.tiptap-button[aria-pressed="true"]) .tiptap-button-icon svg {
-  stroke: #fff !important;
-  fill: #fff !important;
-}
-
-.floatingComposeEditor::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(520px 260px at 18% 12%, rgba(18, 225, 255, 0.10), rgba(18, 225, 255, 0) 70%),
-    radial-gradient(420px 260px at 86% 28%, rgba(56, 228, 255, 0.06), rgba(56, 228, 255, 0) 72%),
-    linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.00) 55%, rgba(255,255,255,0.01));
-  opacity: 0.12;
-  mix-blend-mode: soft-light;
-  transform: translateY(8px) scale(0.992);
-  filter: saturate(0.98);
-  transition:
-    opacity 300ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 340ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 260ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.floatingComposeEditor::after {
-  content: '';
-  position: absolute;
-  inset: -45%;
-  pointer-events: none;
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.045), rgba(255,255,255,0) 62%);
-  opacity: 0.03;
-  mix-blend-mode: overlay;
-  transform: translateY(10px) scale(0.985);
-  transition:
-    opacity 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.floatingComposeOpen .floatingComposeEditor::before {
-  opacity: 0.16;
-  transform: translateY(0) scale(1);
-  filter: saturate(1.05);
-}
-
-.floatingComposeOpen .floatingComposeEditor::after {
-  opacity: 0.045;
-  transform: translateY(0) scale(1);
-}
 
 .floatingComposeEditor .richToolbar {
-  padding: 0 0 1px;
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-  margin-bottom: 10px;
-  position: relative;
-  z-index: 1;
+  display: none;
 }
 
 .floatingComposeEditor :global([data-rich-text-editor-root="true"]) {
@@ -594,6 +505,54 @@
   flex: 1;
   min-height: 0;
   max-height: none;
+}
+
+.composeCancelBtn {
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  transition: background 120ms ease, border-color 120ms ease;
+
+  &:hover {
+    background: #f9fafb;
+    border-color: #d1d5db;
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
+.composeSaveBtn {
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #2563eb;
+  border: none;
+  color: #fff;
+  transition: background 120ms ease, transform 120ms ease;
+
+  &:hover {
+    background: #1d4ed8;
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+  }
 }
 
 .floatingComposeActions {
