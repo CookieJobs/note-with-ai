@@ -40,10 +40,14 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
       )}
       
       <aside className={cn(
-        "flex flex-col border-r border-border/40 bg-background/95 backdrop-blur-xl z-30 transition-transform duration-300 shadow-[2px_0_8px_rgba(0,0,0,0.02)] shrink-0",
+        "flex flex-col bg-card/80 backdrop-blur-xl z-30 transition-transform duration-300 shrink-0 overflow-hidden",
         "w-left-panel xl:w-left-panel-xl",
         // 在移动端使用 absolute 悬浮在内容上方，在桌面端（md及以上）使用 relative 作为 flex 布局的一部分
         "absolute md:relative inset-y-0 left-0",
+        // 移动端：全高覆盖层 + 右侧细线分隔
+        "border-r border-border/40 shadow-[2px_0_8px_rgba(0,0,0,0.05)]",
+        // 桌面端：浮出卡片效果
+        "md:border md:border-border/20 md:shadow-md md:rounded-2xl",
         isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
       {/* Header Area */}

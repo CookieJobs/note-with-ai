@@ -27,6 +27,13 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   position: relative;
 }
 
+@media (min-width: 768px) {
+  .bodyWrapper {
+    padding: 12px;
+    gap: 12px;
+  }
+}
+
 .mainCenter {
   flex: 1;
   min-width: 0;
@@ -136,15 +143,18 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   width: var(--right-panel-width);
   flex-shrink: 0;
   z-index: 10;
-  border-left: 1px solid rgba(226, 232, 240, 0.7);
-  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.3);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
 
 .relatedNotesFab {
   display: none;
   position: fixed;
   right: 16px;
-  bottom: 96px;
+  bottom: 152px;
   z-index: 40;
   align-items: center;
   gap: 8px;
@@ -377,6 +387,6 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 
   .relatedNotesFab {
     right: 14px;
-    bottom: 86px;
+    bottom: 136px;
   }
 }

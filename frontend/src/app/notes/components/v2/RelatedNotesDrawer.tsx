@@ -78,9 +78,9 @@ export default function RelatedNotesDrawer({
           onClick={onClose}
         />
       )}
-      {/* 侧边栏抽屉本体 */}
-      <div 
-        className={`fixed top-0 right-0 h-full w-[360px] md:w-[400px] bg-white shadow-2xl border-l border-gray-100 z-[1001] transform transition-transform duration-300 ease-in-out flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      {/* 侧边栏抽屉本体 — 浮出卡片效果 */}
+      <div
+        className={`fixed top-3 right-3 bottom-3 w-[360px] md:w-[400px] bg-white/85 backdrop-blur-xl border border-gray-200/30 shadow-xl z-[1001] transform transition-transform duration-300 ease-in-out flex flex-col rounded-2xl overflow-hidden ${isOpen ? 'translate-x-0' : 'translate-x-[calc(100%+12px)]'}`}
       >
         <div className="flex items-center justify-between p-6 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">相关笔记</h2>

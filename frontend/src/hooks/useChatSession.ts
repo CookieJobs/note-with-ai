@@ -43,16 +43,16 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
     sessionsRef.current = sessions;
   }, [sessions]);
 
-  // 自动切换当前会话
+  // 仅当已选中的会话被删除时才自动切换到其他会话，不在页面加载时自动选中
   useEffect(() => {
     if (sessions.length > 0) {
       const exists = sessions.some(s => s.id === currentSessionId);
-      if (!currentSessionId || !exists) {
+      if (currentSessionId && !exists) {
         const firstSession = sessions[0];
         // Prefer 'id', fallback to '_id'
         const firstId = firstSession.id || firstSession._id;
         if (firstId) {
-          console.log('🔄 [useChatSession] 自动选中第一个会话:', firstId);
+          console.log('🔄 [useChatSession] 当前会话已删除，自动切换到:', firstId);
           setCurrentSessionId(firstId);
         }
       }
