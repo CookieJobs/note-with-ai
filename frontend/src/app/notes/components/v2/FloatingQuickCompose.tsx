@@ -6,7 +6,6 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Maximize2, Send } from 'lucide-react';
 import composeStyles from '../../styles/floating-compose.module.scss';
-import cardStyles from '../../styles/note-card.module.scss';
 import editorStyles from '../../styles/rich-editor.module.scss';
 import { focusProseMirrorWithin } from '../focusProseMirror';
 
@@ -289,7 +288,7 @@ export default function FloatingQuickCompose({
                 key="collapsed"
                 layout
                 type="button"
-                className={`${composeStyles.floatingComposeBar} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !px-6 !py-4 !h-auto flex items-center justify-center`}
+                className={`${composeStyles.floatingComposeBar}`}
                 onClick={() => setOpen(true)}
                 aria-label="打开快速记录"
                 initial={{ opacity: 0, y: 8, scale: 0.988 }}
@@ -310,7 +309,7 @@ export default function FloatingQuickCompose({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -2 }}
                     transition={contentEnterTransition}
-                    className={`${composeStyles.floatingComposeBarText} !text-gray-500 !font-normal text-center`}
+                    className={`${composeStyles.floatingComposeBarText}`}
                   >
                     {hasDraft ? '继续编辑草稿…' : '发送消息...'}
                   </motion.span>
@@ -331,7 +330,7 @@ export default function FloatingQuickCompose({
               <motion.div
                 key="expanded"
                 layout
-                className={`${composeStyles.floatingComposeExpanded} ${composeStyles.floatingComposeExpandedNoSuggest} !bg-white !rounded-2xl !border !border-gray-200/50 !shadow-sm !shadow-gray-200 !p-4`}
+                className={`${composeStyles.floatingComposeExpanded} ${composeStyles.floatingComposeExpandedNoSuggest}`}
                 ref={expandedRef}
                 initial={{ opacity: 0, y: 10, scale: 0.988 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -339,67 +338,68 @@ export default function FloatingQuickCompose({
                 transition={surfaceTransition}
                 style={{ transformOrigin: 'center bottom' }}
               >
-              <motion.div
+                {/* Fullscreen pill — top right */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+                  <button
+                    type="button"
+                    className={composeStyles.fullscreenPill}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={enterFullscreen}
+                    aria-label="全屏编辑"
+                    title="全屏编辑"
+                  >
+                    <Maximize2 size={14} />
+                    <span>全屏</span>
+                  </button>
+                </div>
+
+                <motion.div
                   initial={{ opacity: 0, y: 7, scale: 0.994 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -2, scale: 0.998 }}
                   transition={contentEnterTransition}
-                  className={`${composeStyles.floatingComposeEditor} !bg-transparent !border-none !shadow-none !text-gray-900 !p-0`}
+                  className={`${composeStyles.floatingComposeEditor}`}
                 >
-                <RichTextEditor
-                  value={valueJson}
-                  onChange={onChange}
-                  placeholder="此刻的想法、待办或总结..."
-                  showToolbar
-                  autoFocus="end"
-                  toolbarVariant="advanced"
-                  toolbarRight={
-                    <>
-                      <button
-                        type="button"
-                        className={composeStyles.floatingComposeMaxBtn}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={enterFullscreen}
-                        aria-label="全屏编辑"
-                        title="全屏编辑"
-                      >
-                        <Maximize2 size={16} />
-                      </button>
-                    </>
-                  }
-                  onModEnter={() => {
-                    submitAndClose();
-                  }}
-                  className="text-gray-900 !mx-auto"
-                />
-              </motion.div>
+                  <RichTextEditor
+                    value={valueJson}
+                    onChange={onChange}
+                    placeholder="此刻的想法、待办或总结..."
+                    showToolbar
+                    autoFocus="end"
+                    toolbarVariant="advanced"
+                    onModEnter={() => {
+                      submitAndClose();
+                    }}
+                    className="text-gray-900 !mx-auto"
+                  />
+                </motion.div>
 
-              <motion.div
+                <motion.div
                   initial={{ opacity: 0, y: 8, scale: 0.996 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 4, scale: 0.998 }}
                   transition={actionsEnterTransition}
-                  className={`${composeStyles.floatingComposeActions} !border-t !border-gray-100 !pt-3 !mt-3`}
+                  className={`${composeStyles.floatingComposeActions}`}
                 >
-                <div className={`${composeStyles.floatingComposeHint} !text-gray-400`}>Cmd/Ctrl + Enter 保存</div>
-                <button
-                  type="button"
-                  className={`${cardStyles.noteEditCancel} !bg-white hover:!bg-gray-50 !text-gray-600 !border !border-gray-200 !rounded-lg !px-4 !py-1.5`}
-                  onClick={handleCancel}
-                  disabled={disabled}
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  className={`${cardStyles.noteEditSave} !bg-blue-600 hover:!bg-blue-700 !text-white !rounded-lg !px-4 !py-1.5 !border-none`}
-                  onClick={submitAndClose}
-                  disabled={!canSubmit}
-                >
-                  {loading ? '保存中...' : '保存'}
-                </button>
+                  <div className={composeStyles.floatingComposeHint}>Cmd/Ctrl + Enter 保存</div>
+                  <button
+                    type="button"
+                    className={composeStyles.composeCancelBtn}
+                    onClick={handleCancel}
+                    disabled={disabled}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    className={composeStyles.composeSaveBtn}
+                    onClick={submitAndClose}
+                    disabled={!canSubmit}
+                  >
+                    {loading ? '保存中...' : '保存'}
+                  </button>
+                </motion.div>
               </motion.div>
-            </motion.div>
             )}
           </AnimatePresence>
         </motion.div>
