@@ -287,68 +287,37 @@
 .floatingComposeBar {
   position: relative;
   width: 100%;
-  height: 44px;
-  border-radius: 14px;
-  /* 专业一点：边框更克制（偏蓝灰），同时用 inset 高光增加“玻璃边缘感” */
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  /* 主题统一：冷色暗玻璃（与右侧工作台/历史栏一致） */
-  background:
-    /* 默认态：不要“上方高亮反光”，改成更均匀的液态玻璃底 */
-    linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.03) 100%),
-    rgba(8, 12, 16, 0.56);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  /* 外发光要非常克制：让它“浮起来”，但不发飘 */
+  border-radius: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: #fff;
   box-shadow:
-    0 14px 32px rgba(15, 23, 42, 0.10),
-    inset 0 1px 0 rgba(255,255,255,0.10);
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 4px 16px rgba(0, 0, 0, 0.04);
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  padding: 14px 24px;
   text-align: left;
   cursor: pointer;
   transition:
-    background 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 180ms ease;
   will-change: transform, opacity, box-shadow;
 }
 
-.floatingComposeBar::before {
-  /* 默认态：独自晕染的液态玻璃（不做顶部“反光条”） */
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 14px;
-  pointer-events: none;
-  background:
-    radial-gradient(520px 220px at 18% 35%, rgba(18, 225, 255, 0.12), rgba(18, 225, 255, 0) 70%),
-    radial-gradient(420px 220px at 82% 60%, rgba(56, 228, 255, 0.07), rgba(56, 228, 255, 0) 72%),
-    radial-gradient(600px 260px at 50% 110%, rgba(255,255,255,0.03), rgba(255,255,255,0) 62%);
-  opacity: 0.22;
-  mix-blend-mode: soft-light;
-  transform: translateY(2px) scale(0.985);
-  filter: saturate(0.96);
-  transition:
-    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 260ms cubic-bezier(0.22, 1, 0.36, 1);
-}
 
 .floatingComposeBarText {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(203, 213, 225, 0.80);
+  font-size: 14px;
+  font-weight: 400;
+  color: #9ca3af;
 }
 
 .floatingComposeBarInner {
   width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  position: relative; /* 让 ::before 覆盖在按钮上但不影响布局 */
+  justify-content: center;
+  position: relative;
   z-index: 1;
 }
 
@@ -356,61 +325,38 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: rgba(18, 225, 255, 0.92);
-  box-shadow: 0 0 0 2px rgba(18, 225, 255, 0.12), 0 10px 22px rgba(18, 225, 255, 0.14);
+  background: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
   animation: draftBreath 6s ease-in-out infinite;
 }
 
 .floatingComposeHover .floatingComposeBar {
-  /* hover：仍然偏白雾，但蓝色氛围更明显一点点（不抢卡片白） */
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 100%),
-    rgba(8, 12, 16, 0.62);
-  border-color: rgba(18, 225, 255, 0.22);
   box-shadow:
-    0 18px 36px rgba(15, 23, 42, 0.14),
-    inset 0 1px 0 rgba(255,255,255,0.12);
-}
-
-.floatingComposeHover .floatingComposeBar::before {
-  /* hover：晕染稍微增强，但仍避免顶部“反光条” */
-  opacity: 0.32;
-  transform: translateY(0) scale(1);
-  filter: saturate(1.02);
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.06);
 }
 
 .floatingComposeOpen .floatingComposeBar {
-  background: rgba(8, 12, 16, 0.64);
-  border-color: rgba(18, 225, 255, 0.22);
   box-shadow:
-    0 18px 40px rgba(15, 23, 42, 0.14),
-    inset 0 1px 0 rgba(255,255,255,0.12);
-}
-
-.floatingComposeOpen .floatingComposeBar::before {
-  opacity: 0.28;
-  transform: translateY(0) scale(1);
-  filter: saturate(1.04);
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.06);
 }
 
 .floatingComposeExpanded {
-  /* 与工作台详情卡片的编辑模式保持一致（同一套高透玻璃卡片） */
   position: relative;
-  overflow: visible; /* 不裁切：backdrop-filter 会创建 containing block，overflow:hidden 会裁切 fixed 定位的 drag-handle */
+  overflow: visible;
   display: flex;
   flex-direction: column;
   max-height: var(--floating-expanded-max, none);
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 20px;
   box-shadow:
-    0 18px 42px rgba(15, 23, 42, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  padding: 6px;
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 8px 32px rgba(0, 0, 0, 0.06);
+  padding: 20px 24px;
   transition:
-    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 180ms ease,
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform, opacity, box-shadow;
@@ -420,64 +366,9 @@
   padding: 6px;
 }
 
-.floatingComposeExpanded::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  z-index: -1;
-  pointer-events: none;
-  -webkit-backdrop-filter: blur(30px) saturate(185%) contrast(112%);
-  backdrop-filter: blur(30px) saturate(185%) contrast(112%);
-  background:
-    radial-gradient(520px 380px at 18% 18%, rgba(18, 225, 255, 0.08), rgba(18, 225, 255, 0) 72%),
-    radial-gradient(460px 360px at 82% 32%, rgba(56, 228, 255, 0.05), rgba(56, 228, 255, 0) 74%),
-    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.00) 62%, rgba(255,255,255,0.01));
-  opacity: 0.12;
-  mix-blend-mode: soft-light;
-  transform: translateY(7px) scale(0.988);
-  filter: saturate(0.98);
-  transition:
-    opacity 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 280ms cubic-bezier(0.22, 1, 0.36, 1);
-}
 
-.floatingComposeExpanded::after {
-  content: '';
-  position: absolute;
-  inset: -45%;
-  pointer-events: none;
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.05), rgba(255,255,255,0) 62%);
-  opacity: 0.03;
-  mix-blend-mode: overlay;
-  transform: translateY(12px) scale(0.98);
-  transition:
-    opacity 340ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
-}
 
-.floatingComposeOpen .floatingComposeExpanded::before {
-  opacity: 0.16;
-  transform: translateY(0) scale(1);
-  filter: saturate(1.04);
-}
 
-.floatingComposeOpen .floatingComposeExpanded::after {
-  opacity: 0.045;
-  transform: translateY(0) scale(1);
-}
-
-.floatingComposeMaximized .floatingComposeExpanded {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow:
-    0 16px 36px rgba(15, 23, 42, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.10);
-}
 
 @keyframes floatingComposeExpand {
   0% { opacity: 0.0; }
