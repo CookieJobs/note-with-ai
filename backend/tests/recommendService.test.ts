@@ -72,8 +72,8 @@ describe('recommendService', () => {
       }
       return createFindResult([]);
     });
-    const updateOneCalls: Array<{ filter: Record<string, unknown>; update: Record<string, unknown> }> = [];
-    mock.method(Note, 'updateOne', async (filter: Record<string, unknown>, update: Record<string, unknown>) => {
+    const updateOneCalls: Array<{ filter: Record<string, unknown>; update: Record<string, any> }> = [];
+    mock.method(Note, 'updateOne', async (filter: Record<string, unknown>, update: Record<string, any>) => {
       updateOneCalls.push({ filter, update });
       return { matchedCount: 1 } as any;
     });
