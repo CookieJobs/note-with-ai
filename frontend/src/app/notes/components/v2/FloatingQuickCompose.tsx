@@ -101,7 +101,6 @@ export default function FloatingQuickCompose({
   }, [searchParams, router, pathname]);
 
   const exitToSmallWindow = useCallback(() => {
-    setOpen(true);
     exitFullscreen();
   }, [exitFullscreen]);
 
@@ -247,7 +246,7 @@ export default function FloatingQuickCompose({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={contentTransition}
-                  className={composeStyles.floatingComposeDraftDot}
+                  className={`${composeStyles.floatingComposeDraftDot} absolute right-4`}
                   aria-label="有草稿"
                   title="有草稿"
                 />

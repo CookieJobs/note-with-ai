@@ -153,7 +153,7 @@ function NotesContent() {
       if (!t) return;
 
       if (t.closest(`.${styles.noteCardEditing}`)) return;
-      if (t.closest(`.${styles.inlineCompose}`)) return;
+      if (t.closest(`.${styles.floatingComposeShell}`)) return;
 
       setExitEditSignal((v) => v + 1);
       setEditingNoteId(null);
