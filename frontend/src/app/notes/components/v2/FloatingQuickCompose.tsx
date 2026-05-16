@@ -81,8 +81,6 @@ export default function FloatingQuickCompose({
 }: FloatingQuickComposeProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [hover, setHover] = useState(false);
-  const [sharedLayoutEnabled, setSharedLayoutEnabled] = useState(true);
   const expandedRef = useRef<HTMLDivElement | null>(null);
 
   const router = useRouter();
@@ -102,15 +100,10 @@ export default function FloatingQuickCompose({
     router.replace(`${pathname}?${nextParams.toString()}`);
   }, [searchParams, router, pathname]);
 
-  const exitFullscreenWithoutSharedLayout = useCallback((nextOpen: boolean) => {
-    setSharedLayoutEnabled(false);
-    setOpen(nextOpen);
+  const exitToSmallWindow = useCallback(() => {
+    setOpen(true);
     exitFullscreen();
   }, [exitFullscreen]);
-
-  const exitToSmallWindow = useCallback(() => {
-    exitFullscreenWithoutSharedLayout(true);
-  }, [exitFullscreenWithoutSharedLayout]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -148,14 +141,6 @@ export default function FloatingQuickCompose({
     return focusProseMirrorWithin(expandedRef.current);
   }, [open, isFullscreen]);
 
-  useEffect(() => {
-    if (isFullscreen || sharedLayoutEnabled) return;
-    const raf = requestAnimationFrame(() => {
-      setSharedLayoutEnabled(true);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [isFullscreen, sharedLayoutEnabled]);
-
   useLayoutEffect(() => {
     if (!open || isFullscreen) return;
     const expanded = expandedRef.current;
@@ -186,36 +171,27 @@ export default function FloatingQuickCompose({
   const disabled = loading;
   const canSubmit = !disabled && (valueText || '').trim().length > 0;
   const hasDraft = (valueText || '').trim().length > 0;
-  const sharedLayoutId = sharedLayoutEnabled ? 'quick-compose-container' : undefined;
-
   const shellTransition = {
     type: 'spring',
-    stiffness: 290,
-    damping: 28,
-    mass: 0.9,
+    stiffness: 200,
+    damping: 25,
+    mass: 0.8,
   } as const;
 
-  const surfaceTransition = {
-    duration: 0.24,
+  const contentTransition = {
+    duration: 0.2,
     ease: [0.22, 1, 0.36, 1] as const,
   };
 
   const contentEnterTransition = {
-    duration: 0.18,
-    delay: 0.045,
-    ease: [0.22, 1, 0.36, 1] as const,
-  };
-
-  const actionsEnterTransition = {
-    duration: 0.18,
-    delay: 0.075,
+    duration: 0.2,
+    delay: 0.05,
     ease: [0.22, 1, 0.36, 1] as const,
   };
 
   const submitAndClose = () => {
     if (!canSubmit) return;
     if (isFullscreen) {
-      setSharedLayoutEnabled(false);
       exitFullscreen();
     }
     setOpen(false);
@@ -224,185 +200,164 @@ export default function FloatingQuickCompose({
 
   const handleCancel = () => {
     if (isFullscreen) {
-      setSharedLayoutEnabled(false);
       exitFullscreen();
     }
     onCancel();
     setOpen(false);
   };
 
-  // 渲染悬浮状态或全屏状态
   const renderContent = () => {
-    if (isFullscreen) {
-      return (
-        <motion.div
-          key="fullscreen"
-          layoutId={sharedLayoutId}
-          className="fixed inset-0 z-[1000] bg-white flex flex-col"
-          initial={{ opacity: 0, y: 12, scale: 0.992 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 8, scale: 0.995 }}
-          transition={shellTransition}
-        >
-          <FullscreenHeader
-            onBack={exitToSmallWindow}
-            onSend={submitAndClose}
-            canSubmit={canSubmit}
-            loading={loading}
-          />
-          <div className="flex-1 overflow-y-auto bg-white" ref={expandedRef}>
-            <div className="max-w-4xl mx-auto w-full h-full p-4 text-gray-900">
-              <RichTextEditor
-                value={valueJson}
-                onChange={onChange}
-                placeholder="此刻的想法、待办或总结..."
-                showToolbar
-                autoFocus="end"
-                toolbarVariant="advanced"
-                onModEnter={submitAndClose}
-                className="text-gray-900"
-              />
-            </div>
-          </div>
-        </motion.div>
-      );
-    }
+    const state: 'collapsed' | 'expanded' | 'fullscreen' =
+      isFullscreen ? 'fullscreen' : open ? 'expanded' : 'collapsed';
 
     return (
       <motion.div
-        key="inline"
         ref={rootRef}
-        className={`${composeStyles.inlineCompose} ${open ? composeStyles.floatingComposeOpen : ''} ${hover ? composeStyles.floatingComposeHover : ''}`}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
+        layout
+        layoutId="quick-compose-container"
+        data-state={state}
+        className={`${composeStyles.floatingComposeShell}`}
+        transition={shellTransition}
       >
-        <motion.div
-          layout
-          layoutId={sharedLayoutId}
-          className={composeStyles.floatingComposeShell}
-          transition={shellTransition}
-        >
-          <AnimatePresence initial={false} mode="wait">
-            {!open ? (
-              <motion.button
-                key="collapsed"
-                layout
-                type="button"
-                className={`${composeStyles.floatingComposeBar}`}
-                onClick={() => setOpen(true)}
-                aria-label="打开快速记录"
-                initial={{ opacity: 0, y: 8, scale: 0.988 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 5, scale: 0.992 }}
-                transition={surfaceTransition}
-                style={{ transformOrigin: 'center bottom' }}
+        <AnimatePresence initial={false} mode="wait">
+          {state === 'collapsed' && (
+            <motion.button
+              key="collapsed"
+              type="button"
+              className={composeStyles.floatingComposeBarInner}
+              onClick={() => setOpen(true)}
+              aria-label="打开快速记录"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={contentTransition}
+            >
+              <motion.span
+                className={composeStyles.floatingComposeBarText}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={contentTransition}
               >
+                {hasDraft ? '继续编辑草稿…' : '发送消息...'}
+              </motion.span>
+              {hasDraft && (
                 <motion.span
-                  className={`${composeStyles.floatingComposeBarInner} w-full flex items-center justify-center`}
-                  initial={{ opacity: 0.86, y: 3 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0.82, y: 1 }}
-                  transition={contentEnterTransition}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={contentTransition}
+                  className={composeStyles.floatingComposeDraftDot}
+                  aria-label="有草稿"
+                  title="有草稿"
+                />
+              )}
+            </motion.button>
+          )}
+
+          {state === 'expanded' && (
+            <motion.div
+              key="expanded"
+              ref={expandedRef}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={contentTransition}
+            >
+              {/* Fullscreen pill */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+                <button
+                  type="button"
+                  className={composeStyles.fullscreenPill}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={enterFullscreen}
+                  aria-label="全屏编辑"
+                  title="全屏编辑"
                 >
-                  <motion.span
-                    initial={{ opacity: 0, y: 3 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -2 }}
-                    transition={contentEnterTransition}
-                    className={`${composeStyles.floatingComposeBarText}`}
-                  >
-                    {hasDraft ? '继续编辑草稿…' : '发送消息...'}
-                  </motion.span>
-                  {hasDraft && (
-                    <motion.span
-                      initial={{ opacity: 0, scale: 0.88, y: 2 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9, y: -1 }}
-                      transition={contentEnterTransition}
-                      className={`${composeStyles.floatingComposeDraftDot} absolute right-4`}
-                      aria-label="有草稿"
-                      title="有草稿"
-                    />
-                  )}
-                </motion.span>
-              </motion.button>
-            ) : (
+                  <Maximize2 size={14} />
+                  <span>全屏</span>
+                </button>
+              </div>
+
               <motion.div
-                key="expanded"
-                layout
-                className={`${composeStyles.floatingComposeExpanded} ${composeStyles.floatingComposeExpandedNoSuggest}`}
-                ref={expandedRef}
-                initial={{ opacity: 0, y: 10, scale: 0.988 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 6, scale: 0.992 }}
-                transition={surfaceTransition}
-                style={{ transformOrigin: 'center bottom' }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={contentEnterTransition}
+                className={composeStyles.floatingComposeEditor}
               >
-                {/* Fullscreen pill — top right */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
-                  <button
-                    type="button"
-                    className={composeStyles.fullscreenPill}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={enterFullscreen}
-                    aria-label="全屏编辑"
-                    title="全屏编辑"
-                  >
-                    <Maximize2 size={14} />
-                    <span>全屏</span>
-                  </button>
-                </div>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 7, scale: 0.994 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -2, scale: 0.998 }}
-                  transition={contentEnterTransition}
-                  className={`${composeStyles.floatingComposeEditor}`}
-                >
-                  <RichTextEditor
-                    value={valueJson}
-                    onChange={onChange}
-                    placeholder="此刻的想法、待办或总结..."
-                    showToolbar
-                    autoFocus="end"
-                    toolbarVariant="advanced"
-                    onModEnter={() => {
-                      submitAndClose();
-                    }}
-                    className="text-gray-900 !mx-auto"
-                  />
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 8, scale: 0.996 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 4, scale: 0.998 }}
-                  transition={actionsEnterTransition}
-                  className={`${composeStyles.floatingComposeActions}`}
-                >
-                  <div className={composeStyles.floatingComposeHint}>Cmd/Ctrl + Enter 保存</div>
-                  <button
-                    type="button"
-                    className={composeStyles.composeCancelBtn}
-                    onClick={handleCancel}
-                    disabled={disabled}
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    className={composeStyles.composeSaveBtn}
-                    onClick={submitAndClose}
-                    disabled={!canSubmit}
-                  >
-                    {loading ? '保存中...' : '保存'}
-                  </button>
-                </motion.div>
+                <RichTextEditor
+                  value={valueJson}
+                  onChange={onChange}
+                  placeholder="此刻的想法、待办或总结..."
+                  showToolbar
+                  autoFocus="end"
+                  toolbarVariant="advanced"
+                  onModEnter={() => {
+                    submitAndClose();
+                  }}
+                  className="text-gray-900 !mx-auto"
+                />
               </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={contentEnterTransition}
+                className={composeStyles.floatingComposeActions}
+              >
+                <div className={composeStyles.floatingComposeHint}>Cmd/Ctrl + Enter 保存</div>
+                <button
+                  type="button"
+                  className={composeStyles.composeCancelBtn}
+                  onClick={handleCancel}
+                  disabled={disabled}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className={composeStyles.composeSaveBtn}
+                  onClick={submitAndClose}
+                  disabled={!canSubmit}
+                >
+                  {loading ? '保存中...' : '保存'}
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {state === 'fullscreen' && (
+            <motion.div
+              key="fullscreen"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={contentTransition}
+              style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+            >
+              <FullscreenHeader
+                onBack={exitToSmallWindow}
+                onSend={submitAndClose}
+                canSubmit={canSubmit}
+                loading={loading}
+              />
+              <div className={composeStyles.floatingComposeEditor} ref={expandedRef} style={{ flex: 1 }}>
+                <RichTextEditor
+                  value={valueJson}
+                  onChange={onChange}
+                  placeholder="此刻的想法、待办或总结..."
+                  showToolbar
+                  autoFocus="end"
+                  toolbarVariant="advanced"
+                  onModEnter={submitAndClose}
+                  className="text-gray-900"
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     );
   };
