@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { motion } from 'framer-motion';
 
 import TopNavigation from '../../components/TopNavigation';
 import { getUser, isAuthenticated } from '../../utils/auth';
@@ -186,7 +187,7 @@ function NotesContent() {
                 className={styles.feedContainer}
                 ref={scrollContainerRef}
               >
-                <div className={styles.feedList}>
+                <motion.div layout className={styles.feedList}>
                   <FloatingQuickCompose
                     valueJson={newContentJson ?? buildJsonFromPlain(newContentText)}
                     valueText={newContentText}
@@ -205,8 +206,9 @@ function NotesContent() {
                   <NoteCounter count={notes.length} />
 
                   {notes.map((note) => (
-                    <div 
-                      key={note._id} 
+                    <motion.div
+                      layout
+                      key={note._id}
                       ref={el => { noteRefs.current[note._id] = el; }}
                     >
                       <ModernNoteCard
@@ -229,9 +231,9 @@ function NotesContent() {
                           else setEditingNoteId((cur) => (cur === id ? null : cur));
                         }}
                       />
-                    </div>
+                    </motion.div>
                   ))}
-                </div>
+                </motion.div>
               </div>
 
               <DeleteNoteConfirmModal
