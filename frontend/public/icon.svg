@@ -1,31 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <rect x="8" y="8" width="496" height="496" rx="108" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="8" />
-
-  <path
-    d="M142 162C142 128.863 168.863 102 202 102H326"
-    stroke="#050505"
-    stroke-width="26"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M142 162V350C142 383.137 168.863 410 202 410H282"
-    stroke="#050505"
-    stroke-width="26"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-
-  <rect x="194" y="192" width="120" height="18" rx="9" fill="#050505" />
-  <rect x="194" y="242" width="120" height="18" rx="9" fill="#050505" />
-  <rect x="194" y="292" width="88" height="18" rx="9" fill="#050505" />
-
-  <path
-    d="M370 214C376.769 247.75 385.25 256.231 419 263C385.25 269.769 376.769 278.25 370 312C363.231 278.25 354.75 269.769 321 263C354.75 256.231 363.231 247.75 370 214Z"
-    fill="#050505"
-  />
-  <path
-    d="M398 166C401.815 185.012 406.988 190.185 426 194C406.988 197.815 401.815 202.988 398 222C394.185 202.988 389.012 197.815 370 194C389.012 190.185 394.185 185.012 398 166Z"
-    fill="#050505"
-  />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="24" fill="url(#grad2)"/>
+  <path d="M30 35 h20 M30 50 h40 M30 65 h30" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M74 10 Q 74 28 92 28 Q 74 28 74 46 Q 74 28 56 28 Q 74 28 74 10 Z" fill="#fde047"/>
 </svg>

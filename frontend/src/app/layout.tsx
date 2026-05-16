@@ -22,8 +22,6 @@ export const metadata: Metadata = {
   description: 'AI assisted note-taking app',
   icons: {
     icon: '/icon.svg',
-    shortcut: '/icon-192.png',
-    apple: '/apple-touch-icon.png',
   },
 };
 
