@@ -363,7 +363,7 @@
 }
 
 .floatingComposeExpandedNoSuggest {
-  padding: 6px;
+  padding: 20px 24px;
 }
 
 
@@ -483,28 +483,6 @@
   max-height: var(--floating-editor-max, 60vh);
   width: auto;
   object-fit: contain;
-}
-
-.floatingComposeMaximized .floatingComposeEditor {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-root="true"]),
-.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-scroller="true"]),
-.floatingComposeMaximized .floatingComposeEditor :global([data-rich-text-editor-frame="true"]) {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.floatingComposeMaximized .floatingComposeEditor :global(.richEditorContent) {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
 }
 
 .composeCancelBtn {
