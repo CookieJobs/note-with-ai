@@ -1,4 +1,5 @@
 {
+  "name": "noteWithAI",
   "scripts": {
     "build": "echo 'No build step for root'",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",

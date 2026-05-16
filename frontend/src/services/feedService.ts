@@ -37,7 +37,8 @@ export const getFeed = async (): Promise<FeedResponse> => {
   if (!response.ok) {
     throw new Error('Failed to fetch feed');
   }
-  return response.json();
+  const body = await response.json();
+  return body.data;
 };
 
 export const triggerAnalysis = async (): Promise<void> => {
