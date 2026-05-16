@@ -11,9 +11,9 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
   if (!editor) return null;
 
   return (
-    <BubbleMenu 
-      editor={editor} 
-      tippyOptions={{ duration: 100, placement: 'bottom-start' }}
+    <BubbleMenu
+      editor={editor}
+      options={{ placement: 'bottom-start' }}
       shouldShow={({ state }) => {
         const { $from, empty } = state.selection;
         const isParagraph = $from.parent.type.name === 'paragraph';
@@ -189,7 +189,7 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
             placeholder="Enter image URL..."
             onSubmit={(url) => {
               if (url) {
-                editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).setImage({ src: url }).run();
+                editor.chain().focus().deleteRange({ from: editor.state.selection.from - 1, to: editor.state.selection.from }).insertContent({ type: 'image', attrs: { src: url } }).run();
               }
               setPopoverOpen(false);
             }}
