@@ -148,7 +148,7 @@ export function useCreateNote(
             if (relatedData.success && Array.isArray(relatedData.data?.relatedNotes)) {
               const list = relatedData.data.relatedNotes;
               if (list.length > 0) {
-                const formattedNotes = list.map((item: { note: INote; score: number }) => ({
+                const formattedNotes = list.map((item: { note: Note; score: number }) => ({
                   ...item.note,
                   similarity: item.score,
                 }));
@@ -174,7 +174,7 @@ export function useCreateNote(
       }
     } catch (err: unknown) {
       console.error('创建笔记失败:', err);
-      onError?.(err?.message || '创建笔记失败，请稍后重试');
+      onError?.(err instanceof Error ? err.message : '创建笔记失败，请稍后重试');
       // 回滚临时笔记
       setNotes((prev) => prev.filter((n) => n._id !== tempId));
     } finally {
