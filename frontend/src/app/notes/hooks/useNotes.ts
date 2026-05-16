@@ -2,7 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { JSONContent } from '@tiptap/react';
 import { authFetch } from '../../../utils/auth';
-import type { INote, IUserProfile } from '../../../types';
+import type { IRecommendCache, INote, IUserProfile } from '../../../types';
 
 export type Note = INote & { enriching?: boolean };
 
@@ -86,6 +86,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
               contentJson: contentJson !== undefined ? contentJson : n.contentJson,
               updatedAt: updatedAt || n.updatedAt,
               embedding: Array.isArray(embedding) ? embedding : n.embedding,
+              recommendCache: null,
             }
           : n
       )
@@ -98,6 +99,12 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     );
   }, [setNotes]);
 
+  const updateRecommendCache = useCallback((id: string, recommendCache: IRecommendCache | null) => {
+    setNotes((prev: Note[] = []) =>
+      prev.map((n) => (n._id === id ? { ...n, recommendCache } : n))
+    );
+  }, [setNotes]);
+
   return {
     notes,
     setNotes, // 给页面保留灵活性（例如快速记录的乐观插入/回滚）
@@ -106,5 +113,6 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     updateTitle,
     updateContent,
     updateKeywords,
+    updateRecommendCache,
   };
 }

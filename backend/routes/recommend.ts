@@ -8,7 +8,7 @@ Note: 推荐路由仅负责鉴权、参数校验与 HTTP 响应适配，推荐�
 import express, { Request, Response } from 'express';
 import { Note } from '../models/Note';
 import { searchArticlesByKeyword } from '../services/search';
-import { updateNoteRecommendations } from '../services/recommendService';
+import { RecommendationWriteMode, updateNoteRecommendations } from '../services/recommendService';
 import { authenticateToken } from '../middleware/auth';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
@@ -41,7 +41,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
 /**
  * 语义联想笔记（方案B：多路召回→去重→仅Top10进LLM→阈值输出）
  * POST /api/recommend/semantic-notes
- * body: { noteId, recallK?:30, finalK?:10, s1Threshold?:0.35, hardThreshold?:0.62 }
+ * body: { noteId, recallK?:30, finalK?:10, s1Threshold?:0.4, hardThreshold?:0.65 }
  */
 router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
   const user = await UserValidator.authenticateUser(req);
@@ -49,12 +49,16 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
     noteId,
     recallK = 30,
     finalK = 10,
-    s1Threshold = 0.50, // 收紧阈值
-    hardThreshold = 0.75, // 收紧阈值
+    s1Threshold = 0.4,
+    hardThreshold = 0.65,
+    writeMode = 'background',
   } = req.body || {};
 
   if (!noteId || typeof noteId !== 'string') {
     throw ErrorHandler.createValidationError('noteId 不能为空');
+  }
+  if (writeMode !== 'await' && writeMode !== 'background') {
+    throw ErrorHandler.createValidationError('writeMode 仅支持 await 或 background');
   }
 
   await ResourceValidator.validateOwnership(Note, noteId, user._id.toString(), '笔记');
@@ -64,20 +68,20 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
     finalK,
     s1Threshold,
     hardThreshold,
-    writeMode: 'background',
+    writeMode: writeMode as RecommendationWriteMode,
   });
 
   if (result.recommendations.length === 0) {
-    ResponseHandler.success(res, { recommendations: [], meta: { recall: 0, final: 0 } }, result.message || '无满足阈值的候选');
+    ResponseHandler.success(res, {
+      recommendations: [],
+      meta: result.meta,
+    }, result.message || '无满足阈值的候选');
     return;
   }
 
   ResponseHandler.success(res, {
     recommendations: result.recommendations,
-    meta: {
-      ...result.meta,
-      thresholds: { s1Threshold, hardThreshold },
-    },
+    meta: result.meta,
   }, '语义联想成功');
 }));
 

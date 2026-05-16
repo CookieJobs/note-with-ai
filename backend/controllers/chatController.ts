@@ -96,19 +96,28 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
       safeWrite(`data: ${JSON.stringify({ chunk })}\n\n`);
     }
 
-    if (isWritable()) {
-      safeWrite('data: [DONE]\n\n');
-      res.end();
-    }
-
     if (!clientClosed) {
       logger.info('🤖 DeepSeek 回复完成，开始保存到数据库...');
       const finalMessages = [...messages, { role: 'assistant', content: fullReply }];
       try {
-        await chatService.saveSession(userId, sessionId, finalMessages, title);
+        const savedSession = await chatService.saveSession(userId, sessionId, finalMessages, title);
+        const savedSessionId = (savedSession._id || (savedSession as any).id)?.toString();
+        if (savedSessionId && isWritable()) {
+          safeWrite(`data: ${JSON.stringify({ type: 'meta', sessionId: savedSessionId })}\n\n`);
+        }
       } catch (saveError) {
         logger.error('❌ 保存会话失败 (流式响应后):', saveError);
+        if (isWritable()) {
+          safeWrite(`data: ${JSON.stringify({ error: '会话保存失败，请稍后重试' })}\n\n`);
+          res.end();
+        }
+        return;
       }
+    }
+
+    if (isWritable()) {
+      safeWrite('data: [DONE]\n\n');
+      res.end();
     }
   } catch (error: unknown) {
     logger.error('❌ 聊天接口流式错误:', error);

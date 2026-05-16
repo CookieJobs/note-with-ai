@@ -7,6 +7,7 @@ import editorStyles from '../../styles/rich-editor.module.scss';
 import TrashIcon from '../../../../components/icons/TrashIcon';
 import PlusIcon from '../../../../components/icons/PlusIcon';
 import type { Note } from '../../hooks/useNotes';
+import type { IRecommendCache } from '../../../../types';
 import { focusProseMirrorWithin } from '../focusProseMirror';
 import RichTextViewer from '../RichTextViewer';
 import { useNoteEditor } from '../../hooks/useNoteEditor';
@@ -40,6 +41,7 @@ interface NoteCardProps {
     embedding?: number[]
   ) => void;
   onUpdateKeywords?: (id: string, newKeywords: string[], updatedAt?: string) => void;
+  onUpdateRecommendCache?: (id: string, recommendCache: IRecommendCache | null) => void;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
   draft?: { json: JSONContent; text: string; dirty: boolean };
   onDraftChange?: (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => void;
@@ -86,6 +88,7 @@ export default function ModernNoteCard({
   onUpdateTitle,
   onUpdateContent,
   onUpdateKeywords,
+  onUpdateRecommendCache,
   onContentEditingChange,
   draft,
   onDraftChange,
@@ -115,6 +118,7 @@ export default function ModernNoteCard({
     onUpdateTitle,
     onUpdateContent,
     onUpdateKeywords,
+    onUpdateRecommendCache,
     onContentEditingChange,
     draft,
     onDraftChange,

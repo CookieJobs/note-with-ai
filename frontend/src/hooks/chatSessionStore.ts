@@ -60,12 +60,14 @@ export const mergeChatSessions = (serverSessions: IChat[], localSessions: IChat[
 
     const serverSession = mergedSessionsMap.get(sessionId);
     if (serverSession) {
+      const serverNotes = Array.isArray(serverSession.relatedNotes) ? serverSession.relatedNotes : [];
+      const localNotes = Array.isArray(localSession.relatedNotes) ? localSession.relatedNotes : [];
       mergedSessionsMap.set(sessionId, {
         ...serverSession,
         messages: serverSession.messages.length >= localSession.messages.length
           ? serverSession.messages
           : localSession.messages,
-        relatedNotes: serverSession.relatedNotes || [],
+        relatedNotes: serverNotes.length >= localNotes.length ? serverNotes : localNotes,
       });
       return;
     }
@@ -90,16 +92,24 @@ export const saveChatSessionRemote = async (session: IChat): Promise<string | un
     }),
   });
 
-  const data = await response.json();
+  const data = await response.json().catch(() => undefined);
   console.log('🟢 saveChatSessionRemote 服务器返回:', data);
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || '保存会话失败');
+  }
 
   return data?.data?.sessionId || data?.sessionId;
 };
 
 export const fetchChatSessionsRemote = async (): Promise<IChat[]> => {
   const response = await authFetch('/api/chat/sessions');
-  const payload = await response.json();
+  const payload = await response.json().catch(() => undefined);
   console.log('🟣 fetchChatSessionsRemote 服务端响应:', payload);
+
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || '获取聊天记录失败');
+  }
 
   const serverSessions: IChat[] = payload.success && payload.data && payload.data.sessions
     ? payload.data.sessions

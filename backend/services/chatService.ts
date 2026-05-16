@@ -21,6 +21,39 @@ type ChatSessionRecord = {
 
 type SearchableNote = Pick<INote, '_id' | 'title' | 'content' | 'createdAt'>;
 
+function normalizeRelatedNotes(relatedNotes?: unknown): IRelatedNote[] | undefined {
+  if (!Array.isArray(relatedNotes)) return undefined;
+
+  return relatedNotes
+    .map((note) => {
+      const noteRecord = typeof note === 'object' && note !== null
+        ? note as Record<string, unknown>
+        : {};
+      const rawNoteId = typeof note === 'string'
+        ? note
+        : (noteRecord.noteId || noteRecord.id);
+      const noteId = String(rawNoteId || '');
+      if (!mongoose.Types.ObjectId.isValid(noteId)) return null;
+
+      const rawCreatedAt = noteRecord.createdAt;
+      const createdAt = rawCreatedAt ? new Date(String(rawCreatedAt)) : undefined;
+      const score = typeof noteRecord.score === 'number'
+        ? noteRecord.score
+        : (typeof noteRecord.similarity === 'number' ? noteRecord.similarity : undefined);
+
+      return {
+        noteId: new mongoose.Types.ObjectId(noteId),
+        title: typeof noteRecord.title === 'string' ? noteRecord.title : undefined,
+        content: typeof noteRecord.content === 'string' ? noteRecord.content : undefined,
+        score,
+        matchType: typeof noteRecord.matchType === 'string' ? noteRecord.matchType : undefined,
+        reason: typeof noteRecord.reason === 'string' ? noteRecord.reason : undefined,
+        createdAt: createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : undefined,
+      } as IRelatedNote;
+    })
+    .filter((note): note is IRelatedNote => note !== null);
+}
+
 class ChatService {
   /**
    * Save or update a chat session
@@ -38,9 +71,10 @@ class ChatService {
       .map(m => ({ role: m.role, content: m.content.trim() }));
 
     let chat;
+    const cleanedRelatedNotes = normalizeRelatedNotes(relatedNotes);
     const updateData: Partial<IChat> = { messages: cleanedMessages, updatedAt: new Date() };
     if (title) updateData.title = title;
-    if (relatedNotes) updateData.relatedNotes = relatedNotes;
+    if (cleanedRelatedNotes) updateData.relatedNotes = cleanedRelatedNotes;
 
     if (sessionId && mongoose.Types.ObjectId.isValid(sessionId)) {
       // Update existing session
@@ -68,7 +102,7 @@ class ChatService {
         userId,
         messages: cleanedMessages,
         title: title || '新对话',
-        relatedNotes: relatedNotes || []
+        relatedNotes: cleanedRelatedNotes || []
       });
       await chat.save();
     }

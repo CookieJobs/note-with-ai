@@ -58,6 +58,7 @@ function NotesContent() {
     updateTitle: handleUpdateTitle,
     updateContent: handleUpdateContent,
     updateKeywords: handleUpdateKeywords,
+    updateRecommendCache: handleUpdateRecommendCache,
   } = useNotes(user, { onError: setError });
 
   // 新建笔记 Hook
@@ -216,6 +217,7 @@ function NotesContent() {
                         onUpdateTitle={handleUpdateTitle}
                         onUpdateContent={handleUpdateContent}
                         onUpdateKeywords={handleUpdateKeywords}
+                        onUpdateRecommendCache={handleUpdateRecommendCache}
                         draft={drafts[note._id]}
                         onDraftChange={handleDraftChange}
                         exitEditSignal={exitEditSignal}

@@ -55,6 +55,9 @@ export const logout = (): void => {
   if (typeof window === 'undefined') return;
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  Object.keys(sessionStorage)
+    .filter((key) => key.startsWith('care_intro_cache'))
+    .forEach((key) => sessionStorage.removeItem(key));
   window.location.href = '/auth';
 };
 

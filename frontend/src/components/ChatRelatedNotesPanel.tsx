@@ -48,23 +48,26 @@ export const ChatRelatedNotesPanel: React.FC<ChatRelatedNotesPanelProps> = ({
             </div>
           </div>
         ) : (
-          relatedNotes.map((note) => (
-            <div 
-              key={note.noteId}
-              className="p-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:shadow-sm hover:border-gray-200 transition-all cursor-pointer flex flex-col gap-2"
-              onClick={() => onNoteClick && onNoteClick(note.noteId)}
-            >
+          relatedNotes.map((note, index) => {
+            const score = typeof note.score === 'number' ? note.score : (note.similarity || 0);
+            const noteId = note.noteId || note.id || '';
+            return (
+              <div
+                key={`${noteId}-${index}`}
+                className="p-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:shadow-sm hover:border-gray-200 transition-all cursor-pointer flex flex-col gap-2"
+                onClick={() => noteId && onNoteClick && onNoteClick(noteId)}
+              >
               <div className="flex items-start justify-between gap-2">
                 <div className="font-medium text-gray-900 truncate flex-1">{note.title || '无标题'}</div>
                 <span className="shrink-0 bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 text-[10px] font-medium border-none">
-                  {getSimilarityLabel(note.score || 0)}
+                  {getSimilarityLabel(score)}
                 </span>
               </div>
               
               <div className="flex items-center gap-3 text-[10px] text-gray-400 font-mono bg-gray-100/50 p-1.5 rounded-lg border border-gray-100 w-fit">
                 <div className="flex flex-col">
                   <span className="text-gray-500 font-semibold text-[11px]">
-                    {note.score ? note.score.toFixed(2) : '0.00'}
+                    {score ? score.toFixed(2) : '0.00'}
                   </span>
                   <span>相关度</span>
                 </div>
@@ -79,8 +82,9 @@ export const ChatRelatedNotesPanel: React.FC<ChatRelatedNotesPanelProps> = ({
                   💡 {note.reason}
                 </div>
               )}
-            </div>
-          ))
+              </div>
+            );
+          })
         )}
       </div>
     </div>

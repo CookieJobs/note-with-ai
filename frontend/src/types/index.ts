@@ -38,6 +38,51 @@ export interface CareIntro {
   aiOpening: string;
 }
 
+export interface IUserProfile {
+  id: string;
+  username: string;
+  email: string;
+  avatar?: string;
+  createdAt: string;
+}
+
+export interface IRecommendCacheCandidate {
+  s1?: number;
+  s2?: number;
+  type?: string;
+  reason?: string;
+  candidateUpdatedAt?: string;
+  cachedAt?: string;
+}
+
+export interface IRecommendationDiagnostics {
+  stage?: 'context' | 'recall' | 'rerank';
+  reason?: string;
+  totalVectorNotes?: number;
+  totalScoredCandidates?: number;
+  totalRerankedCandidates?: number;
+  totalQueryEmbeddings?: number;
+  readyQueryEmbeddings?: number;
+  bestS1Score?: number;
+  bestS2Score?: number;
+  bestFinalScore?: number;
+  candidateCountsByThreshold?: Record<string, number>;
+}
+
+export interface IRecommendCache {
+  algoVersion?: string;
+  sourceUpdatedAt?: string;
+  generatedAt?: string;
+  params?: {
+    recallK?: number;
+    finalK?: number;
+    s1Threshold?: number;
+    hardThreshold?: number;
+  };
+  diagnostics?: IRecommendationDiagnostics;
+  byCandidateId?: Record<string, IRecommendCacheCandidate>;
+}
+
 export interface INote {
   _id: string;
   userId: string;
@@ -47,7 +92,7 @@ export interface INote {
   title?: string;
   summary?: string;
   concepts?: string[];
-  recommendCache?: Record<string, unknown>;
+  recommendCache?: IRecommendCache | null;
   keywords?: string[];
   embedding?: number[];
   createdAt: string;

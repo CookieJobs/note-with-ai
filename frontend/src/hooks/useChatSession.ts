@@ -88,7 +88,7 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
       return session.id;
     } catch (error) {
       console.error('❌ 保存会话失败:', error);
-      return session.id;
+      throw error instanceof Error ? error : new Error('保存会话失败');
     }
   };
 
@@ -143,18 +143,6 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
     });
     setCurrentSessionId(localId);
     console.log('🔵 startNewSession 设置 currentSessionId:', localId);
-
-    try {
-      const savedId = await saveSessionToDB(userId, newSession);
-      console.log('🔵 startNewSession 保存到数据库后返回的ID:', savedId);
-
-      if (savedId && savedId !== localId) {
-        console.log('🔵 startNewSession 更新本地ID为服务器ID:', savedId);
-        return { ...newSession, id: savedId };
-      }
-    } catch (error) {
-      console.error('❌ 创建新会话失败:', error);
-    }
 
     return newSession;
   };
@@ -251,11 +239,15 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
       });
 
       // 保存到数据库
-      await saveSessionToDB(userId, {
-        ...session,
-        messages: newMessages,
-        relatedNotes: [...(session.relatedNotes || []), ...newRelatedNotes]
-      });
+      try {
+        await saveSessionToDB(userId, {
+          ...session,
+          messages: newMessages,
+          relatedNotes: [...(session.relatedNotes || []), ...newRelatedNotes]
+        });
+      } catch (error) {
+        console.error('❌ 保存关怀消息失败:', error);
+      }
     }
   };
 

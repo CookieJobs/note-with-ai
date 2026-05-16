@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { authFetch } from '../utils/auth';
 import { IChat, IMessage, IRelatedNote } from '../types';
-import { persistChatSessions } from './chatSessionStore';
+import { persistChatSessions, replaceSessionId } from './chatSessionStore';
 
 interface UseChatStreamReturn {
   loading: boolean;
@@ -25,6 +25,7 @@ interface UseChatStreamReturn {
 export const useChatStream = (): UseChatStreamReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const loadingRef = useRef(false);
 
   const fetchSummaryTitle = async (userContent: string, aiContent: string): Promise<string | undefined> => {
     try {
@@ -86,6 +87,10 @@ export const useChatStream = (): UseChatStreamReturn => {
     setSessions: React.Dispatch<React.SetStateAction<IChat[]>>
   ) => {
     console.log('🚦 sendMessage 触发 (流式), input:', input, 'currentSession:', currentSession, 'loading:', loading);
+    if (loadingRef.current) {
+      console.log('⚠️ 正在发送中，忽略重复请求');
+      return;
+    }
     if (!input.trim()) {
       console.log('⚠️ 输入为空, 不发送');
       return;
@@ -107,6 +112,7 @@ export const useChatStream = (): UseChatStreamReturn => {
 
     // 先更新本地状态
     updateSessionMessages(currentSession.id, updatedMessages, userId);
+    loadingRef.current = true;
     setLoading(true);
     setError('');
 
@@ -118,13 +124,15 @@ export const useChatStream = (): UseChatStreamReturn => {
       });
 
       if (!res.ok) {
-        // 尝试解析错误信息
+        let errorMessage = '请求失败';
         try {
           const errorData = await res.json();
-          throw new Error(errorData.error || errorData.message || '请求失败');
+          if (errorData?.error) errorMessage = errorData.error;
+          else if (errorData?.message) errorMessage = errorData.message;
         } catch {
-          throw new Error('请求失败');
+          // JSON 解析失败，使用默认错误消息
         }
+        throw new Error(errorMessage);
       }
 
       // 处理流式响应
@@ -133,6 +141,7 @@ export const useChatStream = (): UseChatStreamReturn => {
 
       const decoder = new TextDecoder();
       let assistantReply = '';
+      let resolvedSessionId = currentSession.id;
 
       // 先在 UI 中添加一个空的 assistant 消息占位
       const initialAssistantMessage: IMessage = { role: 'assistant', content: '' };
@@ -174,6 +183,8 @@ export const useChatStream = (): UseChatStreamReturn => {
                   { role: 'assistant', content: assistantReply }
                 ];
                 updateSessionMessages(currentSession.id, currentMessages, userId);
+              } else if (data.type === 'meta' && typeof data.sessionId === 'string') {
+                resolvedSessionId = data.sessionId;
               } else if (data.error) {
                 shouldStop = true;
                 throw new Error(data.error);
@@ -183,7 +194,7 @@ export const useChatStream = (): UseChatStreamReturn => {
                 shouldStop = true;
                 throw e;
               }
-              console.warn('SSE 解析警告:', e.message, '数据:', dataStr);
+              console.warn('SSE 解析警告:', e instanceof Error ? e.message : e, '数据:', dataStr);
             }
           }
         }
@@ -203,64 +214,88 @@ export const useChatStream = (): UseChatStreamReturn => {
       };
       const finalMessages: IMessage[] = [...updatedMessages, assistantMessage];
 
-      // 准备异步后台任务：获取相关笔记和生成会话标题
-      const userText = (userMessage.content || '').trim();
-      const aiText = assistantReply.trim();
-      
-      const fetchNotesPromise = updateContextRelatedNotes(finalMessages);
-      const fetchTitlePromise = userText && aiText
-        ? fetchSummaryTitle(userText, aiText)
-        : Promise.resolve(undefined);
+      const baseSessionToSave: IChat = {
+        ...currentSession,
+        id: resolvedSessionId,
+        messages: finalMessages,
+      };
 
-      // 等待两个异步任务都执行完毕（无论成功或失败）
-      const [notesResult, titleResult] = await Promise.allSettled([
-        fetchNotesPromise,
-        fetchTitlePromise
-      ]);
-
-      const newRelatedNotes = notesResult.status === 'fulfilled' ? notesResult.value : undefined;
-      const newTitle = titleResult.status === 'fulfilled' ? titleResult.value : undefined;
-
-      // 执行一次性的状态更新
-      let latestSessionToSave: IChat | undefined;
       setSessions(prevSessions => {
-        const updated = prevSessions.map(s => {
-          if (s.id === currentSession.id) {
-            const updatedSession = { ...s, messages: finalMessages };
-            if (newTitle) updatedSession.title = newTitle;
-            if (newRelatedNotes) updatedSession.relatedNotes = newRelatedNotes;
-            latestSessionToSave = updatedSession;
-            return updatedSession;
-          }
-          return s;
-        });
-        
-        // 更新本地存储
-        if (userId) {
-          persistChatSessions(userId, updated);
-        }
+        const idAligned = resolvedSessionId !== currentSession.id
+          ? replaceSessionId(prevSessions, currentSession.id, resolvedSessionId)
+          : prevSessions;
+        const hasSession = idAligned.some(s => s.id === resolvedSessionId);
+        const updated = hasSession
+          ? idAligned.map(s => {
+              if (s.id !== resolvedSessionId) return s;
+              return { ...s, id: resolvedSessionId, messages: finalMessages };
+            })
+          : [{ ...baseSessionToSave }, ...idAligned];
+
+        persistChatSessions(userId, updated);
         return updated;
       });
 
-      // 执行一次性的数据库保存
-      const sessionToSave = latestSessionToSave || { 
-        ...currentSession, 
-        messages: finalMessages,
-        ...(newTitle && { title: newTitle }),
-        ...(newRelatedNotes && { relatedNotes: newRelatedNotes })
-      };
+      void (async () => {
+        const userText = (userMessage.content || '').trim();
+        const aiText = assistantReply.trim();
 
-      try {
-        const newSessionId = await saveSessionToDB(userId, sessionToSave);
-        console.log('🚦 sendMessage 最终保存会话后返回的ID:', newSessionId);
-      } catch (saveErr) {
-        console.error('🚦 sendMessage 保存会话失败:', saveErr);
-      }
+        const fetchNotesPromise = updateContextRelatedNotes(finalMessages);
+        const fetchTitlePromise = userText && aiText
+          ? fetchSummaryTitle(userText, aiText)
+          : Promise.resolve(undefined);
+
+        const [notesResult, titleResult] = await Promise.allSettled([
+          fetchNotesPromise,
+          fetchTitlePromise
+        ]);
+
+        const newRelatedNotes = notesResult.status === 'fulfilled' ? notesResult.value : undefined;
+        const newTitle = titleResult.status === 'fulfilled' ? titleResult.value : undefined;
+
+        if (!newTitle && !newRelatedNotes) {
+          return;
+        }
+
+        const enrichedSession: IChat = {
+          ...baseSessionToSave,
+          ...(newTitle && { title: newTitle }),
+          ...(newRelatedNotes && { relatedNotes: newRelatedNotes })
+        };
+
+        setSessions(prevSessions => {
+          const hasSession = prevSessions.some(s => s.id === resolvedSessionId);
+          const updated = hasSession
+            ? prevSessions.map(s => {
+                if (s.id !== resolvedSessionId) return s;
+                return {
+                  ...s,
+                  ...(newTitle && { title: newTitle }),
+                  ...(newRelatedNotes && { relatedNotes: newRelatedNotes }),
+                };
+              })
+            : [enrichedSession, ...prevSessions];
+
+          persistChatSessions(userId, updated);
+          return updated;
+        });
+
+        try {
+          const newSessionId = await saveSessionToDB(userId, enrichedSession);
+          console.log('🚦 sendMessage 最终保存会话后返回的ID:', newSessionId);
+        } catch (saveErr) {
+          console.error('🚦 sendMessage 保存会话失败:', saveErr);
+          setError(saveErr instanceof Error ? saveErr.message : '保存会话失败');
+        }
+      })().catch((backgroundError) => {
+        console.error('🚦 sendMessage 后台更新会话失败:', backgroundError);
+      });
     } catch (err: unknown) {
       console.error('发送消息失败:', err);
       // 显示具体的错误信息
-      setError(err.message || '发送失败，请稍后重试');
+      setError(err instanceof Error ? err.message : '发送失败，请稍后重试');
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };

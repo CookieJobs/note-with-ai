@@ -9,6 +9,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { BookOpen, X } from 'lucide-react';
 import styles from './chat.module.scss';
 import TopNavigation from '../../components/TopNavigation';
 import ChatHistoryPanel from '../../components/ChatHistoryPanel';
@@ -28,6 +29,7 @@ export default function ChatPage() {
   const [sessionToDelete, setSessionToDelete] = useState<string>('');
   const [showCare, setShowCare] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isRelatedNotesOpen, setIsRelatedNotesOpen] = useState(false);
 
   const { user, isClient } = useAuthGuard();
 
@@ -52,6 +54,7 @@ export default function ChatPage() {
   } = useChatStream();
 
   const messages = currentSession?.messages || [];
+  const relatedNotes = currentSession?.relatedNotes || [];
 
   const startNewSession = async () => {
     // 检查当前会话是否已经是新对话（无消息）
@@ -77,6 +80,10 @@ export default function ChatPage() {
   // 确认删除
   const confirmDelete = () => {
     if (sessionToDelete) {
+      if (loading && sessionToDelete === currentSessionId) {
+        toast('AI 正在回复，完成后再删除当前对话');
+        return;
+      }
       deleteSessionHook(sessionToDelete);
       setShowDeleteConfirm(false);
       setSessionToDelete('');
@@ -193,7 +200,8 @@ export default function ChatPage() {
                 <CareAssistantPanel 
                   auto={true} 
                   onInsert={handleCareInsert} 
-                  onSend={addCareMessage} 
+                  onSend={addCareMessage}
+                  cacheKey={`care_intro_cache_${user.id}`}
                 />
               ) : null
             }
@@ -201,11 +209,46 @@ export default function ChatPage() {
         </div>
 
         <ChatRelatedNotesPanel 
-          relatedNotes={currentSession?.relatedNotes || []} 
+          relatedNotes={relatedNotes} 
           className={styles.rightPanel}
           onNoteClick={(noteId) => router.push(`/notes?highlight=${noteId}`)}
         />
       </div>
+
+      {relatedNotes.length > 0 && (
+        <button
+          type="button"
+          className={styles.relatedNotesFab}
+          onClick={() => setIsRelatedNotesOpen(true)}
+        >
+          <BookOpen size={16} />
+          <span>相关笔记</span>
+          <strong>{relatedNotes.length}</strong>
+        </button>
+      )}
+
+      {isRelatedNotesOpen && (
+        <div className={styles.relatedNotesOverlay} onClick={() => setIsRelatedNotesOpen(false)}>
+          <div className={styles.relatedNotesDrawer} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className={styles.relatedNotesClose}
+              onClick={() => setIsRelatedNotesOpen(false)}
+              aria-label="关闭相关笔记"
+            >
+              <X size={18} />
+            </button>
+            <ChatRelatedNotesPanel
+              relatedNotes={relatedNotes}
+              className={styles.relatedNotesDrawerPanel}
+              onNoteClick={(noteId) => {
+                setIsRelatedNotesOpen(false);
+                router.push(`/notes?highlight=${noteId}`);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <DeleteConfirmModal
         show={showDeleteConfirm}

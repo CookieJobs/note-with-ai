@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authFetch } from '../utils/auth';
 import { Button } from '@/components/ui/button';
@@ -18,18 +18,17 @@ interface Props {
   onInsert: (text: string) => void;
   onSend: (text: string, introData?: CareIntro) => void;
   auto?: boolean;
+  cacheKey?: string;
 }
 
-export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Props) {
+export default function CareAssistantPanel({ onInsert, onSend, auto = true, cacheKey = 'care_intro_cache' }: Props) {
   const router = useRouter();
   const [intro, setIntro] = useState<CareIntro | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const CACHE_KEY = 'care_intro_cache';
-
   // 移除 AbortController 以防止请求被意外中断
-  const fetchIntro = async () => {
+  const fetchIntro = useCallback(async () => {
     setLoading(true);
     setError('');
     
@@ -46,7 +45,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
       setIntro(data);
       // 更新缓存
       try {
-        sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        sessionStorage.setItem(cacheKey, JSON.stringify(data));
       } catch (e) {
         console.error('Failed to save care intro to sessionStorage', e);
       }
@@ -62,16 +61,16 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
     } finally {
       setLoading(false);
     }
-  };
+  }, [cacheKey]);
 
-  const fetchedRef = useRef(false);
+  const fetchedKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
+    if (fetchedKeyRef.current === cacheKey) return;
+    fetchedKeyRef.current = cacheKey;
 
     // 优先尝试从缓存读取
     try {
-      const cached = sessionStorage.getItem(CACHE_KEY);
+      const cached = sessionStorage.getItem(cacheKey);
       if (cached) {
         setIntro(JSON.parse(cached));
         return;
@@ -81,7 +80,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true }: Pr
     }
 
     fetchIntro();
-  }, []);
+  }, [cacheKey, fetchIntro]);
 
   if (error) return null;
   

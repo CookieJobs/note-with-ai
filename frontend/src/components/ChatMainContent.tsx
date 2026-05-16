@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import ChatMessage from './ChatMessage';
 import styles from '../app/chat/chat.module.scss';
 import { IMessage } from '../types';
@@ -11,7 +11,7 @@ interface ChatMainContentProps {
 }
 
 const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages, isLoading }) => {
-  const safeMessages = Array.isArray(messages) ? messages : [];
+  const safeMessages = useMemo(() => Array.isArray(messages) ? messages : [], [messages]);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
