@@ -271,39 +271,63 @@
   }
 }
 
-.inlineCompose {
+.floatingComposeShell {
   width: 100%;
   max-width: 800px;
   margin: 0 auto 20px;
-  position: relative;
-  z-index: 100;
-}
-
-.floatingComposeShell {
-  width: 100%;
   will-change: transform, opacity;
+
+  &[data-state="collapsed"] {
+    position: relative;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.04),
+      0 4px 16px rgba(0, 0, 0, 0.04);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+
+    &:hover {
+      box-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.04),
+        0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+  }
+
+  &[data-state="expanded"] {
+    position: relative;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    max-height: var(--floating-expanded-max, none);
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    border-radius: 20px;
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.04),
+      0 8px 32px rgba(0, 0, 0, 0.06);
+    padding: 20px 24px;
+  }
+
+  &[data-state="fullscreen"] {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    border-radius: 0;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    max-width: none;
+    margin: 0;
+  }
 }
 
-.floatingComposeBar {
-  position: relative;
-  width: 100%;
-  border-radius: 20px;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  background: #fff;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.04),
-    0 4px 16px rgba(0, 0, 0, 0.04);
-  display: flex;
-  align-items: center;
-  padding: 14px 24px;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms ease;
-  will-change: transform, opacity, box-shadow;
-}
 
 
 .floatingComposeBarText {
@@ -313,12 +337,9 @@
 }
 
 .floatingComposeBarInner {
-  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  z-index: 1;
 }
 
 .floatingComposeDraftDot {
@@ -329,46 +350,6 @@
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
   animation: draftBreath 6s ease-in-out infinite;
 }
-
-.floatingComposeHover .floatingComposeBar {
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.04),
-    0 8px 24px rgba(0, 0, 0, 0.06);
-}
-
-.floatingComposeOpen .floatingComposeBar {
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.04),
-    0 8px 24px rgba(0, 0, 0, 0.06);
-}
-
-.floatingComposeExpanded {
-  position: relative;
-  overflow: visible;
-  display: flex;
-  flex-direction: column;
-  max-height: var(--floating-expanded-max, none);
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  border-radius: 20px;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.04),
-    0 8px 32px rgba(0, 0, 0, 0.06);
-  padding: 20px 24px;
-  transition:
-    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform, opacity, box-shadow;
-}
-
-.floatingComposeExpandedNoSuggest {
-  padding: 20px 24px;
-}
-
-
-
-
 
 @keyframes floatingComposeExpand {
   0% { opacity: 0.0; }
@@ -483,6 +464,12 @@
   max-height: var(--floating-editor-max, 60vh);
   width: auto;
   object-fit: contain;
+}
+
+/* 全屏态编辑器：撑满剩余空间 */
+.floatingComposeShell[data-state="fullscreen"] .floatingComposeEditor {
+  flex: 1;
+  overflow-y: auto;
 }
 
 .composeCancelBtn {
