@@ -187,7 +187,7 @@ function NotesContent() {
                 className={styles.feedContainer}
                 ref={scrollContainerRef}
               >
-                <motion.div layout className={styles.feedList}>
+                <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
                   <FloatingQuickCompose
                     valueJson={newContentJson ?? buildJsonFromPlain(newContentText)}
                     valueText={newContentText}
@@ -209,6 +209,7 @@ function NotesContent() {
                     <motion.div
                       layout
                       key={note._id}
+                      transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}
                       ref={el => { noteRefs.current[note._id] = el; }}
                     >
                       <ModernNoteCard
