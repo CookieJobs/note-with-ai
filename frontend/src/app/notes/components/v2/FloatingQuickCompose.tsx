@@ -213,12 +213,11 @@ export default function FloatingQuickCompose({
       <motion.div
         ref={rootRef}
         layout
-        layoutId="quick-compose-container"
         data-state={state}
         className={`${composeStyles.floatingComposeShell}`}
         transition={shellTransition}
       >
-        <AnimatePresence initial={false}>
+        <AnimatePresence initial={false} mode="popLayout">
           {state === 'collapsed' && (
             <motion.button
               key="collapsed"
