@@ -4,6 +4,7 @@ node_modules/
 # 忽略工具/平台本地目录（不应入库）
 .trae/
 .vercel/
+.superpowers/
 
 # 忽略构建产物
 .next/
