@@ -2,15 +2,15 @@
 
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useRef } from 'react';
-import cardStyles from '../../styles/note-card.module.scss';
-import editorStyles from '../../styles/rich-editor.module.scss';
-import TrashIcon from '../../../../components/icons/TrashIcon';
-import PlusIcon from '../../../../components/icons/PlusIcon';
-import type { Note } from '../../hooks/useNotes';
-import type { IRecommendCache } from '../../../../types';
-import { focusProseMirrorWithin } from '../focusProseMirror';
-import RichTextViewer from '../RichTextViewer';
-import { useNoteEditor } from '../../hooks/useNoteEditor';
+import cardStyles from '../styles/note-card.module.scss';
+import editorStyles from '../styles/rich-editor.module.scss';
+import TrashIcon from '../../../components/icons/TrashIcon';
+import PlusIcon from '../../../components/icons/PlusIcon';
+import type { Note } from '../hooks/useNotes';
+import type { IRecommendCache } from '../../../types';
+import { focusProseMirrorWithin } from './focusProseMirror';
+import RichTextViewer from './RichTextViewer';
+import { useNoteEditor } from '../hooks/useNoteEditor';
 import { JSONContent } from '@tiptap/react';
 
 function EditorLoadingPlaceholder() {
@@ -21,7 +21,7 @@ function EditorLoadingPlaceholder() {
   );
 }
 
-const RichTextEditorPromise = import('../RichTextEditor');
+const RichTextEditorPromise = import('./RichTextEditor');
 const RichTextEditor = dynamic(() => RichTextEditorPromise, {
   ssr: false,
   loading: () => <EditorLoadingPlaceholder />,

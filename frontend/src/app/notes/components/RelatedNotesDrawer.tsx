@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Note } from '../../hooks/useNotes';
+import type { Note } from '../hooks/useNotes';
 
 interface RelatedNotesDrawerProps {
   isOpen: boolean;

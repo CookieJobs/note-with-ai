@@ -3,8 +3,8 @@
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import composeStyles from '../../styles/floating-compose.module.scss';
-import { focusProseMirrorWithin } from '../focusProseMirror';
+import composeStyles from '../styles/floating-compose.module.scss';
+import { focusProseMirrorWithin } from './focusProseMirror';
 
 function EditorLoadingPlaceholder() {
   return (
@@ -14,7 +14,7 @@ function EditorLoadingPlaceholder() {
   );
 }
 
-const RichTextEditorPromise = import('../RichTextEditor');
+const RichTextEditorPromise = import('./RichTextEditor');
 const RichTextEditor = dynamic(() => RichTextEditorPromise, {
   ssr: false,
   loading: () => <EditorLoadingPlaceholder />,
