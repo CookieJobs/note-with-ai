@@ -1,55 +1,57 @@
-/*
-Input: 待补充
-Output: 待补充
-Pos: 前端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
-*/
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import styles from './auth.module.scss';
 
+type AuthMode = 'login' | 'register' | 'reset';
+
 export default function AuthPage() {
-  const [isLogin, setIsLogin] = useState(true);
+  const [mode, setMode] = useState<AuthMode>('login');
   const [formData, setFormData] = useState({
-    username: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    code: '',
   });
   const [loading, setLoading] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 清除表单数据当切换模式时
   useEffect(() => {
-    setFormData({
-      username: '',
-      email: '',
-      password: '',
-      confirmPassword: ''
-    });
+    setFormData({ email: '', password: '', code: '' });
     setError('');
-  }, [isLogin]);
+    setCountdown(0);
+    setLoading(false);
+    setShowPassword(false);
+  }, [mode]);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      timerRef.current = setInterval(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [countdown]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-    // 清除错误信息
+    setFormData({ ...formData, [e.target.name]: e.target.value });
     if (error) setError('');
   };
 
-  const validateForm = () => {
-    if (!isLogin) {
-      if (formData.password !== formData.confirmPassword) {
-        setError('两次输入的密码不一致');
-        return false;
-      }
+  const validateField = (): boolean => {
+    if (!formData.email.includes('@')) {
+      setError('请输入有效的邮箱地址');
+      return false;
+    }
+    if (mode !== 'reset') {
       if (formData.password.length < 8) {
         setError('密码长度至少为8位');
         return false;
@@ -58,48 +60,83 @@ export default function AuthPage() {
         setError('密码必须包含字母和数字');
         return false;
       }
-      if (!formData.email.includes('@')) {
-        setError('请输入有效的邮箱地址');
-        return false;
-      }
-      if (formData.username.length < 2) {
-        setError('用户名长度至少为2位');
+    }
+    if (mode === 'register') {
+      if (formData.code.length !== 6) {
+        setError('请输入6位验证码');
         return false;
       }
     }
     return true;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
+  const handleSendCode = async () => {
+    if (!formData.email.includes('@')) {
+      setError('请输入有效的邮箱地址');
       return;
     }
+    if (countdown > 0) return;
+
+    setSendingCode(true);
+    setError('');
+
+    try {
+      const purpose = mode === 'register' ? 'register' : 'reset';
+      const response = await fetch('/api/auth/send-verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, purpose }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setCountdown(60);
+      } else {
+        setError(data.error || '验证码发送失败');
+      }
+    } catch {
+      setError('网络错误，请稍后重试');
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validateField()) return;
 
     setLoading(true);
     setError('');
 
     try {
-      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-      const payload = isLogin 
-        ? { email: formData.email, password: formData.password }
-        : { username: formData.username, email: formData.email, password: formData.password };
+      let endpoint: string;
+      let payload: Record<string, string>;
+
+      if (mode === 'login') {
+        endpoint = '/api/auth/login';
+        payload = { email: formData.email, password: formData.password };
+      } else if (mode === 'register') {
+        endpoint = '/api/auth/register';
+        payload = { email: formData.email, password: formData.password, code: formData.code };
+      } else {
+        endpoint = '/api/auth/reset-password';
+        payload = { email: formData.email, code: formData.code, newPassword: formData.password };
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        const payload = data?.data ?? {};
-        const token: string | undefined = payload.token;
-        const user = payload.user;
+        const result = data?.data ?? {};
+        const token: string | undefined = result.token;
+        const user = result.user;
 
         if (!token || !user) {
           setError('服务器响应无效');
@@ -110,94 +147,148 @@ export default function AuthPage() {
         localStorage.setItem('user', JSON.stringify(user));
         router.push('/notes');
       } else {
-        setError(data.error || (isLogin ? '登录失败' : '注册失败'));
+        setError(data.error || '操作失败');
       }
-    } catch (error) {
+    } catch {
       setError('网络错误，请稍后重试');
     } finally {
       setLoading(false);
     }
   };
 
+  const modeLabel =
+    mode === 'login'
+      ? '登录 NoteWithAI'
+      : mode === 'register'
+        ? '创建账号'
+        : '重置密码';
+  const modeSubtitle =
+    mode === 'login'
+      ? '使用您的账号管理所有笔记'
+      : mode === 'register'
+        ? '加入我们，开启智能笔记之旅'
+        : '输入注册邮箱，我们发送验证码给您';
+  const submitLabel =
+    mode === 'login' ? '登录' : mode === 'register' ? '注册' : '重置密码';
+  const showCodeField = mode === 'register' || mode === 'reset';
+
   return (
     <div className={styles.container}>
       <div className={styles.authCard}>
         <div className={styles.authHeader}>
           <span className={styles.brandLogo}>📝</span>
-          <h2 className={styles.authTitle}>
-            {isLogin ? '登录 NoteWithAI' : '创建账号'}
-          </h2>
-          <p className={styles.authSubtitle}>
-            {isLogin ? '使用您的账号管理所有笔记' : '加入我们，开启智能笔记之旅'}
-          </p>
+          <h2 className={styles.authTitle}>{modeLabel}</h2>
+          <p className={styles.authSubtitle}>{modeSubtitle}</p>
+        </div>
+
+        <div className={styles.modeTabs}>
+          <button
+            className={`${styles.modeTab} ${mode === 'login' ? styles.active : ''}`}
+            onClick={() => setMode('login')}
+          >
+            登录
+          </button>
+          <button
+            className={`${styles.modeTab} ${mode === 'register' ? styles.active : ''}`}
+            onClick={() => setMode('register')}
+          >
+            注册
+          </button>
+          <button
+            className={`${styles.modeTab} ${mode === 'reset' ? styles.active : ''}`}
+            onClick={() => setMode('reset')}
+          >
+            重置密码
+          </button>
         </div>
 
         <form className={styles.authForm} onSubmit={handleSubmit}>
-          {!isLogin && (
-            <div className={styles.inputGroup}>
-              <input
-                type="text"
-                name="username"
-                className={styles.input}
-                placeholder="用户名"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                minLength={2}
-              />
-            </div>
-          )}
-
           <div className={styles.inputGroup}>
             <input
               type="email"
               name="email"
-              id="email"
               className={styles.input}
-              placeholder="邮箱或用户名"
+              placeholder="邮箱"
               value={formData.email}
               onChange={handleChange}
               required
-              autoComplete="username"
+              autoComplete="email"
             />
           </div>
 
-          <div className={styles.inputGroup}>
-            <div className={styles.passwordInput}>
+          {mode !== 'reset' && (
+            <div className={styles.inputGroup}>
+              <div className={styles.passwordInput}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  className={styles.input}
+                  placeholder="密码"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                />
+                <button
+                  type="button"
+                  className={styles.passwordToggle}
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mode === 'reset' && (
+            <div className={styles.inputGroup}>
+              <div className={styles.passwordInput}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  className={styles.input}
+                  placeholder="新密码"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className={styles.passwordToggle}
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showCodeField && (
+            <div className={styles.verificationRow}>
               <input
-                type={showPassword ? 'text' : 'password'}
-                name="password"
-                id="password"
-                className={styles.input}
-                placeholder="密码"
-                value={formData.password}
+                type="text"
+                name="code"
+                className={`${styles.input} ${styles.codeInput}`}
+                placeholder="验证码"
+                value={formData.code}
                 onChange={handleChange}
                 required
-                autoComplete={isLogin ? "current-password" : "new-password"}
+                maxLength={6}
+                autoComplete="one-time-code"
               />
               <button
                 type="button"
-                className={styles.passwordToggle}
-                onClick={() => setShowPassword(!showPassword)}
+                className={styles.sendCodeBtn}
+                onClick={handleSendCode}
+                disabled={countdown > 0 || sendingCode}
               >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                {sendingCode
+                  ? '发送中...'
+                  : countdown > 0
+                    ? `${countdown}s`
+                    : '发送验证码'}
               </button>
-            </div>
-          </div>
-
-          {!isLogin && (
-            <div className={styles.inputGroup}>
-              <input
-                type="password"
-                name="confirmPassword"
-                id="confirmPassword"
-                className={styles.input}
-                placeholder="确认密码"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                required
-                autoComplete="new-password"
-              />
             </div>
           )}
 
@@ -218,35 +309,37 @@ export default function AuthPage() {
                 <div className={styles.spinner}></div>
               </div>
             ) : (
-              '继续'
+              submitLabel
             )}
           </button>
         </form>
 
         <div className={styles.authFooter}>
-          {isLogin ? (
-            <>
-              <a href="#" className={styles.forgotPassword}>
-                忘记密码？
-              </a>
-              <span className={styles.footerText}>
-                还没有账号？ 
-                <button 
-                  className={styles.switchModeLink}
-                  onClick={() => setIsLogin(false)}
-                >
-                  立即注册
-                </button>
-              </span>
-            </>
-          ) : (
+          {mode === 'login' && (
+            <button className={styles.forgotPassword} onClick={() => setMode('reset')}>
+              忘记密码？
+            </button>
+          )}
+          {mode === 'login' && (
             <span className={styles.footerText}>
-              已有账号？
-              <button 
-                className={styles.switchModeLink}
-                onClick={() => setIsLogin(true)}
-              >
+              还没有账号？{' '}
+              <button className={styles.switchModeLink} onClick={() => setMode('register')}>
+                立即注册
+              </button>
+            </span>
+          )}
+          {mode === 'register' && (
+            <span className={styles.footerText}>
+              已有账号？{' '}
+              <button className={styles.switchModeLink} onClick={() => setMode('login')}>
                 直接登录
+              </button>
+            </span>
+          )}
+          {mode === 'reset' && (
+            <span className={styles.footerText}>
+              <button className={styles.switchModeLink} onClick={() => setMode('login')}>
+                返回登录
               </button>
             </span>
           )}

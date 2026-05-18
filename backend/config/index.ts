@@ -1,8 +1,9 @@
 import dotenv from 'dotenv';
+import path from 'path';
 import { z } from 'zod';
 import { logger } from '../utils/logger';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const envSchema = z.object({
   // 数据库配置
@@ -23,8 +24,12 @@ const envSchema = z.object({
   DASHSCOPE_API_KEY: z.string().optional(),
 
   // Redis 配置
-  REDIS_URL: z.string().optional(),
+  REDIS_URL: z.string().min(1, "REDIS_URL is required"),
   REDIS_PASSWORD: z.string().optional(),
+
+  // QQ 邮箱 SMTP 配置
+  QQ_EMAIL_USER: z.string().min(1, "QQ_EMAIL_USER is required"),
+  QQ_EMAIL_PASS: z.string().min(1, "QQ_EMAIL_PASS is required"),
 
   // 向量化配置
   EMBEDDING_MODEL: z.string().default('text-embedding-v4'),

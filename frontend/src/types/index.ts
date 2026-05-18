@@ -40,7 +40,7 @@ export interface CareIntro {
 
 export interface IUserProfile {
   id: string;
-  username: string;
+  username?: string;
   email: string;
   avatar?: string;
   createdAt: string;

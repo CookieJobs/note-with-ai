@@ -9,6 +9,14 @@ services:
       - mongo-data:/data/db
     restart: always
 
+  # Redis 服务
+  redis:
+    image: redis:7-alpine
+    container_name: note-redis
+    ports:
+      - "6380:6379"
+    restart: always
+
   # 后端服务
   backend:
     build: ./backend
@@ -18,18 +26,22 @@ services:
     environment:
       - PORT=3001
       - MONGODB_URI=mongodb://mongo:27017/note-with-ai
+      - REDIS_URL=redis://redis:6379
       # 这里使用变量，部署时通过 .env 文件或命令行传入
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
       - JWT_SECRET=${JWT_SECRET}
+      - QQ_EMAIL_USER=${QQ_EMAIL_USER}
+      - QQ_EMAIL_PASS=${QQ_EMAIL_PASS}
     depends_on:
       - mongo
+      - redis
     restart: always
 
   # 前端服务
   # 前端服务
   frontend:
-    build: 
+    build:
       context: ./frontend
       args:
         - BACKEND_URL=http://backend:3001
