@@ -253,7 +253,7 @@ export default function RichTextEditor({
         {editor && <DragHandle editor={editor} />}
         <div ref={frameRef} className={styles.richEditorFrame} data-rich-text-editor-frame="true">
           <EditorContent
-            className={`${styles.richEditorContent} w-full`}
+            className={`${styles.richEditorContent} ${styles.richEditorDragGutter} w-full`}
             editor={editor}
           />
           {/* Bubble Menu for formatting */}

@@ -155,14 +155,17 @@
   min-height: 120px;
   height: 100%;
   overflow-x: hidden;
-  overflow-y: auto; /* 让“高度计算”生效后，内容在编辑器内部滚动 */
+  overflow-y: auto; /* 让”高度计算”生效后，内容在编辑器内部滚动 */
   outline: none;
   white-space: pre-wrap;
   line-height: 1.6;
   border-radius: 8px;
   caret-color: currentColor;
   cursor: text;
-  padding-left: 2.5rem; /* 为 drag-handle 留出左侧空间（替代原 Tailwind pl-10） */
+}
+
+.richEditorDragGutter {
+  padding-left: 2.5rem; /* 为 drag-handle 留出左侧空间 */
 }
 
 .richEditor :global(.tiptap) {

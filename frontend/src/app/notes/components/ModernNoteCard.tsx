@@ -187,7 +187,7 @@ export default function ModernNoteCard({
   // 进入编辑态：自动聚焦并把光标放到末尾（标题/正文复用同一逻辑）
   useFocusCursorToEnd(state.title.isEditing, titleInputRef);
 
-  const alignTo = (anchor: 'top' | 'bottom') => {
+  const alignTo = (_anchor: 'top' | 'bottom') => {
     const card = rootRef.current;
     if (!card) return;
     const scroller = findScrollParent(card);
@@ -195,10 +195,13 @@ export default function ModernNoteCard({
 
     const sr = scroller.getBoundingClientRect();
     const cr = card.getBoundingClientRect();
-    const delta = anchor === 'top' ? cr.top - sr.top : cr.bottom - sr.bottom;
-    scroller.scrollTop += delta;
-  };
 
+    // 仅在卡片上边缘被遮挡时向上滚动找回；下边缘溢出时不调整
+    // ——让卡片在当前位置向下展开，上边缘不跳动
+    if (cr.top < sr.top) {
+      scroller.scrollTop += cr.top - sr.top;
+    }
+  };
   const applyTextareaSize = (opts: { align: boolean }) => {
     const card = rootRef.current;
     if (!card) return;
@@ -212,6 +215,10 @@ export default function ModernNoteCard({
 
     if (opts.align) alignTo(anchorRef.current);
 
+    // 保存当前 scrollTop——测量循环中 height=0→auto 的剧烈变化
+    // 可能触发浏览器自动调整 scrollTop，测量结束后恢复
+    const savedScrollTop = scroller.scrollTop;
+
     const sr = scroller.getBoundingClientRect();
 
     const prevMinH = el.style.minHeight;
@@ -220,7 +227,7 @@ export default function ModernNoteCard({
     const prevOverflowY = el.style.overflowY;
     // TipTap 的内容区是 div，不需要/不支持 resize
 
-    // fixedH：卡片中“除 textarea 外”的固定高度
+    // fixedH：卡片中"除 textarea 外"的固定高度
     el.style.minHeight = '0px';
     el.style.height = '0px';
     el.style.maxHeight = 'none';
@@ -247,7 +254,10 @@ export default function ModernNoteCard({
     // 恢复 min-height（默认外观仍由 CSS 控制）
     el.style.minHeight = prevMinH;
 
-    if (opts.align) alignTo(anchorRef.current);
+    // 恢复 scrollTop——撤销测量循环中浏览器对滚动位置的自动调整
+    if (opts.align) {
+      scroller.scrollTop = savedScrollTop;
+    }
 
     // 防御：极端情况下回滚
     if (!Number.isFinite(fullH) || !Number.isFinite(fixedH)) {
@@ -257,7 +267,6 @@ export default function ModernNoteCard({
       el.style.overflowY = prevOverflowY;
     }
   };
-
   useEffect(() => {
     if (!state.content.isEditing) {
       const card = rootRef.current;

@@ -207,7 +207,7 @@ function NotesContent() {
 
                   {notes.map((note) => (
                     <motion.div
-                      layout
+                      layout={note._id !== editingNoteId}
                       key={note._id}
                       transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}
                       ref={el => { noteRefs.current[note._id] = el; }}

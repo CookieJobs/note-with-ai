@@ -529,6 +529,15 @@
 .noteCardEditing {
   cursor: default;
   transform: none !important;
+  transition: none !important;
+
+  &,
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
+
   box-shadow:
     0 24px 70px rgba(15, 23, 42, 0.16),
     0 0 0 1px rgba(23,112,232,0.14) inset;
