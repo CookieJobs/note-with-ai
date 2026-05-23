@@ -205,76 +205,36 @@ export default function ModernNoteCard({
   const applyTextareaSize = (opts: { align: boolean }) => {
     const card = rootRef.current;
     if (!card) return;
-    // TipTap：操作 ProseMirror DOM（class = editorStyles.richEditorContent）
-    const el = card.querySelector(`.${editorStyles.richEditorContent}`) as HTMLElement | null;
-    if (!el) return;
-    const scroller = findScrollParent(card);
-    if (!scroller) return;
-
-    const defaultMinH = 120;
 
     if (opts.align) alignTo(anchorRef.current);
 
-    // 保存当前 scrollTop——测量循环中 height=0→auto 的剧烈变化
-    // 可能触发浏览器自动调整 scrollTop，测量结束后恢复
-    const savedScrollTop = scroller.scrollTop;
+    // Remove height constraints and scrolling from ALL scrollable layers
+    const scroller = card.querySelector(`.${editorStyles.richEditorScroller}`) as HTMLElement | null;
+    const content = card.querySelector(`.${editorStyles.richEditorContent}`) as HTMLElement | null;
+    const pm = card.querySelector('.ProseMirror') as HTMLElement | null;
 
-    const sr = scroller.getBoundingClientRect();
-
-    const prevMinH = el.style.minHeight;
-    const prevH = el.style.height;
-    const prevMaxH = el.style.maxHeight;
-    const prevOverflowY = el.style.overflowY;
-    // TipTap 的内容区是 div，不需要/不支持 resize
-
-    // fixedH：卡片中"除 textarea 外"的固定高度
-    el.style.minHeight = '0px';
-    el.style.height = '0px';
-    el.style.maxHeight = 'none';
-    el.style.overflowY = 'hidden';
-    const cardH0 = card.getBoundingClientRect().height;
-    const taH0 = el.getBoundingClientRect().height;
-    const fixedH = Math.max(0, cardH0 - taH0);
-
-    // fullH：正文全部展开需要的高度
-    el.style.height = 'auto';
-    el.style.maxHeight = 'none';
-    const fullH = (el as HTMLElement).scrollHeight as number;
-
-    // 关键约束：卡片高度不能超过滚动容器可视高度（避免被上方快速记录挡住）
-    // => textarea 最大高度 = sr.height - fixedH
-    const maxTaH = Math.max(0, sr.height - fixedH);
-    const minTaH = Math.min(defaultMinH, maxTaH);
-    const nextH = Math.max(minTaH, Math.min(fullH, maxTaH));
-
-    el.style.maxHeight = `${maxTaH}px`;
-    el.style.height = `${nextH}px`;
-    el.style.overflowY = fullH > maxTaH ? 'auto' : 'hidden';
-
-    // 恢复 min-height（默认外观仍由 CSS 控制）
-    el.style.minHeight = prevMinH;
-
-    // 恢复 scrollTop——撤销测量循环中浏览器对滚动位置的自动调整
-    if (opts.align) {
-      scroller.scrollTop = savedScrollTop;
-    }
-
-    // 防御：极端情况下回滚
-    if (!Number.isFinite(fullH) || !Number.isFinite(fixedH)) {
-      el.style.minHeight = prevMinH;
-      el.style.height = prevH;
-      el.style.maxHeight = prevMaxH;
-      el.style.overflowY = prevOverflowY;
+    for (const el of [scroller, content, pm]) {
+      if (!el) continue;
+      el.style.overflowY = 'visible';
+      el.style.overflowX = 'visible';
+      el.style.maxHeight = 'none';
+      el.style.height = 'auto';
     }
   };
   useEffect(() => {
     if (!state.content.isEditing) {
       const card = rootRef.current;
-      const el = card ? (card.querySelector(`.${editorStyles.richEditorContent}`) as HTMLElement | null) : null;
-      if (el) {
-        el.style.height = '';
-        el.style.maxHeight = '';
-        el.style.overflowY = '';
+      if (card) {
+        const scroller = card.querySelector(`.${editorStyles.richEditorScroller}`) as HTMLElement | null;
+        const content = card.querySelector(`.${editorStyles.richEditorContent}`) as HTMLElement | null;
+        const pm = card.querySelector('.ProseMirror') as HTMLElement | null;
+        for (const el of [scroller, content, pm]) {
+          if (!el) continue;
+          el.style.overflowY = '';
+          el.style.overflowX = '';
+          el.style.maxHeight = '';
+          el.style.height = '';
+        }
       }
       return;
     }
@@ -302,11 +262,6 @@ export default function ModernNoteCard({
     return focusProseMirrorWithin(rootRef.current);
   }, [state.content.isEditing]);
 
-  useEffect(() => {
-    if (!state.content.isEditing) return;
-    // 输入/内容变化时：只更新高度与内部滚动，不再做“吸顶/吸底”对齐（避免用户滚动时被强行拉回）
-    requestAnimationFrame(() => applyTextareaSize({ align: false }));
-  }, [state.content.value, state.content.isEditing]);
 
   // 仅依据“内容的总高度”和“6行高度”判断是否可展开（编辑态不展示）
   useEffect(() => {

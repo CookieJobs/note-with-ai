@@ -542,6 +542,14 @@
     0 24px 70px rgba(15, 23, 42, 0.16),
     0 0 0 1px rgba(23,112,232,0.14) inset;
   border-color: rgba(23,112,232,0.22);
+
+  // Belt-and-suspenders: prevent inner scroll on global classes / attribute selectors
+  // (Module classes are handled by inline styles in ModernNoteCard.tsx)
+  :global(.ProseMirror),
+  :global([data-rich-text-editor-content="true"]) {
+    overflow: visible !important;
+    max-height: none !important;
+  }
 }
 
 .noteCardEditing:hover {
