@@ -97,10 +97,11 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
           <div className="h-5 w-3/4 rounded-md bg-muted/40 skeletonShimmer" />
         </div>
 
-        {/* Snippet placeholder */}
+        {/* Snippet + source link placeholder */}
         <div className="flex flex-col gap-1.5 pl-4 border-l-2 border-gray-200/30">
           <div className="h-3 w-16 rounded bg-gray-200/40" />
           <div className="h-10 w-full rounded-lg bg-muted/20" />
+          <div className="h-3 w-24 rounded bg-muted/20" />
         </div>
 
         {/* CTA placeholder */}
@@ -143,7 +144,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
           {intro.aiOpening}
         </div>
 
-        {/* Note snippet */}
+        {/* Note snippet + source link */}
         {intro.snippet && (
           <div className="flex flex-col gap-1 pl-4 border-l-2 border-gray-300/50">
             <span className="text-[11px] font-medium text-gray-500/70 uppercase tracking-wider">
@@ -152,6 +153,19 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
             <p className="text-[13px] text-gray-500 leading-relaxed line-clamp-2">
               {intro.snippet}
             </p>
+            {intro.noteTitle && intro.noteId && (
+              <button
+                className="flex items-center gap-1 mt-0.5 text-[12px] text-gray-400 hover:text-gray-600 transition-colors self-start"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  router.push(`/notes?highlight=${intro.noteId}`);
+                }}
+                title="查看来源笔记"
+              >
+                <FileText className="h-3 w-3" />
+                <span className="truncate max-w-[200px]">{intro.noteTitle}</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -163,23 +177,6 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
             <ArrowRight className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
           </span>
         </div>
-
-        {/* Source note link */}
-        {intro.noteTitle && intro.noteId && (
-          <div className="flex justify-center -mt-2">
-            <button
-              className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                router.push(`/notes?highlight=${intro.noteId}`);
-              }}
-              title="查看来源笔记"
-            >
-              <FileText className="h-3 w-3" />
-              <span className="truncate max-w-[200px]">{intro.noteTitle}</span>
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
