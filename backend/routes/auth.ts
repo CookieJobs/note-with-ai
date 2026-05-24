@@ -1,7 +1,7 @@
 import express from 'express';
 import { register, sendVerifyCode } from '../controllers/auth/registerController';
 import { resetPassword } from '../controllers/auth/resetController';
-import { login, getCurrentUser, updateProfile } from '../controllers/authController';
+import { login, getCurrentUser, updateProfile, changePassword } from '../controllers/authController';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/errorHandler';
 import { validate } from '../middleware/validate';
@@ -11,6 +11,7 @@ import {
   updateProfileSchema,
   sendVerifyCodeSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 } from '../schemas/authSchemas';
 
 const router = express.Router();
@@ -43,6 +44,11 @@ router.get('/me', authenticateToken, asyncHandler(async (req, res) => {
 // 更新用户信息（需要认证）
 router.put('/profile', authenticateToken, validate(updateProfileSchema), asyncHandler(async (req, res) => {
   await updateProfile(req, res);
+}));
+
+// 修改密码（需要认证）
+router.put('/password', authenticateToken, validate(changePasswordSchema), asyncHandler(async (req, res) => {
+  await changePassword(req, res);
 }));
 
 export default router;

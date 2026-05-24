@@ -14,6 +14,7 @@ import healthRoutes from './routes/health';
 import cacheRoutes from './routes/cache';
 import performanceRoutes from './routes/performance';
 import feedRoutes from './routes/feedRoutes';
+import userRoutes from './routes/userRoutes';
 import { globalErrorHandler } from './utils/errorHandler';
 import { logger } from './utils/logger';
 
@@ -53,6 +54,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/chat', chatRelatedNotesRoutes);
 app.use('/api/recommend', recommendRoutes);
 app.use('/api/feed', feedRoutes);
+app.use('/api/user', userRoutes);
 app.use('/api/cache', cacheRoutes);
 app.use('/api/performance', performanceRoutes);
 app.use('/api', healthRoutes);

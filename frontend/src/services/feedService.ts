@@ -49,3 +49,24 @@ export const triggerAnalysis = async (): Promise<void> => {
     throw new Error('Failed to trigger analysis');
   }
 };
+
+export interface UserStats {
+  totalNotes: number;
+  notesThisMonth: number;
+  notesThisWeek: number;
+  streakDays: number;
+  maxStreak: number;
+  totalWords: number;
+  avgWordsPerNote: number;
+  interestCount: number;
+  lastAnalyzedAt: string | null;
+}
+
+export const getStats = async (): Promise<UserStats> => {
+  const response = await authFetch('/api/user/stats');
+  if (!response.ok) {
+    throw new Error('Failed to fetch stats');
+  }
+  const body = await response.json();
+  return body.data;
+};

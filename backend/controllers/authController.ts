@@ -96,6 +96,22 @@ export const getCurrentUser = async (req: Request, res: Response) => {
   });
 };
 
+// 修改密码
+export const changePassword = async (req: Request, res: Response) => {
+  const user = await UserValidator.authenticateUser(req);
+  const { oldPassword, newPassword } = req.body;
+
+  const isMatch = await user.comparePassword(oldPassword);
+  if (!isMatch) {
+    throw ErrorHandler.createValidationError('当前密码不正确');
+  }
+
+  user.password = newPassword;
+  await user.save();
+
+  ResponseHandler.success(res, null, '密码修改成功');
+};
+
 // 更新用户信息
 export const updateProfile = async (req: Request, res: Response) => {
   const user = await UserValidator.authenticateUser(req);

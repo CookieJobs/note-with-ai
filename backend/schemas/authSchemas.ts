@@ -36,6 +36,16 @@ export const loginSchema = z.object({
   }),
 });
 
+export const changePasswordSchema = z.object({
+  body: z.object({
+    oldPassword: z.string().min(1, '请输入当前密码'),
+    newPassword: z
+      .string()
+      .min(8, '密码长度至少8位')
+      .regex(/(?=.*[A-Za-z])(?=.*\d)/, '密码必须包含字母和数字'),
+  }),
+});
+
 export const updateProfileSchema = z.object({
   body: z.object({
     username: z.string()
