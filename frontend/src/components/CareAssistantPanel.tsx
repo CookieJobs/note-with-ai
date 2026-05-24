@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authFetch } from '../utils/auth';
 import { Button } from '@/components/ui/button';
-import { Sparkles, RefreshCw, FileText, Loader2 } from 'lucide-react';
+import { Sparkles, RefreshCw, FileText, Loader2, ArrowRight } from 'lucide-react';
 
 interface CareIntro {
   noteId: string | null;
@@ -79,37 +79,35 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
 
   if (error) return null;
 
-  // Skeleton — matches the vertical editorial layout
+  // Skeleton
   if (loading || !intro) return (
     <div className="w-full max-w-[680px] mx-auto">
-      <div className="relative flex flex-col gap-5 p-6 rounded-3xl border border-amber-200/60 bg-gradient-to-b from-amber-50/80 via-white to-white shadow-[0_4px_24px_rgba(180,120,30,0.06)] cursor-wait select-none">
+      <div className="relative flex flex-col gap-4 p-5 rounded-3xl border border-gray-200/60 bg-gradient-to-b from-gray-50/80 via-white to-white shadow-[0_4px_24px_rgba(0,0,0,0.04)] cursor-wait select-none">
         {/* Header row: icon + refresh */}
         <div className="flex items-start justify-between">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100/60 ring-1 ring-amber-200/40">
-            <Sparkles className="h-5 w-5 text-amber-300/60 animate-pulse" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100/60 ring-1 ring-gray-200/40">
+            <Sparkles className="h-4 w-4 text-gray-300/60 animate-pulse" />
           </div>
           <div className="h-8 w-8 rounded-full bg-muted/30" />
         </div>
 
         {/* Quote placeholder */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <div className="h-5 w-full rounded-md bg-muted/50 skeletonShimmer" />
           <div className="h-5 w-3/4 rounded-md bg-muted/40 skeletonShimmer" />
         </div>
 
-        {/* Snippet placeholder */}
-        <div className="flex flex-col gap-2 pl-4 border-l-2 border-amber-200/30">
-          <div className="h-3 w-16 rounded bg-amber-200/40" />
-          <div className="h-12 w-full rounded-lg bg-muted/20" />
+        {/* Snippet + source link placeholder */}
+        <div className="flex flex-col gap-1.5 pl-4 border-l-2 border-gray-200/30">
+          <div className="h-3 w-16 rounded bg-gray-200/40" />
+          <div className="h-10 w-full rounded-lg bg-muted/20" />
+          <div className="h-3 w-24 rounded bg-muted/20" />
         </div>
 
-        {/* Footer placeholder */}
-        <div className="flex items-center gap-3">
-          <div className="h-6 w-24 rounded-full bg-muted/40 skeletonShimmer" />
-          <div className="h-4 w-32 rounded bg-muted/20 skeletonShimmer" />
-        </div>
+        {/* CTA placeholder */}
+        <div className="h-8 w-32 mx-auto rounded-full bg-muted/30 skeletonShimmer" />
 
-        <Loader2 className="absolute top-6 right-6 h-4 w-4 animate-spin text-amber-300/60" />
+        <Loader2 className="absolute top-5 right-5 h-4 w-4 animate-spin text-gray-300/60" />
       </div>
     </div>
   );
@@ -117,19 +115,19 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
   return (
     <div className="w-full max-w-[680px] mx-auto">
       <div
-        className="group relative flex flex-col gap-5 p-6 rounded-3xl border border-amber-200/60 bg-gradient-to-b from-amber-50/70 via-white to-white shadow-[0_4px_24px_rgba(180,120,30,0.06)] hover:shadow-[0_12px_40px_rgba(180,120,30,0.12)] hover:border-amber-300/70 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+        className="group relative flex flex-col gap-4 p-5 rounded-3xl border border-gray-200/60 bg-gradient-to-b from-gray-50/70 via-white to-white shadow-[0_4px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] hover:border-gray-300/70 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
         onClick={() => onSend(intro.aiOpening, intro)}
       >
         {/* Header: icon + refresh */}
         <div className="flex items-start justify-between">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 ring-1 ring-amber-300/40 shadow-[0_4px_16px_rgba(200,140,40,0.15)] group-hover:shadow-[0_6px_20px_rgba(200,140,40,0.22)] group-hover:scale-105 transition-all duration-300">
-            <Sparkles className="h-5 w-5 text-amber-600" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 ring-1 ring-gray-300/40 shadow-[0_4px_16px_rgba(0,0,0,0.06)] group-hover:shadow-[0_6px_20px_rgba(0,0,0,0.1)] group-hover:scale-105 transition-all duration-300">
+            <Sparkles className="h-4 w-4 text-gray-600" />
           </div>
 
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-full border border-amber-200/50 bg-white/80 text-amber-400 hover:text-amber-600 hover:border-amber-300/80 hover:bg-amber-50 transition-all"
+            className="h-9 w-9 rounded-full border border-gray-200/50 bg-white/80 text-gray-400 hover:text-gray-700 hover:border-gray-300/80 hover:bg-gray-50 transition-all"
             onClick={(e) => {
               e.stopPropagation();
               fetchIntro();
@@ -142,33 +140,22 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
         </div>
 
         {/* Hero: AI opening quote */}
-        <div className="text-[17px] font-medium text-gray-800 leading-relaxed tracking-[-0.01em]">
+        <div className="text-[16px] font-medium text-gray-800 leading-relaxed tracking-[-0.01em]">
           {intro.aiOpening}
         </div>
 
-        {/* Note snippet */}
+        {/* Note snippet + source link */}
         {intro.snippet && (
-          <div className="flex flex-col gap-1.5 pl-4 border-l-2 border-amber-300/50">
-            <span className="text-[11px] font-medium text-amber-600/70 uppercase tracking-wider">
+          <div className="flex flex-col gap-1 pl-4 border-l-2 border-gray-300/50">
+            <span className="text-[11px] font-medium text-gray-500/70 uppercase tracking-wider">
               笔记片段
             </span>
             <p className="text-[13px] text-gray-500 leading-relaxed line-clamp-2">
               {intro.snippet}
             </p>
-          </div>
-        )}
-
-        {/* Footer: CTA + source link */}
-        <div className="flex items-center gap-2.5 pt-1">
-          <span className="inline-flex items-center gap-1 text-[12px] px-3 py-1 rounded-full bg-amber-100/70 text-amber-700 font-medium border border-amber-200/50 group-hover:bg-amber-100 group-hover:border-amber-300/60 transition-colors">
-            <Sparkles className="h-3 w-3" />
-            点击开始对话
-          </span>
-          {intro.noteTitle && intro.noteId && (
-            <>
-              <span className="text-gray-300 text-xs">·</span>
+            {intro.noteTitle && intro.noteId && (
               <button
-                className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-amber-600 transition-colors"
+                className="flex items-center gap-1 mt-0.5 text-[12px] text-gray-400 hover:text-gray-600 transition-colors self-start"
                 onClick={(e) => {
                   e.stopPropagation();
                   router.push(`/notes?highlight=${intro.noteId}`);
@@ -176,10 +163,19 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
                 title="查看来源笔记"
               >
                 <FileText className="h-3 w-3" />
-                <span className="truncate max-w-[180px]">{intro.noteTitle}</span>
+                <span className="truncate max-w-[200px]">{intro.noteTitle}</span>
               </button>
-            </>
-          )}
+            )}
+          </div>
+        )}
+
+        {/* CTA: centered button */}
+        <div className="flex justify-center">
+          <span className="inline-flex items-center gap-2 text-[13px] px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium border border-gray-200 group-hover:bg-gray-200 group-hover:border-gray-300 group-hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all">
+            <Sparkles className="h-3.5 w-3.5" />
+            点击开始对话
+            <ArrowRight className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+          </span>
         </div>
       </div>
     </div>
