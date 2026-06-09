@@ -5,6 +5,7 @@ node_modules/
 .trae/
 .vercel/
 .superpowers/
+.claude/worktrees/
 
 # 忽略构建产物
 .next/
