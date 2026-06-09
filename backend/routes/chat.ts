@@ -12,13 +12,12 @@ import {
   deleteChatSession, 
   streamChat, 
   summarizeTitle, 
-  generateIntro, 
-  searchRelatedNotes 
+  generateIntro
 } from '../controllers/chatController';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/errorHandler';
 import { validate } from '../middleware/validate';
-import { saveSessionSchema, deleteSessionSchema, streamChatSchema, summarizeTitleSchema, searchRelatedNotesSchema } from '../schemas/chatSchemas';
+import { saveSessionSchema, deleteSessionSchema, streamChatSchema, summarizeTitleSchema } from '../schemas/chatSchemas';
 
 const router = express.Router();
 
@@ -36,9 +35,6 @@ router.post('/summarizeTitle', authenticateToken, validate(summarizeTitleSchema)
 
 // 发送给 DeepSeek 聊天接口（支持流式响应）
 router.post('/', authenticateToken, validate(streamChatSchema), asyncHandler(streamChat));
-
-// 搜索相关笔记接口（异步调用）
-router.post('/search-related-notes', authenticateToken, validate(searchRelatedNotesSchema), asyncHandler(searchRelatedNotes));
 
 // AI 关怀助手开场白
 router.get('/robot/intro', authenticateToken, asyncHandler(generateIntro));

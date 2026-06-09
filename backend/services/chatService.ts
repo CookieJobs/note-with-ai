@@ -1,13 +1,9 @@
 import Chat from '../models/Chat';
 import { Note } from '../models/Note';
-import { IChat, IMessage, IRelatedNote, INote } from '../types';
+import { IChat, IMessage, IRelatedNote } from '../types';
 import { ErrorHandler } from '../utils/errorHandler';
 import { chatWithDeepSeekStream, summarizeChatTitle, chatWithDeepSeek } from './llmService';
-import { getCachedQwenEmbedding } from '../utils/embedding';
-import { vectorStore } from './vectorStore';
 import mongoose from 'mongoose';
-import { measureDatabaseQuery, measureEmbeddingOperation } from '../utils/performance';
-import { logger } from '../utils/logger';
 
 type RelatedNoteRecord = Omit<IRelatedNote, 'noteId'> & {
   noteId: string | { _id?: string | null } | null;
@@ -18,8 +14,6 @@ type ChatSessionRecord = {
   relatedNotes?: RelatedNoteRecord[];
   [key: string]: unknown;
 };
-
-type SearchableNote = Pick<INote, '_id' | 'title' | 'content' | 'createdAt'>;
 
 function normalizeRelatedNotes(relatedNotes?: unknown): IRelatedNote[] | undefined {
   if (!Array.isArray(relatedNotes)) return undefined;
@@ -266,62 +260,6 @@ class ChatService {
     }
   }
 
-  /**
-   * Search related notes based on user message and AI reply
-   */
-  async searchRelatedNotes(userId: string, userMessage: string, aiReply: string): Promise<any[]> {
-    try {
-      const dimensions = 1024;
-      const maxResults = 3;
-      const threshold = 0.3;
-
-      // 1. Generate embeddings
-      const [userEmbedding, aiEmbedding] = await Promise.all([
-        getCachedQwenEmbedding(userMessage, dimensions),
-        getCachedQwenEmbedding(aiReply, dimensions)
-      ]);
-
-      // 2. Search using vector store
-      const [userResults, aiResults] = await Promise.all([
-        vectorStore.search(userId, userEmbedding, maxResults),
-        vectorStore.search(userId, aiEmbedding, maxResults)
-      ]);
-
-      // 3. Merge results
-      const allMatches = new Map<string, { note: SearchableNote; score: number; matchType: 'vector' | 'keyword' }>();
-
-      const processResults = (results: Array<{ item: Record<string, unknown>; score: number }>) => {
-        results.forEach(({ item, score }) => {
-          if (score < threshold) return;
-          const note = item as unknown as SearchableNote;
-          const noteId = note._id.toString();
-          if (!allMatches.has(noteId) || allMatches.get(noteId)!.score < score) {
-            allMatches.set(noteId, { note, score, matchType: 'vector' });
-          }
-        });
-      };
-
-      processResults(userResults);
-      processResults(aiResults);
-
-      // 4. Sort and format
-      const relatedNotes = Array.from(allMatches.values())
-        .sort((a, b) => b.score - a.score)
-        .slice(0, maxResults);
-
-      return relatedNotes.map((item) => ({
-        id: item.note._id,
-        title: item.note.title,
-        content: item.note.content,
-        similarity: item.score,
-        matchType: item.matchType,
-        createdAt: item.note.createdAt
-      }));
-    } catch (error) {
-      logger.error('Error searching related notes:', error);
-      return [];
-    }
-  }
 }
 
 export const chatService = new ChatService();

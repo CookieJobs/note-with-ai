@@ -5,6 +5,7 @@ import { ErrorHandler, AppError, ErrorType } from '../utils/errorHandler';
 import { INote } from '../types';
 import { logger } from '../utils/logger';
 import { noteEmbeddingService } from './noteEmbeddingService';
+import { NoteContentPatch, NoteUpdateOrchestrator } from './NoteUpdateOrchestrator';
 
 class NoteService {
   private scheduleEmbeddingUpdate(params: {
@@ -184,24 +185,6 @@ class NoteService {
     const { title, content, contentJson, contentText, keywords, updatedAt, autoSummarize, summaryCheck } = data;
     logger.info('收到笔记局部更新请求，ID:', noteId, 'payload:', { title, content, contentText, keywords, updatedAt, autoSummarize, summaryCheck });
 
-    const note = await Note.findOne({ _id: noteId, userId });
-    if (!note) {
-        throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
-    }
-
-    // 乐观并发
-    if (updatedAt) {
-      const clientUpdatedAt = new Date(updatedAt).getTime();
-      const currentUpdatedAt = new Date(note.updatedAt).getTime();
-      if (isNaN(clientUpdatedAt)) {
-        throw ErrorHandler.createValidationError('updatedAt 无效');
-      }
-      if (clientUpdatedAt !== currentUpdatedAt) {
-        // Return conflict error
-        throw new AppError('笔记已在他处更新', ErrorType.VALIDATION, 409, true, { note });
-      }
-    }
-
     // 字段校验
     if (title !== undefined && typeof title !== 'string') throw ErrorHandler.createValidationError('标题必须是字符串类型');
     if (content !== undefined && typeof content !== 'string') throw ErrorHandler.createValidationError('内容必须是字符串类型');
@@ -212,174 +195,20 @@ class NoteService {
     }
     if (summaryCheck !== undefined && typeof summaryCheck !== 'boolean') throw ErrorHandler.createValidationError('summaryCheck 必须是 boolean');
 
-    // 应用更新
-    let contentChanged = false;
-    if (title !== undefined) note.title = title.trim();
-    if (contentText !== undefined) {
-      note.contentText = contentText;
-      note.content = contentText;
-      contentChanged = true;
-    } else if (content !== undefined) {
-      note.content = content;
-      note.contentText = content;
-      note.contentJson = null;
-      contentChanged = true;
-    }
-    if (contentJson !== undefined) {
-      note.contentJson = contentJson;
-    }
-    if (keywords !== undefined) note.keywords = keywords;
+    const patch = NoteContentPatch.fromRequest(data);
 
-    if (contentChanged) {
-      (note as any).embedding = [];
-      (note as any).recommendCache = null;
-    }
+    const updatedNote = await NoteUpdateOrchestrator.execute({
+      userId,
+      noteId,
+      expectedUpdatedAt: updatedAt,
+      patch,
+      options: {
+        summaryCheck,
+        autoSummarize,
+      },
+    });
 
-    // summaryCheck logic
-    if (summaryCheck === true && contentChanged) {
-      try {
-        const oldSummary = String((note as any).summary || '').trim();
-        const oldConcepts = Array.isArray((note as any).concepts) ? (note as any).concepts : [];
-        const baseText = String(note.contentText || note.content || '').trim();
-        const check = await checkOrUpdateSummaryConcepts({ text: baseText, oldSummary, oldConcepts });
-
-        const freshNote = await Note.findById(noteId);
-        
-        if (freshNote) {
-          const freshUpdatedTime = new Date(freshNote.updatedAt).getTime();
-          const originalUpdatedTime = new Date(note.updatedAt).getTime();
-          
-          if (freshUpdatedTime !== originalUpdatedTime) {
-              logger.warn(`summaryCheck 期间发生并发修改，放弃覆盖。ID: ${noteId}`);
-              throw new AppError('笔记已在他处更新（AI处理期间）', ErrorType.VALIDATION, 409, true, { note: freshNote });
-          }
-
-          if (title !== undefined) freshNote.title = title.trim();
-          if (contentText !== undefined) {
-            freshNote.contentText = contentText;
-            freshNote.content = contentText;
-          } else if (content !== undefined) {
-            freshNote.content = content;
-            freshNote.contentText = content;
-            freshNote.contentJson = null;
-          }
-          if (contentJson !== undefined) {
-            freshNote.contentJson = contentJson;
-          }
-          if (keywords !== undefined) freshNote.keywords = keywords;
-
-          (freshNote as any).embedding = [];
-          (freshNote as any).recommendCache = null;
-
-          if (check && check.is_ok === false) {
-            if (typeof check.summary === 'string') (freshNote as any).summary = check.summary;
-            if (Array.isArray(check.concepts)) (freshNote as any).concepts = check.concepts;
-          }
-
-          await freshNote.save();
-
-          this.scheduleEmbeddingUpdate({
-            noteId: freshNote._id.toString(),
-            userId: userId,
-            updatedAt: (freshNote as any).updatedAt,
-            title: freshNote.title,
-            content: freshNote.content,
-            contentText: (freshNote as any).contentText,
-          });
-
-          return freshNote as unknown as INote;
-        }
-      } catch (e) {
-        if ((e as any).statusCode === 409) throw e;
-        logger.warn('summaryCheck 失败，忽略：', e);
-      }
-    }
-
-    // autoSummarize logic
-    if (autoSummarize === true) {
-      try {
-        const summary = await summarizeNoteMeta(note.content);
-        const freshNote = await Note.findById(noteId);
-        if (freshNote) {
-          const freshUpdatedTime = new Date(freshNote.updatedAt).getTime();
-          const originalUpdatedTime = new Date(note.updatedAt).getTime();
-          
-          let shouldApplyAISummary = true;
-          if (freshUpdatedTime !== originalUpdatedTime) {
-            const isTitleDefault = !freshNote.title || 
-                                  freshNote.title === '未命名笔记' || 
-                                  freshNote.title === (freshNote.contentText || '').split('\n')[0].trim().slice(0, 100);
-            const isKeywordsEmpty = !freshNote.keywords || freshNote.keywords.length === 0;
-
-            if (!isTitleDefault && !isKeywordsEmpty) {
-              logger.warn(`autoSummarize 期间发生实质性并发修改（用户已修改标题/关键词），放弃更新。ID: ${noteId}`);
-              return freshNote as unknown as INote; // Return fresh note without AI update
-            }
-            logger.info(`autoSummarize 期间发生并发修改，但标题/关键词仍为默认，尝试合并更新。ID: ${noteId}`);
-          }
-
-          if (title !== undefined) freshNote.title = title.trim();
-          if (contentText !== undefined) {
-            freshNote.contentText = contentText;
-            freshNote.content = contentText;
-          } else if (content !== undefined) {
-            freshNote.content = content;
-            freshNote.contentText = content;
-            freshNote.contentJson = null;
-          }
-          if (contentJson !== undefined) {
-            freshNote.contentJson = contentJson;
-          }
-          if (keywords !== undefined) freshNote.keywords = keywords;
-
-          (freshNote as any).embedding = [];
-          (freshNote as any).recommendCache = null;
-          
-          const isTitleDefault = !freshNote.title || 
-                                freshNote.title === '未命名笔记' || 
-                                freshNote.title === (freshNote.contentText || '').split('\n')[0].trim().slice(0, 100);
-          
-          if (summary?.title && title === undefined && isTitleDefault) {
-            freshNote.title = summary.title;
-          }
-          if (Array.isArray(summary?.keywords) && keywords === undefined && (!freshNote.keywords || freshNote.keywords.length === 0)) {
-            freshNote.keywords = summary.keywords;
-          }
-          if (typeof summary?.summary === 'string') freshNote.summary = summary.summary;
-
-          await freshNote.save();
-
-          this.scheduleEmbeddingUpdate({
-            noteId: freshNote._id.toString(),
-            userId: userId,
-            updatedAt: (freshNote as any).updatedAt,
-            title: freshNote.title,
-            content: freshNote.content,
-            contentText: (freshNote as any).contentText,
-          });
-          
-          return freshNote as unknown as INote;
-        }
-      } catch (e) {
-        logger.warn('自动摘要失败，忽略：', e);
-      }
-    }
-
-    await note.save();
-    logger.info('✅ 笔记局部更新成功');
-
-    if (contentChanged) {
-      this.scheduleEmbeddingUpdate({
-        noteId: note._id.toString(),
-        userId: userId,
-        updatedAt: (note as any).updatedAt,
-        title: note.title,
-        content: note.content,
-        contentText: (note as any).contentText,
-      });
-    }
-
-    return note as unknown as INote;
+    return updatedNote;
   }
 }
 

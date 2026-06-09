@@ -49,9 +49,11 @@ export const summarizeTitleSchema = z.object({
   }),
 });
 
-export const searchRelatedNotesSchema = z.object({
+export const contextRelatedNotesSchema = z.object({
   body: z.object({
-    userMessage: z.string().min(1, '用户消息不能为空'),
-    aiReply: z.string().min(1, 'AI回复不能为空'),
+    messages: z.array(messageSchema).min(1, '消息列表不能为空'),
+    threshold: z.number().min(0).max(1).optional(),
+    limit: z.number().int().positive().max(20).optional(),
+    excludeNoteId: z.string().min(1).optional(),
   }),
 });

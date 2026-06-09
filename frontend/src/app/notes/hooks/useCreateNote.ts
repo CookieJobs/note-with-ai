@@ -133,14 +133,19 @@ export function useCreateNote(
           });
 
         // 2. 查询相关笔记
-        authFetch('/api/chat/related-notes', {
+        authFetch('/api/chat/context-related-notes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: created.contentText || created.content,
+            messages: [
+              {
+                role: 'user',
+                content: created.contentText || created.content,
+              },
+            ],
             excludeNoteId: created._id,
             limit: 3,
-            threshold: 0.3, // 显式降低阈值
+            threshold: 0.3,
           }),
         })
           .then((r) => r.json())
@@ -148,9 +153,18 @@ export function useCreateNote(
             if (relatedData.success && Array.isArray(relatedData.data?.relatedNotes)) {
               const list = relatedData.data.relatedNotes;
               if (list.length > 0) {
-                const formattedNotes = list.map((item: { note: Note; score: number }) => ({
-                  ...item.note,
-                  similarity: item.score,
+                const formattedNotes = list.map((item: {
+                  noteId: string;
+                  title?: string;
+                  content?: string;
+                  score?: number;
+                  createdAt?: string;
+                }) => ({
+                  _id: item.noteId,
+                  title: item.title,
+                  content: item.content || '',
+                  createdAt: item.createdAt || created.createdAt,
+                  similarity: Number(item.score || 0),
                 }));
                 setRelatedNotes(formattedNotes);
               } else {

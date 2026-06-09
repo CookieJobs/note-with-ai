@@ -162,16 +162,3 @@ export const generateIntro = async (req: Request, res: Response): Promise<void> 
     // Actually the service returns the full object.
     ResponseHandler.success(res, result, '生成成功');
 };
-
-export const searchRelatedNotes = async (req: Request, res: Response): Promise<void> => {
-    const user = await UserValidator.authenticateUser(req);
-    const userId = user._id.toString();
-    const { userMessage, aiReply } = req.body;
-
-    if (!userMessage || !aiReply) {
-        throw ErrorHandler.createValidationError('缺少用户消息或AI回复');
-    }
-
-    const relatedNotes = await chatService.searchRelatedNotes(userId, userMessage, aiReply);
-    ResponseHandler.success(res, { relatedNotes }, '搜索相关笔记成功');
-};
