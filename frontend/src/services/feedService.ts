@@ -29,7 +29,14 @@ export interface UserProfile {
 export interface FeedResponse {
   feed: FeedItem[];
   userProfile?: UserProfile;
-  profileStatus?: 'analyzing' | 'ready';
+  profileStatus?: 'analyzing' | 'ready' | 'failed';
+  analysisError?: string;
+}
+
+export interface TriggerAnalysisResponse {
+  profileStatus: 'analyzing' | 'ready' | 'failed';
+  accepted: boolean;
+  analysisError?: string;
 }
 
 export const getFeed = async (): Promise<FeedResponse> => {
@@ -41,13 +48,15 @@ export const getFeed = async (): Promise<FeedResponse> => {
   return body.data;
 };
 
-export const triggerAnalysis = async (): Promise<void> => {
+export const triggerAnalysis = async (): Promise<TriggerAnalysisResponse> => {
   const response = await authFetch('/api/feed/analyze', {
     method: 'POST',
   });
   if (!response.ok) {
     throw new Error('Failed to trigger analysis');
   }
+  const body = await response.json();
+  return body.data;
 };
 
 export interface UserStats {

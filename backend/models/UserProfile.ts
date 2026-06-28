@@ -1,5 +1,8 @@
 import mongoose from 'mongoose';
 
+export const PROFILE_ANALYSIS_STATUSES = ['idle', 'queued', 'running', 'ready', 'failed'] as const;
+export type ProfileAnalysisStatus = typeof PROFILE_ANALYSIS_STATUSES[number];
+
 const InterestSchema = new mongoose.Schema({
   topic: { type: String, required: true },
   score: { type: Number, default: 0.5 }, // 0 to 1, relevance/strength
@@ -50,9 +53,20 @@ const UserProfileSchema = new mongoose.Schema(
     
     // AI Generated Background Theme
     theme: ThemeSchema,
+
+    // Analysis state for coordinating long-running profile generation tasks
+    analysisStatus: {
+      type: String,
+      enum: PROFILE_ANALYSIS_STATUSES,
+      default: 'idle',
+    },
+    analysisVersion: { type: Number, default: 0 },
+    analysisRequestedAt: { type: Date, default: null },
+    analysisStartedAt: { type: Date, default: null },
+    analysisError: { type: String, default: '' },
     
     // Track when the profile was last updated by the analysis job
-    lastAnalyzedAt: { type: Date, default: Date.now }
+    lastAnalyzedAt: { type: Date, default: null }
   },
   { timestamps: true }
 );

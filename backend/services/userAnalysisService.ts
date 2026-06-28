@@ -4,26 +4,70 @@ import { DeepSeekApiClient } from '../utils/apiClient';
 import { getDeepSeekClient } from './llmService';
 import { logger } from '../utils/logger';
 
+type AnalyzeUserProfileParams = {
+  userId: string;
+  analysisVersion: number;
+};
+
 export class UserAnalysisService {
   private getApiClient(): DeepSeekApiClient {
     return getDeepSeekClient();
+  }
+
+  private async markAnalysisReadyWithoutProfileUpdate(userId: string, analysisVersion: number): Promise<boolean> {
+    const result = await UserProfile.updateOne(
+      { userId, analysisVersion, analysisStatus: 'running' },
+      {
+        $set: {
+          analysisStatus: 'ready',
+          analysisError: '',
+          lastAnalyzedAt: new Date(),
+        },
+      }
+    );
+
+    return result.matchedCount > 0;
+  }
+
+  private async commitProfileResult(
+    userId: string,
+    analysisVersion: number,
+    profileData: Record<string, unknown>
+  ): Promise<boolean> {
+    const result = await UserProfile.updateOne(
+      { userId, analysisVersion, analysisStatus: 'running' },
+      {
+        $set: {
+          ...profileData,
+          analysisStatus: 'ready',
+          analysisError: '',
+          lastAnalyzedAt: new Date(),
+        },
+      }
+    );
+
+    return result.matchedCount > 0;
   }
 
   /**
    * Analyze user's recent notes and chat history to update their profile.
    * This should be called by a background job or cron task.
    */
-  async analyzeUserProfile(userId: string): Promise<void> {
+  async analyzeUserProfile({ userId, analysisVersion }: AnalyzeUserProfileParams): Promise<{ committed: boolean; reason: string }> {
     try {
-      logger.info(`Starting user profile analysis for user: ${userId}`);
+      logger.info(`Starting user profile analysis for user: ${userId}, version: ${analysisVersion}`);
 
       // 1. Fetch recent data (e.g., last 20 notes)
       // TODO: Also fetch recent chat history
       const notes = await Note.find({ userId }).sort({ createdAt: -1 }).limit(20);
       
       if (notes.length < 5) {
-        logger.info('Not enough data to analyze.');
-        return;
+        logger.info(`Not enough data to analyze for user: ${userId}`);
+        const committed = await this.markAnalysisReadyWithoutProfileUpdate(userId, analysisVersion);
+        return {
+          committed,
+          reason: committed ? 'insufficient_data' : 'stale_analysis_version',
+        };
       }
 
       const notesText = notes.map(n => 
@@ -75,7 +119,7 @@ export class UserAnalysisService {
       });
 
       // 3. Parse and Update DB
-      const profileData = JSON.parse(response);
+      const profileData = JSON.parse(response) as Record<string, any>;
       
       // Add timestamps
       if (profileData.interests) {
@@ -84,17 +128,23 @@ export class UserAnalysisService {
       if (profileData.goals) {
         profileData.goals.forEach((g: { createdAt: Date }) => g.createdAt = new Date());
       }
-      profileData.lastAnalyzedAt = new Date();
-      profileData.userId = userId;
+      delete profileData.userId;
+      delete profileData.analysisStatus;
+      delete profileData.analysisVersion;
+      delete profileData.analysisRequestedAt;
+      delete profileData.analysisStartedAt;
+      delete profileData.analysisError;
+      delete profileData.lastAnalyzedAt;
 
-      // Upsert profile
-      await UserProfile.findOneAndUpdate(
-        { userId },
-        profileData,
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      );
+      const committed = await this.commitProfileResult(userId, analysisVersion, profileData);
 
-      logger.info(`User profile updated for user: ${userId}`);
+      if (committed) {
+        logger.info(`User profile updated for user: ${userId}, version: ${analysisVersion}`);
+        return { committed: true, reason: 'updated' };
+      }
+
+      logger.warn(`Skipped stale user profile analysis result for user: ${userId}, version: ${analysisVersion}`);
+      return { committed: false, reason: 'stale_analysis_version' };
 
     } catch (error) {
       logger.error('Error analyzing user profile:', error);

@@ -50,7 +50,12 @@ export interface IUserProfile extends Document {
     feedbackMode: 'Gentle' | 'Direct';
   };
   summary: string;
-  lastAnalyzedAt: Date;
+  analysisStatus: 'idle' | 'queued' | 'running' | 'ready' | 'failed';
+  analysisVersion: number;
+  analysisRequestedAt: Date | null;
+  analysisStartedAt: Date | null;
+  analysisError: string;
+  lastAnalyzedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -274,6 +274,16 @@ export default function ProfilePage() {
     if (data?.profileStatus === 'analyzing') setAiExpanded(false);
   }, [data?.profileStatus]);
 
+  useEffect(() => {
+    if (data?.profileStatus !== 'analyzing') return;
+
+    const timer = window.setTimeout(() => {
+      void loadAll();
+    }, 4000);
+
+    return () => window.clearTimeout(timer);
+  }, [data?.profileStatus]);
+
   const loadAll = async () => {
     try {
       setLoading(true);
@@ -287,9 +297,14 @@ export default function ProfilePage() {
     try {
       setAnalyzing(true);
       toast.info('正在开始画像分析，请稍候...');
-      await triggerAnalysis();
-      toast.success('分析任务已触发，分析完成后画像将自动更新');
-      if (data) setData({ ...data, profileStatus: 'analyzing' });
+      const result = await triggerAnalysis();
+      toast.success(result.accepted ? '分析任务已触发，分析完成后将自动刷新' : '已有画像分析任务在运行');
+      setData((prev) => ({
+        feed: prev?.feed || [],
+        userProfile: prev?.userProfile,
+        profileStatus: result.profileStatus,
+        analysisError: result.analysisError,
+      }));
     } catch { toast.error('触发分析失败'); }
     finally { setAnalyzing(false); }
   };
@@ -363,7 +378,7 @@ export default function ProfilePage() {
                     onClick={handleTriggerAnalysis}
                     disabled={analyzing || data?.profileStatus === 'analyzing'}
                   >
-                    {data?.profileStatus === 'analyzing' ? '分析中...' : '更新画像'}
+                    {data?.profileStatus === 'analyzing' ? '分析中...' : data?.profileStatus === 'failed' ? '重新分析' : '更新画像'}
                   </button>
                   <button
                     className={styles.aiGroupToggle}
@@ -374,7 +389,10 @@ export default function ProfilePage() {
                   </button>
                 </div>
               </div>
-              <p className={styles.sectionGroupHint}>基于你的笔记内容自动生成，点击更新画像将重新分析最近笔记</p>
+              <p className={styles.sectionGroupHint}>
+                基于你的笔记内容自动生成，点击更新画像将重新分析最近笔记
+                {data?.profileStatus === 'failed' && data.analysisError ? `；最近一次失败：${data.analysisError}` : ''}
+              </p>
 
               <div className={`${styles.aiGroupBody} ${aiExpanded ? styles.expanded : styles.collapsed}`}>
                 {/* Interest Graph */}
