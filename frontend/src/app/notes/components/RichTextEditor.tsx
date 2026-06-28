@@ -4,26 +4,16 @@ import React, { useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useEditor, EditorContent, JSONContent } from '@tiptap/react';
 import { DragHandle } from './DragHandle';
-import Placeholder from '@tiptap/extension-placeholder';
-import { StarterKit } from '@tiptap/starter-kit';
-import { Markdown } from 'tiptap-markdown';
-import { Link } from '@tiptap/extension-link';
-import { TaskList } from '@tiptap/extension-task-list';
-import { TaskItem } from '@tiptap/extension-task-item';
-import { Highlight } from '@tiptap/extension-highlight';
-import { TextAlign } from '@tiptap/extension-text-align';
-import { Table } from '@tiptap/extension-table';
-import { TableRow } from '@tiptap/extension-table-row';
-import { TableHeader } from '@tiptap/extension-table-header';
-import { TableCell } from '@tiptap/extension-table-cell';
-import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
-import { common, createLowlight } from 'lowlight';
-import { ResizableImage } from './tiptap/ResizableImage';
 import styles from '../styles/rich-editor.module.scss';
 import { RichTextBubbleMenu } from './RichTextBubbleMenu';
 import { RichTextSlashMenu } from './RichTextSlashMenu';
-
-const lowlight = createLowlight(common);
+import {
+  createRichTextExtensions,
+  DEFAULT_RICH_TEXT_PLACEHOLDER,
+  isEditorContentSynced,
+  serializeRichTextValue,
+  type RichTextValue,
+} from './tiptap/richTextPreset';
 
 type Props = {
   value: JSONContent | string | null | undefined; // Markdown text or JSON
@@ -39,91 +29,6 @@ type Props = {
   autoFocus?: boolean | 'start' | 'end' | 'all';
   className?: string;
 };
-
-const extensions = [
-  StarterKit.configure({
-    bulletList: {
-      HTMLAttributes: {
-        class: 'list-disc list-outside leading-3 -mt-2',
-      },
-    },
-    orderedList: {
-      HTMLAttributes: {
-        class: 'list-decimal list-outside leading-3 -mt-2',
-      },
-    },
-    listItem: {
-      HTMLAttributes: {
-        class: 'leading-normal -mb-2',
-      },
-    },
-    blockquote: {
-      HTMLAttributes: {
-        class: 'border-l-4 border-stone-700 pl-4',
-      },
-    },
-    codeBlock: false,
-    code: {
-      HTMLAttributes: {
-        class: 'rounded-md bg-stone-200 px-1.5 py-1 font-mono font-medium text-stone-900',
-        spellcheck: 'false',
-      },
-    },
-    horizontalRule: {
-      HTMLAttributes: {
-        class: 'mt-4 mb-6 border-t border-stone-300',
-      },
-    },
-    dropcursor: {
-      color: '#DBEAFE',
-      width: 4,
-    },
-    gapcursor: false,
-  }),
-  Markdown,
-  Link?.configure({
-    openOnClick: false,
-    HTMLAttributes: {
-      class: 'text-blue-500 hover:underline',
-    },
-  }),
-  TaskList?.configure({
-    HTMLAttributes: {
-      class: 'not-prose pl-2',
-    },
-  }),
-  TaskItem?.configure({
-    HTMLAttributes: {
-      class: 'flex items-start my-4',
-    },
-    nested: true,
-  }),
-  ResizableImage,
-  CodeBlockLowlight?.configure({
-    lowlight,
-    HTMLAttributes: {
-      class: 'rounded-sm bg-stone-100 p-5 font-mono font-medium text-stone-800',
-    },
-  }),
-  Highlight?.configure({
-    multicolor: true,
-  }),
-  TextAlign?.configure({
-    types: ['heading', 'paragraph'],
-  }),
-  Table?.configure({
-    resizable: true,
-    HTMLAttributes: {
-      class: 'border-collapse table-auto w-full',
-    },
-  }),
-  TableRow,
-  TableHeader,
-  TableCell,
-  Placeholder.configure({
-    placeholder: 'Type "/" for commands',
-  }),
-].filter(Boolean);
 
 export default function RichTextEditor({
   value,
@@ -142,22 +47,27 @@ export default function RichTextEditor({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
-  const initialContentRef = useRef(value);
-  const lastUpdateRef = useRef<string | null>(null);
+  const initialContentRef = useRef<RichTextValue>(value);
+  const lastUpdateRef = useRef<string | null>(serializeRichTextValue(value));
 
   const searchParams = useSearchParams();
   const isFullscreen = searchParams?.get('mode') === 'fullscreen';
+
+  // 当前仍保留这两个 props 的公开契约，避免影响调用侧；待后续统一收敛时再移除。
+  void toolbarVariant;
+  void insideRefs;
 
   const editorContentClassName = React.useMemo(
     () => `${styles.richEditorContent} prose prose-sm sm:prose-base focus:outline-none ${className} ${isFullscreen ? '!max-w-[800px] !mx-auto !px-6 !py-10' : ''}`,
     [isFullscreen, className]
   );
 
-  const memoizedExtensions = React.useMemo(() => extensions, []);
-  const getMarkdown = React.useCallback(
-    (instance: NonNullable<typeof editor>) =>
-      ((instance.storage as { markdown?: { getMarkdown?: () => string } }).markdown?.getMarkdown?.() ?? ''),
-    []
+  const memoizedExtensions = React.useMemo(
+    () =>
+      createRichTextExtensions({
+        placeholder: placeholder ?? DEFAULT_RICH_TEXT_PLACEHOLDER,
+      }),
+    [placeholder]
   );
   
   const memoizedEditorProps = React.useMemo(() => ({
@@ -183,7 +93,9 @@ export default function RichTextEditor({
     content: initialContentRef.current,
     immediatelyRender: false,
     onUpdate: ({ editor }) => {
-      const markdown = getMarkdown(editor);
+      const markdown =
+        ((editor.storage as { markdown?: { getMarkdown?: () => string } }).markdown?.getMarkdown?.() ??
+          '');
       const json = editor.getJSON();
       onChange({ json, text: markdown });
     },
@@ -195,18 +107,16 @@ export default function RichTextEditor({
   useEffect(() => {
     if (!editor) return;
     if (value === undefined || value === null) return;
-    
-    const incomingStr = typeof value === 'string' ? value : JSON.stringify(value);
+
+    const incomingStr = serializeRichTextValue(value);
+    if (incomingStr === null) return;
     if (incomingStr === lastUpdateRef.current) return;
-    
-    const curMarkdown = getMarkdown(editor);
-    const curJsonStr = JSON.stringify(editor.getJSON());
-    
-    if (incomingStr === curMarkdown || incomingStr === curJsonStr) {
+
+    if (isEditorContentSynced(editor, value)) {
       lastUpdateRef.current = incomingStr;
       return;
     }
-    
+
     if (editor.isFocused) return;
 
     try {
