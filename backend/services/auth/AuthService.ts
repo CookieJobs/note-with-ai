@@ -1,7 +1,34 @@
+import crypto from 'crypto';
 import User from '../../models/User';
 import { generateToken } from '../../utils/jwt';
 import { UserValidator } from '../../utils/userValidation';
 import { ErrorHandler } from '../../utils/errorHandler';
+
+function buildUsernameBase(email: string): string {
+  const localPart = email.split('@')[0] ?? '';
+  const normalized = localPart
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '')
+    .slice(0, 11);
+
+  return normalized.length >= 2 ? normalized : 'user';
+}
+
+async function generateUniqueUsername(email: string): Promise<string> {
+  const base = buildUsernameBase(email);
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const suffix = crypto.randomBytes(4).toString('hex');
+    const username = `${base}_${suffix}`.slice(0, 20);
+    const existing = await User.exists({ username });
+
+    if (!existing) {
+      return username;
+    }
+  }
+
+  throw ErrorHandler.createInternalError('用户名生成失败，请稍后重试');
+}
 
 export class AuthService {
   static async register(
@@ -16,8 +43,10 @@ export class AuthService {
       throw ErrorHandler.createValidationError('该邮箱已注册');
     }
 
-    // create user (isVerified will be set by caller after code verification)
-    const user = new User({ email, password });
+    // Generate a stable fallback username so legacy unique indexes on username
+    // cannot block email-based registration when username is omitted.
+    const username = await generateUniqueUsername(email);
+    const user = new User({ username, email, password });
     await user.save();
 
     const token = generateToken({
