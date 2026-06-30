@@ -1,4 +1,5 @@
-import { getCachedQwenEmbedding } from '../utils/embedding';
+import { EMBEDDING_CONFIG } from '../config/embedding';
+import { getCachedEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 
 type RecallMessage = {
@@ -34,7 +35,7 @@ class ChatRelatedNoteRecallService {
   private readonly defaultLimit = 5;
   private readonly defaultThreshold = 0.3;
   private readonly maxContextMessages = 6;
-  private readonly embeddingDimensions = 1024;
+  private readonly queryInputType = EMBEDDING_CONFIG.DEFAULTS.INPUT_TYPES.QUERY;
 
   private normalizeMessages(messages: RecallMessage[]): RecallMessage[] {
     return messages.filter(
@@ -81,7 +82,9 @@ class ChatRelatedNoteRecallService {
       return [];
     }
 
-    const queryEmbedding = await getCachedQwenEmbedding(context, this.embeddingDimensions);
+    const queryEmbedding = await getCachedEmbedding(context, {
+      inputType: this.queryInputType,
+    });
     const searchLimit = Math.max(limit, 1) * 2;
     const rawResults = await vectorStore.search(userId, queryEmbedding, searchLimit);
 

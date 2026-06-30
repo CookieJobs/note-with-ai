@@ -59,11 +59,23 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
             <span className={styles.navHoverPill} aria-hidden="true" />
             {menuItems.map(({ label, href }) => {
               const isActive = pathname === href;
+              if (isActive) {
+                return (
+                  <span
+                    key={href}
+                    className={`${styles.navItem} ${styles.active}`}
+                    aria-current="page"
+                  >
+                    {label}
+                  </span>
+                );
+              }
+
               return (
                 <Link
                   key={href}
                   href={href}
-                  className={`${styles.navItem} ${isActive ? styles.active : ''}`}
+                  className={styles.navItem}
                 >
                   {label}
                 </Link>

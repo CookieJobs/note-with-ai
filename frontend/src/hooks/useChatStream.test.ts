@@ -399,6 +399,29 @@ describe('useChatStream', () => {
     expect(result.current.error).toBe('发送失败，请稍后重试');
   });
 
+  it('silences abort errors when request is cancelled', async () => {
+    const { result } = renderHook(() => useChatStream());
+    const abortError = Object.assign(new Error('The operation was aborted.'), {
+      name: 'AbortError',
+    });
+
+    mockAuthFetchFn.mockRejectedValueOnce(abortError);
+
+    await act(async () => {
+      await result.current.sendMessage(
+        'hi',
+        makeSession(),
+        'user-1',
+        vi.fn(),
+        vi.fn(),
+        vi.fn(),
+      );
+    });
+
+    expect(result.current.error).toBe('');
+    expect(result.current.loading).toBe(false);
+  });
+
   // --- Side effects ---
 
   it('calls persistChatSessions after stream completes', async () => {

@@ -1,18 +1,23 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 后端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+Input: embedding 运行时环境变量与 provider 选择
+Output: 统一的 embedding 默认配置、provider 配置与校验方法
+Pos: 后端配置模块
+Note: 支持 OpenRouter 默认 provider，并保留 DashScope 兼容配置
 */
+import { config } from './index';
+
+export type EmbeddingProviderName = 'openrouter' | 'dashscope';
+export type EmbeddingInputType = 'search_query' | 'search_document' | string;
+export type EmbeddingModality = 'text' | 'image' | 'image_text';
+
 /**
  * Embedding 相关配置
  */
-
 export const EMBEDDING_CONFIG = {
   // 定时任务配置
   CRON: {
     // 根据环境变量决定执行频率：测试模式每分钟执行，生产模式每天凌晨2点执行
-    SCHEDULE: process.env.EMBEDDING_TEST_MODE === 'true' ? '* * * * *' : '0 2 * * *',
+    SCHEDULE: config.EMBEDDING_TEST_MODE ? '* * * * *' : '0 2 * * *',
     TIMEZONE: 'Asia/Shanghai',
     MAX_RETRIES: 3,
     RETRY_DELAY_MS: 2000,
@@ -29,39 +34,53 @@ export const EMBEDDING_CONFIG = {
   // 缓存配置
   CACHE: {
     // 最大缓存条目数
-    MAX_SIZE: 1000,
+    MAX_SIZE: config.EMBEDDING_CACHE_SIZE,
     // 缓存过期时间（毫秒）
-    TTL: 24 * 60 * 60 * 1000, // 24小时
+    TTL: config.EMBEDDING_CACHE_TTL,
   },
 
-  // Qwen API 配置
-  QWEN: {
-    // 嵌入模型
-    MODEL: process.env.EMBEDDING_MODEL || 'qwen3-vl-embedding',
-    // 标准文本嵌入端点 (OpenAI 兼容模式)
-    TEXT_ENDPOINT: 'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings',
-    // 多模态嵌入端点 (DashScope 原生 API)
-    MULTIMODAL_ENDPOINT: 'https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding',
-    // 默认向量维度
-    DEFAULT_DIMENSIONS: 1024,
-    // API 请求超时时间
-    TIMEOUT_MS: 30000,
-    // 批量处理最大文本数
-    MAX_BATCH_SIZE: 25,
+  DEFAULTS: {
+    PROVIDER: config.EMBEDDING_PROVIDER as EmbeddingProviderName,
+    MODEL: config.EMBEDDING_MODEL,
+    DIMENSIONS: config.EMBEDDING_DIMENSION,
+    MODALITY: config.EMBEDDING_MODALITY as EmbeddingModality,
+    INPUT_TYPES: {
+      QUERY: config.EMBEDDING_QUERY_INPUT_TYPE,
+      DOCUMENT: config.EMBEDDING_DOCUMENT_INPUT_TYPE,
+    },
+  },
+
+  PROVIDERS: {
+    OPENROUTER: {
+      NAME: 'openrouter' as const,
+      BASE_URL: config.OPENROUTER_BASE_URL,
+      EMBEDDINGS_PATH: '/embeddings',
+      API_KEY: config.OPENROUTER_API_KEY || '',
+      TIMEOUT_MS: 30000,
+      MAX_BATCH_SIZE: 25,
+    },
+    DASHSCOPE: {
+      NAME: 'dashscope' as const,
+      API_KEY: config.DASHSCOPE_API_KEY || '',
+      TEXT_ENDPOINT: 'https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings',
+      MULTIMODAL_ENDPOINT: 'https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding',
+      TIMEOUT_MS: 30000,
+      MAX_BATCH_SIZE: 25,
+    },
   },
 
   // 相似度配置
   SIMILARITY: {
     // 相关性阈值
-    RELEVANCE_THRESHOLD: 0.7,
+    RELEVANCE_THRESHOLD: config.SIMILARITY_THRESHOLD,
     // 默认返回的相似笔记数量
-    DEFAULT_TOP_K: 5,
+    DEFAULT_TOP_K: config.MAX_RELATED_NOTES,
   },
 
   // 日志配置
   LOGGING: {
     // 是否启用详细日志
-    VERBOSE: process.env.NODE_ENV === 'development',
+    VERBOSE: config.NODE_ENV === 'development',
     // 是否记录性能指标
     PERFORMANCE: true,
   }
@@ -74,11 +93,36 @@ export function isMultimodalModel(modelName: string): boolean {
   return modelName.includes('-vl-') || modelName.includes('vision');
 }
 
+export function getDefaultEmbeddingOptions() {
+  return {
+    provider: EMBEDDING_CONFIG.DEFAULTS.PROVIDER,
+    model: EMBEDDING_CONFIG.DEFAULTS.MODEL,
+    dimensions: EMBEDDING_CONFIG.DEFAULTS.DIMENSIONS,
+    modality: EMBEDDING_CONFIG.DEFAULTS.MODALITY,
+    queryInputType: EMBEDDING_CONFIG.DEFAULTS.INPUT_TYPES.QUERY,
+    documentInputType: EMBEDDING_CONFIG.DEFAULTS.INPUT_TYPES.DOCUMENT,
+  };
+}
+
+export function getProviderRuntimeConfig(provider: EmbeddingProviderName = EMBEDDING_CONFIG.DEFAULTS.PROVIDER) {
+  return provider === 'dashscope'
+    ? EMBEDDING_CONFIG.PROVIDERS.DASHSCOPE
+    : EMBEDDING_CONFIG.PROVIDERS.OPENROUTER;
+}
+
 // 环境变量验证
-export function validateEmbeddingConfig() {
-  const requiredEnvVars = ['DASHSCOPE_API_KEY', 'MONGODB_URI'];
-  const missing = requiredEnvVars.filter(key => !process.env[key]);
-  
+export function validateEmbeddingConfig(provider: EmbeddingProviderName = EMBEDDING_CONFIG.DEFAULTS.PROVIDER) {
+  const missing: string[] = [];
+  const providerConfig = getProviderRuntimeConfig(provider);
+
+  if (!process.env.MONGODB_URI && !config.MONGODB_URI) {
+    missing.push('MONGODB_URI');
+  }
+
+  if (!providerConfig.API_KEY) {
+    missing.push(provider === 'dashscope' ? 'DASHSCOPE_API_KEY' : 'OPENROUTER_API_KEY');
+  }
+
   if (missing.length > 0) {
     throw new Error(`缺少必要的环境变量: ${missing.join(', ')}`);
   }
@@ -91,11 +135,11 @@ export function getRuntimeConfig() {
     // 可以根据环境变量覆盖配置
     BATCH: {
       ...EMBEDDING_CONFIG.BATCH,
-      SIZE: parseInt(process.env.EMBEDDING_BATCH_SIZE || '50'),
+      SIZE: Number(process.env.EMBEDDING_BATCH_SIZE) || EMBEDDING_CONFIG.BATCH.SIZE,
     },
     CACHE: {
       ...EMBEDDING_CONFIG.CACHE,
-      MAX_SIZE: parseInt(process.env.EMBEDDING_CACHE_SIZE || '1000'),
-    }
+      MAX_SIZE: Number(process.env.EMBEDDING_CACHE_SIZE) || EMBEDDING_CONFIG.CACHE.MAX_SIZE,
+    },
   };
 }

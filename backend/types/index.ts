@@ -1,5 +1,20 @@
 import { Document, Types } from 'mongoose';
 
+export type EmbeddingMetadataModality = 'text' | 'image' | 'image_text';
+
+export interface INoteEmbeddingImageExtension {
+  assetIds?: string[];
+}
+
+export interface INoteEmbeddingMetadata {
+  provider: string;
+  model: string;
+  dimension: number;
+  modality: EmbeddingMetadataModality;
+  updatedAt: Date;
+  image: INoteEmbeddingImageExtension | null;
+}
+
 export interface IMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -35,6 +50,7 @@ export interface INote extends Document {
   recommendCache?: Record<string, unknown>;
   keywords?: string[];
   embedding?: number[];
+  embeddingMetadata?: INoteEmbeddingMetadata | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -1,11 +1,31 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 后端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+Input: 笔记持久化字段定义，包括富文本内容、embedding 向量与推荐缓存
+Output: Note Mongoose Schema、索引与模型导出
+Pos: 后端 数据模型模块
+Note: embeddingMetadata 为文本向量保存 provider/model/dimension/modality，并为未来图片 embedding 预留 image 扩展位
 */
 // backend/models/Note.ts
 import mongoose from 'mongoose';
+
+const EmbeddingMetadataSchema = new mongoose.Schema(
+  {
+    provider: { type: String, required: true },
+    model: { type: String, required: true },
+    dimension: { type: Number, required: true },
+    modality: { type: String, enum: ['text', 'image', 'image_text'], required: true },
+    updatedAt: { type: Date, required: true },
+    image: {
+      type: new mongoose.Schema(
+        {
+          assetIds: [{ type: String }],
+        },
+        { _id: false }
+      ),
+      default: null,
+    },
+  },
+  { _id: false }
+);
 
 const NoteSchema = new mongoose.Schema(
   {
@@ -24,6 +44,7 @@ const NoteSchema = new mongoose.Schema(
     recommendCache: { type: mongoose.Schema.Types.Mixed, default: null },
     keywords: [{ type: String }],
     embedding: [{ type: Number }], // 可选字段，可后续异步填充
+    embeddingMetadata: { type: EmbeddingMetadataSchema, default: null },
   },
   { timestamps: true } // 自动添加 createdAt 和 updatedAt 字段
 );

@@ -20,8 +20,12 @@ const envSchema = z.object({
   // DeepSeek API 配置
   DEEPSEEK_API_KEY: z.string().optional(),
 
-  // Qwen API 配置
+  // Legacy DashScope API 配置
   DASHSCOPE_API_KEY: z.string().optional(),
+
+  // OpenRouter Embedding 配置
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_BASE_URL: z.string().url().default('https://openrouter.ai/api/v1'),
 
   // Redis 配置
   REDIS_URL: z.string().min(1, "REDIS_URL is required"),
@@ -32,8 +36,12 @@ const envSchema = z.object({
   QQ_EMAIL_PASS: z.string().min(1, "QQ_EMAIL_PASS is required"),
 
   // 向量化配置
-  EMBEDDING_MODEL: z.string().default('text-embedding-v4'),
-  EMBEDDING_DIMENSION: z.coerce.number().default(1024),
+  EMBEDDING_PROVIDER: z.enum(['openrouter', 'dashscope']).default('openrouter'),
+  EMBEDDING_MODEL: z.string().default('nvidia/llama-nemotron-embed-vl-1b-v2:free'),
+  EMBEDDING_DIMENSION: z.coerce.number().default(2048),
+  EMBEDDING_MODALITY: z.enum(['text', 'image', 'image_text']).default('text'),
+  EMBEDDING_QUERY_INPUT_TYPE: z.string().default('search_query'),
+  EMBEDDING_DOCUMENT_INPUT_TYPE: z.string().default('search_document'),
   SIMILARITY_THRESHOLD: z.coerce.number().default(0.7),
   MAX_RELATED_NOTES: z.coerce.number().default(3),
 

@@ -1,6 +1,7 @@
 import { Note } from '../models/Note';
+import { EMBEDDING_CONFIG } from '../config/embedding';
 import { logger } from '../utils/logger';
-import { getCachedQwenEmbedding } from '../utils/embedding';
+import { buildNoteEmbeddingMetadataFilter, getCachedEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 import { rerankRecommendedNotes } from './llmService';
 
@@ -139,6 +140,8 @@ export interface RecommendationResult {
 const ALGO_VERSION = 'semantic-notes-v3';
 const DIAGNOSTIC_S1_THRESHOLDS = [0.35, 0.4, 0.45, 0.5];
 const DIAGNOSTIC_RECALL_CAP = 200;
+const QUERY_INPUT_TYPE = EMBEDDING_CONFIG.DEFAULTS.INPUT_TYPES.QUERY;
+const CURRENT_DOCUMENT_EMBEDDING_FILTER = buildNoteEmbeddingMetadataFilter();
 
 function formatThresholdKey(value: number) {
   return Number(value).toFixed(2);
@@ -217,12 +220,8 @@ async function loadCurrentNoteContext(params: {
   const conceptsDb: string[] = Array.isArray((currentNote as any).concepts) ? (currentNote as any).concepts : [];
   const q0 = `${currentTitle} ${currentText}`.trim();
   const q2 = conceptsDb.length ? conceptsDb.join(' ') : '';
-  const q0Embedding: number[] =
-    Array.isArray((currentNote as any).embedding) && (currentNote as any).embedding.length > 0
-      ? (currentNote as any).embedding
-      : [];
   const queryItems: QueryItem[] = [
-    q0 ? { text: q0, embedding: q0Embedding.length ? q0Embedding : undefined } : null,
+    q0 ? { text: q0 } : null,
     currentSummaryDb ? { text: currentSummaryDb } : null,
     q2 ? { text: q2 } : null,
   ].filter(Boolean) as QueryItem[];
@@ -278,6 +277,7 @@ async function recallTopCandidates(params: {
     userId,
     _id: { $ne: noteId },
     'embedding.0': { $exists: true },
+    ...CURRENT_DOCUMENT_EMBEDDING_FILTER,
   })
     .select('_id updatedAt embedding')
     .lean();
@@ -286,7 +286,9 @@ async function recallTopCandidates(params: {
   const queryEmbeddingsPromise = Promise.all(
     queryItems.map(async (q) => {
       if (Array.isArray(q.embedding) && q.embedding.length > 0) return q.embedding;
-      const emb = await getCachedQwenEmbedding(String(q.text || '').trim(), 1024);
+      const emb = await getCachedEmbedding(String(q.text || '').trim(), {
+        inputType: QUERY_INPUT_TYPE,
+      });
       return Array.isArray(emb) ? emb : [];
     })
   );

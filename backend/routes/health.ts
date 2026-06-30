@@ -1,8 +1,8 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 后端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+Input: 服务健康检查与 embedding 运行时统计请求
+Output: 数据库状态、当前 embedding provider/model 配置与兼容覆盖率摘要
+Pos: 后端 路由模块
+Note: 健康检查显式暴露当前默认 embedding 配置和 API Key 配置状态，便于迁移巡检
 */
 import express from 'express';
 import mongoose from 'mongoose';
@@ -18,6 +18,10 @@ const router = express.Router();
 router.get('/health', asyncHandler(async (req, res) => {
   const stats = await noteEmbeddingService.getGlobalEmbeddingStats();
   const isDev = process.env.NODE_ENV !== 'production';
+  const activeProvider = EMBEDDING_CONFIG.DEFAULTS.PROVIDER;
+  const activeProviderKeyConfigured = activeProvider === 'openrouter'
+    ? Boolean(EMBEDDING_CONFIG.PROVIDERS.OPENROUTER.API_KEY)
+    : Boolean(EMBEDDING_CONFIG.PROVIDERS.DASHSCOPE.API_KEY);
   const mongoInfo = isDev
     ? {
         readyState: mongoose.connection.readyState,
@@ -31,18 +35,34 @@ router.get('/health', asyncHandler(async (req, res) => {
     embedding: {
       totalNotes: stats.totalNotes,
       notesWithEmbedding: stats.notesWithEmbedding,
+      notesWithCurrentEmbedding: stats.notesWithCurrentEmbedding,
+      notesWithOutdatedEmbedding: stats.notesWithOutdatedEmbedding,
       notesWithoutEmbedding: stats.notesWithoutEmbedding,
-      coverage: Math.round(stats.embeddingCoverage)
+      coverage: Math.round(stats.embeddingCoverage),
+      currentConfigCoverage: Math.round(stats.currentConfigCoverage),
+      pendingCount: stats.pendingNotes.length,
     },
     config: {
+      provider: activeProvider,
+      model: EMBEDDING_CONFIG.DEFAULTS.MODEL,
+      dimension: EMBEDDING_CONFIG.DEFAULTS.DIMENSIONS,
+      modality: EMBEDDING_CONFIG.DEFAULTS.MODALITY,
+      inputTypes: {
+        query: EMBEDDING_CONFIG.DEFAULTS.INPUT_TYPES.QUERY,
+        document: EMBEDDING_CONFIG.DEFAULTS.INPUT_TYPES.DOCUMENT,
+      },
       batchSize: EMBEDDING_CONFIG.BATCH.SIZE,
       cacheMaxSize: EMBEDDING_CONFIG.CACHE.MAX_SIZE,
-      cronSchedule: EMBEDDING_CONFIG.CRON.SCHEDULE
+      cronSchedule: EMBEDDING_CONFIG.CRON.SCHEDULE,
     },
     environment: {
       nodeEnv: process.env.NODE_ENV,
-      hasApiKey: !!process.env.DASHSCOPE_API_KEY,
-      hasMongoUri: !!process.env.MONGODB_URI
+      hasMongoUri: !!process.env.MONGODB_URI,
+      activeProviderApiKeyConfigured: activeProviderKeyConfigured,
+      apiKeys: {
+        openrouterConfigured: Boolean(EMBEDDING_CONFIG.PROVIDERS.OPENROUTER.API_KEY),
+        dashscopeConfigured: Boolean(EMBEDDING_CONFIG.PROVIDERS.DASHSCOPE.API_KEY),
+      },
     },
     ...(mongoInfo ? { mongo: mongoInfo } : {})
   };

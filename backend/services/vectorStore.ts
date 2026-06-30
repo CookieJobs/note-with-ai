@@ -1,5 +1,6 @@
 
 import { Note } from '../models/Note';
+import { buildNoteEmbeddingMetadataFilter } from '../utils/embedding';
 
 export interface SearchResult {
   item: Record<string, unknown>;
@@ -10,6 +11,8 @@ export interface IVectorStore {
   search(userId: string, queryEmbedding: number[], limit: number): Promise<SearchResult[]>;
 }
 
+const CURRENT_DOCUMENT_EMBEDDING_FILTER = buildNoteEmbeddingMetadataFilter();
+
 export class InMemoryVectorStore implements IVectorStore {
   private batchSize = 100; // Process 100 items at a time to avoid blocking
 
@@ -17,7 +20,8 @@ export class InMemoryVectorStore implements IVectorStore {
     // 1. Fetch all notes for the user that have embeddings
     const notes = await Note.find({
       userId,
-      embedding: { $exists: true, $ne: null, $not: { $size: 0 } }
+      embedding: { $exists: true, $ne: null, $not: { $size: 0 } },
+      ...CURRENT_DOCUMENT_EMBEDDING_FILTER,
     }).lean();
 
     if (!notes || notes.length === 0) {

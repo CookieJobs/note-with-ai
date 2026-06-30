@@ -1,171 +1,276 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 后端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+Input: 文本列表与 provider/model/inputType/modality 等 embedding 请求参数
+Output: 统一的单条、批量、metadata 构建与缓存 embedding 能力，并兼容旧 Qwen 调用入口
+Pos: 后端工具模块
+Note: 默认走 OpenRouter provider；缓存键按 provider/model/dimensions/inputType/modality 隔离
 */
-// backend/utils/embedding.ts
 import axios from 'axios';
-import { EMBEDDING_CONFIG, isMultimodalModel } from '../config/embedding';
-import { config } from '../config';
+import {
+  EMBEDDING_CONFIG,
+  EmbeddingInputType,
+  EmbeddingModality,
+  EmbeddingProviderName,
+  getDefaultEmbeddingOptions,
+  isMultimodalModel,
+} from '../config/embedding';
+import type { INoteEmbeddingMetadata } from '../types';
 import { logger } from './logger';
 
-const DASHSCOPE_API_KEY = config.DASHSCOPE_API_KEY || '';
+export interface EmbeddingGenerationOptions {
+  provider?: EmbeddingProviderName;
+  model?: string;
+  dimensions?: number;
+  inputType?: EmbeddingInputType;
+  modality?: EmbeddingModality;
+}
 
-// 使用 Qwen 嵌入模型生成单个文本的向量
-export async function generateQwenEmbedding(
-  text: string, 
-  dimensions: number = EMBEDDING_CONFIG.QWEN.DEFAULT_DIMENSIONS
-): Promise<number[]> {
-  try {
-    if (!DASHSCOPE_API_KEY) {
-      throw new Error('DASHSCOPE_API_KEY 环境变量未设置');
-    }
+export interface ResolvedEmbeddingOptions {
+  provider: EmbeddingProviderName;
+  model: string;
+  dimensions: number;
+  inputType: EmbeddingInputType;
+  modality: EmbeddingModality;
+}
 
-    const model = EMBEDDING_CONFIG.QWEN.MODEL;
-    const isMultimodal = isMultimodalModel(model);
-    const url = isMultimodal 
-      ? EMBEDDING_CONFIG.QWEN.MULTIMODAL_ENDPOINT 
-      : EMBEDDING_CONFIG.QWEN.TEXT_ENDPOINT;
+interface EmbeddingProvider {
+  readonly name: EmbeddingProviderName;
+  readonly maxBatchSize: number;
+  generateEmbeddings(texts: string[], options: ResolvedEmbeddingOptions): Promise<number[][]>;
+}
 
-    let requestBody: Record<string, unknown>;
-    if (isMultimodal) {
-      // 多模态模型请求格式 (DashScope 原生 API)
-      requestBody = {
-        model,
-        input: {
-          contents: [
-            { text }
-          ]
-        },
-        parameters: {
-          dimension: dimensions
-        }
-      };
-    } else {
-      // 标准文本模型请求格式 (OpenAI 兼容)
-      requestBody = {
-        model,
-        input: text,
-        dimensions,
-        encoding_format: 'float'
-      };
-    }
+export function resolveEmbeddingOptions(options: EmbeddingGenerationOptions = {}): ResolvedEmbeddingOptions {
+  const defaults = getDefaultEmbeddingOptions();
 
-    const response = await axios.post(
-      url,
-      requestBody,
-      {
-        headers: {
-          'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 10000 // 10秒超时
-      }
-    );
+  return {
+    provider: options.provider ?? defaults.provider,
+    model: options.model ?? defaults.model,
+    dimensions: options.dimensions ?? defaults.dimensions,
+    inputType: options.inputType ?? defaults.documentInputType,
+    modality: options.modality ?? defaults.modality,
+  };
+}
 
-    let embedding: number[];
-    if (isMultimodal) {
-      // 多模态模型响应格式
-      embedding = response.data.output.embeddings[0].embedding;
-    } else {
-      // 标准文本模型响应格式
-      embedding = response.data.data[0].embedding;
-    }
+export function buildNoteEmbeddingMetadata(
+  options: EmbeddingGenerationOptions = {},
+  embedding: number[] = []
+): INoteEmbeddingMetadata {
+  const resolved = resolveEmbeddingOptions(options);
 
-    logger.info(`✅ 成功生成 ${dimensions} 维向量，文本长度: ${text.length} (模型: ${model})`);
-    return embedding;
-  } catch (error: unknown) {
-    const errorMsg = (error as any).response?.data?.message || (error as Error).message || error;
-    logger.error(`❌ Qwen Embedding 生成失败 (${EMBEDDING_CONFIG.QWEN.MODEL}):`, errorMsg);
-    return [];
+  return {
+    provider: resolved.provider,
+    model: resolved.model,
+    dimension: embedding.length > 0 ? embedding.length : resolved.dimensions,
+    modality: resolved.modality,
+    updatedAt: new Date(),
+    image: null,
+  };
+}
+
+export function buildExpectedNoteEmbeddingMetadata(options: EmbeddingGenerationOptions = {}) {
+  const resolved = resolveEmbeddingOptions(options);
+
+  return {
+    provider: resolved.provider,
+    model: resolved.model,
+    dimension: resolved.dimensions,
+    modality: resolved.modality,
+  };
+}
+
+export function buildNoteEmbeddingMetadataFilter(
+  options: EmbeddingGenerationOptions = {},
+  prefix: string = 'embeddingMetadata'
+): Record<string, unknown> {
+  const expected = buildExpectedNoteEmbeddingMetadata(options);
+
+  return {
+    [`${prefix}.provider`]: expected.provider,
+    [`${prefix}.model`]: expected.model,
+    [`${prefix}.dimension`]: expected.dimension,
+    [`${prefix}.modality`]: expected.modality,
+  };
+}
+
+function assertTextOnly(modality: EmbeddingModality) {
+  if (modality !== 'text') {
+    throw new Error(`当前版本仅支持文本 embedding，收到 modality=${modality}`);
   }
 }
 
-// 批量生成向量（提高效率）
-export async function generateQwenEmbeddingBatch(
-  texts: string[], 
-  dimensions: number = EMBEDDING_CONFIG.QWEN.DEFAULT_DIMENSIONS
-): Promise<number[][]> {
-  try {
-    if (!DASHSCOPE_API_KEY) {
+function extractEmbeddingsFromResponse(data: any): number[][] {
+  if (Array.isArray(data?.data)) {
+    return data.data
+      .map((item: { embedding?: number[] }) => item?.embedding)
+      .filter((embedding: number[] | undefined): embedding is number[] => Array.isArray(embedding));
+  }
+
+  if (Array.isArray(data?.output?.embeddings)) {
+    return data.output.embeddings
+      .map((item: { embedding?: number[] }) => item?.embedding)
+      .filter((embedding: number[] | undefined): embedding is number[] => Array.isArray(embedding));
+  }
+
+  return [];
+}
+
+function extractErrorMessage(error: unknown): string {
+  const responseMessage =
+    (error as { response?: { data?: { error?: { message?: string }; message?: string } } })?.response?.data?.error?.message
+    || (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+
+  return responseMessage || (error as Error)?.message || String(error);
+}
+
+const openRouterProvider: EmbeddingProvider = {
+  name: 'openrouter',
+  maxBatchSize: EMBEDDING_CONFIG.PROVIDERS.OPENROUTER.MAX_BATCH_SIZE,
+  async generateEmbeddings(texts, options) {
+    assertTextOnly(options.modality);
+
+    const providerConfig = EMBEDDING_CONFIG.PROVIDERS.OPENROUTER;
+    if (!providerConfig.API_KEY) {
+      throw new Error('OPENROUTER_API_KEY 环境变量未设置');
+    }
+
+    const response = await axios.post(
+      `${providerConfig.BASE_URL}${providerConfig.EMBEDDINGS_PATH}`,
+      {
+        model: options.model,
+        input: texts.length === 1 ? texts[0] : texts,
+        dimensions: options.dimensions,
+        encoding_format: 'float',
+        input_type: options.inputType,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${providerConfig.API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: providerConfig.TIMEOUT_MS,
+      }
+    );
+
+    return extractEmbeddingsFromResponse(response.data);
+  },
+};
+
+const dashScopeProvider: EmbeddingProvider = {
+  name: 'dashscope',
+  maxBatchSize: EMBEDDING_CONFIG.PROVIDERS.DASHSCOPE.MAX_BATCH_SIZE,
+  async generateEmbeddings(texts, options) {
+    assertTextOnly(options.modality);
+
+    const providerConfig = EMBEDDING_CONFIG.PROVIDERS.DASHSCOPE;
+    if (!providerConfig.API_KEY) {
       throw new Error('DASHSCOPE_API_KEY 环境变量未设置');
     }
 
-    const model = EMBEDDING_CONFIG.QWEN.MODEL;
-    const isMultimodal = isMultimodalModel(model);
-    const url = isMultimodal 
-      ? EMBEDDING_CONFIG.QWEN.MULTIMODAL_ENDPOINT 
-      : EMBEDDING_CONFIG.QWEN.TEXT_ENDPOINT;
-
-    // Qwen 支持批量处理
-    const batchSize = EMBEDDING_CONFIG.QWEN.MAX_BATCH_SIZE;
-    const results: number[][] = [];
-
-    for (let i = 0; i < texts.length; i += batchSize) {
-      const batch = texts.slice(i, i + batchSize);
-      
-      let requestBody: Record<string, unknown>;
-      if (isMultimodal) {
-        requestBody = {
-          model,
+    const useMultimodalEndpoint = isMultimodalModel(options.model);
+    const requestBody = useMultimodalEndpoint
+      ? {
+          model: options.model,
           input: {
-            contents: batch.map(text => ({ text }))
+            contents: texts.map((text) => ({ text })),
           },
           parameters: {
-            dimension: dimensions
-          }
-        };
-      } else {
-        requestBody = {
-          model,
-          input: batch,
-          dimensions,
-          encoding_format: 'float'
-        };
-      }
-
-      const response = await axios.post(
-        url,
-        requestBody,
-        {
-          headers: {
-            'Authorization': `Bearer ${DASHSCOPE_API_KEY}`,
-            'Content-Type': 'application/json',
+            dimension: options.dimensions,
           },
-          timeout: 20000 // 批量处理延长超时
         }
+      : {
+          model: options.model,
+          input: texts.length === 1 ? texts[0] : texts,
+          dimensions: options.dimensions,
+          encoding_format: 'float',
+          input_type: options.inputType,
+        };
+
+    const response = await axios.post(
+      useMultimodalEndpoint ? providerConfig.MULTIMODAL_ENDPOINT : providerConfig.TEXT_ENDPOINT,
+      requestBody,
+      {
+        headers: {
+          Authorization: `Bearer ${providerConfig.API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: providerConfig.TIMEOUT_MS,
+      }
+    );
+
+    return extractEmbeddingsFromResponse(response.data);
+  },
+};
+
+const providerRegistry: Record<EmbeddingProviderName, EmbeddingProvider> = {
+  openrouter: openRouterProvider,
+  dashscope: dashScopeProvider,
+};
+
+function getProvider(providerName: EmbeddingProviderName): EmbeddingProvider {
+  const provider = providerRegistry[providerName];
+  if (!provider) {
+    throw new Error(`不支持的 embedding provider: ${providerName}`);
+  }
+  return provider;
+}
+
+async function generateEmbeddingsInternal(
+  texts: string[],
+  options: EmbeddingGenerationOptions = {}
+): Promise<number[][]> {
+  const normalizedTexts = texts.map((text) => String(text || '').trim()).filter(Boolean);
+  if (normalizedTexts.length === 0) {
+    return [];
+  }
+
+  const resolved = resolveEmbeddingOptions(options);
+  const provider = getProvider(resolved.provider);
+  const results: number[][] = [];
+
+  try {
+    for (let index = 0; index < normalizedTexts.length; index += provider.maxBatchSize) {
+      const batch = normalizedTexts.slice(index, index + provider.maxBatchSize);
+      const batchEmbeddings = await provider.generateEmbeddings(batch, resolved);
+      results.push(...batchEmbeddings);
+
+      logger.info(
+        `✅ 批量生成向量 ${index + 1}-${Math.min(index + batch.length, normalizedTexts.length)}/${normalizedTexts.length} `
+        + `(provider: ${resolved.provider}, model: ${resolved.model}, inputType: ${resolved.inputType})`
       );
 
-      let batchEmbeddings: number[][];
-      if (isMultimodal) {
-        batchEmbeddings = response.data.output.embeddings.map((item: { embedding: number[] }) => item.embedding);
-      } else {
-        batchEmbeddings = response.data.data.map((item: { embedding: number[] }) => item.embedding);
-      }
-      
-      results.push(...batchEmbeddings);
-      
-      logger.info(`✅ 批量生成向量 ${i + 1}-${Math.min(i + batchSize, texts.length)}/${texts.length} (模型: ${model})`);
-      
-      // 避免频率限制，批次间稍作延迟
-      if (i + batchSize < texts.length) {
+      if (index + provider.maxBatchSize < normalizedTexts.length) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 
     return results;
   } catch (error: unknown) {
-    const errorMsg = (error as any).response?.data?.message || (error as Error).message || error;
-    logger.error(`❌ Qwen Embedding 批量生成失败 (${EMBEDDING_CONFIG.QWEN.MODEL}):`, errorMsg);
+    logger.error(
+      `❌ Embedding 生成失败 (provider: ${resolved.provider}, model: ${resolved.model}, inputType: ${resolved.inputType}):`,
+      extractErrorMessage(error)
+    );
     return [];
   }
 }
 
+export async function generateEmbedding(
+  text: string,
+  options: EmbeddingGenerationOptions = {}
+): Promise<number[]> {
+  const [embedding] = await generateEmbeddingsBatch([text], options);
+  return embedding || [];
+}
+
+export async function generateEmbeddingsBatch(
+  texts: string[],
+  options: EmbeddingGenerationOptions = {}
+): Promise<number[][]> {
+  return generateEmbeddingsInternal(texts, options);
+}
+
 // 向量缓存配置
-const CACHE_MAX_SIZE = config.EMBEDDING_CACHE_SIZE; // 增加缓存大小
-const CACHE_TTL = config.EMBEDDING_CACHE_TTL; // 2小时
-const CACHE_CLEANUP_INTERVAL = config.CACHE_CLEANUP_INTERVAL; // 30分钟清理一次
+const CACHE_MAX_SIZE = EMBEDDING_CONFIG.CACHE.MAX_SIZE;
+const CACHE_TTL = EMBEDDING_CONFIG.CACHE.TTL;
+const CACHE_CLEANUP_INTERVAL = 30 * 60 * 1000;
 
 interface CacheItem {
   embedding: number[];
@@ -267,11 +372,32 @@ export function clearCache(): void {
   logger.info(`🗑️ 手动清理了所有缓存，清理了 ${previousSize} 个条目`);
 }
 
-export async function getCachedQwenEmbedding(
-  text: string, 
-  dimensions: number = EMBEDDING_CONFIG.QWEN.DEFAULT_DIMENSIONS
+function buildCacheScope(options: ResolvedEmbeddingOptions): string {
+  return [
+    'v2',
+    `provider=${options.provider}`,
+    `model=${options.model}`,
+    `dimensions=${options.dimensions}`,
+    `inputType=${options.inputType}`,
+    `modality=${options.modality}`,
+  ].join('|');
+}
+
+function buildCacheKey(text: string, options: ResolvedEmbeddingOptions): string {
+  return `${buildCacheScope(options)}|text=${hashText(text)}`;
+}
+
+export async function getCachedEmbedding(
+  text: string,
+  options: EmbeddingGenerationOptions = {}
 ): Promise<number[]> {
-  const cacheKey = `qwen_${dimensions}_${hashText(text)}`;
+  const normalizedText = String(text || '').trim();
+  if (!normalizedText) {
+    return [];
+  }
+
+  const resolvedOptions = resolveEmbeddingOptions(options);
+  const cacheKey = buildCacheKey(normalizedText, resolvedOptions);
   
   // 更新统计
   cacheStats.totalRequests++;
@@ -292,7 +418,7 @@ export async function getCachedQwenEmbedding(
   cacheStats.misses++;
   
   // 生成新向量并缓存
-  const embedding = await generateQwenEmbedding(text, dimensions);
+  const embedding = await generateEmbedding(normalizedText, resolvedOptions);
   if (embedding.length > 0) {
     const now = Date.now();
     embeddingCache.set(cacheKey, {
@@ -309,6 +435,56 @@ export async function getCachedQwenEmbedding(
   }
   
   return embedding;
+}
+
+const LEGACY_QWEN_MODEL =
+  EMBEDDING_CONFIG.DEFAULTS.PROVIDER === 'dashscope'
+    ? EMBEDDING_CONFIG.DEFAULTS.MODEL
+    : 'qwen3-vl-embedding';
+
+/**
+ * @deprecated 请改用 generateEmbedding，并显式传入 provider/model/inputType/modality。
+ */
+export async function generateQwenEmbedding(
+  text: string,
+  dimensions: number = EMBEDDING_CONFIG.DEFAULTS.DIMENSIONS
+): Promise<number[]> {
+  return generateEmbedding(text, {
+    provider: 'dashscope',
+    model: LEGACY_QWEN_MODEL,
+    dimensions,
+    modality: 'text',
+  });
+}
+
+/**
+ * @deprecated 请改用 generateEmbeddingsBatch，并显式传入 provider/model/inputType/modality。
+ */
+export async function generateQwenEmbeddingBatch(
+  texts: string[],
+  dimensions: number = EMBEDDING_CONFIG.DEFAULTS.DIMENSIONS
+): Promise<number[][]> {
+  return generateEmbeddingsBatch(texts, {
+    provider: 'dashscope',
+    model: LEGACY_QWEN_MODEL,
+    dimensions,
+    modality: 'text',
+  });
+}
+
+/**
+ * @deprecated 请改用 getCachedEmbedding，并显式传入 provider/model/inputType/modality。
+ */
+export async function getCachedQwenEmbedding(
+  text: string,
+  dimensions: number = EMBEDDING_CONFIG.DEFAULTS.DIMENSIONS
+): Promise<number[]> {
+  return getCachedEmbedding(text, {
+    provider: 'dashscope',
+    model: LEGACY_QWEN_MODEL,
+    dimensions,
+    modality: 'text',
+  });
 }
 
 // 简单的文本哈希函数

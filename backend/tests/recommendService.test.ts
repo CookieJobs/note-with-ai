@@ -4,7 +4,11 @@ import assert from 'node:assert/strict';
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-with-ai';
+process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'test-openrouter-key';
 process.env.DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || 'test-dashscope-key';
+process.env.EMBEDDING_PROVIDER = 'openrouter';
+process.env.EMBEDDING_MODEL = 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
+process.env.EMBEDDING_DIMENSION = '2048';
 
 global.setInterval = (((_callback: (...args: any[]) => void, _ms?: number, ..._args: any[]) => {
   return 0 as any;
@@ -26,6 +30,7 @@ async function loadModules() {
     Note: require('../models/Note').Note,
     vectorStore: require('../services/vectorStore').vectorStore,
     updateNoteRecommendations: require('../services/recommendService').updateNoteRecommendations,
+    axios: require('axios').default,
   };
 }
 
@@ -46,7 +51,9 @@ describe('recommendService', () => {
   });
 
   it('在召回为空时返回阈值与诊断信息，便于定位被 s1Threshold 过滤的情况', async () => {
-    const { Note, vectorStore, updateNoteRecommendations } = await loadModules();
+    const { Note, vectorStore, updateNoteRecommendations, axios } = await loadModules();
+    const requests: Array<Record<string, unknown>> = [];
+    const noteFindQueries: Array<Record<string, unknown>> = [];
 
     const currentNote = {
       _id: 'note-current',
@@ -67,6 +74,7 @@ describe('recommendService', () => {
 
     mock.method(Note, 'findOne', async () => currentNote as any);
     mock.method(Note, 'find', (query: Record<string, unknown>) => {
+      noteFindQueries.push(query);
       if ('embedding.0' in query) {
         return createFindResult(userNotes);
       }
@@ -82,6 +90,14 @@ describe('recommendService', () => {
         { item: candidates[0], score: 0.39 },
         { item: candidates[1], score: 0.38 },
       ];
+    }) as any);
+    replaceMethod(axios, 'post', (async (_url: string, body: Record<string, unknown>) => {
+      requests.push(body);
+      return {
+        data: {
+          data: [{ embedding: [0.21, 0.22, 0.23] }],
+        },
+      };
     }) as any);
 
     const result = await updateNoteRecommendations('note-current', 'user-1');
@@ -108,6 +124,10 @@ describe('recommendService', () => {
         '0.50': 0,
       },
     });
+    assert.equal(noteFindQueries[0]['embeddingMetadata.provider'], 'openrouter');
+    assert.equal(noteFindQueries[0]['embeddingMetadata.model'], 'nvidia/llama-nemotron-embed-vl-1b-v2:free');
+    assert.equal(noteFindQueries[0]['embeddingMetadata.dimension'], 2048);
+    assert.equal(noteFindQueries[0]['embeddingMetadata.modality'], 'text');
     assert.equal(updateOneCalls.length, 1);
     assert.deepEqual(updateOneCalls[0].filter, {
       _id: 'note-current',
@@ -145,5 +165,7 @@ describe('recommendService', () => {
         },
       },
     });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].input_type, 'search_query');
   });
 });

@@ -1,8 +1,20 @@
+/*
+Input: 待生成、统计或待修复 embedding 的笔记记录
+Output: 文本向量、embedding metadata、当前配置兼容覆盖率统计与修复结果
+Pos: 后端 服务模块
+Note: 文档向量统一写入 embedding 与 embeddingMetadata，并基于当前默认 provider/model/dimension/modality 保护检索与重建
+*/
 import { Types } from 'mongoose';
 import { Note } from '../models/Note';
 import { EMBEDDING_CONFIG } from '../config/embedding';
 import { INote } from '../types';
-import { generateQwenEmbedding, generateQwenEmbeddingBatch } from '../utils/embedding';
+import {
+  buildNoteEmbeddingMetadataFilter,
+  buildNoteEmbeddingMetadata,
+  EmbeddingGenerationOptions,
+  generateEmbedding,
+  generateEmbeddingsBatch,
+} from '../utils/embedding';
 import { logger } from '../utils/logger';
 
 type EmbeddingNote = Pick<INote, 'title' | 'content' | 'contentText' | 'updatedAt'> & {
@@ -20,7 +32,10 @@ export interface EmbeddingStats {
   totalNotes: number;
   notesWithEmbedding: number;
   notesWithoutEmbedding: number;
+  notesWithCurrentEmbedding: number;
+  notesWithOutdatedEmbedding: number;
   embeddingCoverage: number;
+  currentConfigCoverage: number;
   pendingNotes: string[];
 }
 
@@ -35,8 +50,32 @@ export interface EmbeddingMaintenanceResult {
 }
 
 class NoteEmbeddingService {
+  private readonly documentInputType = EMBEDDING_CONFIG.DEFAULTS.INPUT_TYPES.DOCUMENT;
+  private readonly documentEmbeddingOptions: EmbeddingGenerationOptions = {
+    inputType: EMBEDDING_CONFIG.DEFAULTS.INPUT_TYPES.DOCUMENT,
+    modality: EMBEDDING_CONFIG.DEFAULTS.MODALITY,
+  };
+
   private normalizeText(value: unknown) {
     return String(value || '').trim();
+  }
+
+  private buildExistingEmbeddingFilter() {
+    return {
+      embedding: { $exists: true, $ne: null, $not: { $size: 0 } },
+    };
+  }
+
+  private buildMetadataMismatchFilter() {
+    const expected = buildNoteEmbeddingMetadataFilter(this.documentEmbeddingOptions);
+    return {
+      ...this.buildExistingEmbeddingFilter(),
+      $or: [
+        { embeddingMetadata: { $exists: false } },
+        { embeddingMetadata: null },
+        ...Object.entries(expected).map(([field, value]) => ({ [field]: { $ne: value } })),
+      ],
+    };
   }
 
   buildEmbeddingText(note: Pick<Partial<EmbeddingNote>, 'content' | 'contentText' | 'title'>) {
@@ -51,7 +90,21 @@ class NoteEmbeddingService {
 
   private buildPendingFilter(userId?: string) {
     const filter: Record<string, unknown> = {
-      $or: [{ embedding: { $exists: false } }, { embedding: { $size: 0 } }, { embedding: null }],
+      $or: [
+        { embedding: { $exists: false } },
+        { embedding: { $size: 0 } },
+        { embedding: null },
+        this.buildMetadataMismatchFilter(),
+      ],
+    };
+    if (userId) filter.userId = userId;
+    return filter;
+  }
+
+  private buildCurrentEmbeddingFilter(userId?: string) {
+    const filter: Record<string, unknown> = {
+      ...this.buildExistingEmbeddingFilter(),
+      ...buildNoteEmbeddingMetadataFilter(this.documentEmbeddingOptions),
     };
     if (userId) filter.userId = userId;
     return filter;
@@ -64,7 +117,12 @@ class NoteEmbeddingService {
   private async saveEmbeddingIfFresh(note: EmbeddingWriteTarget, embedding: number[]) {
     const result = await Note.updateOne(
       { _id: note._id, userId: note.userId, updatedAt: note.updatedAt },
-      { $set: { embedding } }
+      {
+        $set: {
+          embedding,
+          embeddingMetadata: buildNoteEmbeddingMetadata(this.documentEmbeddingOptions, embedding),
+        },
+      }
     );
     return !!result && (result as { matchedCount?: number }).matchedCount === 1 ? 'saved' : 'stale';
   }
@@ -74,7 +132,7 @@ class NoteEmbeddingService {
     let lastResult: number[][] = [];
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      lastResult = await generateQwenEmbeddingBatch(texts, EMBEDDING_CONFIG.QWEN.DEFAULT_DIMENSIONS);
+      lastResult = await generateEmbeddingsBatch(texts, this.documentEmbeddingOptions);
       if (lastResult.length === texts.length) return lastResult;
 
       if (attempt < maxRetries) {
@@ -157,15 +215,18 @@ class NoteEmbeddingService {
     const totalNotes = await Note.countDocuments(filter);
     const notesWithEmbedding = await Note.countDocuments({
       ...filter,
-      embedding: { $exists: true, $ne: null, $not: { $size: 0 } },
+      ...this.buildExistingEmbeddingFilter(),
     });
+    const userId = typeof filter.userId === 'string' ? filter.userId : undefined;
+    const notesWithCurrentEmbedding = await Note.countDocuments(this.buildCurrentEmbeddingFilter(userId));
     const notesWithoutEmbedding = totalNotes - notesWithEmbedding;
+    const notesWithOutdatedEmbedding = Math.max(notesWithEmbedding - notesWithCurrentEmbedding, 0);
     const embeddingCoverage = totalNotes > 0 ? Math.round((notesWithEmbedding / totalNotes) * 10000) / 100 : 0;
+    const currentConfigCoverage = totalNotes > 0
+      ? Math.round((notesWithCurrentEmbedding / totalNotes) * 10000) / 100
+      : 0;
 
-    const pendingNotes = await Note.find({
-      ...filter,
-      ...this.buildPendingFilter(),
-    })
+    const pendingNotes = await Note.find(this.buildPendingFilter(userId))
       .select('_id')
       .limit(100);
 
@@ -173,7 +234,10 @@ class NoteEmbeddingService {
       totalNotes,
       notesWithEmbedding,
       notesWithoutEmbedding,
+      notesWithCurrentEmbedding,
+      notesWithOutdatedEmbedding,
       embeddingCoverage,
+      currentConfigCoverage,
       pendingNotes: pendingNotes.map((note) => note._id.toString()),
     };
   }
@@ -192,7 +256,7 @@ class NoteEmbeddingService {
 
     void (async () => {
       try {
-        const embedding = await generateQwenEmbedding(normalizedText, EMBEDDING_CONFIG.QWEN.DEFAULT_DIMENSIONS);
+        const embedding = await generateEmbedding(normalizedText, this.documentEmbeddingOptions);
         if (!Array.isArray(embedding) || embedding.length === 0) return;
 
         await this.saveEmbeddingIfFresh({ _id: noteId, userId, updatedAt }, embedding);
@@ -212,7 +276,7 @@ class NoteEmbeddingService {
     const text = this.buildEmbeddingText(note as unknown as EmbeddingNote);
     if (!text) return { skipped: true };
 
-    const embedding = await generateQwenEmbedding(text, EMBEDDING_CONFIG.QWEN.DEFAULT_DIMENSIONS);
+    const embedding = await generateEmbedding(text, this.documentEmbeddingOptions);
     if (!Array.isArray(embedding) || embedding.length === 0) {
       return { skipped: true };
     }
@@ -269,7 +333,13 @@ class NoteEmbeddingService {
     let hasMore = true;
     let batchIndex = 1;
 
-    logger.info(`🚀 开始全量修复任务 (Batch Size: ${batchSize})`);
+    logger.info(`🚀 开始全量修复任务 (Batch Size: ${batchSize})`, {
+      provider: this.documentEmbeddingOptions.provider || EMBEDDING_CONFIG.DEFAULTS.PROVIDER,
+      model: this.documentEmbeddingOptions.model || EMBEDDING_CONFIG.DEFAULTS.MODEL,
+      dimension: EMBEDDING_CONFIG.DEFAULTS.DIMENSIONS,
+      modality: this.documentEmbeddingOptions.modality || EMBEDDING_CONFIG.DEFAULTS.MODALITY,
+      inputType: this.documentInputType,
+    });
 
     while (hasMore) {
       const query: Record<string, unknown> = this.buildPendingFilter();

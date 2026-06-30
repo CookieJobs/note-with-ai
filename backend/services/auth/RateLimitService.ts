@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 import { config } from '../../config';
-import { ErrorHandler } from '../../utils/errorHandler';
+import { AppError, ErrorHandler, ErrorType } from '../../utils/errorHandler';
+import { logger } from '../../utils/logger';
 
 let redis: Redis | null = null;
 
@@ -13,6 +14,12 @@ function getRedis(): Redis {
         return Math.min(times * 200, 2000);
       },
     });
+    redis.on('error', (error) => {
+      logger.warn('Redis unavailable for auth rate limiting, falling back without rate limit', {
+        redisUrl: config.REDIS_URL,
+        error: error.message,
+      });
+    });
   }
   return redis;
 }
@@ -23,15 +30,27 @@ async function checkLimit(
   windowSeconds: number,
   errorMessage: string
 ): Promise<void> {
-  const r = getRedis();
-  // 原子执行 INCR + EXPIRE，避免进程崩溃导致 key 永不过期
-  const results = await r.multi().incr(key).expire(key, windowSeconds).exec();
-  const current = results?.[0]?.[1] as number;
-  if (current > maxAttempts) {
-    const ttl = await r.ttl(key);
-    throw ErrorHandler.createValidationError(
-      `${errorMessage}（${ttl > 0 ? ttl + '秒后重试' : '请稍后重试'}）`
-    );
+  try {
+    const r = getRedis();
+    // 原子执行 INCR + EXPIRE，避免进程崩溃导致 key 永不过期
+    const results = await r.multi().incr(key).expire(key, windowSeconds).exec();
+    const current = results?.[0]?.[1] as number;
+    if (current > maxAttempts) {
+      const ttl = await r.ttl(key);
+      throw ErrorHandler.createValidationError(
+        `${errorMessage}（${ttl > 0 ? ttl + '秒后重试' : '请稍后重试'}）`
+      );
+    }
+  } catch (error) {
+    if (error instanceof AppError && error.type === ErrorType.VALIDATION) {
+      throw error;
+    }
+
+    logger.warn('Skip auth rate limit because Redis is unavailable', {
+      key,
+      redisUrl: config.REDIS_URL,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

@@ -105,7 +105,7 @@ export default function FloatingQuickCompose({
         className={`${composeStyles.floatingComposeShell}`}
         transition={shellTransition}
       >
-        <AnimatePresence initial={false} mode="popLayout">
+        <AnimatePresence initial={false}>
           {state === 'collapsed' && (
             <motion.button
               key="collapsed"

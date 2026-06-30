@@ -22,7 +22,11 @@ function createQueryResult<T>(rows: T[]) {
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'http://localhost:27017';
+process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || 'test-openrouter-key';
 process.env.DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || 'test-dashscope-key';
+process.env.EMBEDDING_PROVIDER = 'openrouter';
+process.env.EMBEDDING_MODEL = 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
+process.env.EMBEDDING_DIMENSION = '2048';
 
 global.setInterval = (((_callback: (...args: any[]) => void, _ms?: number, ..._args: any[]) => {
   return 0 as any;
@@ -45,6 +49,14 @@ function replaceMethod<T extends object, K extends keyof T>(target: T, key: K, v
   manualRestores.push(() => {
     (target as any)[key] = original;
   });
+}
+
+function findMetadataMismatchClause(query: Record<string, any>) {
+  const clauses = Array.isArray(query.$or) ? query.$or : [];
+  return clauses.find((clause: Record<string, any>) =>
+    Array.isArray(clause.$or)
+    && clause.$or.some((item: Record<string, any>) => 'embeddingMetadata.provider' in item)
+  );
 }
 
 describe('noteEmbeddingService', () => {
@@ -72,8 +84,58 @@ describe('noteEmbeddingService', () => {
     );
   });
 
+  it('generateEmbeddingForNote 会写入 embeddingMetadata，并为未来图片 embedding 预留 image 扩展位', async () => {
+    const { Note, noteEmbeddingService, axios } = await loadModules();
+    const updatedAt = new Date('2024-01-01T00:00:00.000Z');
+    const note = {
+      _id: { toString: () => 'note-1' },
+      userId: 'user-1',
+      title: '标题',
+      content: '正文',
+      contentText: '纯文本正文',
+      updatedAt,
+    };
+    const updateCalls: Array<{ filter: Record<string, unknown>; update: Record<string, any> }> = [];
+
+    mock.method(Note, 'findOne', () => ({
+      select: async () => note,
+    }) as any);
+    replaceMethod(axios, 'post', (async () => {
+      return {
+        data: {
+          data: [{ embedding: [0.1, 0.2, 0.3] }],
+        },
+      };
+    }) as any);
+    mock.method(Note, 'updateOne', async (filter: Record<string, unknown>, update: Record<string, any>) => {
+      updateCalls.push({ filter, update });
+      return { matchedCount: 1 } as any;
+    });
+
+    const result = await noteEmbeddingService.generateEmbeddingForNote('user-1', 'note-1');
+
+    assert.deepEqual(result, { embedding: [0.1, 0.2, 0.3] });
+    assert.equal(updateCalls.length, 1);
+    assert.deepEqual(updateCalls[0].filter, {
+      _id: 'note-1',
+      userId: 'user-1',
+      updatedAt,
+    });
+    assert.deepEqual(updateCalls[0].update.$set.embedding, [0.1, 0.2, 0.3]);
+    assert.deepEqual(updateCalls[0].update.$set.embeddingMetadata, {
+      provider: 'openrouter',
+      model: 'nvidia/llama-nemotron-embed-vl-1b-v2:free',
+      dimension: 3,
+      modality: 'text',
+      updatedAt: updateCalls[0].update.$set.embeddingMetadata.updatedAt,
+      image: null,
+    });
+    assert.ok(updateCalls[0].update.$set.embeddingMetadata.updatedAt instanceof Date);
+  });
+
   it('generateEmbeddingForNote 在版本保护写回失败时返回 skipped', async () => {
     const { Note, noteEmbeddingService, axios } = await loadModules();
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
     const updatedAt = new Date('2024-01-01T00:00:00.000Z');
     const note = {
       _id: { toString: () => 'note-1' },
@@ -87,17 +149,56 @@ describe('noteEmbeddingService', () => {
     mock.method(Note, 'findOne', () => ({
       select: async () => note,
     }) as any);
-    replaceMethod(axios, 'post', (async () => ({
+    replaceMethod(axios, 'post', (async (url: string, body: Record<string, unknown>) => {
+      requests.push({ url, body });
+      return {
       data: {
-        output: {
-          embeddings: [{ embedding: [0.1, 0.2, 0.3] }],
+          data: [{ embedding: [0.1, 0.2, 0.3] }],
         },
-      },
-    })) as any);
+      };
+    }) as any);
     mock.method(Note, 'updateOne', async () => ({ matchedCount: 0 }) as any);
 
     const result = await noteEmbeddingService.generateEmbeddingForNote('user-1', 'note-1');
     assert.deepEqual(result, { skipped: true });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, 'https://openrouter.ai/api/v1/embeddings');
+    assert.equal(requests[0].body.input_type, 'search_document');
+  });
+
+  it('getGlobalEmbeddingStats 会区分当前配置兼容的 embedding 与过期 metadata', async () => {
+    const { Note, noteEmbeddingService } = await loadModules();
+
+    mock.method(Note, 'countDocuments', async (query: Record<string, any>) => {
+      if (query['embeddingMetadata.provider'] === 'openrouter') {
+        return 3;
+      }
+      if (query.embedding && query.embedding.$exists) {
+        return 5;
+      }
+      return 6;
+    });
+    mock.method(Note, 'find', (query: Record<string, any>) => {
+      const metadataMismatchClause = findMetadataMismatchClause(query);
+      assert.ok(metadataMismatchClause);
+      return createQueryResult([
+        { _id: { toString: () => 'missing-note' } },
+        { _id: { toString: () => 'outdated-note' } },
+      ]);
+    });
+
+    const stats = await noteEmbeddingService.getGlobalEmbeddingStats();
+
+    assert.deepEqual(stats, {
+      totalNotes: 6,
+      notesWithEmbedding: 5,
+      notesWithoutEmbedding: 1,
+      notesWithCurrentEmbedding: 3,
+      notesWithOutdatedEmbedding: 2,
+      embeddingCoverage: 83.33,
+      currentConfigCoverage: 50,
+      pendingNotes: ['missing-note', 'outdated-note'],
+    });
   });
 
   it('repairAllEmbeddings 会跳过空文本坏数据并继续处理后续批次', async () => {
@@ -144,13 +245,13 @@ describe('noteEmbeddingService', () => {
       }
       return { matchedCount: 1 } as any;
     });
+    const requests: Array<Record<string, any>> = [];
     replaceMethod(axios, 'post', (async (_url: string, body: Record<string, any>) => {
-      const contents = body.input?.contents || [];
+      requests.push(body);
+      const inputs = Array.isArray(body.input) ? body.input : [body.input];
       return {
         data: {
-          output: {
-            embeddings: contents.map(() => ({ embedding: [0.1, 0.2] })),
-          },
+          data: inputs.map(() => ({ embedding: [0.1, 0.2] })),
         },
       };
     }) as any);
@@ -169,6 +270,9 @@ describe('noteEmbeddingService', () => {
     assert.equal(String(savedFilters[0]._id), 'valid-note');
     assert.ok(Array.isArray(findQueries[1]._id.$nin));
     assert.ok(findQueries[1]._id.$nin.includes('blank-note'));
+    assert.ok(findMetadataMismatchClause(findQueries[0]));
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].input_type, 'search_document');
   });
 
   it('repairAllEmbeddings 会把版本保护导致的旧向量写回失败记为 failure 并跳过重试', async () => {
@@ -216,13 +320,13 @@ describe('noteEmbeddingService', () => {
       }
       return { matchedCount: 1 } as any;
     });
+    const requests: Array<Record<string, any>> = [];
     replaceMethod(axios, 'post', (async (_url: string, body: Record<string, any>) => {
-      const contents = body.input?.contents || [];
+      requests.push(body);
+      const inputs = Array.isArray(body.input) ? body.input : [body.input];
       return {
         data: {
-          output: {
-            embeddings: contents.map(() => ({ embedding: [0.1, 0.2] })),
-          },
+          data: inputs.map(() => ({ embedding: [0.1, 0.2] })),
         },
       };
     }) as any);
@@ -239,5 +343,9 @@ describe('noteEmbeddingService', () => {
     ]);
     assert.ok(Array.isArray(findQueries[1]._id.$nin));
     assert.ok(findQueries[1]._id.$nin.includes('stale-note'));
+    assert.ok(findMetadataMismatchClause(findQueries[0]));
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].input_type, 'search_document');
+    assert.equal(requests[1].input_type, 'search_document');
   });
 });

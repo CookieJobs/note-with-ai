@@ -1,18 +1,19 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 后端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+Input: 当前 embedding 默认配置、数据库连接与历史笔记向量状态
+Output: 按当前 provider/model/dimension/modality 修复后的 embedding 统计与失败清单
+Pos: 后端 脚本模块
+Note: repair 流程会重建缺失或 metadata 与当前默认配置不一致的历史 embedding
 */
 // backend/scripts/repair_embeddings.ts
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { validateEmbeddingConfig } from '../config/embedding';
+import path from 'path';
+import { EMBEDDING_CONFIG, validateEmbeddingConfig } from '../config/embedding';
 import { noteEmbeddingService } from '../services/noteEmbeddingService';
 import { logger } from '../utils/logger';
 
 // 加载环境变量
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 // 验证配置
 try {
@@ -37,7 +38,13 @@ const connectDB = async () => {
 // 执行embedding维护任务
 const runEmbeddingMaintenance = async () => {
   const startTime = new Date();
-  logger.info(`🕐 [${startTime.toISOString()}] 开始执行Embedding修复任务...`);
+  logger.info(`🕐 [${startTime.toISOString()}] 开始执行Embedding修复任务...`, {
+    provider: EMBEDDING_CONFIG.DEFAULTS.PROVIDER,
+    model: EMBEDDING_CONFIG.DEFAULTS.MODEL,
+    dimension: EMBEDDING_CONFIG.DEFAULTS.DIMENSIONS,
+    modality: EMBEDDING_CONFIG.DEFAULTS.MODALITY,
+    inputType: EMBEDDING_CONFIG.DEFAULTS.INPUT_TYPES.DOCUMENT,
+  });
   
   try {
     // 获取任务前的统计信息
@@ -45,7 +52,10 @@ const runEmbeddingMaintenance = async () => {
     logger.info('📊 任务前统计:', {
       totalNotes: beforeStats.totalNotes,
       embeddedNotes: beforeStats.notesWithEmbedding,
+      currentConfigEmbeddedNotes: beforeStats.notesWithCurrentEmbedding,
+      outdatedEmbeddingNotes: beforeStats.notesWithOutdatedEmbedding,
       coverage: `${beforeStats.embeddingCoverage}%`,
+      currentConfigCoverage: `${beforeStats.currentConfigCoverage}%`,
       pendingCount: beforeStats.pendingNotes.length
     });
 
@@ -63,6 +73,8 @@ const runEmbeddingMaintenance = async () => {
       failureCount: result.failureCount,
       duration: `${duration}秒`,
       finalCoverage: `${afterStats.embeddingCoverage}%`,
+      finalCurrentConfigCoverage: `${afterStats.currentConfigCoverage}%`,
+      remainingOutdated: afterStats.notesWithOutdatedEmbedding,
       remainingPending: afterStats.pendingNotes.length
     });
 

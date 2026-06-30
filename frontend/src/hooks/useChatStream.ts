@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { authFetch } from '../utils/auth';
 import { IChat, IMessage, IRelatedNote } from '../types';
 import { persistChatSessions, replaceSessionId } from './chatSessionStore';
@@ -26,11 +26,30 @@ export const useChatStream = (): UseChatStreamReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const loadingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const fetchSummaryTitle = async (userContent: string, aiContent: string): Promise<string | undefined> => {
+  const isAbortError = (err: unknown): boolean => {
+    if (err instanceof DOMException) return err.name === 'AbortError';
+    if (!(err instanceof Error)) return false;
+    return err.name === 'AbortError' || /aborted|abort/i.test(err.message);
+  };
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+    };
+  }, []);
+
+  const fetchSummaryTitle = async (
+    userContent: string,
+    aiContent: string,
+    signal?: AbortSignal
+  ): Promise<string | undefined> => {
     try {
       const response = await authFetch('/api/chat/summarizeTitle', {
         method: 'POST',
+        signal,
         body: JSON.stringify({
           userContent,
           aiContent,
@@ -46,19 +65,22 @@ export const useChatStream = (): UseChatStreamReturn => {
         ? summaryData.data.title
         : summaryData.title;
     } catch (err) {
+      if (isAbortError(err)) return undefined;
       console.error('摘要生成失败:', err);
       return undefined;
     }
   };
 
   const updateContextRelatedNotes = async (
-    messages: IMessage[]
+    messages: IMessage[],
+    signal?: AbortSignal
   ): Promise<IRelatedNote[] | undefined> => {
     try {
       console.log('🔍 开始异步搜索会话相关笔记...');
 
       const res = await authFetch('/api/chat/context-related-notes', {
         method: 'POST',
+        signal,
         body: JSON.stringify({ messages }),
       });
 
@@ -73,6 +95,7 @@ export const useChatStream = (): UseChatStreamReturn => {
         return undefined;
       }
     } catch (error) {
+      if (isAbortError(error)) return undefined;
       console.error('搜索会话相关笔记出错:', error);
       return undefined;
     }
@@ -116,10 +139,14 @@ export const useChatStream = (): UseChatStreamReturn => {
     setLoading(true);
     setError('');
 
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
       const serverSessionId = currentSession.id.startsWith('local_') ? undefined : currentSession.id;
       const res = await authFetch('/api/chat', {
         method: 'POST',
+        signal: abortController.signal,
         body: JSON.stringify({ messages: updatedMessages, sessionId: serverSessionId }),
       });
 
@@ -223,9 +250,9 @@ export const useChatStream = (): UseChatStreamReturn => {
       const userText = (userMessage.content || '').trim();
       const aiText = assistantReply.trim();
       
-      const fetchNotesPromise = updateContextRelatedNotes(finalMessages);
+      const fetchNotesPromise = updateContextRelatedNotes(finalMessages, abortController.signal);
       const fetchTitlePromise = userText && aiText
-        ? fetchSummaryTitle(userText, aiText)
+        ? fetchSummaryTitle(userText, aiText, abortController.signal)
         : Promise.resolve(undefined);
 
       // 等待两个异步任务都执行完毕（无论成功或失败）
@@ -271,13 +298,20 @@ export const useChatStream = (): UseChatStreamReturn => {
         const newSessionId = await saveSessionToDB(userId, sessionToSave);
         console.log('🚦 sendMessage 最终保存会话后返回的ID:', newSessionId);
       } catch (saveErr) {
+        if (isAbortError(saveErr)) return;
         console.error('🚦 sendMessage 保存会话失败:', saveErr);
       }
     } catch (err: unknown) {
+      if (isAbortError(err)) {
+        return;
+      }
       console.error('发送消息失败:', err);
       // 显示具体的错误信息
       setError(err instanceof Error ? err.message : '发送失败，请稍后重试');
     } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
       loadingRef.current = false;
       setLoading(false);
     }
