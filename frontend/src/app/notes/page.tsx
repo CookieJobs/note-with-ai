@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, Suspense, useRef } from 'react';
+import { useEffect, useState, Suspense, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 import TopNavigation from '../../components/TopNavigation';
-import { getUser, isAuthenticated } from '../../utils/auth';
+import { authFetch, getUser, isAuthenticated } from '../../utils/auth';
 
 import DeleteNoteConfirmModal from './components/DeleteNoteConfirmModal';
 import ModernNoteCard from './components/ModernNoteCard';
@@ -15,6 +15,7 @@ import NoteCounter from './components/NoteCounter';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
 import { useNotes } from './hooks/useNotes';
+import { buildRecommendCacheFromResponse } from './utils/recommendCache';
 import layoutStyles from './styles/layout.module.scss';
 import cardStyles from './styles/note-card.module.scss';
 import composeStyles from './styles/floating-compose.module.scss';
@@ -145,6 +146,23 @@ function NotesContent() {
     });
   };
 
+  const refreshRecommendCache = useCallback(async (noteId: string, noteUpdatedAt?: string) => {
+    const response = await authFetch('/api/recommend/semantic-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        noteId,
+        writeMode: 'await',
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(typeof payload?.message === 'string' ? payload.message : '刷新相关推荐失败');
+    }
+
+    handleUpdateRecommendCache(noteId, buildRecommendCacheFromResponse(noteUpdatedAt, payload));
+  }, [handleUpdateRecommendCache]);
+
   // 详情浮层关闭逻辑
   useEffect(() => {
     if (!editingNoteId) return;
@@ -253,6 +271,7 @@ function NotesContent() {
                 onClose={() => setSelectedNoteId(null)}
                 selectedNoteId={selectedNoteId}
                 allNotes={notes}
+                onRefreshRecommendCache={refreshRecommendCache}
               />
             </div>
           )}

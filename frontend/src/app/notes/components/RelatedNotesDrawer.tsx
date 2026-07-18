@@ -1,18 +1,20 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Note } from '../hooks/useNotes';
+import { getRecommendCacheState, hasCandidateS1 } from '../utils/recommendCache';
 
 interface RelatedNotesDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   selectedNoteId: string | null;
   allNotes: Note[];
+  onRefreshRecommendCache?: (noteId: string, noteUpdatedAt?: string) => Promise<void>;
 }
 
 interface RelatedNoteItem {
   id: string;
   note: Note;
-  s1: number;
+  s1: number | null;
   s2: number;
   finalScore: number;
   type: string;
@@ -23,15 +25,62 @@ export default function RelatedNotesDrawer({
   isOpen, 
   onClose, 
   selectedNoteId,
-  allNotes 
+  allNotes,
+  onRefreshRecommendCache,
 }: RelatedNotesDrawerProps) {
   const router = useRouter();
+  const [refreshState, setRefreshState] = useState<'idle' | 'refreshing' | 'success' | 'error'>('idle');
+  const lastAttemptKeyRef = useRef<string | null>(null);
+
+  const currentNote = useMemo(
+    () => (selectedNoteId ? allNotes.find((n) => n._id === selectedNoteId) ?? null : null),
+    [selectedNoteId, allNotes]
+  );
+  const cacheState = useMemo(() => getRecommendCacheState(currentNote), [currentNote]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setRefreshState('idle');
+      lastAttemptKeyRef.current = null;
+      return;
+    }
+    setRefreshState('idle');
+  }, [selectedNoteId, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !currentNote || !onRefreshRecommendCache || !cacheState.needsRefresh) return;
+
+    const attemptKey = [
+      currentNote._id,
+      currentNote.updatedAt || '',
+      currentNote.recommendCache?.sourceUpdatedAt || '',
+      currentNote.recommendCache?.generatedAt || '',
+      cacheState.status,
+    ].join(':');
+
+    if (lastAttemptKeyRef.current === attemptKey) return;
+    lastAttemptKeyRef.current = attemptKey;
+
+    let cancelled = false;
+    setRefreshState('refreshing');
+
+    void onRefreshRecommendCache(currentNote._id, currentNote.updatedAt)
+      .then(() => {
+        if (cancelled) return;
+        setRefreshState('success');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRefreshState('error');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cacheState.needsRefresh, cacheState.status, currentNote, isOpen, onRefreshRecommendCache]);
 
   // 直接利用本地缓存中的大模型打分进行关联推荐，无需发网络请求
   const relatedNotes = useMemo(() => {
-    if (!selectedNoteId) return [];
-
-    const currentNote = allNotes.find(n => n._id === selectedNoteId);
     if (!currentNote || !currentNote.recommendCache?.byCandidateId) {
       return [];
     }
@@ -42,10 +91,10 @@ export default function RelatedNotesDrawer({
     const candidates: RelatedNoteItem[] = Object.entries(byCandidateId)
       .map(([id, data]: [string, any]) => {
         const note = allNotes.find(n => String(n._id) === String(id));
-        const s1 = data.s1 || 0;
+        const s1 = hasCandidateS1(data) ? Number(data.s1) : null;
         const s2 = data.s2 || 0;
         // 最终融合得分计算公式：0.3 * s1 + 0.7 * s2
-        const finalScore = 0.3 * s1 + 0.7 * s2;
+        const finalScore = 0.3 * (s1 ?? 0) + 0.7 * s2;
 
         return {
           id,
@@ -67,7 +116,15 @@ export default function RelatedNotesDrawer({
       .slice(0, 5);
 
     return related;
-  }, [selectedNoteId, allNotes]);
+  }, [allNotes, currentNote]);
+
+  const showRefreshingMessage = refreshState === 'refreshing';
+  const showRefreshSuccess = refreshState === 'success' && cacheState.status !== 'current-empty';
+  const showRefreshError = refreshState === 'error';
+  const showLoadingState = relatedNotes.length === 0 && (showRefreshingMessage || cacheState.status === 'missing');
+  const showResolvedEmptyState = relatedNotes.length === 0 && !showLoadingState;
+
+  const formatMetric = (value: number | null) => (value == null ? '--' : value.toFixed(2));
 
   return (
     <>
@@ -95,6 +152,21 @@ export default function RelatedNotesDrawer({
             </svg>
           </button>
         </div>
+        {(showRefreshingMessage || showRefreshSuccess || showRefreshError) && (
+          <div className={`mx-6 mt-4 rounded-xl px-4 py-3 text-sm ${
+            showRefreshError
+              ? 'bg-amber-50 text-amber-700'
+              : showRefreshSuccess
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-blue-50 text-blue-700'
+          }`}>
+            {showRefreshError
+              ? '推荐刷新失败，请稍后重试'
+              : showRefreshSuccess
+                ? '相关推荐已更新'
+                : '正在刷新相关推荐...'}
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
           {relatedNotes.length > 0 ? (
             relatedNotes.map(item => (
@@ -121,7 +193,7 @@ export default function RelatedNotesDrawer({
                   </div>
                   <div className="w-px h-6 bg-gray-200"></div>
                   <div className="flex flex-col">
-                    <span className="text-gray-500 font-semibold text-[11px]">{item.s1.toFixed(2)}</span>
+                    <span className="text-gray-500 font-semibold text-[11px]">{formatMetric(item.s1)}</span>
                     <span>向量(s1)</span>
                   </div>
                   <div className="w-px h-6 bg-gray-200"></div>
@@ -140,7 +212,15 @@ export default function RelatedNotesDrawer({
                 )}
               </div>
             ))
-          ) : (
+          ) : showLoadingState ? (
+            <div className="flex flex-col items-center justify-center text-center mt-20 gap-3">
+              <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-gray-500" />
+              <div className="text-gray-600 font-medium">正在计算相关推荐</div>
+              <div className="text-xs text-gray-400 max-w-[220px]">
+                这条笔记的旧缓存正在刷新，稍后会显示最新的向量分数和相关结果
+              </div>
+            </div>
+          ) : showResolvedEmptyState ? (
             <div className="flex flex-col items-center justify-center text-center mt-20 gap-3">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-300" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -153,7 +233,7 @@ export default function RelatedNotesDrawer({
                 后台可能正在异步计算中，或者该笔记内容尚未达到强关联阈值
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </>

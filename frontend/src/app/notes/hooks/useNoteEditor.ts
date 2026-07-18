@@ -3,6 +3,7 @@ import { JSONContent } from '@tiptap/react';
 import { authFetch } from '../../../utils/auth';
 import type { IRecommendCache, INote } from '../../../types';
 import { WORKSPACE_ANIM_DELAY_MS } from '../animationTimings';
+import { buildRecommendCacheFromResponse } from '../utils/recommendCache';
 
 // Extend INote to support frontend-specific properties if needed, or just use INote
 // For now, assuming INote is sufficient for data, but we need to handle 'enriching' if it's passed.
@@ -326,38 +327,6 @@ export function useNoteEditor({
     return getNotePlainText();
   };
 
-  const buildRecommendCacheFromResponse = useCallback((
-    noteUpdatedAt: string | undefined,
-    payload: any
-  ): IRecommendCache => {
-    const data = payload?.data ?? {};
-    const meta = data?.meta ?? {};
-    const recommendations = Array.isArray(data?.recommendations) ? data.recommendations : [];
-    const generatedAt = new Date().toISOString();
-    const byCandidateId: NonNullable<IRecommendCache['byCandidateId']> = recommendations.reduce((acc: NonNullable<IRecommendCache['byCandidateId']>, item: any) => {
-      const candidateId = String(item?.note?._id || '');
-      if (!candidateId) return acc;
-      acc[candidateId] = {
-        s1: Number(item?.s1 || 0),
-        s2: Number(item?.s2 || 0),
-        type: typeof item?.type === 'string' ? item.type : '',
-        reason: typeof item?.reason === 'string' ? item.reason : '',
-        candidateUpdatedAt: String(item?.note?.updatedAt || ''),
-        cachedAt: generatedAt,
-      };
-      return acc;
-    }, {});
-
-    return {
-      algoVersion: typeof meta?.algoVersion === 'string' ? meta.algoVersion : 'semantic-notes-v3',
-      sourceUpdatedAt: noteUpdatedAt,
-      generatedAt,
-      params: meta?.thresholds,
-      diagnostics: meta?.diagnostics,
-      byCandidateId,
-    };
-  }, []);
-
   const refreshRecommendCache = useCallback(async (noteId: string, noteUpdatedAt?: string) => {
     if (!onUpdateRecommendCache) return;
 
@@ -382,7 +351,7 @@ export function useNoteEditor({
     } catch {
       // 推荐缓存补算失败不应影响正文保存体验
     }
-  }, [buildRecommendCacheFromResponse, onUpdateRecommendCache]);
+  }, [onUpdateRecommendCache]);
 
   const handleSaveTitle = async () => {
     const next = state.title.value.trim();
