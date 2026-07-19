@@ -105,7 +105,7 @@ describe('recommendService', () => {
     assert.equal(result.message, '无满足阈值的候选');
     assert.deepEqual(result.recommendations, []);
     assert.deepEqual(result.meta.thresholds, {
-      s1Threshold: 0.4,
+      s1Threshold: 0.35,
       hardThreshold: 0.65,
     });
     assert.equal(result.meta.poolSize, 0);
@@ -143,7 +143,7 @@ describe('recommendService', () => {
           params: {
             recallK: 30,
             finalK: 10,
-            s1Threshold: 0.4,
+            s1Threshold: 0.35,
             hardThreshold: 0.65,
           },
           diagnostics: {

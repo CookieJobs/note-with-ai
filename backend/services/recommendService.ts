@@ -648,7 +648,7 @@ export async function updateNoteRecommendations(
   const {
     recallK = 30,
     finalK = 10,
-    s1Threshold = 0.4,
+    s1Threshold = 0.35,
     hardThreshold = 0.65,
     writeMode = 'await',
   } = options;

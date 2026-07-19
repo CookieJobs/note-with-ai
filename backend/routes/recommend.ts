@@ -41,7 +41,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
 /**
  * 语义联想笔记（方案B：多路召回→去重→仅Top10进LLM→阈值输出）
  * POST /api/recommend/semantic-notes
- * body: { noteId, recallK?:30, finalK?:10, s1Threshold?:0.4, hardThreshold?:0.65 }
+ * body: { noteId, recallK?:30, finalK?:10, s1Threshold?:0.35, hardThreshold?:0.65 }
  */
 router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
   const user = await UserValidator.authenticateUser(req);
@@ -49,7 +49,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
     noteId,
     recallK = 30,
     finalK = 10,
-    s1Threshold = 0.4,
+    s1Threshold = 0.35,
     hardThreshold = 0.65,
     writeMode = 'background',
   } = req.body || {};
