@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 import type { NextFunction } from 'express';
 import performanceRouter from '../routes/performance';
-import recommendRouter from '../routes/recommend';
+import recommendRouter, { getRecommendationTaskResult } from '../routes/recommend';
 import { Note } from '../models/Note';
 import { globalErrorHandler } from '../utils/errorHandler';
 import { ResourceValidator, UserValidator } from '../utils/userValidation';
@@ -99,6 +99,30 @@ describe('recommend and performance route contracts', () => {
       error: '笔记不存在或无权限',
       message: '笔记不存在或无权限',
       type: 'NOT_FOUND_ERROR',
+    });
+  });
+
+  it('maps a stale worker status to a retryable error even after a stale callback result', () => {
+    const response = makeResponse();
+    let error: unknown;
+    try {
+      getRecommendationTaskResult('stale', {
+        recommendations: [],
+        meta: { diagnostics: { stage: 'context', reason: 'stale_source_revision' } },
+        message: 'stale source',
+      } as never);
+    } catch (caught) {
+      error = caught;
+    }
+    assert.ok(error);
+    globalErrorHandler(error as never, { method: 'POST', path: '/semantic-notes' } as never, response as never, (() => undefined) as NextFunction);
+
+    assert.equal(response.statusCode, 502);
+    assert.deepEqual(response.body, {
+      success: false,
+      error: '笔记已被更新，请重试',
+      message: '笔记已被更新，请重试',
+      type: 'EXTERNAL_API_ERROR',
     });
   });
 

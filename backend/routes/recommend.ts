@@ -9,12 +9,25 @@ import express, { Request, Response } from 'express';
 import { Note } from '../models/Note';
 import { searchArticlesByKeyword } from '../services/search';
 import type { RecommendationResult } from '../services/recommendService';
-import { runProductionNoteEnrichmentTask } from '../services/noteEnrichmentWorker';
+import { runProductionNoteEnrichmentTask, type EnrichmentTaskStatus } from '../services/noteEnrichmentWorker';
 import { authenticateToken } from '../middleware/auth';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
 
 const router = express.Router();
+
+export function getRecommendationTaskResult(
+  status: EnrichmentTaskStatus,
+  result: RecommendationResult | undefined,
+): RecommendationResult {
+  if (status === 'stale') {
+    throw ErrorHandler.createExternalApiError('笔记已被更新，请重试', 'recommendation');
+  }
+  if (!result) {
+    throw ErrorHandler.createExternalApiError('刷新相关推荐失败', 'recommendation');
+  }
+  return result;
+}
 
 router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   // 获取当前用户，确保只查询自己的笔记
@@ -82,10 +95,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
     recommendationOptions: { recallK, finalK, s1Threshold, hardThreshold },
   });
 
-  if (!result) {
-    const message = status === 'stale' ? '笔记已被更新，请重试' : '刷新相关推荐失败';
-    throw ErrorHandler.createExternalApiError(message, 'recommendation');
-  }
+  result = getRecommendationTaskResult(status, result);
 
   if (result.recommendations.length === 0) {
     ResponseHandler.success(res, {
