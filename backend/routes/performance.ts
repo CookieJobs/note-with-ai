@@ -9,6 +9,7 @@ import express, { Request, Response } from 'express';
 import { PerformanceMonitor } from '../utils/performance';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
+import { requireSingleRouteParam } from '../utils/requestParams';
 
 const router = express.Router();
 type PerformanceReport = ReturnType<typeof PerformanceMonitor.getSystemPerformanceReport>;
@@ -37,7 +38,7 @@ router.get('/report', asyncHandler(async (req: Request, res: Response) => {
 
 // 获取特定操作的性能统计
 router.get('/stats/:operationName', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
-  const { operationName } = req.params;
+  const operationName = requireSingleRouteParam(req.params.operationName, 'operationName');
   const stats = PerformanceMonitor.getPerformanceStats(operationName);
   
   const responseData = {

@@ -8,7 +8,8 @@ Note: 推荐路由仅负责鉴权、参数校验与 HTTP 响应适配，推荐�
 import express, { Request, Response } from 'express';
 import { Note } from '../models/Note';
 import { searchArticlesByKeyword } from '../services/search';
-import { RecommendationWriteMode, updateNoteRecommendations } from '../services/recommendService';
+import type { RecommendationResult } from '../services/recommendService';
+import { runProductionNoteEnrichmentTask } from '../services/noteEnrichmentWorker';
 import { authenticateToken } from '../middleware/auth';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
@@ -63,13 +64,28 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
 
   await ResourceValidator.validateOwnership(Note, noteId, user._id.toString(), '笔记');
 
-  const result = await updateNoteRecommendations(noteId, user._id.toString(), {
-    recallK,
-    finalK,
-    s1Threshold,
-    hardThreshold,
-    writeMode: writeMode as RecommendationWriteMode,
+  const source = await Note.findOne({ _id: noteId, userId: user._id }).select('revision');
+  if (!source) {
+    throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
+  }
+  const sourceRevision = typeof source.revision === 'number' && source.revision > 0 ? source.revision : 1;
+  let result: RecommendationResult | undefined;
+  const status = await runProductionNoteEnrichmentTask({
+    noteId,
+    userId: user._id.toString(),
+    sourceRevision,
+    artifact: 'recommendations',
+  }, {
+    onRecommendationResult: (completed) => {
+      result = completed;
+    },
+    recommendationOptions: { recallK, finalK, s1Threshold, hardThreshold },
   });
+
+  if (!result) {
+    const message = status === 'stale' ? '笔记已被更新，请重试' : '刷新相关推荐失败';
+    throw ErrorHandler.createExternalApiError(message, 'recommendation');
+  }
 
   if (result.recommendations.length === 0) {
     ResponseHandler.success(res, {
