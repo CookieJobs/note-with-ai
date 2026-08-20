@@ -262,6 +262,7 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
   return createPortal(
     <div
       ref={menuRef}
+      data-note-editor-inside="true"
       className="fixed z-[9999] h-auto max-h-[330px] w-64 overflow-y-auto rounded-md border border-slate-200 bg-white px-1 py-2 shadow-lg"
       style={{ top: pos.top, left: pos.left }}
     >
@@ -273,6 +274,7 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
           const button = (
             <button
               key={cmd.id}
+              type="button"
               data-slash-item
               onMouseDown={(e) => {
                 e.preventDefault();

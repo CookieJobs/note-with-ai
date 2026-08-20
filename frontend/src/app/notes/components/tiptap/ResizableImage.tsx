@@ -269,7 +269,9 @@ function ResizableImageNodeView(props: NodeViewProps) {
           openModal();
         }}
       >
-        <img ref={imgRef} src={attrs.src} alt={attrs.alt ?? ''} title={attrs.title ?? ''} style={style} />
+        {/* A Tiptap node view needs a mutable native image element for resize interactions. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img ref={imgRef} src={attrs.src} alt={attrs.alt ?? ''} title={attrs.title ?? ''} style={style} loading="lazy" decoding="async" />
         {canInteract && selected && (
           <>
             <div className="resizeHandle nw" onPointerDown={startResize('nw')} onPointerMove={onMove} onPointerUp={onEnd} />
@@ -388,5 +390,4 @@ export const ResizableImage = Node.create<Opts>({
     return ReactNodeViewRenderer(ResizableImageNodeView);
   },
 });
-
 

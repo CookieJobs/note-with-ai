@@ -5,6 +5,8 @@ Pos: 前端 样式
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 
+@use "sass:meta";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -89,8 +91,8 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 }
 
 /* TipTap UI Components 基础样式（由 @tiptap/cli 安装生成） */
-@import "./_variables.scss";
-@import "./_keyframe-animations.scss";
+@include meta.load-css("./_variables.scss");
+@include meta.load-css("./_keyframe-animations.scss");
 
 /* 全局样式重置 */
 * {
@@ -137,5 +139,4 @@ body {
   font-family: var(--font-mono), "JetBrains Mono NL", ui-monospace, SFMono-Regular,
     Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
-
 

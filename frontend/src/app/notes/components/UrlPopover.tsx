@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Slot } from '@radix-ui/react-slot';
 
 interface UrlPopoverProps {
@@ -44,9 +44,13 @@ export function UrlPopover({ children, onSubmit, defaultValue = '', placeholder 
       )}
       
       {isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm transition-all duration-100">
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm transition-all duration-100"
+          data-note-editor-inside="true"
+        >
           <div 
             className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 shadow-2xl animate-in fade-in zoom-in-95"
+            data-note-editor-inside="true"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-3 text-sm font-semibold text-slate-900">Enter URL</h3>
