@@ -51,6 +51,7 @@ type CurrentNoteContext = {
   currentTitle: string;
   currentSummaryDb: string;
   currentUpdatedAt: unknown;
+  currentRevision: number;
   queryItems: QueryItem[];
   currentForLLM: {
     id: string;
@@ -88,6 +89,8 @@ export interface RecommendationOptions {
   s1Threshold?: number;
   hardThreshold?: number;
   writeMode?: RecommendationWriteMode;
+  /** Internal Note enrichment guard; HTTP callers do not provide this field. */
+  sourceRevision?: number;
 }
 
 export interface RecommendationDiagnostics {
@@ -217,6 +220,9 @@ async function loadCurrentNoteContext(params: {
   const currentTitle = String((currentNote as any).title || '').trim();
   const currentSummaryDb = String((currentNote as any).summary || '').trim();
   const currentUpdatedAt = (currentNote as any).updatedAt;
+  const currentRevision = typeof (currentNote as any).revision === 'number' && (currentNote as any).revision > 0
+    ? (currentNote as any).revision
+    : 1;
   const conceptsDb: string[] = Array.isArray((currentNote as any).concepts) ? (currentNote as any).concepts : [];
   const q0 = `${currentTitle} ${currentText}`.trim();
   const q2 = conceptsDb.length ? conceptsDb.join(' ') : '';
@@ -249,6 +255,7 @@ async function loadCurrentNoteContext(params: {
       currentTitle,
       currentSummaryDb,
       currentUpdatedAt,
+      currentRevision,
       queryItems,
       currentForLLM: {
         id: String((currentNote as any)._id),
@@ -476,7 +483,12 @@ async function resolveRerankStage(params: {
   const candidates = buildRerankCandidates(topForLLM);
   const topNoteById = new Map<string, ResolvedRecommendCandidate>(topForLLM.map((item) => [String(item.note._id), item]));
   const cache = (currentNote as any).recommendCache;
-  const cacheOk = cache && cache.algoVersion === ALGO_VERSION && String(cache.sourceUpdatedAt) === String(currentUpdatedAt);
+  const cacheRevision = Number(cache?.sourceRevision);
+  const cacheMatchesRevision = Number.isInteger(cacheRevision) && cacheRevision === (currentNote as any).revision;
+  // Historical caches have no sourceRevision; keep their old updatedAt guard until a new write refreshes them.
+  const cacheMatchesLegacyTimestamp = cache?.sourceRevision === undefined
+    && String(cache?.sourceUpdatedAt) === String(currentUpdatedAt);
+  const cacheOk = cache && cache.algoVersion === ALGO_VERSION && (cacheMatchesRevision || cacheMatchesLegacyTimestamp);
   const cacheById: Record<string, unknown> =
     cacheOk && cache.byCandidateId && typeof cache.byCandidateId === 'object' ? cache.byCandidateId : {};
 
@@ -555,6 +567,7 @@ async function persistRecommendCache(params: {
   noteId: string;
   userId: string;
   currentUpdatedAt: unknown;
+  sourceRevision: number;
   cacheOk: unknown;
   cacheById: Record<string, unknown>;
   topForLLM: RecommendCandidate[];
@@ -567,7 +580,7 @@ async function persistRecommendCache(params: {
     hardThreshold: number;
   };
 }) {
-  const { noteId, userId, currentUpdatedAt, cacheOk, cacheById, topForLLM, rrMap, diagnostics, recommendationParams } = params;
+  const { noteId, userId, currentUpdatedAt, sourceRevision, cacheOk, cacheById, topForLLM, rrMap, diagnostics, recommendationParams } = params;
   const byCandidateId: Record<string, unknown> = cacheOk ? { ...cacheById } : {};
 
   for (const x of topForLLM) {
@@ -585,19 +598,21 @@ async function persistRecommendCache(params: {
   }
 
   await Note.updateOne(
-    { _id: noteId, userId, updatedAt: currentUpdatedAt },
+    { _id: noteId, userId, revision: sourceRevision },
     {
       $set: {
         recommendCache: {
           algoVersion: ALGO_VERSION,
           sourceUpdatedAt: currentUpdatedAt,
+          sourceRevision,
           generatedAt: new Date().toISOString(),
           params: recommendationParams,
           diagnostics,
           byCandidateId,
         },
       },
-    }
+    },
+    { timestamps: false }
   );
 }
 
@@ -614,6 +629,7 @@ async function persistEmptyResultCache(params: {
   noteId: string;
   userId: string;
   currentUpdatedAt: unknown;
+  sourceRevision: number;
   cacheOk: unknown;
   cacheById: Record<string, unknown>;
   topForLLM: RecommendCandidate[];
@@ -651,6 +667,7 @@ export async function updateNoteRecommendations(
     s1Threshold = 0.35,
     hardThreshold = 0.65,
     writeMode = 'await',
+    sourceRevision,
   } = options;
 
   const t0 = Date.now();
@@ -660,6 +677,13 @@ export async function updateNoteRecommendations(
   }
 
   const currentContext = currentNoteStage.context!;
+  if (sourceRevision !== undefined && sourceRevision !== currentContext.currentRevision) {
+    return buildEmptyResult('笔记已被更新，跳过旧推荐写回', {
+      diagnostics: { stage: 'context', reason: 'stale_source_revision' },
+      timingsMs: { total: Date.now() - t0 },
+    });
+  }
+  const effectiveSourceRevision = sourceRevision ?? currentContext.currentRevision;
   const recallStageResult = await recallTopCandidates({
     noteId,
     userId,
@@ -678,6 +702,7 @@ export async function updateNoteRecommendations(
         noteId,
         userId,
         currentUpdatedAt: currentContext.currentUpdatedAt,
+        sourceRevision: effectiveSourceRevision,
         cacheOk: false,
         cacheById: {},
         topForLLM: [],
@@ -740,7 +765,8 @@ export async function updateNoteRecommendations(
       writeMode,
       noteId,
       userId,
-      currentUpdatedAt: currentContext.currentUpdatedAt,
+        currentUpdatedAt: currentContext.currentUpdatedAt,
+        sourceRevision: effectiveSourceRevision,
       cacheOk: rerankStage.cacheOk,
       cacheById: rerankStage.cacheById,
       topForLLM: recallStage.topForLLM,
@@ -778,6 +804,7 @@ export async function updateNoteRecommendations(
     noteId,
     userId,
     currentUpdatedAt: currentContext.currentUpdatedAt,
+    sourceRevision: effectiveSourceRevision,
     cacheOk: rerankStage.cacheOk,
     cacheById: rerankStage.cacheById,
     topForLLM: recallStage.topForLLM,

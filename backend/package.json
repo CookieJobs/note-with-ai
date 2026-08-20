@@ -7,7 +7,10 @@
     "dev": "ts-node-dev --trace-deprecation --respawn --transpile-only index.ts",
     "build": "rm -rf dist && tsc",
     "start": "node dist/index.js",
-    "repair:embeddings": "ts-node scripts/repair_embeddings.ts"
+    "repair:embeddings": "ts-node scripts/repair_embeddings.ts",
+    "backfill:note-revisions": "ts-node scripts/backfill_note_revisions.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
   },
   "keywords": [],
   "author": "",

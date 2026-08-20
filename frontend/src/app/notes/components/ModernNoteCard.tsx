@@ -1,28 +1,29 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import cardStyles from '../styles/note-card.module.scss';
 import editorStyles from '../styles/rich-editor.module.scss';
 import TrashIcon from '../../../components/icons/TrashIcon';
 import PlusIcon from '../../../components/icons/PlusIcon';
-import type { Note } from '../hooks/useNotes';
-import type { IRecommendCache } from '../../../types';
+import type { Note, UpdateNoteCommand } from '../hooks/useNotes';
 import { focusProseMirrorWithin } from './focusProseMirror';
 import RichTextViewer from './RichTextViewer';
 import { useNoteEditor } from '../hooks/useNoteEditor';
 import { JSONContent } from '@tiptap/react';
+import { flomoEditorChromeProps } from './richTextEditorPresets';
+import { loadRichTextEditor } from './richTextEditorLoader';
 
 function EditorLoadingPlaceholder() {
   return (
-    <div className="flex items-center justify-center py-10">
-      <div className="h-5 w-5 animate-spin rounded-full border-[3px] border-gray-200 border-t-gray-400" />
+    <div className="space-y-3 py-2">
+      <div className="h-4 w-5/6 animate-pulse rounded-full bg-gray-100" />
+      <div className="h-4 w-2/3 animate-pulse rounded-full bg-gray-100" />
     </div>
   );
 }
 
-const RichTextEditorPromise = import('./RichTextEditor');
-const RichTextEditor = dynamic(() => RichTextEditorPromise, {
+const RichTextEditor = dynamic(loadRichTextEditor, {
   ssr: false,
   loading: () => <EditorLoadingPlaceholder />,
 });
@@ -31,21 +32,11 @@ interface NoteCardProps {
   note: Note;
   onRequestDelete: (id: string) => void;
   isHighlighted?: boolean;
-  onUpdateTitle: (id: string, newTitle: string, updatedAt?: string) => void;
-  onUpdateContent?: (
-    id: string,
-    newContent: string,
-    updatedAt?: string,
-    contentJson?: JSONContent,
-    contentText?: string,
-    embedding?: number[]
-  ) => void;
-  onUpdateKeywords?: (id: string, newKeywords: string[], updatedAt?: string) => void;
-  onUpdateRecommendCache?: (id: string, recommendCache: IRecommendCache | null) => void;
+  updateNote: (command: UpdateNoteCommand) => Promise<Note>;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
   draft?: { json: JSONContent; text: string; dirty: boolean };
   onDraftChange?: (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => void;
-  exitEditSignal?: number;
+  isContentEditingActive?: boolean;
   onClick?: () => void;
   isSelected?: boolean;
 }
@@ -85,14 +76,11 @@ export default function ModernNoteCard({
   note,
   onRequestDelete,
   isHighlighted,
-  onUpdateTitle,
-  onUpdateContent,
-  onUpdateKeywords,
-  onUpdateRecommendCache,
+  updateNote,
   onContentEditingChange,
   draft,
   onDraftChange,
-  exitEditSignal,
+  isContentEditingActive = false,
   onClick,
   isSelected,
 }: NoteCardProps) {
@@ -103,9 +91,12 @@ export default function ModernNoteCard({
     contentTextDraft,
     contentSavedFlash,
     activeKeywordIndex,
-    setActiveKeywordIndex,
     tagEditValue,
     setTagEditValue,
+    keywordError,
+    beginTitleEdit,
+    beginKeywordEdit,
+    cancelKeywordEdit,
     handleSaveTitle,
     handleSaveContent,
     handleCancelContent,
@@ -115,14 +106,11 @@ export default function ModernNoteCard({
     onEditorChange,
   } = useNoteEditor({
     note,
-    onUpdateTitle,
-    onUpdateContent,
-    onUpdateKeywords,
-    onUpdateRecommendCache,
+    updateNote,
     onContentEditingChange,
     draft,
     onDraftChange,
-    exitEditSignal,
+    isContentEditingActive,
   });
 
   // 控制高亮动画的生命周期
@@ -143,6 +131,7 @@ export default function ModernNoteCard({
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const titleSaveInProgressRef = useRef(false);
   const contentAreaRef = useRef<HTMLDivElement | null>(null);
   const contentEditActionsRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLParagraphElement | null>(null);
@@ -187,7 +176,7 @@ export default function ModernNoteCard({
   // 进入编辑态：自动聚焦并把光标放到末尾（标题/正文复用同一逻辑）
   useFocusCursorToEnd(state.title.isEditing, titleInputRef);
 
-  const alignTo = (_anchor: 'top' | 'bottom') => {
+  const alignTo = useCallback((_anchor: 'top' | 'bottom') => {
     const card = rootRef.current;
     if (!card) return;
     const scroller = findScrollParent(card);
@@ -201,8 +190,8 @@ export default function ModernNoteCard({
     if (cr.top < sr.top) {
       scroller.scrollTop += cr.top - sr.top;
     }
-  };
-  const applyTextareaSize = (opts: { align: boolean }) => {
+  }, []);
+  const applyTextareaSize = useCallback((opts: { align: boolean }) => {
     const card = rootRef.current;
     if (!card) return;
 
@@ -220,7 +209,7 @@ export default function ModernNoteCard({
       el.style.maxHeight = 'none';
       el.style.height = 'auto';
     }
-  };
+  }, [alignTo]);
   useEffect(() => {
     if (!state.content.isEditing) {
       const card = rootRef.current;
@@ -255,7 +244,7 @@ export default function ModernNoteCard({
       applyTextareaSize({ align: true });
       requestAnimationFrame(() => applyTextareaSize({ align: true }));
     });
-  }, [state.content.isEditing]);
+  }, [applyTextareaSize, state.content.isEditing]);
 
   useEffect(() => {
     if (!state.content.isEditing) return;
@@ -300,7 +289,7 @@ export default function ModernNoteCard({
       if (ro) ro.disconnect();
       else window.removeEventListener('resize', check);
     };
-  }, [note.content, state.content.isEditing]);
+  }, [dispatch, note.content, state.content.isEditing]);
 
   // 根据 expanded 平滑过渡高度（编辑态不处理）
   useEffect(() => {
@@ -372,6 +361,7 @@ export default function ModernNoteCard({
       if (ro) ro.disconnect();
     };
   }, [
+    dispatch,
     state.expanded,
     state.content.isEditing,
     // 富文本内容变化可能不体现在 note.content 上
@@ -383,11 +373,32 @@ export default function ModernNoteCard({
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      handleSaveTitle();
+      beginTitleSave();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' });
     }
+  };
+
+  const beginTitleSave = () => {
+    if (titleSaveInProgressRef.current) return;
+    titleSaveInProgressRef.current = true;
+    void handleSaveTitle().finally(() => {
+      titleSaveInProgressRef.current = false;
+    });
+  };
+
+  const handleTitleSaveMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Keep the input focused until its async write settles. This also makes a trailing
+    // blur harmless in browsers that dispatch it despite the prevented default.
+    e.preventDefault();
+    e.stopPropagation();
+    beginTitleSave();
+  };
+
+  const handleTitleBlur = () => {
+    if (titleSaveInProgressRef.current) return;
+    dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' });
   };
 
   const cardClassName = [
@@ -406,6 +417,7 @@ export default function ModernNoteCard({
     <div
       ref={rootRef}
       className={cardClassName}
+      data-note-id={note._id}
     >
       {/* 右侧悬浮把手 */}
       <button
@@ -430,29 +442,37 @@ export default function ModernNoteCard({
         onClick={() => dispatch({ type: 'TOGGLE_EXPANDED' })}
       >
         {state.title.isEditing ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-            <input
-              autoFocus
-              ref={titleInputRef}
-              type="text"
-              value={state.title.value}
-              onChange={(e) => dispatch({ type: 'CHANGE_TITLE', value: e.target.value })}
-              onKeyDown={handleTitleKeyDown}
-              onBlur={() => dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' })}
-              className={cardStyles.noteTitleInput}
-              placeholder="添加标题..."
-              maxLength={100}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+              <input
+                autoFocus
+                ref={titleInputRef}
+                type="text"
+                value={state.title.value}
+                onChange={(e) => dispatch({ type: 'CHANGE_TITLE', value: e.target.value })}
+                onKeyDown={handleTitleKeyDown}
+                onBlur={handleTitleBlur}
+                className={cardStyles.noteTitleInput}
+                placeholder="添加标题..."
+                maxLength={100}
+              />
+            </div>
+            {state.title.error && (
+              <div className={cardStyles.keywordErrorInline} role="alert">
+                {state.title.error}
+                {state.title.conflictCurrentTitle ? ` 服务端标题：${state.title.conflictCurrentTitle}` : ''}
+              </div>
+            )}
           </div>
         ) : (
           <div
             className={`${cardStyles.noteTitle} !font-semibold !text-gray-900 !text-lg`}
             onClick={(e) => {
               e.stopPropagation();
-              dispatch({ type: 'ENTER_TITLE_EDIT', value: note.title || '' });
+              beginTitleEdit();
             }}
           >
-            {note.enriching && (!note.title || note.title.trim().length === 0) ? (
+          {note.enrichment?.status === 'pending' && (!note.title || note.title.trim().length === 0) ? (
               <div className={cardStyles.titleSkeleton} />
             ) : (
               note.title || '点击添加标题'
@@ -462,10 +482,7 @@ export default function ModernNoteCard({
         <div className={`${cardStyles.noteActions} !gap-2`}>
           {state.title.isEditing && (
             <button
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                handleSaveTitle();
-              }}
+              onMouseDown={handleTitleSaveMouseDown}
               className={`${cardStyles.noteEditTitleConfirm} !bg-gray-100 hover:!bg-gray-200 !text-gray-600`}
               aria-label="保存标题"
               disabled={state.title.saving}
@@ -504,6 +521,7 @@ export default function ModernNoteCard({
                 value={contentJsonDraft}
                 onChange={onEditorChange}
                 autoFocus="end"
+                  {...flomoEditorChromeProps}
                 onBlur={() => {
                   dispatch({ type: 'BLUR_CONTENT_EXIT' });
                 }}
@@ -544,7 +562,7 @@ export default function ModernNoteCard({
 
       <div className={cardStyles.noteKeywords}>
         <div className={cardStyles.keywordsWrap}>
-        {note.enriching && (!(note.keywords && note.keywords.length)) ? (
+        {note.enrichment?.status === 'pending' && (!(note.keywords && note.keywords.length)) ? (
           <>
             <span className={cardStyles.chipSkeleton} />
             <span className={cardStyles.chipSkeleton} />
@@ -571,8 +589,7 @@ export default function ModernNoteCard({
                         e.preventDefault();
                         commitKeywordAt(idx);
                       } else if (e.key === 'Escape') {
-                        setActiveKeywordIndex(null);
-                        setTagEditValue('');
+                        cancelKeywordEdit();
                       }
                     }}
                     onBlur={() => {
@@ -585,8 +602,8 @@ export default function ModernNoteCard({
                     className={`${cardStyles.keyword} !bg-gray-100 hover:!bg-gray-200 !text-gray-600 !rounded-full !text-xs !border-none !px-3 !py-1`}
                     role="button"
                     tabIndex={0}
-                    onClick={() => { setActiveKeywordIndex(idx); setTagEditValue(kw); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { setActiveKeywordIndex(idx); setTagEditValue(kw); } }}
+                    onClick={() => beginKeywordEdit(idx, kw)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') beginKeywordEdit(idx, kw); }}
                   >
                     {kw}
                     <button
@@ -618,8 +635,7 @@ export default function ModernNoteCard({
                           e.preventDefault();
                           commitKeywordAt(addingIndex);
                         } else if (e.key === 'Escape') {
-                          setActiveKeywordIndex(null);
-                          setTagEditValue('');
+                          cancelKeywordEdit();
                         }
                       }}
                       onBlur={() => commitKeywordAt(addingIndex)}
@@ -634,8 +650,7 @@ export default function ModernNoteCard({
                       className={`${cardStyles.keywordAddBtn} flex items-center justify-center !bg-transparent !border !border-dashed !border-gray-300 hover:!border-gray-400 !text-gray-400 hover:!text-gray-600 !rounded-full !w-6 !h-6`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setActiveKeywordIndex(addingIndex);
-                        setTagEditValue('');
+                        beginKeywordEdit(addingIndex, '');
                       }}
                       aria-label="添加关键词"
                     >
@@ -652,6 +667,7 @@ export default function ModernNoteCard({
         </div>
 
         <div className={cardStyles.noteKeywordsRight}>
+          {keywordError && <div className={cardStyles.keywordErrorInline} role="alert">{keywordError}</div>}
           {/* 草稿提示：固定在 keywords 行尾（编辑/非编辑都显示） */}
           {contentSavedFlash ? (
             <div className={cardStyles.draftSavedInline}>修改已提交 ✔</div>
@@ -661,7 +677,11 @@ export default function ModernNoteCard({
 
           {/* 编辑态操作：放在 keywords 行尾（在草稿提示之后），避免占用正文高度 */}
           {state.content.isEditing && (
-            <div className={cardStyles.noteEditActions} ref={contentEditActionsRef}>
+            <div
+              className={cardStyles.noteEditActions}
+              ref={contentEditActionsRef}
+              data-note-editor-inside="true"
+            >
               <button
                 type="button"
                 className={`${cardStyles.noteEditCancel} !bg-white hover:!bg-gray-50 !text-gray-600 !border !border-gray-200 !rounded-lg !px-3 !py-1 !text-sm`}
@@ -687,6 +707,9 @@ export default function ModernNoteCard({
                 保存
               </button>
               {state.content.error && <span className={cardStyles.errorInline}>{state.content.error}</span>}
+              {state.content.conflictCurrentText && (
+                <span className={cardStyles.errorInline}>服务端当前正文：{state.content.conflictCurrentText}</span>
+              )}
             </div>
           )}
         </div>

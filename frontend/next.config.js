@@ -14,11 +14,6 @@ const buildWorkerCount = parsePositiveInteger(process.env.NEXT_BUILD_WORKERS, 1)
 
 const nextConfig = {
   reactStrictMode: true,
-  typescript: {
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
-    ignoreBuildErrors: true,
-  },
   experimental: {
     cpus: buildWorkerCount,
   },

@@ -72,6 +72,7 @@ export interface IRecommendationDiagnostics {
 export interface IRecommendCache {
   algoVersion?: string;
   sourceUpdatedAt?: string;
+  sourceRevision?: number;
   generatedAt?: string;
   params?: {
     recallK?: number;
@@ -83,18 +84,23 @@ export interface IRecommendCache {
   byCandidateId?: Record<string, IRecommendCacheCandidate>;
 }
 
+export interface INoteEnrichmentView {
+  sourceRevision: number;
+  status: 'pending' | 'ready' | 'degraded';
+}
+
 export interface INote {
   _id: string;
-  userId: string;
   content: string;
-  contentJson?: Record<string, unknown>;
+  contentJson?: Record<string, unknown> | null;
   contentText?: string;
   title?: string;
   summary?: string;
   concepts?: string[];
   recommendCache?: IRecommendCache | null;
   keywords?: string[];
-  embedding?: number[];
+  revision: number;
+  enrichment?: INoteEnrichmentView;
   createdAt: string;
   updatedAt: string;
 }

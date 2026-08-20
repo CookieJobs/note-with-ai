@@ -8,7 +8,7 @@ interface RelatedNotesDrawerProps {
   onClose: () => void;
   selectedNoteId: string | null;
   allNotes: Note[];
-  onRefreshRecommendCache?: (noteId: string, noteUpdatedAt?: string) => Promise<void>;
+  onRefreshRecommendCache?: (noteId: string) => Promise<void>;
 }
 
 interface RelatedNoteItem {
@@ -52,7 +52,9 @@ export default function RelatedNotesDrawer({
 
     const attemptKey = [
       currentNote._id,
+      currentNote.revision,
       currentNote.updatedAt || '',
+      currentNote.recommendCache?.sourceRevision ?? '',
       currentNote.recommendCache?.sourceUpdatedAt || '',
       currentNote.recommendCache?.generatedAt || '',
       cacheState.status,
@@ -64,7 +66,7 @@ export default function RelatedNotesDrawer({
     let cancelled = false;
     setRefreshState('refreshing');
 
-    void onRefreshRecommendCache(currentNote._id, currentNote.updatedAt)
+    void onRefreshRecommendCache(currentNote._id)
       .then(() => {
         if (cancelled) return;
         setRefreshState('success');

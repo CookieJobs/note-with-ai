@@ -2,6 +2,7 @@ import type { IRecommendCache, IRecommendCacheCandidate } from '../../../types';
 
 type RecommendCacheLikeNote = {
   updatedAt?: string;
+  revision?: number;
   recommendCache?: IRecommendCache | null;
 };
 
@@ -34,7 +35,7 @@ export function hasCandidateS1(candidate: IRecommendCacheCandidate | null | unde
 }
 
 export function buildRecommendCacheFromResponse(
-  noteUpdatedAt: string | undefined,
+  note: Pick<RecommendCacheLikeNote, 'updatedAt' | 'revision'>,
   payload: any
 ): IRecommendCache {
   const data = payload?.data ?? {};
@@ -60,7 +61,8 @@ export function buildRecommendCacheFromResponse(
 
   return {
     algoVersion: typeof meta?.algoVersion === 'string' ? meta.algoVersion : 'semantic-notes-v3',
-    sourceUpdatedAt: noteUpdatedAt,
+    sourceUpdatedAt: note.updatedAt,
+    sourceRevision: note.revision,
     generatedAt,
     params: meta?.thresholds,
     diagnostics: meta?.diagnostics,
@@ -72,10 +74,10 @@ export function getRecommendCacheState(note: RecommendCacheLikeNote | null | und
   const cache = note?.recommendCache ?? null;
   const entries = normalizeEntries(cache);
   const hasEntries = entries.length > 0;
-  const hasCurrentVersion =
-    !!cache &&
-    !!note?.updatedAt &&
-    String(cache.sourceUpdatedAt || '') === String(note.updatedAt || '');
+  const hasCacheRevision = cache?.sourceRevision !== undefined && cache?.sourceRevision !== null;
+  const hasCurrentVersion = !!cache && (hasCacheRevision
+    ? Number(cache.sourceRevision) === Number(note?.revision)
+    : !!note?.updatedAt && String(cache.sourceUpdatedAt || '') === String(note.updatedAt || ''));
   const hasS1Data = hasEntries && entries.every(([, candidate]) => hasCandidateS1(candidate));
 
   if (!cache) {

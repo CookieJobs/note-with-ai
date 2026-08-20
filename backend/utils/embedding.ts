@@ -299,11 +299,13 @@ let cacheStats: CacheStats = {
 // 向量缓存
 const embeddingCache = new Map<string, CacheItem>();
 
-// 定期清理过期缓存
-setInterval(() => {
+// 定期清理过期缓存。unref 让这个纯缓存的维护任务不会阻止测试或进程自然退出。
+const cacheCleanupTimer = setInterval(() => {
   cleanExpiredCache();
   logger.info(`🧹 缓存清理完成，当前缓存条目: ${embeddingCache.size}`);
 }, CACHE_CLEANUP_INTERVAL);
+
+cacheCleanupTimer.unref?.();
 
 // 缓存清理函数
 function cleanExpiredCache() {

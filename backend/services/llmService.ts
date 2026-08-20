@@ -435,11 +435,3 @@ function extractKeywordsFromContent(content: string): string[] {
   
   return foundTerms.slice(0, 3);
 }
-
-/**
- * @deprecated 废弃：DeepSeek 聊天模型不适合生成向量，请使用 utils/embedding.ts 中的 generateQwenEmbedding
- */
-export async function generateEmbedding(input: string): Promise<number[]> {
-  logger.warn('⚠️ 警告：正在调用已废弃的 generateEmbedding (DeepSeek)，请尽快迁移至 Qwen Embedding');
-  return [];
-}

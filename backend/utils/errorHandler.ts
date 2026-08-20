@@ -221,8 +221,13 @@ export const globalErrorHandler = (
   const response: Record<string, unknown> = {
     success: false,
     error: appError.message,
+    message: appError.message,
     type: appError.type
   };
+
+  const code = appError.details?.code;
+  if (typeof code === 'string') response.code = code;
+  if (appError.details?.current !== undefined) response.current = appError.details.current;
 
   // 在开发环境中包含更多错误信息
   if (process.env.NODE_ENV === 'development') {

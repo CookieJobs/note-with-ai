@@ -1,21 +1,23 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import composeStyles from '../styles/floating-compose.module.scss';
 import { focusProseMirrorWithin } from './focusProseMirror';
+import { flomoEditorChromeProps } from './richTextEditorPresets';
+import { loadRichTextEditor } from './richTextEditorLoader';
 
 function EditorLoadingPlaceholder() {
   return (
-    <div className="flex items-center justify-center py-10">
-      <div className="h-5 w-5 animate-spin rounded-full border-[3px] border-gray-200 border-t-gray-400" />
+    <div className="space-y-3 py-2">
+      <div className="h-4 w-5/6 animate-pulse rounded-full bg-gray-100" />
+      <div className="h-4 w-2/3 animate-pulse rounded-full bg-gray-100" />
     </div>
   );
 }
 
-const RichTextEditorPromise = import('./RichTextEditor');
-const RichTextEditor = dynamic(() => RichTextEditorPromise, {
+const RichTextEditor = dynamic(loadRichTextEditor, {
   ssr: false,
   loading: () => <EditorLoadingPlaceholder />,
 });
@@ -23,116 +25,153 @@ const RichTextEditor = dynamic(() => RichTextEditorPromise, {
 import { JSONContent } from '@tiptap/react';
 
 type FloatingQuickComposeProps = {
+  open: boolean;
   valueJson: JSONContent | null;
   valueText: string;
+  onOpen: () => void;
   onChange: (next: { json: JSONContent; text: string }) => void;
   onSubmit: () => void;
   onCancel: () => void;
   loading?: boolean;
 };
 
+type ShellPhase = 'collapsed' | 'expanded' | 'closing';
+
 export default function FloatingQuickCompose({
+  open,
   valueJson,
   valueText,
+  onOpen,
   onChange,
   onSubmit,
   onCancel,
   loading = false,
 }: FloatingQuickComposeProps) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const [open, setOpen] = useState(false);
   const expandedRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const root = rootRef.current;
-      if (!root) return;
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (root.contains(t)) return;
-      setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () => document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [open]);
+  const [shellPhase, setShellPhase] = useState<ShellPhase>(open ? 'expanded' : 'collapsed');
 
   useEffect(() => {
     if (!open) return;
     return focusProseMirrorWithin(expandedRef.current);
   }, [open]);
 
+  useLayoutEffect(() => {
+    if (open) {
+      setShellPhase('expanded');
+      return;
+    }
+
+    setShellPhase((current) => (current === 'expanded' ? 'closing' : current));
+  }, [open]);
+
   const disabled = loading;
   const canSubmit = !disabled && (valueText || '').trim().length > 0;
   const hasDraft = (valueText || '').trim().length > 0;
-  const shellTransition = {
-    type: 'spring',
-    stiffness: 200,
-    damping: 25,
-    mass: 0.8,
+  const isClosing = shellPhase === 'closing';
+  const shellExpanded = shellPhase !== 'collapsed';
+  const shellLayoutTransition = {
+    type: 'tween',
+    duration: 0.16,
+    ease: [0.2, 0.9, 0.2, 1] as const,
   } as const;
-
-  const contentTransition = {
-    duration: 0.2,
-    ease: [0.22, 1, 0.36, 1] as const,
+  const shellVisualTransition = {
+    duration: 0.14,
+    ease: [0.2, 0.9, 0.2, 1] as const,
   };
 
-  const contentEnterTransition = {
-    duration: 0.2,
-    delay: 0.05,
-    ease: [0.22, 1, 0.36, 1] as const,
+  const collapsedTransition = {
+    duration: 0.09,
+    ease: [0.2, 0.9, 0.2, 1] as const,
+  };
+
+  const panelTransition = {
+    duration: 0.12,
+    ease: [0.2, 0.9, 0.2, 1] as const,
+  };
+
+  const closingPanelTransition = {
+    duration: 0.12,
+    ease: [0.4, 0, 0.2, 1] as const,
+  };
+
+  const editorTransition = {
+    duration: 0.12,
+    delay: 0,
+    ease: [0.2, 0.9, 0.2, 1] as const,
+  };
+
+  const actionsTransition = {
+    duration: 0.1,
+    delay: 0.01,
+    ease: [0.2, 0.9, 0.2, 1] as const,
   };
 
   const submitAndClose = () => {
     if (!canSubmit) return;
-    setOpen(false);
     onSubmit();
   };
 
   const handleCancel = () => {
     onCancel();
-    setOpen(false);
   };
 
   const renderContent = () => {
-    const state = open ? 'expanded' : 'collapsed';
-
     return (
       <motion.div
-        ref={rootRef}
         layout
-        data-state={state}
+        data-state={shellExpanded ? 'expanded' : 'collapsed'}
         className={`${composeStyles.floatingComposeShell}`}
-        transition={shellTransition}
+        initial={false}
+        animate={{
+          borderRadius: shellExpanded ? 20 : 12,
+          minHeight: shellPhase === 'expanded' ? 156 : 54,
+          paddingTop: shellPhase === 'expanded' ? 20 : 14,
+          paddingRight: 24,
+          paddingBottom: shellPhase === 'expanded' ? 20 : 14,
+          paddingLeft: 24,
+          borderColor: shellExpanded ? 'rgba(0, 0, 0, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+          boxShadow: shellExpanded
+              ? '0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.045)'
+              : '0 1px 3px rgba(0, 0, 0, 0.04), 0 3px 10px rgba(0, 0, 0, 0.035)',
+        }}
+        transition={{
+          layout: shellLayoutTransition,
+          borderRadius: shellVisualTransition,
+          minHeight: shellVisualTransition,
+          paddingTop: shellVisualTransition,
+          paddingBottom: shellVisualTransition,
+          borderColor: shellVisualTransition,
+          boxShadow: shellVisualTransition,
+        }}
       >
-        <AnimatePresence initial={false}>
-          {state === 'collapsed' && (
+        <AnimatePresence initial={false} mode="wait">
+          {shellPhase === 'collapsed' && (
             <motion.button
               key="collapsed"
               type="button"
               className={`${composeStyles.floatingComposeBarInner} w-full`}
-              onClick={() => setOpen(true)}
+              onClick={onOpen}
               aria-label="打开快速记录"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={contentTransition}
+                initial={{ opacity: 0, y: 2 }}
+              animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -2 }}
+                transition={collapsedTransition}
             >
               <motion.span
                 className={composeStyles.floatingComposeBarText}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={contentTransition}
+                  initial={{ opacity: 0, y: 1 }}
+                animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -1 }}
+                transition={collapsedTransition}
               >
                 {hasDraft ? '继续编辑草稿…' : '发送消息...'}
               </motion.span>
               {hasDraft && (
                 <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={contentTransition}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={collapsedTransition}
                   className={`${composeStyles.floatingComposeDraftDot} absolute right-4`}
                   aria-label="有草稿"
                   title="有草稿"
@@ -141,61 +180,101 @@ export default function FloatingQuickCompose({
             </motion.button>
           )}
 
-          {state === 'expanded' && (
+          {shellExpanded && (
             <motion.div
               key="expanded"
               ref={expandedRef}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={contentTransition}
+              initial={false}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 1, y: 0 }}
+              transition={panelTransition}
+              className={composeStyles.floatingComposeExpanded}
             >
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={contentEnterTransition}
-                className={composeStyles.floatingComposeEditor}
+              <AnimatePresence
+                initial={false}
+                onExitComplete={() => {
+                  if (!open) {
+                    setShellPhase((current) => (current === 'closing' ? 'collapsed' : current));
+                  }
+                }}
               >
-                <RichTextEditor
-                  value={valueJson}
-                  onChange={onChange}
-                  placeholder="此刻的想法、待办或总结..."
-                  showToolbar
-                  autoFocus="end"
-                  toolbarVariant="advanced"
-                  onModEnter={() => {
-                    submitAndClose();
-                  }}
-                  className="text-gray-900 !mx-auto"
-                />
-              </motion.div>
+                {open && (
+                  <motion.div
+                    key="expanded-body"
+                    className={composeStyles.floatingComposeBody}
+                    initial={{ opacity: 0, height: 0, y: 3 }}
+                    animate={{
+                      opacity: 1,
+                      height: 'auto',
+                      y: 0,
+                      transition: {
+                        height: panelTransition,
+                        opacity: panelTransition,
+                        y: panelTransition,
+                      },
+                    }}
+                    exit={{
+                      opacity: 0,
+                      height: 0,
+                      y: -2,
+                      transition: {
+                        height: closingPanelTransition,
+                        opacity: { duration: 0.1, ease: [0.4, 0, 1, 1] as const },
+                        y: { duration: 0.1, ease: [0.4, 0, 1, 1] as const },
+                      },
+                    }}
+                  >
+                    <motion.div
+                      initial={{ opacity: 0, y: 3 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={editorTransition}
+                      className={composeStyles.floatingComposeEditor}
+                    >
+                      <RichTextEditor
+                        value={valueJson}
+                        onChange={onChange}
+                        placeholder="此刻的想法、待办或总结..."
+                        showToolbar
+                        autoFocus="end"
+                        toolbarVariant="advanced"
+                          {...flomoEditorChromeProps}
+                        onModEnter={() => {
+                          submitAndClose();
+                        }}
+                        className="text-gray-900 !mx-auto"
+                      />
+                    </motion.div>
 
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={contentEnterTransition}
-                className={composeStyles.floatingComposeActions}
-              >
-                <div className={composeStyles.floatingComposeHint}>Cmd/Ctrl + Enter 保存</div>
-                <button
-                  type="button"
-                  className={composeStyles.composeCancelBtn}
-                  onClick={handleCancel}
-                  disabled={disabled}
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  className={composeStyles.composeSaveBtn}
-                  onClick={submitAndClose}
-                  disabled={!canSubmit}
-                >
-                  {loading ? '保存中...' : '保存'}
-                </button>
-              </motion.div>
+                    <motion.div
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{
+                        opacity: isClosing ? 0 : 1,
+                        y: isClosing ? -2 : 0,
+                      }}
+                      transition={isClosing ? closingPanelTransition : actionsTransition}
+                      className={composeStyles.floatingComposeActions}
+                    >
+                      <div className={composeStyles.floatingComposeHint}>Cmd/Ctrl + Enter 保存</div>
+                      <button
+                        type="button"
+                        className={composeStyles.composeCancelBtn}
+                        onClick={handleCancel}
+                        disabled={disabled}
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        className={composeStyles.composeSaveBtn}
+                        onClick={submitAndClose}
+                        disabled={!canSubmit}
+                      >
+                        {loading ? '保存中...' : '保存'}
+                      </button>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>

@@ -15,6 +15,21 @@ export interface INoteEmbeddingMetadata {
   image: INoteEmbeddingImageExtension | null;
 }
 
+export type NoteArtifactStatus = 'missing' | 'pending' | 'ready' | 'failed';
+
+export interface INoteArtifactState {
+  status: NoteArtifactStatus;
+  sourceRevision: number;
+  attemptedAt?: Date;
+  errorCode?: string;
+}
+
+export interface INoteEnrichmentState {
+  meta: INoteArtifactState;
+  embedding: INoteArtifactState;
+  recommendations: INoteArtifactState;
+}
+
 export interface IMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -45,12 +60,16 @@ export interface INote extends Document {
   contentJson?: Record<string, unknown>;
   contentText?: string;
   title?: string;
+  titleOrigin?: 'default' | 'user';
   summary?: string;
   concepts?: string[];
   recommendCache?: Record<string, unknown>;
   keywords?: string[];
+  keywordsOrigin?: 'default' | 'user';
   embedding?: number[];
   embeddingMetadata?: INoteEmbeddingMetadata | null;
+  revision: number;
+  enrichment?: INoteEnrichmentState;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -6,7 +6,9 @@
         "dev": "next dev",
         "build": "next build",
         "start": "next start",
-        "lint": "next lint"
+        "lint": "next lint",
+        "typecheck": "tsc --noEmit --incremental false",
+        "test": "vitest run"
     },
     "dependencies": {
         "@floating-ui/react": "^0.27.16",
