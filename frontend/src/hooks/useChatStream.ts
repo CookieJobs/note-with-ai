@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { authFetch } from '../utils/auth';
-import { IChat, IMessage, IRelatedNote } from '../types';
+import { IChat, IMessage } from '../types';
 import { persistChatSessions, replaceSessionId } from './chatSessionStore';
 
 interface UseChatStreamReturn {
@@ -14,13 +14,13 @@ interface UseChatStreamReturn {
     currentSession: IChat,
     userId: string,
     updateSessionMessages: (sessionId: string, messages: IMessage[], userId?: string) => void,
-    saveSessionToDB: (userId: string, session: IChat) => Promise<string>,
     setSessions: React.Dispatch<React.SetStateAction<IChat[]>>
   ) => Promise<void>;
-  updateContextRelatedNotes: (
-    messages: IMessage[]
-  ) => Promise<IRelatedNote[] | undefined>;
 }
+
+type CommittedSessionPayload = IChat & {
+  _id?: string;
+};
 
 export const useChatStream = (): UseChatStreamReturn => {
   const [loading, setLoading] = useState(false);
@@ -41,64 +41,31 @@ export const useChatStream = (): UseChatStreamReturn => {
     };
   }, []);
 
-  const fetchSummaryTitle = async (
-    userContent: string,
-    aiContent: string,
-    signal?: AbortSignal
-  ): Promise<string | undefined> => {
-    try {
-      const response = await authFetch('/api/chat/summarizeTitle', {
-        method: 'POST',
-        signal,
-        body: JSON.stringify({
-          userContent,
-          aiContent,
-        })
-      });
+  const applyCommittedSession = (
+    previousSessionId: string,
+    session: CommittedSessionPayload,
+    userId: string,
+    setSessions: React.Dispatch<React.SetStateAction<IChat[]>>,
+  ) => {
+    const nextSessionId = session.id || session._id || previousSessionId;
+    const committedSession: IChat = {
+      ...session,
+      id: nextSessionId,
+      _id: session._id || nextSessionId,
+    };
 
-      if (!response.ok) {
-        return undefined;
-      }
+    setSessions((prevSessions) => {
+      const withIdSynced = nextSessionId !== previousSessionId
+        ? replaceSessionId(prevSessions, previousSessionId, nextSessionId)
+        : prevSessions;
+      const sessionExists = withIdSynced.some((item) => item.id === nextSessionId);
+      const updated = sessionExists
+        ? withIdSynced.map((item) => (item.id === nextSessionId ? committedSession : item))
+        : [committedSession, ...withIdSynced];
 
-      const summaryData = await response.json();
-      return (summaryData && summaryData.data && typeof summaryData.data.title === 'string')
-        ? summaryData.data.title
-        : summaryData.title;
-    } catch (err) {
-      if (isAbortError(err)) return undefined;
-      console.error('摘要生成失败:', err);
-      return undefined;
-    }
-  };
-
-  const updateContextRelatedNotes = async (
-    messages: IMessage[],
-    signal?: AbortSignal
-  ): Promise<IRelatedNote[] | undefined> => {
-    try {
-      console.log('🔍 开始异步搜索会话相关笔记...');
-
-      const res = await authFetch('/api/chat/context-related-notes', {
-        method: 'POST',
-        signal,
-        body: JSON.stringify({ messages }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const relatedNotes: IRelatedNote[] = (data && data.data && Array.isArray(data.data.relatedNotes) ? data.data.relatedNotes : (data.relatedNotes || []));
-
-        console.log('📝 找到会话相关笔记:', relatedNotes.length, '条');
-        return relatedNotes;
-      } else {
-        console.error('搜索会话相关笔记失败');
-        return undefined;
-      }
-    } catch (error) {
-      if (isAbortError(error)) return undefined;
-      console.error('搜索会话相关笔记出错:', error);
-      return undefined;
-    }
+      persistChatSessions(userId, updated);
+      return updated;
+    });
   };
 
   const sendMessage = async (
@@ -106,7 +73,6 @@ export const useChatStream = (): UseChatStreamReturn => {
     currentSession: IChat,
     userId: string,
     updateSessionMessages: (sessionId: string, messages: IMessage[], userId?: string) => void,
-    saveSessionToDB: (userId: string, session: IChat) => Promise<string>,
     setSessions: React.Dispatch<React.SetStateAction<IChat[]>>
   ) => {
     console.log('🚦 sendMessage 触发 (流式), input:', input, 'currentSession:', currentSession, 'loading:', loading);
@@ -166,6 +132,7 @@ export const useChatStream = (): UseChatStreamReturn => {
       const decoder = new TextDecoder();
       let assistantReply = '';
       let effectiveSessionId = currentSession.id;
+      let committedSessionId = currentSession.id;
 
       // 先在 UI 中添加一个空的 assistant 消息占位
       const initialAssistantMessage: IMessage = { role: 'assistant', content: '' };
@@ -207,16 +174,11 @@ export const useChatStream = (): UseChatStreamReturn => {
                   { role: 'assistant', content: assistantReply }
                 ];
                 updateSessionMessages(effectiveSessionId, currentMessages, userId);
-              } else if (data.type === 'meta' && typeof data.sessionId === 'string') {
-                if (data.sessionId !== effectiveSessionId) {
-                  const previousSessionId = effectiveSessionId;
-                  effectiveSessionId = data.sessionId;
-                  setSessions(prevSessions => {
-                    const updated = replaceSessionId(prevSessions, previousSessionId, data.sessionId);
-                    persistChatSessions(userId, updated);
-                    return updated;
-                  });
-                }
+              } else if (data.type === 'committed' && data.session && typeof data.session === 'object') {
+                const nextSession = data.session as CommittedSessionPayload;
+                committedSessionId = nextSession.id || nextSession._id || effectiveSessionId;
+                applyCommittedSession(effectiveSessionId, nextSession, userId, setSessions);
+                effectiveSessionId = committedSessionId;
               } else if (data.error) {
                 shouldStop = true;
                 throw new Error(data.error);
@@ -238,68 +200,17 @@ export const useChatStream = (): UseChatStreamReturn => {
           reader.releaseLock();
         } catch {}
       }
-
-
-      const assistantMessage: IMessage = {
-        role: 'assistant',
-        content: assistantReply
-      };
-      const finalMessages: IMessage[] = [...updatedMessages, assistantMessage];
-
-      // 准备异步后台任务：获取相关笔记和生成会话标题
-      const userText = (userMessage.content || '').trim();
-      const aiText = assistantReply.trim();
-      
-      const fetchNotesPromise = updateContextRelatedNotes(finalMessages, abortController.signal);
-      const fetchTitlePromise = userText && aiText
-        ? fetchSummaryTitle(userText, aiText, abortController.signal)
-        : Promise.resolve(undefined);
-
-      // 等待两个异步任务都执行完毕（无论成功或失败）
-      const [notesResult, titleResult] = await Promise.allSettled([
-        fetchNotesPromise,
-        fetchTitlePromise
-      ]);
-
-      const newRelatedNotes = notesResult.status === 'fulfilled' ? notesResult.value : undefined;
-      const newTitle = titleResult.status === 'fulfilled' ? titleResult.value : undefined;
-
-      // 执行一次性的状态更新
-      let latestSessionToSave: IChat | undefined;
-      setSessions(prevSessions => {
-        const updated = prevSessions.map(s => {
-          if (s.id === effectiveSessionId) {
-            const updatedSession = { ...s, messages: finalMessages };
-            if (newTitle) updatedSession.title = newTitle;
-            if (newRelatedNotes) updatedSession.relatedNotes = newRelatedNotes;
-            latestSessionToSave = updatedSession;
-            return updatedSession;
-          }
-          return s;
-        });
-        
-        // 更新本地存储
-        if (userId) {
+      if (assistantReply && committedSessionId === currentSession.id) {
+        const finalMessages: IMessage[] = [...updatedMessages, { role: 'assistant', content: assistantReply }];
+        setSessions((prevSessions) => {
+          const updated = prevSessions.map((session) => (
+            session.id === effectiveSessionId
+              ? { ...session, messages: finalMessages }
+              : session
+          ));
           persistChatSessions(userId, updated);
-        }
-        return updated;
-      });
-
-      // 执行一次性的数据库保存
-      const sessionToSave = latestSessionToSave || { 
-        ...currentSession, 
-        id: effectiveSessionId,
-        messages: finalMessages,
-        ...(newTitle && { title: newTitle }),
-        ...(newRelatedNotes && { relatedNotes: newRelatedNotes })
-      };
-
-      try {
-        const newSessionId = await saveSessionToDB(userId, sessionToSave);
-        console.log('🚦 sendMessage 最终保存会话后返回的ID:', newSessionId);
-      } catch (saveErr) {
-        if (isAbortError(saveErr)) return;
-        console.error('🚦 sendMessage 保存会话失败:', saveErr);
+          return updated;
+        });
       }
     } catch (err: unknown) {
       if (isAbortError(err)) {
@@ -322,6 +233,5 @@ export const useChatStream = (): UseChatStreamReturn => {
     error,
     setError,
     sendMessage,
-    updateContextRelatedNotes,
   };
 };

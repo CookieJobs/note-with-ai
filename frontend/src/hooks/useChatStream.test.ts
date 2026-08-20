@@ -49,30 +49,13 @@ function makeSseReader(chunks: string[]) {
 
 /**
  * Mocks authFetch to return { ok: true, body: { getReader: () => reader } }.
- *
- * Also pre-seeds a mock for the background enrichment's authFetch call
- * (updateContextRelatedNotes → /api/chat/context-related-notes) so that
- * the background task completes cleanly without spamming console errors.
  */
 function mockAuthFetchSuccess(reader?: ReturnType<typeof makeSseReader>) {
-  // Main stream call
   mockAuthFetchFn.mockResolvedValueOnce({
     ok: true,
     status: 200,
     body: reader ? { getReader: () => reader } : null,
     json: vi.fn(async () => ({})),
-  });
-  // Background: updateContextRelatedNotes call
-  mockAuthFetchFn.mockResolvedValueOnce({
-    ok: false,
-    status: 500,
-    json: vi.fn(async () => ({ error: 'not found' })),
-  });
-  // Background: fetchSummaryTitle call (if assistant reply is non-empty)
-  mockAuthFetchFn.mockResolvedValueOnce({
-    ok: false,
-    status: 500,
-    json: vi.fn(async () => ({ error: 'not found' })),
   });
 }
 
@@ -121,7 +104,6 @@ describe('useChatStream', () => {
         makeSession(),
         'user-1',
         vi.fn(),
-        vi.fn(),
         setSessions,
       );
     });
@@ -140,7 +122,6 @@ describe('useChatStream', () => {
         'user-1',
         vi.fn(),
         vi.fn(),
-        vi.fn(),
       );
     });
 
@@ -155,7 +136,6 @@ describe('useChatStream', () => {
         'hello',
         makeSession(),
         '',
-        vi.fn(),
         vi.fn(),
         vi.fn(),
       );
@@ -173,24 +153,22 @@ describe('useChatStream', () => {
     const reader = makeSseReader(['data: [DONE]\n\n']);
     mockAuthFetchSuccess(reader);
 
-    const first = result.current.sendMessage(
-      'hi',
-      makeSession(),
-      'user-1',
-      updateMessages1,
-      vi.fn().mockResolvedValue('saved-id'),
-      setSessions,
-    );
-    const second = result.current.sendMessage(
-      'hi again',
-      makeSession(),
-      'user-1',
-      updateMessages2,
-      vi.fn(),
-      vi.fn(),
-    );
-
     await act(async () => {
+      const first = result.current.sendMessage(
+        'hi',
+        makeSession(),
+        'user-1',
+        updateMessages1,
+        setSessions,
+      );
+      const second = result.current.sendMessage(
+        'hi again',
+        makeSession(),
+        'user-1',
+        updateMessages2,
+        vi.fn(),
+      );
+
       await Promise.all([first, second]);
     });
 
@@ -208,11 +186,11 @@ describe('useChatStream', () => {
     const { result } = renderHook(() => useChatStream());
     const updateMessages = vi.fn();
     const { setSessions } = makeSetSessionsMock([makeSession()]);
-    const saveToDb = vi.fn().mockResolvedValue('server-id');
 
     const reader = makeSseReader([
       'data: {"chunk":"你好"}\n\n',
       'data: {"chunk":"世界"}\n\n',
+      'data: {"type":"committed","session":{"id":"session-1","_id":"session-1","title":"测试会话","messages":[{"role":"user","content":"你好"},{"role":"user","content":"hi"},{"role":"assistant","content":"你好世界"}]}}\n\n',
       'data: [DONE]\n\n',
     ]);
     mockAuthFetchSuccess(reader);
@@ -223,7 +201,6 @@ describe('useChatStream', () => {
         makeSession(),
         'user-1',
         updateMessages,
-        saveToDb,
         setSessions,
       );
     });
@@ -237,15 +214,14 @@ describe('useChatStream', () => {
     expect(finalState).toBeDefined();
   });
 
-  it('handles meta event and calls replaceSessionId for new session', async () => {
+  it('handles committed event and calls replaceSessionId for new session', async () => {
     const { result } = renderHook(() => useChatStream());
     const updateMessages = vi.fn();
     const { setSessions } = makeSetSessionsMock([makeSession({ id: 'local_temp123' })]);
-    const saveToDb = vi.fn().mockResolvedValue('server-id');
 
     const reader = makeSseReader([
       'data: {"chunk":"ok"}\n\n',
-      'data: {"type":"meta","sessionId":"server-generated-id"}\n\n',
+      'data: {"type":"committed","session":{"id":"server-generated-id","_id":"server-generated-id","title":"新对话","messages":[{"role":"user","content":"你好"},{"role":"user","content":"hi"},{"role":"assistant","content":"ok"}],"relatedNotes":[]}}\n\n',
       'data: [DONE]\n\n',
     ]);
     mockAuthFetchSuccess(reader);
@@ -256,7 +232,6 @@ describe('useChatStream', () => {
         makeSession({ id: 'local_temp123' }),
         'user-1',
         updateMessages,
-        saveToDb,
         setSessions,
       );
     });
@@ -272,11 +247,10 @@ describe('useChatStream', () => {
     const { result } = renderHook(() => useChatStream());
     const updateMessages = vi.fn();
     const { setSessions } = makeSetSessionsMock([makeSession({ id: 'session-1' })]);
-    const saveToDb = vi.fn().mockResolvedValue('session-1');
 
     const reader = makeSseReader([
       'data: {"chunk":"ok"}\n\n',
-      'data: {"type":"meta","sessionId":"session-1"}\n\n',
+      'data: {"type":"committed","session":{"id":"session-1","_id":"session-1","title":"测试会话","messages":[{"role":"user","content":"你好"},{"role":"user","content":"hi"},{"role":"assistant","content":"ok"}]}}\n\n',
       'data: [DONE]\n\n',
     ]);
     mockAuthFetchSuccess(reader);
@@ -287,7 +261,6 @@ describe('useChatStream', () => {
         makeSession({ id: 'session-1' }),
         'user-1',
         updateMessages,
-        saveToDb,
         setSessions,
       );
     });
@@ -314,7 +287,6 @@ describe('useChatStream', () => {
         makeSession(),
         'user-1',
         updateMessages,
-        vi.fn(),
         setSessions,
       );
     });
@@ -345,7 +317,6 @@ describe('useChatStream', () => {
         makeSession(),
         'user-1',
         updateMessages,
-        vi.fn(),
         setSessions,
       );
     });
@@ -371,7 +342,6 @@ describe('useChatStream', () => {
         makeSession(),
         'user-1',
         updateMessages,
-        vi.fn(),
         setSessions,
       );
     });
@@ -389,7 +359,6 @@ describe('useChatStream', () => {
         'hi',
         makeSession(),
         'user-1',
-        vi.fn(),
         vi.fn(),
         vi.fn(),
       );
@@ -414,7 +383,6 @@ describe('useChatStream', () => {
         'user-1',
         vi.fn(),
         vi.fn(),
-        vi.fn(),
       );
     });
 
@@ -428,9 +396,11 @@ describe('useChatStream', () => {
     const { result } = renderHook(() => useChatStream());
     const updateMessages = vi.fn();
     const { setSessions } = makeSetSessionsMock([makeSession()]);
-    const saveToDb = vi.fn().mockResolvedValue('server-id');
 
-    const reader = makeSseReader(['data: [DONE]\n\n']);
+    const reader = makeSseReader([
+      'data: {"type":"committed","session":{"id":"session-1","_id":"session-1","title":"测试会话","messages":[{"role":"user","content":"你好"},{"role":"user","content":"hi"},{"role":"assistant","content":""}]}}\n\n',
+      'data: [DONE]\n\n',
+    ]);
     mockAuthFetchSuccess(reader);
 
     await act(async () => {
@@ -439,7 +409,6 @@ describe('useChatStream', () => {
         makeSession(),
         'user-1',
         updateMessages,
-        saveToDb,
         setSessions,
       );
     });
@@ -451,9 +420,11 @@ describe('useChatStream', () => {
     const { result } = renderHook(() => useChatStream());
     const updateMessages = vi.fn();
     const { setSessions } = makeSetSessionsMock([makeSession()]);
-    const saveToDb = vi.fn().mockResolvedValue('server-id');
 
-    const reader = makeSseReader(['data: [DONE]\n\n']);
+    const reader = makeSseReader([
+      'data: {"type":"committed","session":{"id":"session-1","_id":"session-1","title":"测试会话","messages":[{"role":"user","content":"你好"},{"role":"user","content":"hi"},{"role":"assistant","content":""}]}}\n\n',
+      'data: [DONE]\n\n',
+    ]);
     mockAuthFetchSuccess(reader);
 
     await act(async () => {
@@ -462,7 +433,6 @@ describe('useChatStream', () => {
         makeSession(),
         'user-1',
         updateMessages,
-        saveToDb,
         setSessions,
       );
     });
@@ -470,7 +440,10 @@ describe('useChatStream', () => {
     expect(result.current.loading).toBe(false);
 
     // Verify another send can proceed (loadingRef was reset)
-    mockAuthFetchSuccess(makeSseReader(['data: [DONE]\n\n']));
+    mockAuthFetchSuccess(makeSseReader([
+      'data: {"type":"committed","session":{"id":"session-1","_id":"session-1","title":"测试会话","messages":[{"role":"user","content":"你好"},{"role":"user","content":"another"},{"role":"assistant","content":""}]}}\n\n',
+      'data: [DONE]\n\n',
+    ]));
     const updateMessages2 = vi.fn();
     const { setSessions: setSessions2 } = makeSetSessionsMock([makeSession()]);
 
@@ -480,7 +453,6 @@ describe('useChatStream', () => {
         makeSession(),
         'user-1',
         updateMessages2,
-        vi.fn().mockResolvedValue('id2'),
         setSessions2,
       );
     });

@@ -15,6 +15,10 @@ type ChatSessionRecord = {
   [key: string]: unknown;
 };
 
+type ChatSessionSource = ChatSessionRecord & {
+  toObject?: () => Record<string, unknown>;
+};
+
 function normalizeRelatedNotes(relatedNotes?: unknown): IRelatedNote[] | undefined {
   if (!Array.isArray(relatedNotes)) return undefined;
 
@@ -48,6 +52,28 @@ function normalizeRelatedNotes(relatedNotes?: unknown): IRelatedNote[] | undefin
     .filter((note): note is IRelatedNote => note !== null);
 }
 
+function normalizeSessionRecord(session: ChatSessionSource): ChatSessionRecord {
+  const sessionRecord = typeof session.toObject === 'function'
+    ? session.toObject()
+    : session;
+
+  const relatedNotes = Array.isArray(sessionRecord.relatedNotes)
+    ? sessionRecord.relatedNotes
+        .filter((rn) => rn.noteId !== null)
+        .map((rn) => ({
+          ...rn,
+          noteId: typeof rn.noteId === 'object' && rn.noteId !== null && '_id' in rn.noteId
+            ? String(rn.noteId._id)
+            : String(rn.noteId),
+        }))
+    : undefined;
+
+  return {
+    ...(sessionRecord as Record<string, unknown>),
+    relatedNotes,
+  } as ChatSessionRecord;
+}
+
 class ChatService {
   /**
    * Save or update a chat session
@@ -57,7 +83,7 @@ class ChatService {
     sessionId: string | undefined,
     messages: IMessage[],
     title?: string,
-    relatedNotes?: IRelatedNote[]
+    relatedNotes?: unknown
   ): Promise<IChat> {
     // Sanitize messages
     const cleanedMessages = messages
@@ -116,23 +142,7 @@ class ChatService {
       })
       .lean();
 
-    return (sessions as ChatSessionRecord[]).map((session) => {
-      const relatedNotes = Array.isArray(session.relatedNotes)
-        ? session.relatedNotes
-            .filter((rn) => rn.noteId !== null)
-            .map((rn) => ({
-          ...rn,
-          noteId: typeof rn.noteId === 'object' && rn.noteId !== null && '_id' in rn.noteId
-            ? String(rn.noteId._id)
-            : String(rn.noteId),
-            }))
-        : undefined;
-
-      return {
-        ...(session as Record<string, unknown>),
-        relatedNotes,
-      } as ChatSessionRecord;
-    });
+    return (sessions as unknown as ChatSessionRecord[]).map((session) => normalizeSessionRecord(session));
   }
 
   /**
@@ -258,6 +268,10 @@ class ChatService {
         aiOpening
       };
     }
+  }
+
+  formatSession(session: IChat | ChatSessionRecord): ChatSessionRecord {
+    return normalizeSessionRecord(session as ChatSessionSource);
   }
 
 }

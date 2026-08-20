@@ -42,7 +42,6 @@ export default function ChatPage() {
     currentSession,
     startNewSession: startNewSessionHook,
     deleteSession: deleteSessionHook,
-    saveSessionToDB: saveSessionToDBHook,
     updateSessionMessages: updateSessionMessagesHook,
     addCareMessage
   } = useChatSession(user?.id);
@@ -114,7 +113,6 @@ export default function ChatPage() {
         session,
         user.id,
         updateSessionMessagesHook,
-        saveSessionToDBHook,
         setSessions
       );
       setInput('');

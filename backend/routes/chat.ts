@@ -33,7 +33,7 @@ router.delete('/:sessionId', authenticateToken, validate(deleteSessionSchema), a
 // 聊天标题自动摘要接口
 router.post('/summarizeTitle', authenticateToken, validate(summarizeTitleSchema), asyncHandler(summarizeTitle));
 
-// 发送给 DeepSeek 聊天接口（支持流式响应）
+// 聊天主链路：流式输出 chunk，并在结束前返回 committed session 快照
 router.post('/', authenticateToken, validate(streamChatSchema), asyncHandler(streamChat));
 
 // AI 关怀助手开场白
