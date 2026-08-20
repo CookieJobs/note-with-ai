@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import { chatService } from '../services/chatService';
+import { chatTurnCommitService } from '../services/chatTurnCommitService';
 import { ResponseHandler, ErrorHandler } from '../utils/errorHandler';
 import { UserValidator } from '../utils/userValidation';
 import { logger } from '../utils/logger';
+import { requireSingleRouteParam } from '../utils/requestParams';
 
 export const saveChatSession = async (req: Request, res: Response): Promise<void> => {
   const user = await UserValidator.authenticateUser(req);
@@ -10,8 +12,9 @@ export const saveChatSession = async (req: Request, res: Response): Promise<void
   const userId = user._id.toString();
 
   const session = await chatService.saveSession(userId, sessionId, messages, title, relatedNotes);
+  const savedSessionId = (session as any)._id?.toString?.() || (session as any).id;
 
-  ResponseHandler.success(res, { sessionId: session._id });
+  ResponseHandler.success(res, { sessionId: savedSessionId });
 };
 
 export const getChatSessions = async (req: Request, res: Response): Promise<void> => {
@@ -19,14 +22,12 @@ export const getChatSessions = async (req: Request, res: Response): Promise<void
   const userId = user._id.toString();
   
   const sessions = await chatService.getSessions(userId);
-  
-  // Format sessions for frontend
+
   const formatted = sessions.map((s) => ({
     ...s,
     id: s._id.toString(),
     _id: s._id.toString(),
   }));
-
   const sessionsWithNotes = formatted.filter(s => s.relatedNotes && s.relatedNotes.length > 0).length;
   logger.info(`🔍 getChatSessions: 返回 ${formatted.length} 条会话，其中 ${sessionsWithNotes} 条包含相关笔记`);
   
@@ -35,7 +36,7 @@ export const getChatSessions = async (req: Request, res: Response): Promise<void
 
 export const deleteChatSession = async (req: Request, res: Response): Promise<void> => {
   const user = await UserValidator.authenticateUser(req);
-  const { sessionId } = req.params;
+  const sessionId = requireSingleRouteParam(req.params.sessionId, 'sessionId');
   const userId = user._id.toString();
 
   await chatService.deleteSession(userId, sessionId);
@@ -50,7 +51,6 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
   logger.info('🟢 收到聊天请求 (流式):', messages?.length, '条消息, sessionId:', sessionId, 'userId:', userId);
 
   let clientClosed = false;
-  let stream: AsyncIterable<string> | undefined;
 
   const isWritable = () =>
     !clientClosed && !res.writableEnded && !res.destroyed && (res as any).writable !== false;
@@ -65,54 +65,36 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
     }
   };
 
-  const stopStream = async (s: unknown) => {
-    try {
-      if (s && typeof (s as AsyncGenerator).return === 'function') {
-        await (s as AsyncGenerator).return('');
-      }
-    } catch {}
-  };
-
   req.once('close', () => {
     clientClosed = true;
   });
 
   try {
-    stream = await chatService.streamChat(messages);
-
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    let fullReply = '';
-    for await (const chunk of stream) {
-      if (!isWritable()) {
-        await stopStream(stream);
-        break;
-      }
-      fullReply += chunk;
-      safeWrite(`data: ${JSON.stringify({ chunk })}\n\n`);
-    }
+    const { session } = await chatTurnCommitService.streamAndCommit({
+      userId,
+      messages,
+      sessionId,
+      title,
+      onChunk: (chunk) => {
+        if (!isWritable()) return false;
+        safeWrite(`data: ${JSON.stringify({ chunk })}\n\n`);
+        return true;
+      },
+    });
 
-    if (!clientClosed) {
-      logger.info('🤖 DeepSeek 回复完成，开始保存到数据库...');
-      const finalMessages = [...messages, { role: 'assistant', content: fullReply }];
-      try {
-        const savedSession = await chatService.saveSession(userId, sessionId, finalMessages, title);
-        const savedSessionId = (savedSession._id || (savedSession as any).id)?.toString();
-        if (savedSessionId && isWritable()) {
-          safeWrite(`data: ${JSON.stringify({ type: 'meta', sessionId: savedSessionId })}\n\n`);
-        }
-      } catch (saveError) {
-        logger.error('❌ 保存会话失败 (流式响应后):', saveError);
-        if (isWritable()) {
-          safeWrite(`data: ${JSON.stringify({ error: '会话保存失败，请稍后重试' })}\n\n`);
-          res.end();
-        }
-        return;
-      }
+    if (!clientClosed && isWritable()) {
+      const formattedSession = {
+        ...session,
+        id: session._id.toString(),
+        _id: session._id.toString(),
+      };
+      safeWrite(`data: ${JSON.stringify({ type: 'committed', session: formattedSession })}\n\n`);
     }
 
     if (isWritable()) {
@@ -120,6 +102,13 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
       res.end();
     }
   } catch (error: unknown) {
+    if (error instanceof Error && error.message === 'CHAT_STREAM_ABORTED') {
+      if (isWritable()) {
+        res.end();
+      }
+      return;
+    }
+
     logger.error('❌ 聊天接口流式错误:', error);
 
     if (!res.headersSent) {
@@ -132,8 +121,6 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
       throw ErrorHandler.createInternalError('聊天失败，请稍后重试');
     }
 
-    await stopStream(stream);
-
     if (isWritable()) {
       safeWrite(`data: ${JSON.stringify({ error: 'AI 服务暂时不可用，请稍后重试' })}\n\n`);
       res.end();
@@ -142,14 +129,12 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
 };
 
 export const summarizeTitle = async (req: Request, res: Response): Promise<void> => {
-    // Note: The original route didn't strictly require auth for this helper? 
-    // Yes it did: router.post('/summarizeTitle', authenticateToken, ...)
-    // So we don't strictly need user ID for the logic, but we need to authenticate.
-    await UserValidator.authenticateUser(req);
+  // 兼容保留：聊天主链路已改由后端提交器内部生成标题，不再由前端流式发送后单独调用。
+  await UserValidator.authenticateUser(req);
 
-    const { userContent, aiContent } = req.body;
-    const title = await chatService.summarizeTitle(userContent, aiContent);
-    ResponseHandler.success(res, { title }, '生成标题成功');
+  const { userContent, aiContent } = req.body;
+  const title = await chatService.summarizeTitle(userContent, aiContent);
+  ResponseHandler.success(res, { title }, '生成标题成功');
 };
 
 export const generateIntro = async (req: Request, res: Response): Promise<void> => {

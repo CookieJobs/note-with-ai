@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, isAuthenticated } from '../../utils/auth';
 import { getFeed, triggerAnalysis, getStats, FeedResponse, UserStats } from '../../services/feedService';
@@ -166,7 +166,11 @@ function EditProfileModal({
           <label className={styles.fieldLabel}>头像 URL</label>
           <div className={styles.avatarPreviewRow}>
             <div className={styles.avatarPreview}>
-              {form.avatar ? <img src={form.avatar} alt="" className={styles.avatarImg} /> : <span>{(user.username || 'U')[0].toUpperCase()}</span>}
+              {form.avatar ? (
+                // Avatar URLs are user-provided and cannot safely be allowlisted for next/image.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={form.avatar} alt="" className={styles.avatarImg} loading="lazy" decoding="async" />
+              ) : <span>{(user.username || 'U')[0].toUpperCase()}</span>}
             </div>
             <input className={styles.input} placeholder="粘贴图片 URL" value={form.avatar} onChange={(e) => setForm((f) => ({ ...f, avatar: e.target.value }))} />
           </div>
@@ -247,6 +251,7 @@ export default function ProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [aiExpanded, setAiExpanded] = useState(true);
+  const previousProfileStatusRef = useRef<FeedResponse['profileStatus']>();
 
   const theme = useMemo(() => {
     if (data?.userProfile?.theme && data.userProfile.theme.cssValue) {
@@ -263,11 +268,51 @@ export default function ProfilePage() {
     [theme.background],
   );
 
+  const loadFeedPanel = useCallback(async (options: { silent?: boolean } = {}) => {
+    const { silent = false } = options;
+
+    try {
+      if (!silent) {
+        setLoading(true);
+      }
+
+      const nextFeed = await getFeed();
+      setData(nextFeed);
+    } finally {
+      if (!silent) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  const loadStatsBar = useCallback(async () => {
+    const nextStats = await getStats();
+    setStats(nextStats);
+  }, []);
+
+  const loadInitialData = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const [feedRes, statsRes] = await Promise.allSettled([
+        loadFeedPanel({ silent: true }),
+        loadStatsBar(),
+      ]);
+
+      if (feedRes.status === 'rejected' && statsRes.status === 'rejected') {
+        setData(null);
+        setStats(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [loadFeedPanel, loadStatsBar]);
+
   useEffect(() => {
     if (!isAuthenticated()) { router.push('/auth'); return; }
     setUser(getUser());
-    loadAll();
-  }, [router]);
+    void loadInitialData();
+  }, [loadInitialData, router]);
 
   // Auto-collapse AI when analyzing, expand when ready
   useEffect(() => {
@@ -275,23 +320,25 @@ export default function ProfilePage() {
   }, [data?.profileStatus]);
 
   useEffect(() => {
+    const previousStatus = previousProfileStatusRef.current;
+    const currentStatus = data?.profileStatus;
+
+    if (previousStatus === 'analyzing' && currentStatus && currentStatus !== 'analyzing') {
+      void loadStatsBar();
+    }
+
+    previousProfileStatusRef.current = currentStatus;
+  }, [data?.profileStatus, loadStatsBar]);
+
+  useEffect(() => {
     if (data?.profileStatus !== 'analyzing') return;
 
     const timer = window.setTimeout(() => {
-      void loadAll();
+      void loadFeedPanel({ silent: true });
     }, 4000);
 
     return () => window.clearTimeout(timer);
-  }, [data?.profileStatus]);
-
-  const loadAll = async () => {
-    try {
-      setLoading(true);
-      const [feedRes, statsRes] = await Promise.allSettled([getFeed(), getStats()]);
-      if (feedRes.status === 'fulfilled') setData(feedRes.value);
-      if (statsRes.status === 'fulfilled') setStats(statsRes.value);
-    } finally { setLoading(false); }
-  };
+  }, [data?.profileStatus, loadFeedPanel]);
 
   const handleTriggerAnalysis = async () => {
     try {
@@ -355,7 +402,11 @@ export default function ProfilePage() {
               </div>
               <div className={styles.profileHeader}>
                 <div className={styles.avatar}>
-                  {user.avatar ? <img src={user.avatar} alt="" className={styles.avatarImg} /> : <span>{(user.username || 'U')[0]?.toUpperCase()}</span>}
+                  {user.avatar ? (
+                    // Avatar URLs are user-provided and cannot safely be allowlisted for next/image.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={user.avatar} alt="" className={styles.avatarImg} loading="lazy" decoding="async" />
+                  ) : <span>{(user.username || 'U')[0]?.toUpperCase()}</span>}
                 </div>
                 <div className={styles.userInfo}>
                   <h2>{user.username || '未设置用户名'}</h2>

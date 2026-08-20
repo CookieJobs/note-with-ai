@@ -1,8 +1,10 @@
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import User from '../../models/User';
 import { generateToken } from '../../utils/jwt';
 import { UserValidator } from '../../utils/userValidation';
 import { ErrorHandler } from '../../utils/errorHandler';
+import { logger } from '../../utils/logger';
 
 function buildUsernameBase(email: string): string {
   const localPart = email.split('@')[0] ?? '';
@@ -31,10 +33,24 @@ async function generateUniqueUsername(email: string): Promise<string> {
 }
 
 export class AuthService {
+  static buildAuthResult(
+    user: InstanceType<typeof User>
+  ): { token: string; user: Record<string, unknown> } {
+    const token = generateToken({
+      userId: user._id.toString(),
+      username: user.username || '',
+      email: user.email,
+    });
+
+    return {
+      token,
+      user: UserValidator.formatUserResponse(user),
+    };
+  }
+
   static async register(
     email: string,
-    password: string,
-    code: string
+    password: string
   ): Promise<{ token: string; user: Record<string, unknown> }> {
     // check uniqueness is done by VerificationCodeService via sendVerifyCode
     // here we double-check
@@ -49,16 +65,42 @@ export class AuthService {
     const user = new User({ username, email, password });
     await user.save();
 
-    const token = generateToken({
-      userId: user._id.toString(),
-      username: user.username || '',
-      email: user.email,
-    });
+    return AuthService.buildAuthResult(user);
+  }
 
-    return {
-      token,
-      user: UserValidator.formatUserResponse(user),
-    };
+  static async login(
+    email: string,
+    password: string
+  ): Promise<{ token: string; user: Record<string, unknown> }> {
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      if (process.env.NODE_ENV !== 'production') {
+        const mongo = {
+          host: mongoose.connection.host,
+          db: mongoose.connection.name,
+          readyState: mongoose.connection.readyState,
+          hasMongoUri: !!process.env.MONGODB_URI,
+        };
+        const totalUsers = await User.countDocuments({});
+        logger.warn('⚠️ 登录失败：邮箱不存在', { email, mongo, totalUsers });
+      }
+      throw ErrorHandler.createAuthenticationError('邮箱或密码错误');
+    }
+
+    const isPasswordValid = await user.comparePassword(password);
+    if (!isPasswordValid) {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.warn('⚠️ 登录失败：密码不匹配', { email, userId: user._id?.toString?.() });
+      }
+      throw ErrorHandler.createAuthenticationError('邮箱或密码错误');
+    }
+
+    if (!user.isActive) {
+      throw ErrorHandler.createAuthorizationError('账号已被禁用');
+    }
+
+    return AuthService.buildAuthResult(user);
   }
 
   static async markVerified(email: string): Promise<void> {
@@ -77,15 +119,6 @@ export class AuthService {
     user.password = newPassword;
     await user.save();
 
-    const token = generateToken({
-      userId: user._id.toString(),
-      username: user.username || '',
-      email: user.email,
-    });
-
-    return {
-      token,
-      user: UserValidator.formatUserResponse(user),
-    };
+    return AuthService.buildAuthResult(user);
   }
 }
