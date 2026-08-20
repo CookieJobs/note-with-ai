@@ -1,12 +1,17 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useEditor, EditorContent, JSONContent } from '@tiptap/react';
 import { DragHandle } from './DragHandle';
 import styles from '../styles/rich-editor.module.scss';
 import { RichTextBubbleMenu } from './RichTextBubbleMenu';
 import { RichTextSlashMenu } from './RichTextSlashMenu';
+import {
+  markNoteEditorInside,
+  NOTE_EDITOR_INSIDE_SELECTOR,
+  unmarkNoteEditorInside,
+} from '../utils/editorInside';
 import {
   createRichTextExtensions,
   DEFAULT_RICH_TEXT_PLACEHOLDER,
@@ -28,6 +33,9 @@ type Props = {
   toolbarRight?: React.ReactNode;
   autoFocus?: boolean | 'start' | 'end' | 'all';
   className?: string;
+  enableDragHandle?: boolean;
+  enableBubbleMenu?: boolean;
+  enableSlashMenu?: boolean;
 };
 
 export default function RichTextEditor({
@@ -43,10 +51,14 @@ export default function RichTextEditor({
   toolbarRight,
   autoFocus,
   className = '',
+  enableDragHandle = true,
+  enableBubbleMenu = true,
+  enableSlashMenu = true,
 }: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const blurRafRef = useRef<number | null>(null);
   const initialContentRef = useRef<RichTextValue>(value);
   const lastUpdateRef = useRef<string | null>(serializeRichTextValue(value));
 
@@ -55,12 +67,37 @@ export default function RichTextEditor({
 
   // 当前仍保留这两个 props 的公开契约，避免影响调用侧；待后续统一收敛时再移除。
   void toolbarVariant;
-  void insideRefs;
 
-  const editorContentClassName = React.useMemo(
-    () => `${styles.richEditorContent} prose prose-sm sm:prose-base focus:outline-none ${className} ${isFullscreen ? '!max-w-[800px] !mx-auto !px-6 !py-10' : ''}`,
-    [isFullscreen, className]
-  );
+  const isInsideEditorShell = useCallback((target: Element | null) => {
+    if (!target) return false;
+    if (rootRef.current?.contains(target)) return true;
+    if (target.closest(NOTE_EDITOR_INSIDE_SELECTOR)) return true;
+
+    return insideRefs.some((ref) => {
+      const node = ref.current;
+      return !!node && (node === target || node.contains(target));
+    });
+  }, [insideRefs]);
+
+  useEffect(() => {
+    const markedNodes = [rootRef.current, scrollerRef.current, frameRef.current];
+    markedNodes.forEach(markNoteEditorInside);
+    insideRefs.forEach((ref) => markNoteEditorInside(ref.current));
+
+    return () => {
+      markedNodes.forEach(unmarkNoteEditorInside);
+      insideRefs.forEach((ref) => unmarkNoteEditorInside(ref.current));
+      if (blurRafRef.current) {
+        cancelAnimationFrame(blurRafRef.current);
+      }
+    };
+  }, [insideRefs]);
+
+    const editorContentClassName = React.useMemo(
+      () =>
+        `${styles.richEditorContent} ${enableDragHandle ? styles.richEditorDragGutter : ''} prose prose-sm sm:prose-base focus:outline-none ${className} ${isFullscreen ? '!max-w-[800px] !mx-auto !px-6 !py-10' : ''}`,
+      [enableDragHandle, isFullscreen, className]
+    );
 
   const memoizedExtensions = React.useMemo(
     () =>
@@ -100,7 +137,17 @@ export default function RichTextEditor({
       onChange({ json, text: markdown });
     },
     onFocus: () => onFocus?.(),
-    onBlur: () => onBlur?.(),
+    onBlur: ({ event, editor }) => {
+      const nextTarget = event.relatedTarget as Element | null;
+      if (isInsideEditorShell(nextTarget)) return;
+
+      blurRafRef.current = requestAnimationFrame(() => {
+        blurRafRef.current = null;
+        const activeTarget = document.activeElement instanceof Element ? document.activeElement : null;
+        if (editor.isFocused || isInsideEditorShell(activeTarget)) return;
+        onBlur?.();
+      });
+    },
   });
 
   // SyncValue equivalent
@@ -146,7 +193,7 @@ export default function RichTextEditor({
   }
 
   return (
-    <div ref={rootRef} className={styles.richEditor} data-rich-text-editor-root="true" onClick={() => {
+    <div ref={rootRef} className={styles.richEditor} data-rich-text-editor-root="true" data-note-editor-inside="true" onClick={() => {
       // Let tiptap handle clicks if it's within ProseMirror's padded area
       const editorNode = scrollerRef.current?.querySelector('.ProseMirror') as HTMLElement;
       if (editorNode && document.activeElement !== editorNode && !editorNode.contains(document.activeElement)) {
@@ -159,18 +206,16 @@ export default function RichTextEditor({
           <span className={styles.richToolbarRight}>{toolbarRight}</span>
         </div>
       )}
-      <div ref={scrollerRef} className={styles.richEditorScroller} data-rich-text-editor-scroller="true">
-        {editor && <DragHandle editor={editor} />}
-        <div ref={frameRef} className={styles.richEditorFrame} data-rich-text-editor-frame="true">
+      <div ref={scrollerRef} className={styles.richEditorScroller} data-rich-text-editor-scroller="true" data-note-editor-inside="true">
+        {editor && enableDragHandle && <DragHandle editor={editor} />}
+        <div ref={frameRef} className={styles.richEditorFrame} data-rich-text-editor-frame="true" data-note-editor-inside="true">
           <EditorContent
-            className={`${styles.richEditorContent} ${styles.richEditorDragGutter} w-full`}
+              className={`${editorContentClassName} w-full`}
             editor={editor}
           />
-          {/* Bubble Menu for formatting */}
-          <RichTextBubbleMenu editor={editor} />
+          {enableBubbleMenu && <RichTextBubbleMenu editor={editor} />}
 
-          {/* Slash Command Menu */}
-          <RichTextSlashMenu editor={editor} />
+          {enableSlashMenu && <RichTextSlashMenu editor={editor} />}
         </div>
       </div>
     </div>

@@ -9,6 +9,7 @@ process.env.DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || 'test-dashscope
 process.env.EMBEDDING_PROVIDER = 'openrouter';
 process.env.EMBEDDING_MODEL = 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
 process.env.EMBEDDING_DIMENSION = '2048';
+process.env.EMBEDDING_DOCUMENT_INPUT_TYPE = 'search_document';
 
 global.setInterval = (((_callback: (...args: any[]) => void, _ms?: number, ..._args: any[]) => {
   return 0 as any;

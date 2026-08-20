@@ -27,6 +27,7 @@ process.env.DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || 'test-dashscope
 process.env.EMBEDDING_PROVIDER = 'openrouter';
 process.env.EMBEDDING_MODEL = 'nvidia/llama-nemotron-embed-vl-1b-v2:free';
 process.env.EMBEDDING_DIMENSION = '2048';
+process.env.EMBEDDING_DOCUMENT_INPUT_TYPE = 'search_document';
 
 global.setInterval = (((_callback: (...args: any[]) => void, _ms?: number, ..._args: any[]) => {
   return 0 as any;
@@ -86,14 +87,13 @@ describe('noteEmbeddingService', () => {
 
   it('generateEmbeddingForNote 会写入 embeddingMetadata，并为未来图片 embedding 预留 image 扩展位', async () => {
     const { Note, noteEmbeddingService, axios } = await loadModules();
-    const updatedAt = new Date('2024-01-01T00:00:00.000Z');
     const note = {
       _id: { toString: () => 'note-1' },
       userId: 'user-1',
       title: '标题',
       content: '正文',
       contentText: '纯文本正文',
-      updatedAt,
+      revision: 4,
     };
     const updateCalls: Array<{ filter: Record<string, unknown>; update: Record<string, any> }> = [];
 
@@ -119,7 +119,7 @@ describe('noteEmbeddingService', () => {
     assert.deepEqual(updateCalls[0].filter, {
       _id: 'note-1',
       userId: 'user-1',
-      updatedAt,
+      revision: 4,
     });
     assert.deepEqual(updateCalls[0].update.$set.embedding, [0.1, 0.2, 0.3]);
     assert.deepEqual(updateCalls[0].update.$set.embeddingMetadata, {
@@ -136,14 +136,13 @@ describe('noteEmbeddingService', () => {
   it('generateEmbeddingForNote 在版本保护写回失败时返回 skipped', async () => {
     const { Note, noteEmbeddingService, axios } = await loadModules();
     const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
-    const updatedAt = new Date('2024-01-01T00:00:00.000Z');
     const note = {
       _id: { toString: () => 'note-1' },
       userId: 'user-1',
       title: '标题',
       content: '正文',
       contentText: '纯文本正文',
-      updatedAt,
+      revision: 4,
     };
 
     mock.method(Note, 'findOne', () => ({
@@ -164,6 +163,31 @@ describe('noteEmbeddingService', () => {
     assert.equal(requests.length, 1);
     assert.equal(requests[0].url, 'https://openrouter.ai/api/v1/embeddings');
     assert.equal(requests[0].body.input_type, 'search_document');
+  });
+
+  it('generateEmbeddingForRevision uses revision freshness and leaves updatedAt untouched', async () => {
+    const { Note, noteEmbeddingService, axios } = await loadModules();
+    const writes: Array<{ filter: Record<string, unknown>; update: Record<string, any>; options: Record<string, unknown> }> = [];
+    const note = {
+      _id: { toString: () => 'note-1' }, userId: 'user-1', title: '标题', content: '正文', contentText: '正文', revision: 4,
+    };
+    mock.method(Note, 'findOne', () => ({ select: async () => note }) as any);
+    replaceMethod(axios, 'post', (async () => ({ data: { data: [{ embedding: [0.1, 0.2] }] } })) as any);
+    mock.method(Note, 'updateOne', async (
+      filter: Record<string, unknown>, update: Record<string, any>, options: Record<string, unknown>,
+    ) => {
+      writes.push({ filter, update, options });
+      return { matchedCount: 1 } as any;
+    });
+
+    const result = await noteEmbeddingService.generateEmbeddingForRevision('user-1', 'note-1', 4);
+
+    assert.deepEqual(result, { embedding: [0.1, 0.2], status: 'saved' });
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].filter, { _id: 'note-1', userId: 'user-1', revision: 4 });
+    assert.deepEqual(writes[0].options, { timestamps: false });
+    assert.equal(writes[0].update.$set['enrichment.embedding'].status, 'ready');
+    assert.equal(writes[0].update.$set['enrichment.embedding'].sourceRevision, 4);
   });
 
   it('getGlobalEmbeddingStats 会区分当前配置兼容的 embedding 与过期 metadata', async () => {
@@ -211,7 +235,7 @@ describe('noteEmbeddingService', () => {
       title: '',
       content: '',
       contentText: '',
-      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+      revision: 1,
     };
     const validNote = {
       _id: { toString: () => 'valid-note' },
@@ -219,7 +243,7 @@ describe('noteEmbeddingService', () => {
       title: '',
       content: '有效正文',
       contentText: '',
-      updatedAt: new Date('2024-01-02T00:00:00.000Z'),
+      revision: 1,
     };
 
     const findQueries: Array<Record<string, any>> = [];
@@ -285,7 +309,7 @@ describe('noteEmbeddingService', () => {
       title: '标题',
       content: '会并发更新的正文',
       contentText: '',
-      updatedAt: new Date('2024-01-03T00:00:00.000Z'),
+      revision: 2,
     };
     const validNote = {
       _id: { toString: () => 'valid-note' },
@@ -293,7 +317,7 @@ describe('noteEmbeddingService', () => {
       title: '标题',
       content: '稳定正文',
       contentText: '',
-      updatedAt: new Date('2024-01-04T00:00:00.000Z'),
+      revision: 2,
     };
 
     const findQueries: Array<Record<string, any>> = [];

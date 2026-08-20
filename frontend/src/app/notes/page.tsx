@@ -5,17 +5,18 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 import TopNavigation from '../../components/TopNavigation';
-import { authFetch, getUser, isAuthenticated } from '../../utils/auth';
+import { getUser, isAuthenticated } from '../../utils/auth';
 
 import DeleteNoteConfirmModal from './components/DeleteNoteConfirmModal';
 import ModernNoteCard from './components/ModernNoteCard';
 import FloatingQuickCompose from './components/FloatingQuickCompose';
 import RelatedNotesDrawer from './components/RelatedNotesDrawer';
 import NoteCounter from './components/NoteCounter';
+import { preloadRichTextEditor } from './components/richTextEditorLoader';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
 import { useNotes } from './hooks/useNotes';
-import { buildRecommendCacheFromResponse } from './utils/recommendCache';
+import { NOTE_EDITOR_INSIDE_SELECTOR } from './utils/editorInside';
 import layoutStyles from './styles/layout.module.scss';
 import cardStyles from './styles/note-card.module.scss';
 import composeStyles from './styles/floating-compose.module.scss';
@@ -25,6 +26,11 @@ const styles = {
   ...cardStyles,
   ...composeStyles,
 };
+
+type ActiveEditorState =
+  | { type: 'none' }
+  | { type: 'compose' }
+  | { type: 'note'; noteId: string };
 
 // 是 Next.js App Router 的一个“路由段配置”，用来告诉 Next.js：
 // 这个页面要强制走动态渲染（不要被静态生成/缓存成固定 HTML）
@@ -37,8 +43,8 @@ function NotesContent() {
   
   // 删除确认弹窗
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
-  // 正文编辑态
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  // 页面层统一维护当前活跃编辑壳层
+  const [activeEditor, setActiveEditor] = useState<ActiveEditorState>({ type: 'none' });
 
   // 鉴权守卫
   const user = useAuthGuard({
@@ -54,13 +60,11 @@ function NotesContent() {
   // 数据逻辑 Hook
   const {
     notes,
-    setNotes,
     isLoading,
     deleteNote,
-    updateTitle: handleUpdateTitle,
-    updateContent: handleUpdateContent,
-    updateKeywords: handleUpdateKeywords,
-    updateRecommendCache: handleUpdateRecommendCache,
+    createNote,
+    updateNote,
+    refreshRecommendCache,
   } = useNotes(user, { onError: setError });
 
   // 新建笔记 Hook
@@ -71,7 +75,7 @@ function NotesContent() {
     setNewContentJson,
     loading: createLoading,
     handleSubmit,
-  } = useCreateNote(setNotes, { onError: setError });
+  } = useCreateNote(createNote, { onError: setError });
 
   const buildJsonFromPlain = (plainText: string) => {
     const t = plainText || '';
@@ -86,7 +90,8 @@ function NotesContent() {
 
   const highlightId = searchParams.get('highlight') || '';
   const [drafts, setDrafts] = useState<Record<string, { json: JSONContent; text: string; dirty: boolean }>>({});
-  const [exitEditSignal, setExitEditSignal] = useState(0);
+  const editingNoteId = activeEditor.type === 'note' ? activeEditor.noteId : null;
+  const isComposeOpen = activeEditor.type === 'compose';
   
   // 用于存储笔记 DOM 节点的引用，实现自动滚动
   const noteRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -134,6 +139,30 @@ function NotesContent() {
     };
   }, [highlightId, notes]);
 
+    useEffect(() => {
+      let cancelled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      const warmUpEditor = () => {
+        if (cancelled) return;
+        preloadRichTextEditor();
+      };
+
+      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+        const idleId = window.requestIdleCallback(warmUpEditor, { timeout: 1200 });
+        return () => {
+          cancelled = true;
+          window.cancelIdleCallback(idleId);
+        };
+      }
+
+      timeoutId = setTimeout(warmUpEditor, 350);
+      return () => {
+        cancelled = true;
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+    }, []);
+
   const handleDraftChange = (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => {
     setDrafts((prev) => {
       if (!draft.dirty) {
@@ -146,39 +175,61 @@ function NotesContent() {
     });
   };
 
-  const refreshRecommendCache = useCallback(async (noteId: string, noteUpdatedAt?: string) => {
-    const response = await authFetch('/api/recommend/semantic-notes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        noteId,
-        writeMode: 'await',
-      }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(typeof payload?.message === 'string' ? payload.message : '刷新相关推荐失败');
+  const closeActiveEditor = useCallback(() => {
+    setActiveEditor({ type: 'none' });
+  }, []);
+
+  const openCompose = useCallback(() => {
+      preloadRichTextEditor();
+    setActiveEditor({ type: 'compose' });
+  }, []);
+
+  const handleComposeCancel = useCallback(() => {
+    setNewContentText('');
+    setNewContentJson(null);
+    setActiveEditor({ type: 'none' });
+  }, [setNewContentJson, setNewContentText]);
+
+  const handleComposeSubmit = useCallback(() => {
+    setActiveEditor({ type: 'none' });
+    void handleSubmit();
+  }, [handleSubmit]);
+
+  const handleContentEditingChange = useCallback((id: string, isEditing: boolean) => {
+    if (isEditing) {
+        preloadRichTextEditor();
+      setActiveEditor((current) => (
+        current.type === 'note' && current.noteId === id
+          ? current
+          : { type: 'note', noteId: id }
+      ));
+      return;
     }
 
-    handleUpdateRecommendCache(noteId, buildRecommendCacheFromResponse(noteUpdatedAt, payload));
-  }, [handleUpdateRecommendCache]);
+    setActiveEditor((current) => (
+      current.type === 'note' && current.noteId === id
+        ? { type: 'none' }
+        : current
+    ));
+  }, []);
 
   // 详情浮层关闭逻辑
   useEffect(() => {
-    if (!editingNoteId) return;
+    if (activeEditor.type === 'none') return;
     const onPointerDown = (e: PointerEvent) => {
       const t = e.target as Element | null;
       if (!t) return;
 
       if (t.closest(`.${styles.noteCardEditing}`)) return;
       if (t.closest(`.${styles.floatingComposeShell}`)) return;
+      if (t.closest(NOTE_EDITOR_INSIDE_SELECTOR)) return;
+      if (t.closest('[data-radix-popper-content-wrapper]')) return;
 
-      setExitEditSignal((v) => v + 1);
-      setEditingNoteId(null);
+      closeActiveEditor();
     };
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [editingNoteId]);
+  }, [activeEditor.type, closeActiveEditor]);
 
   return (
     <div className={`${styles.container} !bg-none !bg-gray-50`}>
@@ -205,22 +256,22 @@ function NotesContent() {
                 className={styles.feedContainer}
                 ref={scrollContainerRef}
               >
-                <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
+                <div className={styles.feedComposeAnchor}>
                   <FloatingQuickCompose
+                    open={isComposeOpen}
                     valueJson={newContentJson ?? buildJsonFromPlain(newContentText)}
                     valueText={newContentText}
+                    onOpen={openCompose}
                     onChange={({ json, text }) => {
                       setNewContentJson(json);
                       setNewContentText(text);
                     }}
-                    onSubmit={handleSubmit}
-                    onCancel={() => {
-                      setNewContentText('');
-                      setNewContentJson(null);
-                    }}
+                    onSubmit={handleComposeSubmit}
+                    onCancel={handleComposeCancel}
                     loading={createLoading}
                   />
-
+                </div>
+                <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
                   <NoteCounter count={notes.length} />
 
                   {notes.map((note) => (
@@ -235,20 +286,14 @@ function NotesContent() {
                         onRequestDelete={(id) => {
                           setPendingDeleteNoteId(id);
                         }}
-                        onUpdateTitle={handleUpdateTitle}
-                        onUpdateContent={handleUpdateContent}
-                        onUpdateKeywords={handleUpdateKeywords}
-                        onUpdateRecommendCache={handleUpdateRecommendCache}
+                        updateNote={updateNote}
                         draft={drafts[note._id]}
                         onDraftChange={handleDraftChange}
-                        exitEditSignal={exitEditSignal}
+                        isContentEditingActive={editingNoteId === note._id}
                         isHighlighted={note._id === highlightId}
                         isSelected={note._id === selectedNoteId}
                         onClick={() => setSelectedNoteId(note._id)}
-                        onContentEditingChange={(id, isEditing) => {
-                          if (isEditing) setEditingNoteId(id);
-                          else setEditingNoteId((cur) => (cur === id ? null : cur));
-                        }}
+                        onContentEditingChange={handleContentEditingChange}
                       />
                     </motion.div>
                   ))}

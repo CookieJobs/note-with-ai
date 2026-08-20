@@ -1,34 +1,18 @@
-import { useReducer, useRef, useEffect, useState, useCallback } from 'react';
+import { useReducer, useRef, useEffect, useState } from 'react';
 import { JSONContent } from '@tiptap/react';
-import { authFetch } from '../../../utils/auth';
-import type { IRecommendCache, INote } from '../../../types';
+import type { Note, UpdateNoteCommand } from './useNotes';
+import { NoteWriteConflict } from './useNotes';
 import { WORKSPACE_ANIM_DELAY_MS } from '../animationTimings';
-import { buildRecommendCacheFromResponse } from '../utils/recommendCache';
 
-// Extend INote to support frontend-specific properties if needed, or just use INote
-// For now, assuming INote is sufficient for data, but we need to handle 'enriching' if it's passed.
-// Let's define a local type that matches what we expect
-export interface EditorNote extends INote {
-  enriching?: boolean;
-}
+export type EditorNote = Note;
 
 interface UseNoteEditorProps {
   note: EditorNote;
-  onUpdateTitle: (id: string, newTitle: string, updatedAt?: string) => void;
-  onUpdateContent?: (
-    id: string,
-    newContent: string,
-    updatedAt?: string,
-    contentJson?: JSONContent,
-    contentText?: string,
-    embedding?: number[]
-  ) => void;
-  onUpdateKeywords?: (id: string, newKeywords: string[], updatedAt?: string) => void;
-  onUpdateRecommendCache?: (id: string, recommendCache: IRecommendCache | null) => void;
+  updateNote: (command: UpdateNoteCommand) => Promise<Note>;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
   draft?: { json: JSONContent; text: string; dirty: boolean };
   onDraftChange?: (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => void;
-  exitEditSignal?: number;
+  isContentEditingActive?: boolean;
 }
 
 type State = {
@@ -37,6 +21,8 @@ type State = {
     isEditing: boolean;
     value: string;
     saving: boolean;
+    error: string;
+    conflictCurrentTitle: string | null;
   };
   content: {
     isEditing: boolean;
@@ -45,6 +31,7 @@ type State = {
     draft: string | null;
     saving: boolean;
     error: string;
+    conflictCurrentText: string | null;
   };
   layout: {
     canExpand: boolean;
@@ -60,7 +47,7 @@ type Action =
   | { type: 'CANCEL_TITLE_EDIT'; value: string }
   | { type: 'SAVE_TITLE_START' }
   | { type: 'SAVE_TITLE_SUCCESS'; value: string }
-  | { type: 'SAVE_TITLE_FAIL' }
+  | { type: 'SAVE_TITLE_FAIL'; error: string; conflictCurrentTitle?: string }
   | { type: 'SYNC_TITLE_FROM_NOTE'; value: string }
   | { type: 'ENTER_CONTENT_EDIT'; original: string; value: string }
   | { type: 'CHANGE_CONTENT'; value: string }
@@ -68,7 +55,7 @@ type Action =
   | { type: 'CANCEL_CONTENT_EDIT'; value: string }
   | { type: 'SAVE_CONTENT_START' }
   | { type: 'SAVE_CONTENT_SUCCESS'; value: string }
-  | { type: 'SAVE_CONTENT_FAIL'; error: string }
+  | { type: 'SAVE_CONTENT_FAIL'; error: string; conflictCurrentText?: string }
   | { type: 'SYNC_CONTENT_FROM_NOTE'; value: string }
   | { type: 'SET_CAN_EXPAND'; value: boolean }
   | { type: 'SET_MAX_HEIGHT'; value: string };
@@ -84,27 +71,35 @@ function reducer(state: State, action: Action): State {
     case 'ENTER_TITLE_EDIT':
       return {
         ...state,
-        title: { ...state.title, isEditing: true, value: action.value, saving: false },
+        title: { ...state.title, isEditing: true, value: action.value, saving: false, error: '', conflictCurrentTitle: null },
       };
 
     case 'CHANGE_TITLE':
       return { ...state, title: { ...state.title, value: action.value } };
 
     case 'CANCEL_TITLE_EDIT':
-      return { ...state, title: { ...state.title, isEditing: false, value: action.value, saving: false } };
+      return { ...state, title: { ...state.title, isEditing: false, value: action.value, saving: false, error: '', conflictCurrentTitle: null } };
 
     case 'SAVE_TITLE_START':
-      return { ...state, title: { ...state.title, saving: true } };
+      return { ...state, title: { ...state.title, saving: true, error: '', conflictCurrentTitle: null } };
 
     case 'SAVE_TITLE_SUCCESS':
-      return { ...state, title: { isEditing: false, value: action.value, saving: false } };
+      return { ...state, title: { isEditing: false, value: action.value, saving: false, error: '', conflictCurrentTitle: null } };
 
     case 'SAVE_TITLE_FAIL':
-      return { ...state, title: { ...state.title, saving: false } };
+      return {
+        ...state,
+        title: {
+          ...state.title,
+          saving: false,
+          error: action.error,
+          conflictCurrentTitle: action.conflictCurrentTitle ?? null,
+        },
+      };
 
     case 'SYNC_TITLE_FROM_NOTE':
       if (state.title.isEditing) return state;
-      return { ...state, title: { ...state.title, value: action.value } };
+      return { ...state, title: { ...state.title, value: action.value, error: '', conflictCurrentTitle: null } };
 
     case 'ENTER_CONTENT_EDIT':
       return {
@@ -116,6 +111,7 @@ function reducer(state: State, action: Action): State {
           value: action.value,
           error: '',
           saving: false,
+          conflictCurrentText: null,
         },
         layout: { ...state.layout, canExpand: false },
       };
@@ -135,25 +131,53 @@ function reducer(state: State, action: Action): State {
     case 'CANCEL_CONTENT_EDIT':
       return {
         ...state,
-        content: { ...state.content, isEditing: false, value: action.value, original: action.value, draft: null, error: '' },
+        content: {
+          ...state.content,
+          isEditing: false,
+          value: action.value,
+          original: action.value,
+          draft: null,
+          error: '',
+          conflictCurrentText: null,
+        },
       };
 
     case 'SAVE_CONTENT_START':
-      return { ...state, content: { ...state.content, saving: true, error: '' } };
+      return { ...state, content: { ...state.content, saving: true, error: '', conflictCurrentText: null } };
 
     case 'SAVE_CONTENT_SUCCESS':
       return {
         ...state,
-        content: { ...state.content, isEditing: false, saving: false, value: action.value, original: action.value, draft: null, error: '' },
+        content: {
+          ...state.content,
+          isEditing: false,
+          saving: false,
+          value: action.value,
+          original: action.value,
+          draft: null,
+          error: '',
+          conflictCurrentText: null,
+        },
       };
 
     case 'SAVE_CONTENT_FAIL':
-      return { ...state, content: { ...state.content, saving: false, error: action.error } };
+      return {
+        ...state,
+        content: {
+          ...state.content,
+          saving: false,
+          error: action.error,
+          conflictCurrentText: action.conflictCurrentText ?? null,
+        },
+      };
 
     case 'SYNC_CONTENT_FROM_NOTE':
       if (state.content.isEditing) return state;
       if (state.content.draft !== null) return state;
-      return { ...state, content: { ...state.content, value: action.value, original: action.value, error: '' } };
+      return {
+        ...state,
+        content: { ...state.content, value: action.value, original: action.value, error: '', conflictCurrentText: null },
+      };
 
     case 'SET_CAN_EXPAND':
       return { ...state, layout: { ...state.layout, canExpand: action.value } };
@@ -169,7 +193,7 @@ function reducer(state: State, action: Action): State {
 function initState(note: EditorNote): State {
   return {
     expanded: false,
-    title: { isEditing: false, value: note.title || '', saving: false },
+    title: { isEditing: false, value: note.title || '', saving: false, error: '', conflictCurrentTitle: null },
     content: {
       isEditing: false,
       value: note.content || '',
@@ -177,21 +201,51 @@ function initState(note: EditorNote): State {
       draft: null,
       saving: false,
       error: '',
+      conflictCurrentText: null,
     },
     layout: { canExpand: false, maxHeight: '' },
   };
 }
 
+type KeywordOperation =
+  | { kind: 'edit'; originalValue: string; occurrence: number }
+  | { kind: 'add' }
+  | { kind: 'delete'; originalValue: string; occurrence: number };
+
+function occurrenceAt(keywords: string[], index: number): number {
+  return keywords.slice(0, index).filter((keyword) => keyword === keywords[index]).length;
+}
+
+function findKeywordOccurrence(keywords: string[], value: string, occurrence: number): number | null {
+  let seen = 0;
+  for (let index = 0; index < keywords.length; index += 1) {
+    if (keywords[index] !== value) continue;
+    if (seen === occurrence) return index;
+    seen += 1;
+  }
+  return null;
+}
+
+function applyKeywordOperation(keywords: string[], operation: KeywordOperation, value: string): string[] | null {
+  if (operation.kind === 'add') {
+    return value ? [...keywords, value] : keywords;
+  }
+
+  const index = findKeywordOccurrence(keywords, operation.originalValue, operation.occurrence);
+  if (index === null) return null;
+  if (operation.kind === 'delete' || !value) {
+    return [...keywords.slice(0, index), ...keywords.slice(index + 1)];
+  }
+  return [...keywords.slice(0, index), value, ...keywords.slice(index + 1)];
+}
+
 export function useNoteEditor({
   note,
-  onUpdateTitle,
-  onUpdateContent,
-  onUpdateKeywords,
-  onUpdateRecommendCache,
+  updateNote,
   onContentEditingChange,
   draft,
   onDraftChange,
-  exitEditSignal,
+  isContentEditingActive = false,
 }: UseNoteEditorProps) {
   const [state, dispatch] = useReducer(reducer, note, initState);
 
@@ -199,6 +253,13 @@ export function useNoteEditor({
   const [contentTextDraft, setContentTextDraft] = useState<string>('');
   const draftMetaRef = useRef<{ noteId: string | null; dirty: boolean }>({ noteId: null, dirty: false });
   const contentEditBaselineRef = useRef<{ noteId: string | null; jsonStr: string; text: string } | null>(null);
+  const titleEditRevisionRef = useRef<number | null>(null);
+  const titleRetryRevisionRef = useRef<number | null>(null);
+  const contentEditRevisionRef = useRef<number | null>(null);
+  const contentRetryRevisionRef = useRef<number | null>(null);
+  const keywordEditRevisionRef = useRef<number | null>(null);
+  const keywordRetryRevisionRef = useRef<number | null>(null);
+  const keywordOperationRef = useRef<KeywordOperation | null>(null);
   const contentEditIgnoreFirstChangeRef = useRef<{ noteId: string | null; ignore: boolean }>({ noteId: null, ignore: false });
   const [contentSavedFlash, setContentSavedFlash] = useState(false);
   const contentSavedTimerRef = useRef<number | null>(null);
@@ -206,8 +267,8 @@ export function useNoteEditor({
 
   const [activeKeywordIndex, setActiveKeywordIndex] = useState<number | null>(null);
   const [tagEditValue, setTagEditValue] = useState<string>('');
-  const lastExitSignalRef = useRef(exitEditSignal);
-  const refreshRecCallRef = useRef(0);
+  const [keywordError, setKeywordError] = useState<string>('');
+  const contentEditActiveAckRef = useRef(false);
 
 
   // Sync with props
@@ -218,6 +279,17 @@ export function useNoteEditor({
   useEffect(() => {
     dispatch({ type: 'SYNC_CONTENT_FROM_NOTE', value: note.content || '' });
   }, [note.content]);
+
+  useEffect(() => {
+    const operation = keywordOperationRef.current;
+    if (!operation || operation.kind === 'delete') return;
+    if (operation.kind === 'add') {
+      setActiveKeywordIndex((note.keywords || []).length);
+      return;
+    }
+    const index = findKeywordOccurrence(note.keywords || [], operation.originalValue, operation.occurrence);
+    if (index !== null) setActiveKeywordIndex(index);
+  }, [note.keywords]);
 
   useEffect(() => {
     if (draft && draft.dirty && draft.json) {
@@ -233,12 +305,21 @@ export function useNoteEditor({
   }, [draft, note._id]);
 
   useEffect(() => {
-    if (exitEditSignal === lastExitSignalRef.current) return;
-    lastExitSignalRef.current = exitEditSignal;
-    if (!exitEditSignal) return;
-    if (!state.content.isEditing) return;
+    if (!state.content.isEditing) {
+      contentEditActiveAckRef.current = false;
+      return;
+    }
+
+    // 进入编辑态时，卡片本地 state 会先于页面层 activeEditor 更新。
+    // 只有页面层明确接管过当前卡片的编辑态之后，才允许“外部关闭”把它收起。
+    if (isContentEditingActive) {
+      contentEditActiveAckRef.current = true;
+      return;
+    }
+
+    if (!contentEditActiveAckRef.current) return;
     dispatch({ type: 'BLUR_CONTENT_EXIT' });
-  }, [exitEditSignal, state.content.isEditing]);
+  }, [isContentEditingActive, state.content.isEditing]);
 
   useEffect(() => {
     onContentEditingChange?.(note._id, state.content.isEditing);
@@ -327,31 +408,11 @@ export function useNoteEditor({
     return getNotePlainText();
   };
 
-  const refreshRecommendCache = useCallback(async (noteId: string, noteUpdatedAt?: string) => {
-    if (!onUpdateRecommendCache) return;
-
-    const callTime = Date.now();
-    refreshRecCallRef.current = callTime;
-
-    try {
-      const response = await authFetch('/api/recommend/semantic-notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          noteId,
-          writeMode: 'await',
-        }),
-      });
-      // 丢弃非最新请求的响应，防止并发写入互相覆盖
-      if (callTime !== refreshRecCallRef.current) return;
-      const payload = await response.json();
-      if (!response.ok) return;
-
-      onUpdateRecommendCache(noteId, buildRecommendCacheFromResponse(noteUpdatedAt, payload));
-    } catch {
-      // 推荐缓存补算失败不应影响正文保存体验
-    }
-  }, [onUpdateRecommendCache]);
+  const beginTitleEdit = () => {
+    titleEditRevisionRef.current = note.revision;
+    titleRetryRevisionRef.current = null;
+    dispatch({ type: 'ENTER_TITLE_EDIT', value: note.title || '' });
+  };
 
   const handleSaveTitle = async () => {
     const next = state.title.value.trim();
@@ -362,37 +423,31 @@ export function useNoteEditor({
 
     dispatch({ type: 'SAVE_TITLE_START' });
     try {
-      const response = await authFetch(`/api/notes/${note._id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: next }),
+      const updatedNote = await updateNote({
+        noteId: note._id,
+        expectedRevision: titleRetryRevisionRef.current ?? titleEditRevisionRef.current ?? note.revision,
+        changes: { title: next },
       });
-      const data = await response.json();
-
-      if (!response.ok) throw new Error('保存标题失败');
-
-      const updatedNote = data?.data?.note;
-      onUpdateTitle(note._id, next, updatedNote?.updatedAt);
-      dispatch({ type: 'SAVE_TITLE_SUCCESS', value: next });
-    } catch {
-      dispatch({ type: 'SAVE_TITLE_FAIL' });
-      dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' });
+      dispatch({ type: 'SAVE_TITLE_SUCCESS', value: updatedNote.title ?? next });
+      titleEditRevisionRef.current = null;
+      titleRetryRevisionRef.current = null;
+    } catch (error) {
+      if (error instanceof NoteWriteConflict) {
+        titleRetryRevisionRef.current = error.current.revision;
+      }
+      dispatch({
+        type: 'SAVE_TITLE_FAIL',
+        error: error instanceof NoteWriteConflict
+          ? `笔记已被其他写入更新。本地标题已保留，当前服务端版本为 ${error.current.revision}。`
+          : error instanceof Error ? error.message : '保存标题失败，请重试。',
+        conflictCurrentTitle: error instanceof NoteWriteConflict ? error.current.title ?? '' : undefined,
+      });
     }
   };
 
   const handleSaveContent = async () => {
-    if (!onUpdateContent) {
-      dispatch({ type: 'BLUR_CONTENT_EXIT' });
-      return;
-    }
-
     const valText = (contentTextDraft || '').trim();
     const prevText = getNotePlainText().trim();
-    const prevLen = prevText.length;
-    const nextLen = valText.length;
-    const deltaRatio = Math.abs(nextLen - prevLen) / Math.max(prevLen, 1);
-    const shouldSummaryCheck = deltaRatio > 0.3;
-
     const prevJson = note.contentJson ?? buildJsonFromPlain(getNotePlainText());
     const nextJson = contentJsonDraft ?? buildJsonFromPlain(contentTextDraft || '');
     const prevJsonStr = safeStringify(prevJson);
@@ -405,139 +460,153 @@ export function useNoteEditor({
 
     dispatch({ type: 'SAVE_CONTENT_START' });
     try {
-      const response = await authFetch(`/api/notes/${note._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contentText: contentTextDraft,
-          contentJson: nextJson,
-          updatedAt: note.updatedAt,
-          ...(shouldSummaryCheck ? { summaryCheck: true } : {}),
-        }),
+      const updated = await updateNote({
+        noteId: note._id,
+        expectedRevision: contentRetryRevisionRef.current ?? contentEditRevisionRef.current ?? note.revision,
+        changes: { body: { kind: 'rich-text', document: nextJson as Record<string, unknown> } },
       });
-      const data = await response.json();
+      const nextText = (updated.contentText ?? updated.content ?? contentTextDraft) as string;
+      const updatedJson = updated.contentJson ?? contentJsonDraft;
 
-      if (!response.ok) {
-        if (response.status === 409) {
-          const serverNote = data?.data?.note;
-          const serverText = (serverNote?.contentText ?? serverNote?.content) as string | undefined;
-          const serverJson = serverNote?.contentJson;
-          if (typeof serverText === 'string') {
-            onUpdateContent(note._id, serverText, serverNote?.updatedAt, serverJson, serverNote?.contentText);
-            setContentTextDraft(serverText);
-            setContentJsonDraft(serverJson ?? null);
-            draftMetaRef.current = { noteId: note._id, dirty: false };
-            onDraftChange?.(note._id, { json: serverJson ?? null, text: serverText, dirty: false });
-            
-            setContentSavedFlash(true);
-            if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
-            contentSavedTimerRef.current = window.setTimeout(() => setContentSavedFlash(false), 2000);
-            
-            if (saveExitTimerRef.current) window.clearTimeout(saveExitTimerRef.current);
-            saveExitTimerRef.current = window.setTimeout(() => {
-              dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: serverText });
-              saveExitTimerRef.current = null;
-            }, WORKSPACE_ANIM_DELAY_MS);
-          } else {
-            throw new Error('保存失败');
-          }
-        } else {
-          throw new Error(data?.error || '保存失败');
-        }
-      } else {
-        const updated = data?.data?.note || {};
-        const nextText = (updated.contentText ?? updated.content ?? contentTextDraft) as string;
-        const nextJson = updated.contentJson ?? contentJsonDraft;
-        onUpdateContent(note._id, nextText, updated.updatedAt, nextJson, updated.contentText);
-        
-        authFetch(`/api/notes/${note._id}/embed`, { method: 'POST' })
-          .then((r) => r.json())
-          .then((embedData) => {
-            const emb = embedData?.data?.embedding;
-            if (Array.isArray(emb) && emb.length > 0) {
-              onUpdateContent(note._id, nextText, updated.updatedAt, nextJson, updated.contentText, emb);
-            }
-          })
-          .catch(() => {});
+      draftMetaRef.current = { noteId: note._id, dirty: false };
+      onDraftChange?.(note._id, { json: updatedJson as JSONContent, text: nextText, dirty: false });
+      contentEditRevisionRef.current = null;
+      contentRetryRevisionRef.current = null;
 
-        void refreshRecommendCache(note._id, updated.updatedAt);
-        
-        draftMetaRef.current = { noteId: note._id, dirty: false };
-        onDraftChange?.(note._id, { json: nextJson ?? null, text: nextText, dirty: false });
+      setContentSavedFlash(true);
+      if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
+      contentSavedTimerRef.current = window.setTimeout(() => setContentSavedFlash(false), 2000);
 
-        setContentSavedFlash(true);
-        if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
-        contentSavedTimerRef.current = window.setTimeout(() => setContentSavedFlash(false), 2000);
-
-        if (saveExitTimerRef.current) window.clearTimeout(saveExitTimerRef.current);
-        saveExitTimerRef.current = window.setTimeout(() => {
-          dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: nextText });
-          saveExitTimerRef.current = null;
-        }, WORKSPACE_ANIM_DELAY_MS);
-      }
+      if (saveExitTimerRef.current) window.clearTimeout(saveExitTimerRef.current);
+      saveExitTimerRef.current = window.setTimeout(() => {
+        dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: nextText });
+        saveExitTimerRef.current = null;
+      }, WORKSPACE_ANIM_DELAY_MS);
     } catch (e: unknown) {
       if (saveExitTimerRef.current) {
         window.clearTimeout(saveExitTimerRef.current);
         saveExitTimerRef.current = null;
       }
-      dispatch({ type: 'SAVE_CONTENT_FAIL', error: e instanceof Error ? e.message : '保存失败' });
+      const current = e instanceof NoteWriteConflict ? e.current : null;
+      if (current) contentRetryRevisionRef.current = current.revision;
+      dispatch({
+        type: 'SAVE_CONTENT_FAIL',
+        error: current
+          ? `笔记已被其他写入更新。本地草稿已保留，当前服务端版本为 ${current.revision}。`
+          : e instanceof Error ? e.message : '保存失败',
+        conflictCurrentText: current
+          ? typeof current.contentText === 'string' ? current.contentText : current.content
+          : undefined,
+      });
     }
   };
 
   const deleteKeywordAt = async (idx: number) => {
-    if (!onUpdateKeywords) return;
-    const arr = [...(note.keywords || [])];
-    if (idx < 0 || idx >= arr.length) return;
-    arr.splice(idx, 1);
+    const keywords = [...(note.keywords || [])];
+    let operation = keywordOperationRef.current;
+    if (!operation || operation.kind !== 'delete') {
+      if (idx < 0 || idx >= keywords.length) return;
+      operation = { kind: 'delete', originalValue: keywords[idx], occurrence: occurrenceAt(keywords, idx) };
+      keywordOperationRef.current = operation;
+      keywordEditRevisionRef.current = note.revision;
+      keywordRetryRevisionRef.current = null;
+    }
+    const nextKeywords = applyKeywordOperation(keywords, operation, '');
+    if (!nextKeywords) {
+      setKeywordError('关键词已发生变化，请重新操作。');
+      return;
+    }
+    setKeywordError('');
 
     try {
-      const response = await authFetch(`/api/notes/${note._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
+      await updateNote({
+        noteId: note._id,
+        expectedRevision: keywordRetryRevisionRef.current ?? keywordEditRevisionRef.current ?? note.revision,
+        changes: { keywords: nextKeywords },
       });
-      const data = await response.json();
-      const updated = data?.data?.note;
-      const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
-      onUpdateKeywords(note._id, next, updated?.updatedAt);
-    } catch {
-      // ignore
-    } finally {
       setActiveKeywordIndex(null);
       setTagEditValue('');
+      setKeywordError('');
+      keywordEditRevisionRef.current = null;
+      keywordRetryRevisionRef.current = null;
+      keywordOperationRef.current = null;
+    } catch (error) {
+      if (error instanceof NoteWriteConflict) keywordRetryRevisionRef.current = error.current.revision;
+      setKeywordError(error instanceof NoteWriteConflict
+        ? '关键词已被其他写入更新。本地编辑已保留，请重试。'
+        : error instanceof Error ? error.message : '保存关键词失败，请重试。');
+      setActiveKeywordIndex(null);
     }
   };
 
   const commitKeywordAt = async (idx: number) => {
-    if (!onUpdateKeywords) {
-      setActiveKeywordIndex(null);
-      setTagEditValue('');
-      return;
-    }
-    const arr = [...(note.keywords || [])];
     const v = tagEditValue.trim();
-    if (v) arr[idx] = v;
-    else if (idx < arr.length) arr.splice(idx, 1);
-    else {
-      setActiveKeywordIndex(null);
-      setTagEditValue('');
+    const keywords = [...(note.keywords || [])];
+    let operation = keywordOperationRef.current;
+    if (!operation) {
+      if (idx < keywords.length) {
+        operation = { kind: 'edit', originalValue: keywords[idx], occurrence: occurrenceAt(keywords, idx) };
+      } else if (idx === keywords.length) {
+        operation = { kind: 'add' };
+      } else {
+        return;
+      }
+      keywordOperationRef.current = operation;
+      keywordEditRevisionRef.current = note.revision;
+      keywordRetryRevisionRef.current = null;
+    }
+    const nextKeywords = applyKeywordOperation(keywords, operation, v);
+    if (!nextKeywords) {
+      setKeywordError('关键词已发生变化，请重新操作。');
       return;
     }
+    if (operation.kind === 'add' && !v) {
+      setActiveKeywordIndex(null);
+      setTagEditValue('');
+      keywordOperationRef.current = null;
+      return;
+    }
+    setKeywordError('');
 
     try {
-      const response = await authFetch(`/api/notes/${note._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords: arr, updatedAt: note.updatedAt }),
+      await updateNote({
+        noteId: note._id,
+        expectedRevision: keywordRetryRevisionRef.current ?? keywordEditRevisionRef.current ?? note.revision,
+        changes: { keywords: nextKeywords },
       });
-      const data = await response.json();
-      const updated = data?.data?.note;
-      const next = Array.isArray(updated?.keywords) ? updated.keywords : arr;
-      onUpdateKeywords(note._id, next, updated?.updatedAt);
-    } finally {
       setActiveKeywordIndex(null);
       setTagEditValue('');
+      setKeywordError('');
+      keywordEditRevisionRef.current = null;
+      keywordRetryRevisionRef.current = null;
+      keywordOperationRef.current = null;
+    } catch (error) {
+      if (error instanceof NoteWriteConflict) keywordRetryRevisionRef.current = error.current.revision;
+      setKeywordError(error instanceof NoteWriteConflict
+        ? '关键词已被其他写入更新。本地编辑已保留，请重试。'
+        : error instanceof Error ? error.message : '保存关键词失败，请重试。');
     }
+  };
+
+  const beginKeywordEdit = (idx: number, value: string) => {
+    const keywords = note.keywords || [];
+    setKeywordError('');
+    keywordEditRevisionRef.current = note.revision;
+    keywordRetryRevisionRef.current = null;
+    keywordOperationRef.current = idx < keywords.length
+      ? { kind: 'edit', originalValue: keywords[idx], occurrence: occurrenceAt(keywords, idx) }
+      : { kind: 'add' };
+    setActiveKeywordIndex(idx);
+    setTagEditValue(value);
+  };
+
+  const cancelKeywordEdit = () => {
+    setKeywordError('');
+    keywordEditRevisionRef.current = null;
+    keywordRetryRevisionRef.current = null;
+    keywordOperationRef.current = null;
+    setActiveKeywordIndex(null);
+    setTagEditValue('');
   };
 
   const enterContentEdit = (e?: React.MouseEvent) => {
@@ -572,6 +641,8 @@ export function useNoteEditor({
         jsonStr: safeStringify(baseJson),
         text: baseText,
       };
+      contentEditRevisionRef.current = note.revision;
+      contentRetryRevisionRef.current = null;
       contentEditIgnoreFirstChangeRef.current = { noteId: note._id, ignore: true };
     }
 
@@ -645,7 +716,11 @@ export function useNoteEditor({
     setActiveKeywordIndex,
     tagEditValue,
     setTagEditValue,
+    keywordError,
+    beginKeywordEdit,
+    cancelKeywordEdit,
     handleSaveTitle,
+    beginTitleEdit,
     handleSaveContent,
     handleCancelContent,
     deleteKeywordAt,

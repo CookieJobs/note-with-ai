@@ -7,6 +7,9 @@
     "doc:scan": "node scripts/doc-tools/scan.js",
     "doc:inject": "node scripts/doc-tools/inject.js",
     "doc:check": "node scripts/doc-tools/check.js",
+    "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck",
+    "test": "npm --prefix backend test && npm --prefix frontend test",
+    "verify": "npm run typecheck && npm test",
     "prepare": "echo \"husky disabled\""
   },
   "dependencies": {

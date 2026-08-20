@@ -14,15 +14,11 @@ const buildWorkerCount = parsePositiveInteger(process.env.NEXT_BUILD_WORKERS, 1)
 
 const nextConfig = {
   reactStrictMode: true,
-  typescript: {
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
-    ignoreBuildErrors: true,
-  },
   experimental: {
     cpus: buildWorkerCount,
   },
   output: 'standalone',
+  outputFileTracingRoot: __dirname,
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
     console.log(`🛠️ 代理规则加载中... 目标后端: ${backendUrl}`);

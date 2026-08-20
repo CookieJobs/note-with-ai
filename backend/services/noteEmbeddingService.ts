@@ -17,7 +17,7 @@ import {
 } from '../utils/embedding';
 import { logger } from '../utils/logger';
 
-type EmbeddingNote = Pick<INote, 'title' | 'content' | 'contentText' | 'updatedAt'> & {
+type EmbeddingNote = Pick<INote, 'title' | 'content' | 'contentText' | 'revision'> & {
   _id: INote['_id'];
   userId: INote['userId'];
 };
@@ -25,7 +25,7 @@ type EmbeddingNote = Pick<INote, 'title' | 'content' | 'contentText' | 'updatedA
 type EmbeddingWriteTarget = {
   _id: string;
   userId: string;
-  updatedAt: Date;
+  revision: number;
 };
 
 export interface EmbeddingStats {
@@ -116,13 +116,19 @@ class NoteEmbeddingService {
 
   private async saveEmbeddingIfFresh(note: EmbeddingWriteTarget, embedding: number[]) {
     const result = await Note.updateOne(
-      { _id: note._id, userId: note.userId, updatedAt: note.updatedAt },
+      { _id: note._id, userId: note.userId, revision: note.revision },
       {
         $set: {
           embedding,
           embeddingMetadata: buildNoteEmbeddingMetadata(this.documentEmbeddingOptions, embedding),
+          'enrichment.embedding': {
+            status: 'ready',
+            sourceRevision: note.revision,
+            attemptedAt: new Date(),
+          },
         },
-      }
+      },
+      { timestamps: false }
     );
     return !!result && (result as { matchedCount?: number }).matchedCount === 1 ? 'saved' : 'stale';
   }
@@ -183,7 +189,7 @@ class NoteEmbeddingService {
           {
             _id: note._id.toString(),
             userId: String(note.userId),
-            updatedAt: note.updatedAt,
+            revision: typeof note.revision === 'number' && note.revision > 0 ? note.revision : 1,
           },
           embedding
         );
@@ -245,12 +251,12 @@ class NoteEmbeddingService {
   scheduleEmbeddingUpdate(params: {
     noteId: string;
     userId: string;
-    updatedAt: Date;
+    revision: number;
     title?: string;
     content?: string;
     contentText?: string;
   }) {
-    const { noteId, userId, updatedAt, title, content, contentText } = params;
+    const { noteId, userId, revision, title, content, contentText } = params;
     const normalizedText = this.buildEmbeddingText({ title, content, contentText });
     if (!normalizedText) return;
 
@@ -259,42 +265,59 @@ class NoteEmbeddingService {
         const embedding = await generateEmbedding(normalizedText, this.documentEmbeddingOptions);
         if (!Array.isArray(embedding) || embedding.length === 0) return;
 
-        await this.saveEmbeddingIfFresh({ _id: noteId, userId, updatedAt }, embedding);
+        await this.saveEmbeddingIfFresh({ _id: noteId, userId, revision }, embedding);
       } catch (error: unknown) {
         logger.warn('⚠️ embedding 异步生成失败（已忽略）:', error);
       }
     })();
   }
 
-  async generateEmbeddingForNote(userId: string, noteId: string): Promise<{ embedding?: number[]; skipped?: boolean }> {
+  async generateEmbeddingForRevision(
+    userId: string,
+    noteId: string,
+    sourceRevision: number,
+  ): Promise<{ embedding?: number[]; status: 'saved' | 'stale' | 'failed' }> {
     const note = await Note.findOne({ _id: noteId, userId })
-      .select('_id userId title content contentText updatedAt');
+      .select('_id userId title content contentText revision');
     if (!note) {
-      return { skipped: true };
+      return { status: 'stale' };
+    }
+
+    if ((typeof note.revision === 'number' && note.revision > 0 ? note.revision : 1) !== sourceRevision) {
+      return { status: 'stale' };
     }
 
     const text = this.buildEmbeddingText(note as unknown as EmbeddingNote);
-    if (!text) return { skipped: true };
+    if (!text) return { status: 'failed' };
 
     const embedding = await generateEmbedding(text, this.documentEmbeddingOptions);
     if (!Array.isArray(embedding) || embedding.length === 0) {
-      return { skipped: true };
+      return { status: 'failed' };
     }
 
     const saved = await this.saveEmbeddingIfFresh(
       {
         _id: note._id.toString(),
         userId: String(note.userId),
-        updatedAt: note.updatedAt,
+        revision: sourceRevision,
       },
       embedding
     );
     if (saved !== 'saved') {
-      return { skipped: true };
+      return { status: 'stale' };
     }
 
     logger.info('✅ embedding 保存成功');
-    return { embedding };
+    return { embedding, status: 'saved' };
+  }
+
+  async generateEmbeddingForNote(userId: string, noteId: string): Promise<{ embedding?: number[]; skipped?: boolean }> {
+    const note = await Note.findOne({ _id: noteId, userId }).select('revision');
+    if (!note) return { skipped: true };
+    const revision = typeof note.revision === 'number' && note.revision > 0 ? note.revision : 1;
+    const result = await this.generateEmbeddingForRevision(userId, noteId, revision);
+    if (result.status !== 'saved') return { skipped: true };
+    return { embedding: result.embedding };
   }
 
   async ensureUserEmbeddings(userId: string, limitNum: number = 20): Promise<{ processed: number; success: number }> {
@@ -302,7 +325,7 @@ class NoteEmbeddingService {
     const pending = await Note.find({
       ...this.buildPendingFilter(userId),
     })
-      .select('_id userId title content contentText updatedAt')
+      .select('_id userId title content contentText revision')
       .limit(limit);
 
     if (pending.length === 0) {
@@ -348,7 +371,7 @@ class NoteEmbeddingService {
       }
 
       const pending = await Note.find(query)
-        .select('_id userId title content contentText updatedAt')
+        .select('_id userId title content contentText revision')
         .limit(batchSize);
 
       if (pending.length === 0) {
