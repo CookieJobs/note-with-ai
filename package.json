@@ -13,9 +13,13 @@
     "prepare": "echo \"husky disabled\""
   },
   "dependencies": {
-    "sass": "^1.89.2"
+    "sass": "^1.97.3"
   },
   "devDependencies": {
     "husky": "^9.0.0"
+  },
+  "overrides": {
+    "immutable": "5.1.9",
+    "picomatch@2": "2.3.2"
   }
 }

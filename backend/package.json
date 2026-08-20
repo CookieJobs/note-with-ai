@@ -17,7 +17,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "axios": "^1.10.0",
+    "axios": "^1.19.0",
     "bcryptjs": "^3.0.2",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",
@@ -26,9 +26,9 @@
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^7.0.0",
-    "mongoose": "^8.23.0",
-    "node-cron": "^3.0.3",
-    "nodemailer": "^8.0.7",
+    "mongoose": "^8.24.3",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^9.0.5",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
@@ -45,5 +45,17 @@
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "body-parser": "2.3.0",
+    "jws": "3.2.3",
+    "path-to-regexp": "8.4.0",
+    "qs": "6.15.2",
+    "undici": "7.29.0",
+    "picomatch": "2.3.2",
+    "minimatch": "3.1.4",
+    "brace-expansion": "1.1.18",
+    "diff": "4.0.4",
+    "esbuild": "0.28.1"
   }
 }
