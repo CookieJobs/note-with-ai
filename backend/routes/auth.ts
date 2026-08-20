@@ -1,7 +1,11 @@
 import express from 'express';
-import { register, sendVerifyCode } from '../controllers/auth/registerController';
-import { resetPassword } from '../controllers/auth/resetController';
-import { login, getCurrentUser, updateProfile, changePassword } from '../controllers/authController';
+import {
+  login,
+  register,
+  resetPassword,
+  sendVerifyCode,
+} from '../controllers/auth/authFlowController';
+import { getCurrentUser, updateProfile, changePassword } from '../controllers/authController';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/errorHandler';
 import { validate } from '../middleware/validate';
