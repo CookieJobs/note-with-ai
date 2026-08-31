@@ -4,6 +4,7 @@ import express, { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 
 import noteRoutes from './routes/notes';
 import chatRoutes from './routes/chat';
@@ -17,6 +18,7 @@ import feedRoutes from './routes/feedRoutes';
 import userRoutes from './routes/userRoutes';
 import { globalErrorHandler } from './utils/errorHandler';
 import { logger } from './utils/logger';
+import adminRoutes from './routes/admin';
 
 dotenv.config();
 
@@ -35,6 +37,7 @@ app.use(cors({
 
 // 请求体大小限制（防止超大 payload 导致 OOM）
 app.use(express.json({ limit: '5mb' }));
+app.use(cookieParser());
 
 // 添加请求日志中间件
 app.use((req, res, next) => {
@@ -49,6 +52,7 @@ app.get('/api/ping', (_, res) => {
 
 // ✅ 路由挂载
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/chat', chatRelatedNotesRoutes);
