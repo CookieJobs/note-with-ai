@@ -64,12 +64,16 @@ export async function createAdminFromEnvironment(): Promise<{ email: string; pro
   return { email, provisioningUri: totp.toString() };
 }
 
+export async function runCreateAdminCli(output: (message: string) => void = console.log): Promise<void> {
+  const { email, provisioningUri } = await createAdminFromEnvironment();
+  output(`Created admin: ${email}`);
+  output(`TOTP provisioning URI: ${provisioningUri}`);
+}
+
 async function main(): Promise<void> {
   await mongoose.connect(config.MONGODB_URI);
   try {
-    const { email, provisioningUri } = await createAdminFromEnvironment();
-    console.log(`Created admin: ${email}`);
-    console.log(`TOTP provisioning URI: ${provisioningUri}`);
+    await runCreateAdminCli();
   } finally {
     await mongoose.disconnect();
   }

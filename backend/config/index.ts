@@ -1,7 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
-import { logger } from '../utils/logger';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -20,7 +19,10 @@ const envSchema = z.object({
   // Admin JWT and TOTP encryption configuration
   ADMIN_JWT_SECRET: z.string().min(32),
   ADMIN_JWT_EXPIRES_IN: z.string().default('8h'),
-  ADMIN_ENCRYPTION_KEY: z.string().min(1),
+  ADMIN_ENCRYPTION_KEY: z.string().refine((value) => {
+    const decoded = Buffer.from(value, 'base64');
+    return decoded.length === 32 && decoded.toString('base64') === value;
+  }, 'ADMIN_ENCRYPTION_KEY must be a canonical base64-encoded 32-byte key'),
 
   // DeepSeek API 配置
   DEEPSEEK_API_KEY: z.string().optional(),
@@ -94,20 +96,4 @@ export function parseConfig(environment: Environment = process.env) {
   return result.data;
 }
 
-const _env = envSchema.safeParse(
-  (process.env.NODE_ENV || 'development') === 'production'
-    ? process.env
-    : { ...developmentDefaults, ...process.env },
-);
-
-if (!_env.success) {
-  logger.error('❌ Invalid environment variables:', _env.error.format());
-  throw new Error('Invalid environment variables');
-}
-
-if (_env.data.NODE_ENV === 'production' && _env.data.ADMIN_JWT_SECRET === _env.data.JWT_SECRET) {
-  logger.error('❌ Invalid environment variables: ADMIN_JWT_SECRET must differ from JWT_SECRET');
-  throw new Error('ADMIN_JWT_SECRET must differ from JWT_SECRET');
-}
-
-export const config = _env.data;
+export const config = parseConfig();
