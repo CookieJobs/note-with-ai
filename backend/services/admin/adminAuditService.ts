@@ -10,6 +10,17 @@ export type AuditCommandInput = {
   resultMetadata?: Record<string, string | number | boolean | null>;
 };
 
+const SAFE_METADATA_KEYS = new Set(['reason', 'outcome', 'ip', 'emailHash', 'permission', 'status', 'previousStatus', 'nextStatus', 'changedFields', 'sourceRevision', 'idempotent', 'count', 'retryStatus']);
+type SafeValue = string | number | boolean | null;
+function safeMetadata(metadata: Record<string, SafeValue> | undefined): Record<string, SafeValue> | undefined {
+  if (!metadata) return undefined;
+  const result: Record<string, SafeValue> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (SAFE_METADATA_KEYS.has(key) && (typeof value !== 'string' || value.length <= 256)) result[key] = value;
+  }
+  return result;
+}
+
 function normalizedErrorCode(error: unknown): string {
   if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
     return error.code.slice(0, 100);
@@ -18,10 +29,12 @@ function normalizedErrorCode(error: unknown): string {
 }
 
 export async function runAuditedAdminCommand<T>(input: AuditCommandInput, command: () => Promise<T>): Promise<T> {
-  const audit = await AdminAuditLog.create({ ...input, status: 'pending', metadata: input.metadata });
+  const commandMetadata = safeMetadata(input.metadata);
+  const resultMetadata = safeMetadata(input.resultMetadata);
+  const audit = await AdminAuditLog.create({ ...input, status: 'pending', metadata: { command: commandMetadata } });
   try {
     const result = await command();
-    await AdminAuditLog.updateOne({ _id: audit._id }, { $set: { status: 'succeeded', metadata: input.resultMetadata ?? input.metadata } });
+    await AdminAuditLog.updateOne({ _id: audit._id }, { $set: { status: 'succeeded', metadata: { command: commandMetadata, result: resultMetadata } } });
     return result;
   } catch (error) {
     await AdminAuditLog.updateOne({ _id: audit._id }, { $set: { status: 'failed', errorCode: normalizedErrorCode(error) } });
@@ -30,5 +43,11 @@ export async function runAuditedAdminCommand<T>(input: AuditCommandInput, comman
 }
 
 export async function recordAdminSecurityAudit(input: AuditCommandInput & { status: 'succeeded' | 'failed' }): Promise<void> {
-  await AdminAuditLog.create(input);
+  try {
+    await AdminAuditLog.create({ ...input, metadata: safeMetadata(input.metadata) });
+  } catch (error: unknown) {
+    // Auditing an authentication/authorization denial must never change its result.
+    // A server-generated request ID prevents normal collisions; duplicates are safe to ignore.
+    if (!(error && typeof error === 'object' && 'code' in error && error.code === 11000)) return;
+  }
 }
