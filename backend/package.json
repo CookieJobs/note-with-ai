@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "repair:embeddings": "ts-node scripts/repair_embeddings.ts",
     "backfill:note-revisions": "ts-node scripts/backfill_note_revisions.ts",
+    "admin:create": "ts-node scripts/create_admin.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts"
   },
@@ -29,6 +30,7 @@
     "mongoose": "^8.24.3",
     "node-cron": "^4.6.0",
     "nodemailer": "^9.0.5",
+    "otpauth": "^9.5.1",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
