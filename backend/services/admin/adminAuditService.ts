@@ -1,4 +1,5 @@
 import { AdminAuditLog } from '../../models/AdminAuditLog';
+import { logger } from '../../utils/logger';
 
 export type AuditCommandInput = {
   actorId?: string;
@@ -32,14 +33,17 @@ export async function runAuditedAdminCommand<T>(input: AuditCommandInput, comman
   const commandMetadata = safeMetadata(input.metadata);
   const resultMetadata = safeMetadata(input.resultMetadata);
   const audit = await AdminAuditLog.create({ ...input, status: 'pending', metadata: { command: commandMetadata } });
+  let result: T;
   try {
-    const result = await command();
-    await AdminAuditLog.updateOne({ _id: audit._id }, { $set: { status: 'succeeded', metadata: { command: commandMetadata, result: resultMetadata } } });
-    return result;
+    result = await command();
   } catch (error) {
     await AdminAuditLog.updateOne({ _id: audit._id }, { $set: { status: 'failed', errorCode: normalizedErrorCode(error) } });
     throw error;
   }
+  // If this update fails the command has already run. Preserve `pending` to
+  // represent the uncertainty; never rewrite immutable history as `failed`.
+  await AdminAuditLog.updateOne({ _id: audit._id }, { $set: { status: 'succeeded', metadata: { command: commandMetadata, result: resultMetadata } } });
+  return result;
 }
 
 export async function recordAdminSecurityAudit(input: AuditCommandInput & { status: 'succeeded' | 'failed' }): Promise<void> {
@@ -48,6 +52,10 @@ export async function recordAdminSecurityAudit(input: AuditCommandInput & { stat
   } catch (error: unknown) {
     // Auditing an authentication/authorization denial must never change its result.
     // A server-generated request ID prevents normal collisions; duplicates are safe to ignore.
-    if (!(error && typeof error === 'object' && 'code' in error && error.code === 11000)) return;
+    if (error && typeof error === 'object' && 'code' in error && error.code === 11000) return;
+    logger.error('Admin security audit persistence failed', {
+      code: normalizedErrorCode(error), requestId: input.requestId, action: input.action,
+      outcome: input.metadata?.outcome ?? 'unknown',
+    });
   }
 }

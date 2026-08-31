@@ -98,9 +98,9 @@ test('HTTP login uses the success envelope, hardened cookie, and preserves rate-
     assert.deepEqual(success.body, { success: true, message: '登录成功', data: { admin: { id: 'a', email: 'owner@example.com', displayName: 'Owner', role: 'owner' } } });
     assert.match(success.headers['set-cookie'], /nwai_admin_session=admin-token/);
     assert.match(success.headers['set-cookie'], /HttpOnly/); assert.match(success.headers['set-cookie'], /SameSite=Strict/); assert.match(success.headers['set-cookie'], /Path=\/api\/admin/);
-    const limited = await request(appWith(async () => { throw ErrorHandler.createValidationError('登录尝试次数过多', { code: 'ADMIN_LOGIN_RATE_LIMITED' }); }), '/api/admin/auth/login', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: { email: 'owner@example.com', password: 'password123', otp: '123456' } });
-    assert.equal(limited.status, 400);
-    assert.equal(limited.body.code, 'ADMIN_LOGIN_RATE_LIMITED');
+    const limited = await request(appWith(async () => { throw ErrorHandler.createAuthenticationError('邮箱、密码或验证码错误'); }), '/api/admin/auth/login', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: { email: 'owner@example.com', password: 'password123', otp: '123456' } });
+    assert.equal(limited.status, 401);
+    assert.equal(limited.body.error, '邮箱、密码或验证码错误');
   }
 });
 
@@ -116,6 +116,34 @@ test('audited commands retain separate allowlisted command and result metadata',
     assert.deepEqual(created[0].metadata, { command: { reason: 'policy' } });
     assert.deepEqual(updates[0].$set.metadata, { command: { reason: 'policy' }, result: { nextStatus: 'inactive' } });
   } finally { model.create = originalCreate; model.updateOne = originalUpdate; }
+});
+
+test('a success terminal-audit failure leaves the command audit pending rather than marking it failed', async () => {
+  const { AdminAuditLog } = await import('../models/AdminAuditLog');
+  const { runAuditedAdminCommand } = await import('../services/admin/adminAuditService');
+  const model = AdminAuditLog as any; const create = model.create; const update = model.updateOne; const updates: any[] = [];
+  try {
+    model.create = async () => ({ _id: 'pending-audit' });
+    model.updateOne = async (_query: unknown, value: unknown) => { updates.push(value); throw Object.assign(new Error('transient'), { code: 'ETIMEDOUT' }); };
+    await assert.rejects(runAuditedAdminCommand({ requestId: 'request', action: 'command' }, async () => 'mutated'));
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0].$set.status, 'succeeded');
+  } finally { model.create = create; model.updateOne = update; }
+});
+
+test('real admin authentication maps limiter rejection to the identical generic credential error and audits it', async () => {
+  const { authenticateAdmin, ADMIN_LOGIN_FAILURE_MESSAGE } = await import('../services/admin/adminAuthService');
+  const { ErrorHandler } = await import('../utils/errorHandler');
+  const { RateLimitService } = await import('../services/auth/RateLimitService');
+  const { AdminAuditLog } = await import('../models/AdminAuditLog');
+  const limiter = RateLimitService as any; const audit = AdminAuditLog as any;
+  const allowed = limiter.assertLoginAllowed; const create = audit.create; const calls: any[] = [];
+  try {
+    limiter.assertLoginAllowed = async () => { throw ErrorHandler.createValidationError('internal limiter detail'); };
+    audit.create = async (value: unknown) => { calls.push(value); };
+    await assert.rejects(authenticateAdmin({ email: 'person@example.com', password: 'wrong', otp: '000000', ip: '127.0.0.1', requestId: 'request-1' }), (error: any) => error.statusCode === 401 && error.message === ADMIN_LOGIN_FAILURE_MESSAGE);
+    assert.equal(calls[0].action, 'admin.login'); assert.equal(calls[0].metadata.outcome, 'rate_limited'); assert.equal('person@example.com' in calls[0].metadata, false);
+  } finally { limiter.assertLoginAllowed = allowed; audit.create = create; }
 });
 
 test('permission matrix grants only the documented roles', async () => {
