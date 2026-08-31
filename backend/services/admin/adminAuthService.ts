@@ -6,6 +6,7 @@ import { decryptAdminSecret } from './adminCrypto';
 import { RateLimitService } from '../auth/RateLimitService';
 import { signAdminToken } from '../../utils/adminJwt';
 import { recordAdminSecurityAudit } from './adminAuditService';
+import { ErrorHandler } from '../../utils/errorHandler';
 
 export const ADMIN_LOGIN_FAILURE_MESSAGE = '邮箱、密码或验证码错误';
 
@@ -19,14 +20,22 @@ function validOtp(secret: string, otp: string): boolean {
 
 export async function authenticateAdmin(input: { email: string; password: string; otp: string; ip: string; requestId: string }) {
   const email = input.email.trim().toLowerCase();
-  await RateLimitService.assertLoginAllowed(email, input.ip);
+  try {
+    await RateLimitService.assertLoginAllowed(email, input.ip);
+  } catch (error) {
+    await recordAdminSecurityAudit({ requestId: input.requestId, action: 'admin.login', status: 'failed', metadata: { emailHash: emailHash(email), ip: input.ip, outcome: 'rate_limited' } });
+    throw error;
+  }
   const account = await AdminAccount.findOne({ email }).select('+passwordHash +totpSecretEncrypted').lean() as AdminRecord | null;
   const passwordValid = account ? await bcrypt.compare(input.password, account.passwordHash) : false;
-  const otpValid = account && passwordValid ? validOtp(decryptAdminSecret(account.totpSecretEncrypted), input.otp) : false;
+  let otpValid = false;
+  if (account && passwordValid) {
+    try { otpValid = validOtp(decryptAdminSecret(account.totpSecretEncrypted), input.otp); } catch { otpValid = false; }
+  }
   if (!account || !account.isActive || !passwordValid || !otpValid) {
     await RateLimitService.recordLoginFailure(email, input.ip);
     await recordAdminSecurityAudit({ requestId: input.requestId, action: 'admin.login', status: 'failed', metadata: { emailHash: emailHash(email), ip: input.ip, outcome: 'failure' } });
-    throw new Error(ADMIN_LOGIN_FAILURE_MESSAGE);
+    throw ErrorHandler.createAuthenticationError(ADMIN_LOGIN_FAILURE_MESSAGE);
   }
   await RateLimitService.clearLoginFailures(email, input.ip);
   await AdminAccount.updateOne({ _id: account._id }, { $set: { lastLoginAt: new Date() } });

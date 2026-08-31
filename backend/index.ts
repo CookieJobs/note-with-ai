@@ -22,7 +22,6 @@ import adminRoutes from './routes/admin';
 
 dotenv.config();
 
-const app = express();
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-with-ai';
 
@@ -30,10 +29,9 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-w
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : ['http://localhost:3000', 'http://localhost:3001'];
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
-}));
+export function createApp() {
+const app = express();
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 
 // 请求体大小限制（防止超大 payload 导致 OOM）
 app.use(express.json({ limit: '5mb' }));
@@ -65,6 +63,10 @@ app.use('/api', healthRoutes);
 
 // 全局错误处理中间件（必须在所有路由之后）
 app.use(globalErrorHandler);
+return app;
+}
+
+export const app = createApp();
 
 // ✅ 启动服务
 const connectDB = async () => {
