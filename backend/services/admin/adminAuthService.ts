@@ -24,7 +24,8 @@ export async function authenticateAdmin(input: { email: string; password: string
     await RateLimitService.assertLoginAllowed(email, input.ip);
   } catch (error) {
     await recordAdminSecurityAudit({ requestId: input.requestId, action: 'admin.login', status: 'failed', metadata: { emailHash: emailHash(email), ip: input.ip, outcome: 'rate_limited' } });
-    throw error;
+    // Rate-limit responses are deliberately indistinguishable from bad credentials.
+    throw ErrorHandler.createAuthenticationError(ADMIN_LOGIN_FAILURE_MESSAGE);
   }
   const account = await AdminAccount.findOne({ email }).select('+passwordHash +totpSecretEncrypted').lean() as AdminRecord | null;
   const passwordValid = account ? await bcrypt.compare(input.password, account.passwordHash) : false;
