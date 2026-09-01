@@ -1,6 +1,7 @@
 import { IMessage } from '../types';
 import { chatRelatedNoteRecallService } from './chatRelatedNoteRecallService';
 import { chatService } from './chatService';
+import { trackProductEventBestEffort } from './productEventService';
 
 type SessionSnapshot = ReturnType<typeof chatService.formatSession>;
 
@@ -90,6 +91,7 @@ class ChatTurnCommitService {
       nextTitle || title,
       relatedNotes,
     );
+    trackProductEventBestEffort({ name: 'chat_turn_committed', userId, source: 'server', properties: {} });
 
     return {
       fullReply,
