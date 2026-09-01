@@ -1,7 +1,11 @@
 import express from 'express';
 import authRoutes from './auth';
 import { adminNoStore } from '../../middleware/adminAuth';
+import overviewRoutes from './overview';
+import systemRoutes from './system';
 const router = express.Router();
 router.use(adminNoStore);
 router.use('/auth', authRoutes);
+router.use('/overview', overviewRoutes);
+router.use('/system', systemRoutes);
 export default router;
