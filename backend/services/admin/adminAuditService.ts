@@ -53,9 +53,10 @@ export async function recordAdminSecurityAudit(input: AuditCommandInput & { stat
     // Auditing an authentication/authorization denial must never change its result.
     // A server-generated request ID prevents normal collisions; duplicates are safe to ignore.
     if (error && typeof error === 'object' && 'code' in error && error.code === 11000) return;
-    logger.error('Admin security audit persistence failed', {
-      code: normalizedErrorCode(error), requestId: input.requestId, action: input.action,
-      outcome: input.metadata?.outcome ?? 'unknown',
-    });
+    const safe = safeMetadata(input.metadata);
+    logger.error(JSON.stringify({
+      event: 'admin_security_audit_persistence_failed', code: normalizedErrorCode(error),
+      requestId: input.requestId, action: input.action, outcome: safe?.outcome ?? 'unknown',
+    }));
   }
 }
