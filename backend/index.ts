@@ -19,6 +19,7 @@ import userRoutes from './routes/userRoutes';
 import { globalErrorHandler } from './utils/errorHandler';
 import { logger } from './utils/logger';
 import adminRoutes from './routes/admin';
+import eventRoutes from './routes/events';
 
 dotenv.config();
 
@@ -50,6 +51,7 @@ app.get('/api/ping', (_, res) => {
 
 // ✅ 路由挂载
 app.use('/api/auth', authRoutes);
+app.use('/api/events', eventRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/chat', chatRoutes);

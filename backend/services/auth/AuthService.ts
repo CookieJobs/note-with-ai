@@ -5,6 +5,7 @@ import { generateToken } from '../../utils/jwt';
 import { UserValidator } from '../../utils/userValidation';
 import { ErrorHandler } from '../../utils/errorHandler';
 import { logger } from '../../utils/logger';
+import { trackProductEventBestEffort } from '../productEventService';
 
 function buildUsernameBase(email: string): string {
   const localPart = email.split('@')[0] ?? '';
@@ -64,6 +65,7 @@ export class AuthService {
     const username = await generateUniqueUsername(email);
     const user = new User({ username, email, password });
     await user.save();
+    trackProductEventBestEffort({ name: 'user_registered', userId: user._id.toString(), source: 'server', properties: {} });
 
     return AuthService.buildAuthResult(user);
   }
