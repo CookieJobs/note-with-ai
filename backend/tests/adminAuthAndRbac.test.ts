@@ -146,6 +146,119 @@ test('real admin authentication maps limiter rejection to the identical generic 
   } finally { limiter.assertLoginAllowed = allowed; audit.create = create; }
 });
 
+test('real admin login route gives the same generic envelope for unknown accounts, bad passwords, and bad one-window-old TOTPs', async () => {
+  // This fails if the route exposes which credential check failed, or if the TOTP
+  // validation window is narrowed from the documented one step to zero.
+  const { createApp } = await import('../index');
+  const { AdminAccount } = await import('../models/AdminAccount');
+  const { AdminAuditLog } = await import('../models/AdminAuditLog');
+  const { RateLimitService, __rateLimitServiceTestUtils } = await import('../services/auth/RateLimitService');
+  const { encryptAdminSecret } = await import('../services/admin/adminCrypto');
+  // The service is CommonJS-transpiled, so patch its exact cached dependency
+  // while preserving the real validator underneath the observation wrapper.
+  const OTPAuth = require('otpauth') as typeof import('otpauth');
+  const model = AdminAccount as any;
+  const audit = AdminAuditLog as any;
+  const originalFindOne = model.findOne;
+  const originalUpdateOne = model.updateOne;
+  const originalAuditCreate = audit.create;
+  const originalKey = process.env.ADMIN_ENCRYPTION_KEY;
+  const originalNow = Date.now;
+  const originalValidate = (OTPAuth.TOTP.prototype as any).validate;
+  const validationWindows: unknown[] = [];
+  const now = 1_700_000_010_000;
+  const secret = 'JBSWY3DPEHPK3PXP';
+  const passwordHash = await (await import('bcryptjs')).hash('password123', 10);
+  const account = {
+    _id: { toString: () => '507f1f77bcf86cd799439011' },
+    email: 'owner@example.com',
+    displayName: 'Owner',
+    passwordHash,
+    totpSecretEncrypted: '',
+    role: 'owner' as const,
+    isActive: true,
+    tokenVersion: 0,
+  };
+  try {
+    process.env.ADMIN_ENCRYPTION_KEY = Buffer.alloc(32, 1).toString('base64');
+    Date.now = () => now;
+    (OTPAuth.TOTP.prototype as any).validate = function (options: { window: unknown }) {
+      validationWindows.push(options.window);
+      return originalValidate.call(this, options);
+    };
+    account.totpSecretEncrypted = encryptAdminSecret(secret);
+    model.findOne = ({ email }: { email: string }) => ({
+      select: () => ({ lean: async () => email === account.email ? account : null }),
+    });
+    model.updateOne = async () => ({ acknowledged: true, modifiedCount: 1 });
+    audit.create = async () => ({ _id: 'audit-id' });
+    __rateLimitServiceTestUtils.setRedisFactory(() => ({
+      on() {}, disconnect() {}, multi() { return { incr() { return this; }, expire() { return this; }, async exec() { return [[null, 1], [null, 1]]; } }; },
+      async ttl() { return 300; }, async get() { return null; }, async del() { return 2; },
+    }) as any);
+    const app = createApp();
+    const previousStepOtp = new OTPAuth.TOTP({ issuer: 'NoteWithAI', algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(secret) }).generate({ timestamp: now - 30_000 });
+    const attempts = await Promise.all([
+      request(app, '/api/admin/auth/login', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: { email: 'missing@example.com', password: 'password123', otp: '123456' } }),
+      request(app, '/api/admin/auth/login', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: { email: 'owner@example.com', password: 'wrong-password', otp: previousStepOtp } }),
+      request(app, '/api/admin/auth/login', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: { email: 'owner@example.com', password: 'password123', otp: '000000' } }),
+    ]);
+    for (const response of attempts) {
+      assert.equal(response.status, 401);
+      assert.deepEqual(response.body, { success: false, error: '邮箱、密码或验证码错误', message: '邮箱、密码或验证码错误', type: 'AUTHENTICATION_ERROR' });
+    }
+    const accepted = await request(app, '/api/admin/auth/login', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: { email: 'owner@example.com', password: 'password123', otp: previousStepOtp } });
+    assert.equal(accepted.status, 200);
+    assert.deepEqual(validationWindows, [1, 1]);
+  } finally {
+    Date.now = originalNow;
+    (OTPAuth.TOTP.prototype as any).validate = originalValidate;
+    if (originalKey === undefined) delete process.env.ADMIN_ENCRYPTION_KEY; else process.env.ADMIN_ENCRYPTION_KEY = originalKey;
+    model.findOne = originalFindOne;
+    model.updateOne = originalUpdateOne;
+    audit.create = originalAuditCreate;
+    __rateLimitServiceTestUtils.reset();
+  }
+});
+
+test('real admin login route locks fallback counters and records a content-free rate-limited audit', async () => {
+  // This fails if Redis fallback becomes fail-open, the sixth failed login is not
+  // normalized at the HTTP boundary, or the lockout lacks its security audit.
+  const { createApp } = await import('../index');
+  const { AdminAccount } = await import('../models/AdminAccount');
+  const { AdminAuditLog } = await import('../models/AdminAuditLog');
+  const { __rateLimitServiceTestUtils } = await import('../services/auth/RateLimitService');
+  const model = AdminAccount as any;
+  const audit = AdminAuditLog as any;
+  const originalFindOne = model.findOne;
+  const originalAuditCreate = audit.create;
+  const audits: any[] = [];
+  try {
+    model.findOne = () => ({ select: () => ({ lean: async () => null }) });
+    audit.create = async (value: unknown) => { audits.push(value); return { _id: `audit-${audits.length}` }; };
+    __rateLimitServiceTestUtils.setRedisFactory(() => ({
+      on() {}, disconnect() {}, multi() { return { incr() { return this; }, expire() { return this; }, async exec() { throw new Error('redis unavailable'); } }; },
+      async ttl() { return -1; }, async get() { throw new Error('redis unavailable'); }, async del() { throw new Error('redis unavailable'); },
+    }) as any);
+    const app = createApp();
+    const login = () => request(app, '/api/admin/auth/login', { method: 'POST', headers: { origin: 'http://localhost:3000' }, body: { email: 'lockout@example.com', password: 'password123', otp: '123456' } });
+    for (let attempt = 0; attempt < 5; attempt += 1) assert.equal((await login()).status, 401);
+    const locked = await login();
+    assert.equal(locked.status, 401);
+    assert.deepEqual(locked.body, { success: false, error: '邮箱、密码或验证码错误', message: '邮箱、密码或验证码错误', type: 'AUTHENTICATION_ERROR' });
+    const lockoutAudit = audits[audits.length - 1];
+    assert.equal(lockoutAudit.action, 'admin.login');
+    assert.equal(lockoutAudit.status, 'failed');
+    assert.equal(lockoutAudit.metadata.outcome, 'rate_limited');
+    assert.equal('email' in lockoutAudit.metadata, false);
+    assert.match(lockoutAudit.metadata.emailHash, /^[a-f0-9]{64}$/);
+  } finally {
+    model.findOne = originalFindOne;
+    audit.create = originalAuditCreate;
+    __rateLimitServiceTestUtils.reset();
+  }
+});
+
 test('security audit write failures emit bounded request-correlated structured evidence', async () => {
   const { AdminAuditLog } = await import('../models/AdminAuditLog'); const { recordAdminSecurityAudit } = await import('../services/admin/adminAuditService'); const { logger } = await import('../utils/logger');
   const model = AdminAuditLog as any; const create = model.create; const error = (logger as any).error; const emitted: unknown[] = [];
