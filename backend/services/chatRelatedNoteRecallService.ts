@@ -1,6 +1,7 @@
 import { EMBEDDING_CONFIG } from '../config/embedding';
 import { getCachedEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
+import { AiUsageService } from './aiUsageService';
 
 type RecallMessage = {
   role: 'user' | 'assistant';
@@ -84,7 +85,7 @@ class ChatRelatedNoteRecallService {
 
     const queryEmbedding = await getCachedEmbedding(context, {
       inputType: this.queryInputType,
-    });
+    }, AiUsageService.newContext('embedding', userId));
     const searchLimit = Math.max(limit, 1) * 2;
     const rawResults = await vectorStore.search(userId, queryEmbedding, searchLimit);
 

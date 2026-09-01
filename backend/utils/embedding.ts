@@ -15,6 +15,7 @@ import {
 } from '../config/embedding';
 import type { INoteEmbeddingMetadata } from '../types';
 import { logger } from './logger';
+import { AiUsageService, aiUsageService, type AiTelemetryContext } from '../services/aiUsageService';
 
 export interface EmbeddingGenerationOptions {
   provider?: EmbeddingProviderName;
@@ -215,7 +216,8 @@ function getProvider(providerName: EmbeddingProviderName): EmbeddingProvider {
 
 async function generateEmbeddingsInternal(
   texts: string[],
-  options: EmbeddingGenerationOptions = {}
+  options: EmbeddingGenerationOptions = {},
+  telemetry: AiTelemetryContext = AiUsageService.newContext('embedding'),
 ): Promise<number[][]> {
   const normalizedTexts = texts.map((text) => String(text || '').trim()).filter(Boolean);
   if (normalizedTexts.length === 0) {
@@ -227,6 +229,7 @@ async function generateEmbeddingsInternal(
   const results: number[][] = [];
 
   try {
+    return await aiUsageService.run(telemetry, { provider: resolved.provider, model: resolved.model }, async () => {
     for (let index = 0; index < normalizedTexts.length; index += provider.maxBatchSize) {
       const batch = normalizedTexts.slice(index, index + provider.maxBatchSize);
       const batchEmbeddings = await provider.generateEmbeddings(batch, resolved);
@@ -242,29 +245,33 @@ async function generateEmbeddingsInternal(
       }
     }
 
-    return results;
+      return { value: results };
+    });
   } catch (error: unknown) {
-    logger.error(
-      `❌ Embedding 生成失败 (provider: ${resolved.provider}, model: ${resolved.model}, inputType: ${resolved.inputType}):`,
-      extractErrorMessage(error)
-    );
+    logger.error('Embedding generation failed', {
+      provider: resolved.provider,
+      model: resolved.model,
+      errorCode: 'EMBEDDING_PROVIDER_FAILED',
+    });
     return [];
   }
 }
 
 export async function generateEmbedding(
   text: string,
-  options: EmbeddingGenerationOptions = {}
+  options: EmbeddingGenerationOptions = {},
+  telemetry?: AiTelemetryContext,
 ): Promise<number[]> {
-  const [embedding] = await generateEmbeddingsBatch([text], options);
+  const [embedding] = await generateEmbeddingsBatch([text], options, telemetry);
   return embedding || [];
 }
 
 export async function generateEmbeddingsBatch(
   texts: string[],
-  options: EmbeddingGenerationOptions = {}
+  options: EmbeddingGenerationOptions = {},
+  telemetry?: AiTelemetryContext,
 ): Promise<number[][]> {
-  return generateEmbeddingsInternal(texts, options);
+  return generateEmbeddingsInternal(texts, options, telemetry);
 }
 
 // 向量缓存配置
@@ -391,7 +398,8 @@ function buildCacheKey(text: string, options: ResolvedEmbeddingOptions): string 
 
 export async function getCachedEmbedding(
   text: string,
-  options: EmbeddingGenerationOptions = {}
+  options: EmbeddingGenerationOptions = {},
+  telemetry?: AiTelemetryContext,
 ): Promise<number[]> {
   const normalizedText = String(text || '').trim();
   if (!normalizedText) {
@@ -420,7 +428,7 @@ export async function getCachedEmbedding(
   cacheStats.misses++;
   
   // 生成新向量并缓存
-  const embedding = await generateEmbedding(normalizedText, resolvedOptions);
+  const embedding = await generateEmbedding(normalizedText, resolvedOptions, telemetry);
   if (embedding.length > 0) {
     const now = Date.now();
     embeddingCache.set(cacheKey, {
