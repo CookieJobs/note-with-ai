@@ -146,6 +146,17 @@ test('real admin authentication maps limiter rejection to the identical generic 
   } finally { limiter.assertLoginAllowed = allowed; audit.create = create; }
 });
 
+test('security audit write failures emit bounded request-correlated structured evidence', async () => {
+  const { AdminAuditLog } = await import('../models/AdminAuditLog'); const { recordAdminSecurityAudit } = await import('../services/admin/adminAuditService'); const { logger } = await import('../utils/logger');
+  const model = AdminAuditLog as any; const create = model.create; const error = (logger as any).error; const emitted: unknown[] = [];
+  try {
+    model.create = async () => { throw Object.assign(new Error('secret database detail'), { code: 'ETIMEDOUT' }); };
+    (logger as any).error = (value: unknown) => emitted.push(value);
+    await recordAdminSecurityAudit({ requestId: '11111111-1111-4111-8111-111111111111', action: 'admin.login', status: 'failed', metadata: { outcome: 'failure', reason: 'must-not-log' } });
+    assert.deepEqual(JSON.parse(emitted[0] as string), { event: 'admin_security_audit_persistence_failed', code: 'ETIMEDOUT', requestId: '11111111-1111-4111-8111-111111111111', action: 'admin.login', outcome: 'failure' });
+  } finally { model.create = create; (logger as any).error = error; }
+});
+
 test('permission matrix grants only the documented roles', async () => {
   const { hasAdminPermission } = await import('../middleware/adminAuth');
   assert.equal(hasAdminPermission('owner', 'admins:manage'), true);
@@ -156,6 +167,14 @@ test('permission matrix grants only the documented roles', async () => {
   assert.equal(hasAdminPermission('support', 'users:status'), false);
   assert.equal(hasAdminPermission('viewer', 'audit:read'), false);
   assert.equal(hasAdminPermission('viewer', 'overview:read'), true);
+  const expected: Record<string, string[]> = {
+    owner: ['overview:read', 'users:read', 'users:status', 'ai:read', 'ai:retry', 'feedback:read', 'feedback:write', 'system:read', 'audit:read', 'admins:manage'],
+    operator: ['overview:read', 'users:read', 'users:status', 'ai:read', 'ai:retry', 'feedback:read', 'feedback:write', 'system:read', 'audit:read'],
+    support: ['overview:read', 'users:read', 'ai:read', 'feedback:read', 'feedback:write', 'system:read'],
+    viewer: ['overview:read', 'users:read', 'ai:read', 'feedback:read', 'system:read'],
+  };
+  const all = expected.owner;
+  for (const [role, granted] of Object.entries(expected)) for (const permission of all) assert.equal(hasAdminPermission(role as any, permission as any), granted.includes(permission), `${role}:${permission}`);
 });
 
 test('configured no-connect app returns the standard no-store admin error envelope and server request id', async () => {
