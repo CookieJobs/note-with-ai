@@ -1,0 +1,3 @@
+'use client';
+import { useState } from 'react';
+export default function ReasonDialog({ onSubmit, onClose }: { onSubmit: (reason: string) => Promise<void>; onClose: () => void }) { const [reason, setReason] = useState(''); const [pending, setPending] = useState(false); const valid = reason.trim().length >= 5 && reason.trim().length <= 200; return <div role="dialog" aria-modal="true"><label>原因<textarea autoFocus value={reason} onChange={e => setReason(e.target.value)} /></label><button disabled={!valid || pending} onClick={async () => { setPending(true); try { await onSubmit(reason.trim()); } finally { setPending(false); } }}>{pending ? '提交中…' : '确认'}</button><button disabled={pending} onClick={onClose}>取消</button></div>; }
