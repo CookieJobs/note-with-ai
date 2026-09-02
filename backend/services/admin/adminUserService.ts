@@ -21,14 +21,14 @@ export function maskEmail(email: string): string {
   return domain ? `${maskedLocal}@${domain}` : maskedLocal;
 }
 
-export function toAdminUserView(row: AdminUserRow, role: AdminRole): Record<string, unknown> {
+export function toAdminUserView(row: AdminUserRow, role: AdminRole, includeEmail = role === 'support'): Record<string, unknown> {
   const view: Record<string, unknown> = {
     id: String(row._id), username: row.username ?? '', maskedEmail: maskEmail(row.email),
     isActive: Boolean(row.isActive), isVerified: Boolean(row.isVerified), createdAt: row.createdAt,
     lastActiveAt: row.lastActiveAt ?? null, noteCount: Number(row.noteCount ?? 0), chatCount: Number(row.chatCount ?? 0),
     aiCalls30d: Number(row.aiCalls30d ?? 0), aiKnownTokens30d: Number(row.aiKnownTokens30d ?? 0),
   };
-  if (role !== 'viewer') view.email = row.email;
+  if (includeEmail && role !== 'viewer') view.email = row.email;
   return view;
 }
 
@@ -76,14 +76,14 @@ export async function listUsers(input: { query?: string; status?: 'active' | 'di
     User.countDocuments(filter),
   ]);
   const enriched = await Promise.all(rows.map((row) => enrich(row)));
-  return { items: enriched.map((row) => toAdminUserView(row, input.role)), page, limit, total, hasNext: page * limit < total };
+  return { items: enriched.map((row) => toAdminUserView(row, input.role, false)), pagination: { page, limit, total, hasNext: page * limit < total } };
 }
 
 export async function getUser(id: string, role: AdminRole) {
   if (!validId(id)) throw ErrorHandler.createNotFoundError('用户不存在');
   const row = await User.findById(id).select('username email isActive isVerified createdAt lastActiveAt').lean();
   if (!row) throw ErrorHandler.createNotFoundError('用户不存在');
-  return toAdminUserView(await enrich(row), role);
+  return toAdminUserView(await enrich(row), role, true);
 }
 
 export async function setUserActive(id: string, isActive: boolean) {
@@ -105,5 +105,5 @@ export async function listAudits(input: { actorId?: string; action?: string; sta
     AdminAuditLog.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('actorId', 'displayName').lean(),
     AdminAuditLog.countDocuments(filter),
   ]);
-  return { items: rows.map(toAdminAuditView), page, limit, total, hasNext: page * limit < total };
+  return { items: rows.map(toAdminAuditView), pagination: { page, limit, total, hasNext: page * limit < total } };
 }

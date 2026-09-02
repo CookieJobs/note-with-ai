@@ -19,13 +19,13 @@ export async function listFeedback(input: { status?: typeof FEEDBACK_STATUSES[nu
   const filter: any = {}; if (input.status) filter.status = input.status; if (input.category) filter.category = input.category; if (input.userId) filter.userId = input.userId; if (input.assignedTo) filter.assignedTo = input.assignedTo; if (input.assignedToSelf && input.adminId) filter.assignedTo = input.adminId;
   if (input.from || input.to) filter.createdAt = { ...(input.from ? { $gte: new Date(input.from) } : {}), ...(input.to ? { $lt: new Date(input.to) } : {}) };
   const [rows, total] = await Promise.all([UserFeedback.find(filter).select('+internalNote').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(), UserFeedback.countDocuments(filter)]);
-  return { items: rows.map(toAdminFeedback), page, limit, total, hasNext: page * limit < total };
+  return { items: rows.map(toAdminFeedback), pagination: { page, limit, total, hasNext: page * limit < total } };
 }
 
-export async function updateFeedback(id: string, input: { status?: typeof FEEDBACK_STATUSES[number]; internalNote?: string; assignedTo?: string | null }, role: AdminRole) {
+export async function updateFeedback(id: string, input: { status?: typeof FEEDBACK_STATUSES[number]; internalNote?: string; assignedToSelf?: boolean }, adminId: string, role: AdminRole) {
   if (role === 'viewer') throw ErrorHandler.createAuthorizationError('无权限访问');
   if (!Object.keys(input).length) throw ErrorHandler.createValidationError('至少修改一个字段');
-  const set: any = { ...input }; if (input.status === 'resolved' || input.status === 'closed') set.resolvedAt = new Date(); else if (input.status) set.resolvedAt = null;
+  const set: any = { status: input.status, internalNote: input.internalNote }; if (input.assignedToSelf !== undefined) set.assignedTo = input.assignedToSelf ? adminId : null; if (input.status === 'resolved') set.resolvedAt = new Date(); else if (input.status) set.resolvedAt = null;
   const row = await UserFeedback.findByIdAndUpdate(id, { $set: set }, { new: true }).select('+internalNote').lean();
   if (!row) throw ErrorHandler.createNotFoundError('反馈不存在');
   return toAdminFeedback(row);
