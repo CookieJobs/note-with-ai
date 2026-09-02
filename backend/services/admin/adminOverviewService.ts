@@ -64,7 +64,7 @@ export async function getOverview(input: { range: OverviewRange; now?: Date }) {
   const noteTimeseries = fill(noteSummary.timeseries ?? notes.filter((row) => row._id), expected);
   const windowCount = (index: number, legacy: 'dau' | 'wau' | 'mau') => Number(active[index]?.[0]?.value ?? (active[index] as any)?.value ?? events.find((row) => row[legacy] !== undefined)?.[legacy] ?? 0);
   return {
-    summary: { totalUsers: Number(userSummary.total?.[0]?.value ?? userSummary.total ?? 0), todayNewUsers: Number(userSummary.todayNew?.[0]?.value ?? 0), dau: windowCount(0, 'dau'), wau: windowCount(1, 'wau'), mau: windowCount(2, 'mau'), activationUsers: Number(userSummary.activation?.[0]?.value ?? 0), totalNotes: Number(noteSummary.total?.[0]?.value ?? noteSummary.total ?? 0), totalChats: Number(chatSummary.total?.[0]?.value ?? chatSummary.total ?? 0), aiSuccessRate: aiRate, failedArtifacts: failedCount(noteSummary.failed ? noteSummary.failed : notes) },
+    summary: { totalUsers: Number(userSummary.total?.[0]?.value ?? userSummary.total ?? 0), todayNewUsers: Number(userSummary.todayNew?.[0]?.value ?? 0), dau: windowCount(0, 'dau'), wau: windowCount(1, 'wau'), mau: windowCount(2, 'mau'), activationUsers: Number(userSummary.activation?.[0]?.value ?? 0), totalNotes: Number(noteSummary.total?.[0]?.value ?? noteSummary.total ?? 0), totalChats: Number(chatSummary.total?.[0]?.value ?? chatSummary.total ?? 0), totalAiCalls, aiCalls: totalAiCalls, aiSuccessRate: aiRate, failedArtifacts: failedCount(noteSummary.failed ? noteSummary.failed : notes) },
     timeseries: noteTimeseries,
     retention,
     tokenCoverage,

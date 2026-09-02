@@ -17,7 +17,7 @@ router.get('/', asyncHandler(async (req, res) => {
   ResponseHandler.success(res, data);
 }));
 router.get('/:id', asyncHandler(async (req, res) => ResponseHandler.success(res, await getUser(req.params.id, req.admin!.role))));
-router.patch('/:id/status', requireAdminPermission('users:status'), requireAdminMutationOrigin, asyncHandler(async (req, res) => {
+router.post('/:id/status', requireAdminPermission('users:status'), requireAdminMutationOrigin, asyncHandler(async (req, res) => {
   const { isActive, reason } = req.body ?? {};
   if (typeof isActive !== 'boolean' || typeof reason !== 'string' || reason.trim().length < 5 || reason.trim().length > 200) throw ErrorHandler.createValidationError('状态变更原因需为 5-200 个字符');
   const result = await runAuditedAdminCommand({ actorId: req.admin!.id, requestId: req.requestId, action: 'user.status_changed', targetType: 'User', targetId: req.params.id, metadata: { reason: reason.trim(), nextStatus: isActive ? 'active' : 'disabled' }, resultMetadata: { idempotent: false } }, () => setUserActive(req.params.id, isActive));

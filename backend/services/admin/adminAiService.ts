@@ -21,7 +21,7 @@ export async function getAiUsage(input: { range: '7d' | '30d' }) {
 
 export async function listFailedArtifacts(input: { page?: number; limit?: number }) {
   const page = Math.max(1, input.page ?? 1); const limit = Math.min(100, Math.max(1, input.limit ?? 20));
-  if (input.limit && input.limit > 100) throw ErrorHandler.createValidationError('limit 不能超过 100');
+  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || (input.limit !== undefined && (!Number.isInteger(input.limit) || input.limit > 100))) throw ErrorHandler.createValidationError('分页参数无效');
   const pipeline = [{ $project: { noteId: '$_id', userId: 1, currentRevision: '$revision', artifacts: { $objectToArray: '$enrichment' } } }, { $unwind: '$artifacts' }, { $match: { 'artifacts.v.status': 'failed', 'artifacts.k': { $in: ADMIN_ARTIFACTS } } }, { $sort: { 'artifacts.v.attemptedAt': -1 } }];
   const [rows, countRows] = await Promise.all([Note.aggregate([...pipeline, { $skip: (page - 1) * limit }, { $limit: limit }] as any), Note.aggregate([...pipeline, { $count: 'total' }] as any)]);
   const items = rows.map((row: any) => ({ noteId: String(row.noteId), userId: String(row.userId), artifact: row.artifacts.k, sourceRevision: row.artifacts.v.sourceRevision, currentRevision: row.currentRevision, attemptedAt: row.artifacts.v.attemptedAt, errorCode: row.artifacts.v.errorCode ?? null }));

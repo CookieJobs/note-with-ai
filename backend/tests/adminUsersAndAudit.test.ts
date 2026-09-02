@@ -24,6 +24,14 @@ test('admin user view reveals exact email only to support and stronger roles', a
   assert.equal(view.maskedEmail, 'a***@example.com');
 });
 
+test('user list never returns exact email for any role', async () => {
+  const { toAdminUserView } = await import('../services/admin/adminUserService');
+  for (const role of ['owner', 'operator', 'support', 'viewer'] as const) {
+    const view = toAdminUserView({ _id: 'u', username: 'a', email: 'a@example.com', isActive: true, isVerified: false, createdAt: new Date(), lastActiveAt: null, noteCount: 0, chatCount: 0, aiCalls30d: 0, aiKnownTokens30d: 0 }, role);
+    assert.equal('email' in view, false);
+  }
+});
+
 test('audit query is read-only and sanitizes arbitrary metadata', async () => {
   const { toAdminAuditView } = await import('../services/admin/adminUserService');
   const view = toAdminAuditView({ _id: 'audit-1', requestId: 'req-1', action: 'user.status_changed', status: 'pending', actorId: { email: 'operator@example.com', displayName: 'Op' }, targetType: 'User', targetId: 'u1', metadata: { reason: 'maintenance', content: 'secret body', password: 'secret' }, createdAt: new Date() });
