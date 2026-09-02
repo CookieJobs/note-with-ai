@@ -6,6 +6,7 @@ import {
   type JsonDocument,
 } from './noteContentNormalizer';
 import { createProductionNoteEnrichmentScheduler } from './noteEnrichmentWorker';
+import { logger } from '../utils/logger';
 
 export type NoteBodyInput =
   | { kind: 'rich-text'; document: JsonDocument; fallbackMarkdown?: string }
@@ -295,6 +296,7 @@ export class NoteUpdateOrchestrator {
   }
 
   async create(input: CreateNoteInput): Promise<NoteWriteResult> {
+    const startedAt = Date.now();
     const body = prepareBody(input.body);
     const revision = 1;
     const enrichment: NoteEnrichmentState = {
@@ -320,9 +322,11 @@ export class NoteUpdateOrchestrator {
         enrichment,
       }) as unknown as NoteRecord;
     } catch (error) {
+      logger.warn('capture_save_failed', { userId: input.userId, errorCode: error instanceof Error ? error.name : 'UNKNOWN' });
       throw writeFailed(error);
     }
     const result = this.toResult(created);
+    logger.info('capture_saved', { userId: input.userId, noteId: result.note._id, durationMs: Date.now() - startedAt, clientType: 'unknown' });
     for (const artifact of ARTIFACTS) {
       this.scheduler.schedule({ noteId: result.note._id, userId: input.userId, sourceRevision: revision, artifact });
     }

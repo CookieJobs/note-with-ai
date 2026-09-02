@@ -1,4 +1,10 @@
 import type { IRecommendCache, IRecommendCacheCandidate } from '../../../types';
+import type { NoteRelationship } from '../types/relationships';
+
+export type RelationshipRecommendCache = IRecommendCache & {
+  status?: 'insufficient_history' | 'enriching' | 'ready' | 'failed';
+  relationships?: NoteRelationship[];
+};
 
 type RecommendCacheLikeNote = {
   updatedAt?: string;
@@ -37,10 +43,11 @@ export function hasCandidateS1(candidate: IRecommendCacheCandidate | null | unde
 export function buildRecommendCacheFromResponse(
   note: Pick<RecommendCacheLikeNote, 'updatedAt' | 'revision'>,
   payload: any
-): IRecommendCache {
+): RelationshipRecommendCache {
   const data = payload?.data ?? {};
   const meta = data?.meta ?? {};
   const recommendations = Array.isArray(data?.recommendations) ? data.recommendations : [];
+  const relationships = Array.isArray(data?.relationships) ? data.relationships as NoteRelationship[] : [];
   const generatedAt = new Date().toISOString();
   const byCandidateId: NonNullable<IRecommendCache['byCandidateId']> = recommendations.reduce(
     (acc: NonNullable<IRecommendCache['byCandidateId']>, item: any) => {
@@ -67,13 +74,16 @@ export function buildRecommendCacheFromResponse(
     params: meta?.thresholds,
     diagnostics: meta?.diagnostics,
     byCandidateId,
+    status: data?.status,
+    relationships,
   };
 }
 
 export function getRecommendCacheState(note: RecommendCacheLikeNote | null | undefined): RecommendCacheState {
-  const cache = note?.recommendCache ?? null;
+  const cache = note?.recommendCache as RelationshipRecommendCache | null | undefined ?? null;
   const entries = normalizeEntries(cache);
   const hasEntries = entries.length > 0;
+  const hasRelationships = Array.isArray(cache?.relationships) && cache.relationships.length > 0;
   const hasCacheRevision = cache?.sourceRevision !== undefined && cache?.sourceRevision !== null;
   const hasCurrentVersion = !!cache && (hasCacheRevision
     ? Number(cache.sourceRevision) === Number(note?.revision)
@@ -91,7 +101,7 @@ export function getRecommendCacheState(note: RecommendCacheLikeNote | null | und
     };
   }
 
-  if (hasCurrentVersion && !hasEntries) {
+  if (hasCurrentVersion && !hasEntries && !hasRelationships) {
     return {
       status: 'current-empty',
       needsRefresh: false,
@@ -102,18 +112,18 @@ export function getRecommendCacheState(note: RecommendCacheLikeNote | null | und
     };
   }
 
-  if (hasCurrentVersion && hasEntries && hasS1Data) {
+  if (hasCurrentVersion && (hasEntries || hasRelationships)) {
     return {
       status: 'ready',
       needsRefresh: false,
       hasDisplayableEntries: true,
       hasEntries: true,
       hasCurrentVersion: true,
-      hasS1Data: true,
+      hasS1Data,
     };
   }
 
-  if (hasEntries) {
+  if (hasEntries || hasRelationships) {
     return {
       status: 'stale',
       needsRefresh: true,

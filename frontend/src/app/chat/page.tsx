@@ -6,8 +6,8 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 */
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { BookOpen, X } from 'lucide-react';
 import styles from './chat.module.scss';
@@ -21,15 +21,19 @@ import { useChatStream } from '../../hooks/useChatStream';
 import CareAssistantPanel from '../../components/CareAssistantPanel';
 import ChatRelatedNotesPanel from '../../components/ChatRelatedNotesPanel';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
+import { authFetch } from '../../utils/auth';
+import type { RelationshipContext } from '../notes/types/relationships';
 
-export default function ChatPage() {
+function ChatPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [input, setInput] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string>('');
   const [showCare, setShowCare] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isRelatedNotesOpen, setIsRelatedNotesOpen] = useState(false);
+  const [relationshipContext, setRelationshipContext] = useState<RelationshipContext | null>(null);
 
   const { user, isClient } = useAuthGuard();
 
@@ -54,6 +58,27 @@ export default function ChatPage() {
 
   const messages = currentSession?.messages || [];
   const relatedNotes = currentSession?.relatedNotes || [];
+
+  useEffect(() => {
+    const relationshipId = searchParams.get('relationshipId');
+    if (searchParams.get('source') !== 'relationship' || !relationshipId || !user?.id) {
+      setRelationshipContext(null);
+      return;
+    }
+    let cancelled = false;
+    void authFetch(`/api/recommend/relationships/${encodeURIComponent(relationshipId)}/context`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('关系上下文不可用');
+        const payload = await response.json();
+        const context = payload?.data;
+        if (!context?.relationship || !Array.isArray(context.notes)) throw new Error('关系上下文不可用');
+        if (!cancelled) setRelationshipContext(context as RelationshipContext);
+      })
+      .catch(() => { if (!cancelled) setRelationshipContext(null); });
+    return () => { cancelled = true; };
+  }, [searchParams, user?.id]);
+
+  const visibleRelatedCount = relationshipContext?.notes.length || relatedNotes.length;
 
   // 仅向侧边栏展示有消息的会话（空会话在首次发送消息后才出现）
   const nonEmptySessions = useMemo(() => sessions.filter(s => s.messages && s.messages.length > 0), [sessions]);
@@ -100,6 +125,7 @@ export default function ChatPage() {
 
   const handleSend = async () => {
     if (!user?.id) return;
+    if (!input.trim()) return;
     
     let session = currentSession;
     if (!session) {
@@ -108,8 +134,11 @@ export default function ChatPage() {
     }
 
     if (session) {
+      const message = relationshipContext
+        ? `请只根据下面两条我的笔记帮助回答，并在回答中标注引用的笔记标题。\n\n${relationshipContext.notes.map((note) => `【${note.title || '无标题'}】\n${note.excerpt}`).join('\n\n')}\n\n我的问题：${input}`
+        : input;
       await sendMessageHook(
-        input,
+        message,
         session,
         user.id,
         updateSessionMessagesHook,
@@ -209,16 +238,18 @@ export default function ChatPage() {
           />
         </div>
 
-        {relatedNotes.length > 0 && (
+        {visibleRelatedCount > 0 && (
           <ChatRelatedNotesPanel
-            relatedNotes={relatedNotes}
+            relatedNotes={relationshipContext ? [] : relatedNotes}
+            relationshipContext={relationshipContext}
             className={styles.rightPanel}
             onNoteClick={(noteId) => router.push(`/notes?highlight=${noteId}`)}
+            onRemoveContextNote={(noteId) => setRelationshipContext((current) => current ? { ...current, notes: current.notes.filter((note) => note.noteId !== noteId) } : current)}
           />
         )}
       </div>
 
-      {relatedNotes.length > 0 && (
+      {visibleRelatedCount > 0 && (
         <button
           type="button"
           className={styles.relatedNotesFab}
@@ -242,12 +273,14 @@ export default function ChatPage() {
               <X size={18} />
             </button>
             <ChatRelatedNotesPanel
-              relatedNotes={relatedNotes}
+              relatedNotes={relationshipContext ? [] : relatedNotes}
+              relationshipContext={relationshipContext}
               className={styles.relatedNotesDrawerPanel}
               onNoteClick={(noteId) => {
                 setIsRelatedNotesOpen(false);
                 router.push(`/notes?highlight=${noteId}`);
               }}
+              onRemoveContextNote={(noteId) => setRelationshipContext((current) => current ? { ...current, notes: current.notes.filter((note) => note.noteId !== noteId) } : current)}
             />
           </div>
         </div>
@@ -260,4 +293,8 @@ export default function ChatPage() {
       />
     </div>
   );
+}
+
+export default function ChatPage() {
+  return <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-gray-500">正在加载对话…</div>}><ChatPageContent /></Suspense>;
 }

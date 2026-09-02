@@ -136,4 +136,9 @@ describe('recommend and performance route contracts', () => {
     assert.equal(response.statusCode, 400);
     assert.equal((response.body as { type: string }).type, 'VALIDATION_ERROR');
   });
+
+  it('exposes an authenticated relationship feedback route inside the recommend domain', () => {
+    const handler = findRouteHandler(recommendRouter as never, '/relationships/:relationshipId/feedback');
+    assert.equal(typeof handler, 'function');
+  });
 });

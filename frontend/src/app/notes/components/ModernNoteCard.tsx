@@ -426,8 +426,8 @@ export default function ModernNoteCard({
           e.stopPropagation();
           onClick?.();
         }}
-        title="查看相关笔记"
-        aria-label="查看相关笔记"
+        title="查看关系线索"
+        aria-label="查看关系线索"
       >
         <div className={cardStyles.relatedHandleIcon}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -491,6 +491,8 @@ export default function ModernNoteCard({
             </button>
           )}
           <span className={`${cardStyles.noteDate} !bg-transparent !text-gray-400 !border-none !p-0 !text-sm`}>{formatDate(note.createdAt)}</span>
+          {note.enrichment?.status === 'pending' && <span className="text-xs text-gray-400" role="status">正在理解这条记录</span>}
+          {note.enrichment?.status === 'degraded' && <span className="text-xs text-amber-600" role="status">基础记录已保存</span>}
           <button
             className={`${cardStyles.deleteButton} !bg-transparent !text-gray-400 hover:!text-red-500 hover:!bg-gray-100 !rounded-md !border-none !shadow-none !p-1`}
             onClick={(e) => {
