@@ -54,3 +54,31 @@ test('system health exposes only safe public fields', async () => {
   assert.ok(!JSON.stringify(result).includes('127.0.0.1'));
   void mongoose;
 });
+
+test('overview reads independent Shanghai active windows and real cost coverage', async () => {
+  const ProductEvent = models[3] as any;
+  const original = ProductEvent.aggregate;
+  let productCalls = 0;
+  ProductEvent.aggregate = async (pipeline: any[]) => {
+    if (pipeline[0]?.$match?.name === 'user_active_day') {
+      productCalls += 1;
+      return [{ value: 2 }, { value: 5 }, { value: 9 }][productCalls - 1];
+    }
+    return [];
+  };
+  const AiUsageEvent = models[4] as any;
+  const aiOriginal = AiUsageEvent.aggregate;
+  AiUsageEvent.aggregate = async () => [{ summary: [{ succeeded: 4, total: 6, inputKnown: 3, outputKnown: 3, costKnown: 2, cost: 120, inputTokens: 30, outputTokens: 20 }] }];
+  const Note = models[1] as any; const noteOriginal = Note.aggregate; Note.aggregate = async () => [{ total: [{ value: 0 }] }];
+  const Chat = models[2] as any; const chatOriginal = Chat.aggregate; Chat.aggregate = async () => [{ total: [{ value: 0 }] }];
+  const User = models[0] as any; const userOriginal = User.aggregate;
+  User.aggregate = async () => [{ total: [{ value: 1 }], todayNew: [{ value: 0 }], activation: [{ value: 1 }] }];
+  try {
+    const { getOverview } = await import('../services/admin/adminOverviewService');
+    const result = await getOverview({ range: '7d', now: new Date('2026-09-01T04:00:00.000Z') });
+    assert.deepEqual([result.summary.dau, result.summary.wau, result.summary.mau], [2, 5, 9]);
+    assert.equal(result.costCoverage.knownCalls, 2);
+    assert.equal(result.costCoverage.estimatedCostMicros, 120);
+    assert.equal(result.costCoverage.rate, 0.5);
+  } finally { ProductEvent.aggregate = original; AiUsageEvent.aggregate = aiOriginal; User.aggregate = userOriginal; Note.aggregate = noteOriginal; Chat.aggregate = chatOriginal; }
+});

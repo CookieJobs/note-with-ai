@@ -32,3 +32,10 @@ test('audit query is read-only and sanitizes arbitrary metadata', async () => {
   assert.equal((view.metadata as any).content, undefined);
   assert.equal((view.metadata as any).password, undefined);
 });
+
+test('admin list date ranges reject invalid order and ranges over 90 days', async () => {
+  const { validateAdminDateRange } = await import('../utils/adminQueryValidation');
+  assert.doesNotThrow(() => validateAdminDateRange('2026-01-01T00:00:00.000Z', '2026-01-02T00:00:00.000Z'));
+  assert.throws(() => validateAdminDateRange('2026-01-02T00:00:00.000Z', '2026-01-01T00:00:00.000Z'), /范围/);
+  assert.throws(() => validateAdminDateRange('2026-01-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z'), /90/);
+});
