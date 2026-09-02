@@ -36,4 +36,17 @@ describe('useQuickCaptureDraft', () => {
     act(() => hook.result.current.clearDraft());
     expect(hook.result.current.draft).toBeNull();
   });
+
+  it('flushes the latest draft when unmounted before the debounce completes', () => {
+    vi.useFakeTimers();
+    const first = renderHook(() => useQuickCaptureDraft('user-3'));
+    act(() => {
+      first.result.current.saveDraft({ text: '刷新前也不能丢', editorMode: 'plain' });
+    });
+
+    first.unmount();
+
+    const second = renderHook(() => useQuickCaptureDraft('user-3'));
+    expect(second.result.current.draft?.text).toBe('刷新前也不能丢');
+  });
 });

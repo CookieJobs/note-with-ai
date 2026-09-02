@@ -31,6 +31,16 @@ export function getRecommendationTaskResult(
   return result;
 }
 
+export function toPublicRecommendationResult(result: RecommendationResult) {
+  return {
+    sourceNoteId: result.sourceNoteId,
+    sourceRevision: result.sourceRevision,
+    status: result.status,
+    relationships: result.relationships,
+    generatedAt: result.generatedAt,
+  };
+}
+
 router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   // 获取当前用户，确保只查询自己的笔记
   const user = await UserValidator.authenticateUser(req);
@@ -99,21 +109,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
 
   result = getRecommendationTaskResult(status, result);
 
-  if (result.recommendations.length === 0) {
-    ResponseHandler.success(res, {
-      recommendations: [],
-      meta: result.meta,
-    }, result.message || '无满足阈值的候选');
-    return;
-  }
-
-  ResponseHandler.success(res, {
-    sourceNoteId: result.sourceNoteId,
-    sourceRevision: result.sourceRevision,
-    status: result.status,
-    relationships: result.relationships,
-    generatedAt: result.generatedAt,
-  }, '语义联想成功');
+  ResponseHandler.success(res, toPublicRecommendationResult(result), result.message || '语义联想成功');
 }));
 
 router.post('/relationships/:relationshipId/feedback', authenticateToken, asyncHandler(async (req: Request, res: Response) => {

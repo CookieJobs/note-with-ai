@@ -138,6 +138,76 @@ describe('relationshipService', () => {
     );
   });
 
+  it('rejects feedback for a deleted or foreign candidate note', async () => {
+    const { Note } = await import('../models/Note');
+    const { submitRelationshipFeedback } = await import('../services/relationshipService');
+    mock.method(Note, 'findOne', (filter: Record<string, unknown>) => ({
+      select: async () => filter._id === 'note-a' ? { _id: 'note-a', revision: 3 } : null,
+    }) as never);
+
+    await assert.rejects(
+      submitRelationshipFeedback({
+        userId: 'user-1', relationshipId: 'relationship:note-a:3:note-b:1', sourceNoteId: 'note-a', candidateNoteId: 'note-b',
+        sourceRevision: 3, candidateRevision: 1, verdict: 'helpful',
+      }),
+      /关系不存在或无权限/
+    );
+  });
+
+  it('rejects feedback when either authorized note has a newer revision', async () => {
+    const { Note } = await import('../models/Note');
+    const { submitRelationshipFeedback } = await import('../services/relationshipService');
+    mock.method(Note, 'findOne', (filter: Record<string, unknown>) => ({
+      select: async () => ({ _id: filter._id, revision: filter._id === 'note-a' ? 4 : 1 }),
+    }) as never);
+
+    await assert.rejects(
+      submitRelationshipFeedback({
+        userId: 'user-1', relationshipId: 'relationship:note-a:3:note-b:1', sourceNoteId: 'note-a', candidateNoteId: 'note-b',
+        sourceRevision: 3, candidateRevision: 1, verdict: 'helpful',
+      }),
+      /关系已更新/
+    );
+  });
+
+  it('fails closed when relationship explanation generation is unavailable', async () => {
+    const { generateRelationshipExplanation } = await import('../services/relationshipService');
+
+    const explanation = await generateRelationshipExplanation({ source, candidate });
+    assert.equal(explanation, null);
+  });
+
+  it('does not return relationship context for another account', async () => {
+    const { Note } = await import('../models/Note');
+    const { findRelationshipContext } = await import('../services/relationshipService');
+    let query: unknown;
+    mock.method(Note, 'find', (filter: unknown) => {
+      query = filter;
+      return { select: () => ({ lean: async () => [] }) } as never;
+    });
+
+    const context = await findRelationshipContext('user-2', 'relationship:note-a:3:note-b:1');
+    assert.equal(context, null);
+    assert.deepEqual(query, { userId: 'user-2' });
+  });
+
+  it('does not return relationship context when a note was deleted or revised', async () => {
+    const { Note } = await import('../models/Note');
+    const { findRelationshipContext } = await import('../services/relationshipService');
+    const relation = {
+      relationshipId: 'relationship:note-a:3:note-b:1',
+      source: { noteId: 'note-a', revision: 3, excerpt: '正文', occurredAt: '2026-03-01T00:00:00.000Z' },
+      candidate: { noteId: 'note-b', revision: 1, excerpt: '过去的正文', occurredAt: '2026-02-20T00:00:00.000Z' },
+      kind: 'continuation', headline: '关系', explanation: '两条记录有联系。', confidence: 'supported', generatedAt: '2026-03-02T00:00:00.000Z',
+    };
+    mock.method(Note, 'find', () => ({
+      select: () => ({ lean: async () => [{ _id: 'note-a', userId: 'user-1', revision: 4, contentText: '正文', recommendCache: { byCandidateId: { 'note-b': { relationship: relation } } } }] }),
+    }) as never);
+
+    const context = await findRelationshipContext('user-1', relation.relationshipId);
+    assert.equal(context, null);
+  });
+
   it('upserts repeated feedback for the same account and relationship', async () => {
     const { Note } = await import('../models/Note');
     const { RelationshipFeedback } = await import('../models/RelationshipFeedback');

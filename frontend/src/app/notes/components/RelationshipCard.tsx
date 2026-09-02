@@ -16,7 +16,7 @@ type Feedback = 'helpful' | 'not_relevant' | 'hide_pair';
 type RelationshipCardProps = {
   relationship: NoteRelationship;
   onOpenSource: (relationship: NoteRelationship) => void;
-  onFeedback: (verdict: Feedback) => void;
+  onFeedback: (verdict: Feedback) => Promise<void> | void;
   onContinueWriting: (relationship: NoteRelationship) => void;
   onStartChat: (relationship: NoteRelationship) => void;
   selectedFeedback?: Feedback;
@@ -29,9 +29,13 @@ function formatDate(value: string) {
 
 export default function RelationshipCard({ relationship, onOpenSource, onFeedback, onContinueWriting, onStartChat, selectedFeedback }: RelationshipCardProps) {
   const [feedback, setFeedback] = useState<Feedback | undefined>(selectedFeedback);
-  const selectFeedback = (verdict: Feedback) => {
-    setFeedback(verdict);
-    onFeedback(verdict);
+  const selectFeedback = async (verdict: Feedback) => {
+    try {
+      await onFeedback(verdict);
+      setFeedback(verdict);
+    } catch {
+      // The parent reports the persistence error; keep the prior selection visible.
+    }
   };
 
   return (
@@ -62,9 +66,9 @@ export default function RelationshipCard({ relationship, onOpenSource, onFeedbac
         <button type="button" className="min-h-11 rounded-lg px-3 text-sm text-gray-700 hover:bg-gray-100" onClick={() => onStartChat(relationship)}>和 AI 聊聊</button>
       </div>
       <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-100 pt-2" aria-label="关系反馈">
-        <button type="button" aria-pressed={feedback === 'helpful'} className="min-h-11 rounded-lg px-3 text-xs text-gray-500 hover:bg-gray-100" onClick={() => selectFeedback('helpful')}>有帮助</button>
-        <button type="button" aria-pressed={feedback === 'not_relevant'} className="min-h-11 rounded-lg px-3 text-xs text-gray-500 hover:bg-gray-100" onClick={() => selectFeedback('not_relevant')}>不太相关</button>
-        <button type="button" aria-pressed={feedback === 'hide_pair'} className="min-h-11 rounded-lg px-3 text-xs text-gray-500 hover:bg-gray-100" onClick={() => selectFeedback('hide_pair')}>以后别再关联这两条</button>
+        <button type="button" aria-pressed={feedback === 'helpful'} className="min-h-11 rounded-lg px-3 text-xs text-gray-500 hover:bg-gray-100" onClick={() => void selectFeedback('helpful')}>有帮助</button>
+        <button type="button" aria-pressed={feedback === 'not_relevant'} className="min-h-11 rounded-lg px-3 text-xs text-gray-500 hover:bg-gray-100" onClick={() => void selectFeedback('not_relevant')}>不太相关</button>
+        <button type="button" aria-pressed={feedback === 'hide_pair'} className="min-h-11 rounded-lg px-3 text-xs text-gray-500 hover:bg-gray-100" onClick={() => void selectFeedback('hide_pair')}>以后别再关联这两条</button>
       </div>
     </article>
   );

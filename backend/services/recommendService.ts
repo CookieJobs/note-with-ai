@@ -701,6 +701,7 @@ async function persistRecommendCache(params: {
           params: recommendationParams,
           diagnostics,
           byCandidateId,
+          ...(relationshipByCandidate ? { relationships: Object.values(relationshipByCandidate) } : {}),
         },
       },
     },

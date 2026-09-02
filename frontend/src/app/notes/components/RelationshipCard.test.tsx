@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import RelationshipCard from './RelationshipCard';
 import type { NoteRelationship } from '../types/relationships';
@@ -25,5 +25,15 @@ describe('RelationshipCard', () => {
     expect(onFeedback).toHaveBeenCalledWith('helpful');
     expect(onContinueWriting).toHaveBeenCalledWith(relationship);
     expect(onStartChat).toHaveBeenCalledWith(relationship);
+  });
+
+  it('does not leave feedback selected when saving the feedback fails', async () => {
+    const onFeedback = vi.fn().mockRejectedValue(new Error('反馈暂时无法保存'));
+    render(<RelationshipCard relationship={relationship} onFeedback={onFeedback} onContinueWriting={vi.fn()} onStartChat={vi.fn()} onOpenSource={vi.fn()} />);
+
+    const button = screen.getByRole('button', { name: '有帮助' });
+    fireEvent.click(button);
+    await waitFor(() => expect(onFeedback).toHaveBeenCalledWith('helpful'));
+    expect(button).toHaveAttribute('aria-pressed', 'false');
   });
 });

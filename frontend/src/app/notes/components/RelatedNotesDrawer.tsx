@@ -37,6 +37,7 @@ export default function RelatedNotesDrawer({ isOpen, onClose, selectedNoteId, al
 
   const submitFeedback = async (relationship: NoteRelationship, verdict: Feedback) => {
     setFeedbackError('');
+    const previousFeedback = feedback[relationship.relationshipId];
     setFeedback((current) => ({ ...current, [relationship.relationshipId]: verdict }));
     try {
       const response = await authFetch(`/api/recommend/relationships/${encodeURIComponent(relationship.relationshipId)}/feedback`, {
@@ -47,7 +48,14 @@ export default function RelatedNotesDrawer({ isOpen, onClose, selectedNoteId, al
       if (!response.ok) throw new Error('反馈暂时无法保存');
       if (verdict !== 'helpful' && currentNote && onRefreshRecommendCache) await onRefreshRecommendCache(currentNote._id);
     } catch (error) {
+      setFeedback((current) => {
+        const next = { ...current };
+        if (previousFeedback) next[relationship.relationshipId] = previousFeedback;
+        else delete next[relationship.relationshipId];
+        return next;
+      });
       setFeedbackError(error instanceof Error ? error.message : '反馈暂时无法保存');
+      throw error;
     }
   };
 
@@ -63,7 +71,7 @@ export default function RelatedNotesDrawer({ isOpen, onClose, selectedNoteId, al
         <div className="flex-1 overflow-y-auto p-4">
           {relationships.length > 0 ? relationships.map((relationship) => (
             <div key={relationship.relationshipId} className="mb-4 last:mb-0">
-              <RelationshipCard relationship={relationship} selectedFeedback={feedback[relationship.relationshipId]} onFeedback={(verdict) => void submitFeedback(relationship, verdict)} onOpenSource={() => { onClose(); router.push(`/notes?highlight=${relationship.candidate.noteId}`); }} onContinueWriting={(value) => onContinueWriting?.(value)} onStartChat={(value) => onStartChat?.(value)} />
+              <RelationshipCard relationship={relationship} selectedFeedback={feedback[relationship.relationshipId]} onFeedback={(verdict) => submitFeedback(relationship, verdict)} onOpenSource={() => { onClose(); router.push(`/notes?highlight=${relationship.candidate.noteId}`); }} onContinueWriting={(value) => onContinueWriting?.(value)} onStartChat={(value) => onStartChat?.(value)} />
             </div>
           )) : <div className="flex min-h-48 flex-col items-center justify-center text-center text-gray-500"><p className="font-medium">联系正在形成</p><p className="mt-2 max-w-[240px] text-sm leading-6">继续自然记录，明确的联系会慢慢出现。</p></div>}
         </div>

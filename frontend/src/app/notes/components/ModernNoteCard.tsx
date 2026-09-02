@@ -13,6 +13,8 @@ import { useNoteEditor } from '../hooks/useNoteEditor';
 import { JSONContent } from '@tiptap/react';
 import { flomoEditorChromeProps } from './richTextEditorPresets';
 import { loadRichTextEditor } from './richTextEditorLoader';
+import type { NoteRelationship } from '../types/relationships';
+import type { RelationshipRecommendCache } from '../utils/recommendCache';
 
 function EditorLoadingPlaceholder() {
   return (
@@ -412,6 +414,11 @@ export default function ModernNoteCard({
     '!rounded-xl'
   ].filter(Boolean).join(' ');
   const hasUnsavedDraft = !!draft?.dirty;
+  const relationshipCount = ((note.recommendCache as RelationshipRecommendCache | null | undefined)?.relationships || [])
+    .filter((relationship: NoteRelationship) => relationship.source.noteId === note._id
+      && relationship.source.revision === note.revision
+      && (note.contentText || note.content || '').includes(relationship.source.excerpt))
+    .length;
 
   return (
     <div
@@ -491,6 +498,7 @@ export default function ModernNoteCard({
             </button>
           )}
           <span className={`${cardStyles.noteDate} !bg-transparent !text-gray-400 !border-none !p-0 !text-sm`}>{formatDate(note.createdAt)}</span>
+          {relationshipCount > 0 && <button type="button" className="min-h-11 rounded-lg px-2 text-xs text-gray-600 underline-offset-2 hover:bg-gray-100 hover:underline" onClick={(event) => { event.stopPropagation(); onClick?.(); }} aria-label={`发现 ${relationshipCount} 条关系线索`}>发现 {relationshipCount} 条关系线索</button>}
           {note.enrichment?.status === 'pending' && <span className="text-xs text-gray-400" role="status">正在理解这条记录</span>}
           {note.enrichment?.status === 'degraded' && <span className="text-xs text-amber-600" role="status">基础记录已保存</span>}
           <button
