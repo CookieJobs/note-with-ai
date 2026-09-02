@@ -21,7 +21,7 @@ export function maskEmail(email: string): string {
   return domain ? `${maskedLocal}@${domain}` : maskedLocal;
 }
 
-export function toAdminUserView(row: AdminUserRow, role: AdminRole, includeEmail = role === 'support'): Record<string, unknown> {
+export function toAdminUserView(row: AdminUserRow, role: AdminRole, includeEmail = false): Record<string, unknown> {
   const view: Record<string, unknown> = {
     id: String(row._id), username: row.username ?? '', maskedEmail: maskEmail(row.email),
     isActive: Boolean(row.isActive), isVerified: Boolean(row.isVerified), createdAt: row.createdAt,
