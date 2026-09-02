@@ -69,3 +69,19 @@ npm run dev
 - **前端**: Next.js (React), Tailwind CSS, Tiptap (富文本编辑器)
 - **后端**: Node.js, Express, MongoDB (Mongoose)
 - **AI 能力**: 接入 Qwen / DeepSeek 模型用于对话与文本向量化 (Embeddings)
+
+## 国内运营后台
+
+后台入口为 `/admin/login`，使用独立管理员账号、密码和 6 位 TOTP 验证码。管理员身份与普通用户分离，会话只保存在 `HttpOnly`、`SameSite=Strict` Cookie 中；生产环境还必须设置 `Secure`。
+
+首次创建 owner 只能在受控后端环境运行：
+
+```bash
+npm --prefix backend run admin:create
+```
+
+命令从 `ADMIN_CREATE_EMAIL`、`ADMIN_CREATE_DISPLAY_NAME`、`ADMIN_CREATE_PASSWORD` 和 TOTP secret 环境变量读取输入，并输出 provisioning URI。请使用密码管理器保存 provisioning 信息，不要把这些变量写入仓库。
+
+后台只提供用户和 AI 使用元数据、反馈工作流、系统摘要及只读审计；不展示笔记正文、聊天正文、Prompt、AI 回复或 embedding。产品事件和 AI 用量记录均为第一方、无内容 telemetry，不会部署第三方分析或后台服务。
+
+AI 成本只有在 provider 返回真实 Token 且服务端配置对应人民币单价时计算；缺 Token 或缺价格时显示覆盖率/“数据积累中”，不会伪造估算值。
