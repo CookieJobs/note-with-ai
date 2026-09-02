@@ -35,7 +35,7 @@ export function toAdminUserView(row: AdminUserRow, role: AdminRole): Record<stri
 const SAFE_AUDIT_KEYS = new Set(['reason', 'outcome', 'permission', 'status', 'previousStatus', 'nextStatus', 'changedFields', 'sourceRevision', 'idempotent', 'count', 'retryStatus']);
 export function toAdminAuditView(row: any): Record<string, unknown> {
   const metadata: Record<string, unknown> = {};
-  const raw = row.metadata?.command?.result ?? row.metadata?.command ?? row.metadata ?? {};
+  const raw = row.metadata?.command || row.metadata?.result ? { ...(row.metadata?.command ?? {}), ...(row.metadata?.result ?? {}) } : (row.metadata ?? {});
   for (const [key, value] of Object.entries(raw)) if (SAFE_AUDIT_KEYS.has(key) && (typeof value !== 'string' || value.length <= 256)) metadata[key] = value;
   const actor = row.actorId && typeof row.actorId === 'object' ? { id: String(row.actorId._id ?? row.actorId.id ?? ''), displayName: row.actorId.displayName ?? '' } : { id: row.actorId ? String(row.actorId) : null, displayName: '' };
   return { id: String(row._id), requestId: row.requestId, action: row.action, status: row.status, targetType: row.targetType ?? null, targetId: row.targetId ?? null, actor, metadata, errorCode: row.errorCode ?? null, createdAt: row.createdAt, updatedAt: row.updatedAt };

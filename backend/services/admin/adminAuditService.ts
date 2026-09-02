@@ -42,7 +42,8 @@ export async function runAuditedAdminCommand<T>(input: AuditCommandInput, comman
   }
   // If this update fails the command has already run. Preserve `pending` to
   // represent the uncertainty; never rewrite immutable history as `failed`.
-  await AdminAuditLog.updateOne({ _id: audit._id }, { $set: { status: 'succeeded', metadata: { command: commandMetadata, result: resultMetadata } } });
+  const actualResult = result && typeof result === 'object' ? result as Record<string, SafeValue> : {};
+  await AdminAuditLog.updateOne({ _id: audit._id }, { $set: { status: 'succeeded', metadata: { command: commandMetadata, result: safeMetadata({ ...resultMetadata, ...actualResult }) } } });
   return result;
 }
 

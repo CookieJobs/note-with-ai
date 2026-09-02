@@ -3,13 +3,17 @@ import { asyncHandler, ErrorHandler, ResponseHandler } from '../../utils/errorHa
 import { requireAdmin, requireAdminMutationOrigin, requireAdminPermission } from '../../middleware/adminAuth';
 import { getUser, listUsers, setUserActive } from '../../services/admin/adminUserService';
 import { runAuditedAdminCommand } from '../../services/admin/adminAuditService';
+import { validateAdminDateRange } from '../../utils/adminQueryValidation';
 
 const router = express.Router();
 router.use(requireAdmin, requireAdminPermission('users:read'));
 router.get('/', asyncHandler(async (req, res) => {
   const raw = req.query; const limit = raw.limit === undefined ? 20 : Number(raw.limit);
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw ErrorHandler.createValidationError('limit 不能超过 100');
-  const data = await listUsers({ query: typeof raw.query === 'string' ? raw.query : undefined, status: raw.status === 'active' || raw.status === 'disabled' ? raw.status : undefined, from: typeof raw.from === 'string' ? raw.from : undefined, to: typeof raw.to === 'string' ? raw.to : undefined, page: Number(raw.page ?? 1), limit, role: req.admin!.role });
+  const page = raw.page === undefined ? 1 : Number(raw.page);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(page) || page < 1) throw ErrorHandler.createValidationError('分页参数无效');
+  if (raw.status !== undefined && raw.status !== 'active' && raw.status !== 'disabled') throw ErrorHandler.createValidationError('status 无效');
+  validateAdminDateRange(raw.from, raw.to);
+  const data = await listUsers({ query: typeof raw.query === 'string' ? raw.query : undefined, status: raw.status === 'active' || raw.status === 'disabled' ? raw.status : undefined, from: typeof raw.from === 'string' ? raw.from : undefined, to: typeof raw.to === 'string' ? raw.to : undefined, page, limit, role: req.admin!.role });
   ResponseHandler.success(res, data);
 }));
 router.get('/:id', asyncHandler(async (req, res) => ResponseHandler.success(res, await getUser(req.params.id, req.admin!.role))));

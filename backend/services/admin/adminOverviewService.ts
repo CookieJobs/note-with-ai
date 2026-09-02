@@ -40,28 +40,31 @@ export async function getOverview(input: { range: OverviewRange; now?: Date }) {
   const days = rangeDays(input.range);
   const start = new Date(startOfShanghaiDay(now).getTime() - (days - 1) * 86400000);
   const expected = buckets(now, days);
-  const [users, notes, chats, events, ai] = await Promise.all([
-    aggregate(User, [{ $facet: { total: [{ $count: 'value' }], todayNew: [{ $match: { createdAt: { $gte: startOfShanghaiDay(now), $lt: new Date(startOfShanghaiDay(now).getTime() + 86400000) } }, $count: 'value' }], activation: [{ $match: { activated: true } }, { $count: 'value' }] } }]),
+  const activeWindows = [1, 7, 30].map((windowDays) => aggregate(ProductEvent, [{ $match: { name: 'user_active_day', occurredAt: { $gte: new Date(startOfShanghaiDay(now).getTime() - (windowDays - 1) * 86400000), $lt: new Date(startOfShanghaiDay(now).getTime() + 86400000) } } }, { $group: { _id: '$userId' } }, { $count: 'value' }]));
+  const [users, notes, chats, events, ai, ...active] = await Promise.all([
+    aggregate(User, [{ $facet: { total: [{ $count: 'value' }], todayNew: [{ $match: { createdAt: { $gte: startOfShanghaiDay(now), $lt: new Date(startOfShanghaiDay(now).getTime() + 86400000) } }, $count: 'value' }], activation: [{ $lookup: { from: 'notes', let: { uid: '$_id', registeredAt: '$createdAt' }, pipeline: [{ $match: { $expr: { $and: [{ $eq: ['$userId', '$$uid'] }, { $gte: ['$createdAt', '$$registeredAt'] }, { $lte: ['$createdAt', { $add: ['$$registeredAt', 7 * 86400000] }] }, { $or: [{ $eq: ['$enrichment.meta.status', 'ready'] }, { $eq: ['$enrichment.embedding.status', 'ready'] }, { $eq: ['$enrichment.recommendations.status', 'ready'] }] }] } } }, { $limit: 1 }], as: 'activatedNotes' } }, { $match: { 'activatedNotes.0': { $exists: true } } }, { $count: 'value' }] } }]),
     aggregate(Note, [{ $facet: { total: [{ $count: 'value' }], timeseries: [{ $match: { createdAt: { $gte: start } } }, { $project: { createdAt: 1 } }, { $group: { _id: { $dateToString: { date: '$createdAt', timezone: 'Asia/Shanghai', format: '%Y-%m-%d' } }, value: { $sum: 1 } } }], failed: [{ $project: { enrichment: 1 } }, { $project: { count: { $size: { $filter: { input: { $objectToArray: '$enrichment' }, as: 'artifact', cond: { $eq: ['$$artifact.v.status', 'failed'] } } } } } }, { $group: { _id: null, failed: { $sum: '$count' } } }] } }]),
     aggregate(Chat, [{ $facet: { total: [{ $count: 'value' }] } }]),
-    aggregate(ProductEvent, [{ $match: { occurredAt: { $gte: start } } }, { $facet: { active: [{ $match: { name: 'user_active_day' } }, { $group: { _id: null, users: { $addToSet: '$userId' } } }], timeseries: [{ $match: { name: { $in: ['note_created', 'chat_turn_committed'] } } }, { $group: { _id: { day: { $dateToString: { date: '$occurredAt', timezone: 'Asia/Shanghai', format: '%Y-%m-%d' } }, name: '$name' }, value: { $sum: 1 } } }] } }]),
-    aggregate(AiUsageEvent, [{ $match: { startedAt: { $gte: start } } }, { $facet: { summary: [{ $group: { _id: null, succeeded: { $sum: { $cond: [{ $eq: ['$status', 'succeeded'] }, 1, 0] } }, total: { $sum: 1 }, inputKnown: { $sum: { $cond: [{ $ne: ['$inputTokens', null] }, 1, 0] } }, outputKnown: { $sum: { $cond: [{ $ne: ['$outputTokens', null] }, 1, 0] } }, inputTokens: { $sum: { $ifNull: ['$inputTokens', 0] } }, outputTokens: { $sum: { $ifNull: ['$outputTokens', 0] } } } }] } }]),
+    aggregate(ProductEvent, [{ $match: { occurredAt: { $gte: start } } }, { $facet: { timeseries: [{ $match: { name: { $in: ['note_created', 'chat_turn_committed'] } } }, { $group: { _id: { day: { $dateToString: { date: '$occurredAt', timezone: 'Asia/Shanghai', format: '%Y-%m-%d' } }, name: '$name' }, value: { $sum: 1 } } }] } }]),
+    aggregate(AiUsageEvent, [{ $match: { startedAt: { $gte: start } } }, { $facet: { summary: [{ $group: { _id: null, succeeded: { $sum: { $cond: [{ $eq: ['$status', 'succeeded'] }, 1, 0] } }, total: { $sum: 1 }, inputKnown: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'succeeded'] }, { $ne: ['$inputTokens', null] }] }, 1, 0] } }, outputKnown: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'succeeded'] }, { $ne: ['$outputTokens', null] }] }, 1, 0] } }, costKnown: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'succeeded'] }, { $ne: ['$estimatedCostMicros', null] }] }, 1, 0] } }, cost: { $sum: { $ifNull: ['$estimatedCostMicros', 0] } }, inputTokens: { $sum: { $cond: [{ $eq: ['$status', 'succeeded'] }, { $ifNull: ['$inputTokens', 0] }, 0] } }, outputTokens: { $sum: { $cond: [{ $eq: ['$status', 'succeeded'] }, { $ifNull: ['$outputTokens', 0] }, 0] } } } }] } }]),
+    ...activeWindows,
   ]);
   const userSummary = users[0] ?? {};
   const noteSummary = notes[0] ?? {};
   const chatSummary = chats[0] ?? {};
-  const eventSummary = events.find((row) => row.dau !== undefined || row.active !== undefined) ?? events[0] ?? {};
   const aiSummary = ai[0]?.summary?.[0] ?? ai.find((row) => row.succeeded !== undefined) ?? {};
   const totalSucceededCalls = Number(aiSummary.succeeded ?? 0);
   const totalAiCalls = Number(aiSummary.total ?? 0);
-  const tokenKnownCalls = Math.max(Number(aiSummary.inputKnown ?? 0), Number(aiSummary.outputKnown ?? 0));
+  const tokenKnownCalls = Math.min(Number(aiSummary.inputKnown ?? 0), Number(aiSummary.outputKnown ?? 0));
   const aiRate = totalAiCalls ? totalSucceededCalls / totalAiCalls : null;
   const retention = { d1: null as number | null, d7: null as number | null, d30: null as number | null };
   const tokenCoverage = { knownCalls: tokenKnownCalls, totalSucceededCalls, inputTokens: Number(aiSummary.inputTokens ?? 0), outputTokens: Number(aiSummary.outputTokens ?? 0), rate: totalSucceededCalls ? tokenKnownCalls / totalSucceededCalls : null };
-  const costCoverage = { knownCalls: 0, totalCalls: totalSucceededCalls, rate: null as number | null, estimatedCostMicros: null as number | null, currency: 'CNY' as const };
+  const knownCostCalls = Number(aiSummary.costKnown ?? 0);
+  const costCoverage = { knownCalls: knownCostCalls, totalCalls: totalSucceededCalls, rate: totalSucceededCalls ? knownCostCalls / totalSucceededCalls : null as number | null, estimatedCostMicros: knownCostCalls ? Number(aiSummary.cost) : null as number | null, currency: 'CNY' as const };
   const noteTimeseries = fill(noteSummary.timeseries ?? notes.filter((row) => row._id), expected);
+  const windowCount = (index: number, legacy: 'dau' | 'wau' | 'mau') => Number(active[index]?.[0]?.value ?? (active[index] as any)?.value ?? events.find((row) => row[legacy] !== undefined)?.[legacy] ?? 0);
   return {
-    summary: { totalUsers: Number(userSummary.total?.[0]?.value ?? userSummary.total ?? 0), todayNewUsers: Number(userSummary.todayNew?.[0]?.value ?? 0), dau: Number(eventSummary.dau ?? eventSummary.active?.[0]?.users?.length ?? 0), wau: Number(eventSummary.wau ?? eventSummary.active?.[0]?.users?.length ?? 0), mau: Number(eventSummary.mau ?? eventSummary.active?.[0]?.users?.length ?? 0), activationUsers: Number(userSummary.activation?.[0]?.value ?? 0), totalNotes: Number(noteSummary.total?.[0]?.value ?? noteSummary.total ?? 0), totalChats: Number(chatSummary.total?.[0]?.value ?? chatSummary.total ?? 0), aiSuccessRate: aiRate, failedArtifacts: failedCount(noteSummary.failed ? noteSummary.failed : notes) },
+    summary: { totalUsers: Number(userSummary.total?.[0]?.value ?? userSummary.total ?? 0), todayNewUsers: Number(userSummary.todayNew?.[0]?.value ?? 0), dau: windowCount(0, 'dau'), wau: windowCount(1, 'wau'), mau: windowCount(2, 'mau'), activationUsers: Number(userSummary.activation?.[0]?.value ?? 0), totalNotes: Number(noteSummary.total?.[0]?.value ?? noteSummary.total ?? 0), totalChats: Number(chatSummary.total?.[0]?.value ?? chatSummary.total ?? 0), aiSuccessRate: aiRate, failedArtifacts: failedCount(noteSummary.failed ? noteSummary.failed : notes) },
     timeseries: noteTimeseries,
     retention,
     tokenCoverage,

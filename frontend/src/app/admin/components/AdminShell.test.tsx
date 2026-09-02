@@ -1,0 +1,7 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import { vi, describe, it, expect } from 'vitest';
+vi.mock('next/navigation', () => ({ usePathname: () => '/admin', useRouter: () => ({ push: vi.fn() }) }));
+import AdminShell from './AdminShell';
+import * as api from '../lib/adminApi';
+import ReasonDialog from './ReasonDialog';
+describe('AdminShell', () => { it('loads session with credentialed admin API and renders role navigation', async () => { vi.spyOn(api, 'adminFetch').mockResolvedValue({ admin: { id: 'a', email: 'a@x', displayName: 'Owner', role: 'owner' } } as any); render(<AdminShell><div>内容</div></AdminShell>); await waitFor(() => expect(screen.getByText('审计')).toBeInTheDocument()); expect(screen.getByText('内容')).toBeInTheDocument(); }); it('shows an inline forbidden state without ordinary auth logout', async () => { vi.spyOn(api, 'adminFetch').mockRejectedValue({ status: 403 }); render(<AdminShell><div>内容</div></AdminShell>); await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('无权')); }); it('requires a 5-character reason and supports Escape close', async () => { const close = vi.fn(); render(<ReasonDialog onClose={close} onSubmit={async () => {}} />); expect(screen.getByRole('button', { name: '确认' })).toBeDisabled(); screen.getByLabelText('原因').focus(); screen.getByLabelText('原因').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); expect(close).toHaveBeenCalled(); }); });
