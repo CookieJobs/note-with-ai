@@ -10,8 +10,8 @@ test('failed artifact projection contains no note content fields', async () => {
 
 test('usage projection keeps token and cost metadata only', async () => {
   const { toUsageSummary } = await import('../services/admin/adminAiService');
-  const result = toUsageSummary([{ _id: { provider: 'deepseek', operation: 'chat' }, calls: 2, succeeded: 1, inputTokens: 12, outputTokens: 8, cost: 5 }]);
-  assert.deepEqual(result[0], { provider: 'deepseek', operation: 'chat', calls: 2, succeeded: 1, inputTokens: 12, outputTokens: 8, knownTokenCalls: 0, costKnownCalls: 1, estimatedCostMicros: 5 });
+  const result = toUsageSummary([{ _id: { provider: 'deepseek', operation: 'chat' }, calls: 2, succeeded: 1, inputTokens: 12, outputTokens: 8, knownTokenCalls: 2, cost: 5 }]);
+  assert.deepEqual(result[0], { provider: 'deepseek', operation: 'chat', calls: 2, succeeded: 1, inputTokens: 12, outputTokens: 8, knownTokenCalls: 2, costKnownCalls: 1, estimatedCostMicros: 5 });
 });
 
 test('unknown grouped cost is null rather than zero', async () => {

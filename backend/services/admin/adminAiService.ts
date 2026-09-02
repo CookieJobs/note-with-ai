@@ -10,7 +10,7 @@ export function toFailedArtifactView(note: any, artifact: AdminArtifact): Record
   const state = note.enrichment?.[artifact];
   return { noteId: String(note._id), userId: String(note.userId), artifact, sourceRevision: state.sourceRevision, currentRevision: note.revision, attemptedAt: state.attemptedAt, errorCode: state.errorCode ?? null };
 }
-export function toUsageSummary(rows: any[]): Record<string, unknown>[] { return rows.map((row) => ({ provider: row._id?.provider, operation: row._id?.operation, calls: Number(row.calls ?? 0), succeeded: Number(row.succeeded ?? 0), inputTokens: Number(row.inputTokens ?? 0), outputTokens: Number(row.outputTokens ?? 0), knownTokenCalls: Number(row.knownTokenCalls ?? 0), costKnownCalls: Number(row.costKnownCalls ?? (row.costKnown === undefined && row.cost != null ? 1 : 0)), estimatedCostMicros: row.costKnown === false || row.costKnownCalls === 0 || (row.costKnownCalls === undefined && row.cost == null) ? null : Number(row.cost ?? 0) })); }
+export function toUsageSummary(rows: any[]): Record<string, unknown>[] { return rows.map((row) => { const calls = Number(row.calls ?? 0); const knownTokenCalls = Number(row.knownTokenCalls ?? 0); const costKnownCalls = Number(row.costKnownCalls ?? (row.costKnown === undefined && row.cost != null ? 1 : 0)); return { provider: row._id?.provider, operation: row._id?.operation, calls, succeeded: Number(row.succeeded ?? 0), inputTokens: knownTokenCalls === calls ? Number(row.inputTokens ?? 0) : null, outputTokens: knownTokenCalls === calls ? Number(row.outputTokens ?? 0) : null, knownTokenCalls, costKnownCalls, estimatedCostMicros: costKnownCalls > 0 ? Number(row.cost ?? 0) : null }; }); }
 
 export async function getAiUsage(input: { range: '7d' | '30d' }) {
   const days = input.range === '7d' ? 7 : input.range === '30d' ? 30 : 0; if (!days) throw ErrorHandler.createValidationError('range must be 7d or 30d');
@@ -26,7 +26,7 @@ export async function listFailedArtifacts(input: { page?: number; limit?: number
   const [rows, countRows] = await Promise.all([Note.aggregate([...pipeline, { $skip: (page - 1) * limit }, { $limit: limit }] as any), Note.aggregate([...pipeline, { $count: 'total' }] as any)]);
   const items = rows.map((row: any) => ({ noteId: String(row.noteId), userId: String(row.userId), artifact: row.artifacts.k, sourceRevision: row.artifacts.v.sourceRevision, currentRevision: row.currentRevision, attemptedAt: row.artifacts.v.attemptedAt, errorCode: row.artifacts.v.errorCode ?? null }));
   const total = Number(countRows[0]?.total ?? 0);
-  return { items, page, limit, total, hasNext: page * limit < total };
+  return { items, pagination: { page, limit, total, hasNext: page * limit < total } };
 }
 
 export async function retryFailedArtifact(input: { noteId: string; artifact: AdminArtifact; expectedRevision: number; reason: string }) {
@@ -38,5 +38,5 @@ export async function retryFailedArtifact(input: { noteId: string; artifact: Adm
   const update = await Note.updateOne({ _id: input.noteId, revision: input.expectedRevision, [`${path}.status`]: 'failed', [`${path}.sourceRevision`]: input.expectedRevision }, { $set: { [path]: { status: 'pending', sourceRevision: input.expectedRevision, attemptedAt: new Date() } } }, { timestamps: false });
   if (!update.matchedCount) throw ErrorHandler.createValidationError('任务已过期或不可重试');
   const status = await runProductionNoteEnrichmentTask({ noteId: input.noteId, userId: String(note.userId), artifact: input.artifact, sourceRevision: input.expectedRevision });
-  return { status };
+  return { retryStatus: status };
 }

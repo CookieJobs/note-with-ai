@@ -19,7 +19,7 @@ test('admin user views expose only privacy-safe metadata and mask email for view
 
 test('admin user view reveals exact email only to support and stronger roles', async () => {
   const { toAdminUserView } = await import('../services/admin/adminUserService');
-  const view = toAdminUserView({ _id: 'u', username: 'a', email: 'a@example.com', isActive: true, isVerified: false, createdAt: new Date(), lastActiveAt: null, noteCount: 0, chatCount: 0, aiCalls30d: 0, aiKnownTokens30d: 0 }, 'support');
+  const view = toAdminUserView({ _id: 'u', username: 'a', email: 'a@example.com', isActive: true, isVerified: false, createdAt: new Date(), lastActiveAt: null, noteCount: 0, chatCount: 0, aiCalls30d: 0, aiKnownTokens30d: 0 }, 'support', true);
   assert.equal(view.email, 'a@example.com');
   assert.equal(view.maskedEmail, 'a***@example.com');
 });
