@@ -1,1 +1,21 @@
-export default function TrendChart({ values = [] }: { values?: number[] }) { const max = Math.max(1, ...values); const points = values.map((v, i) => `${i * (100 / Math.max(1, values.length - 1))},${100 - (v / max) * 100}`).join(' '); return <figure aria-label="趋势图"><svg viewBox="0 0 100 100" role="img" aria-label="趋势图" width="100%" height="120"><polyline points={points} fill="none" stroke="#2563eb" strokeWidth="2" /></svg><figcaption className="muted">趋势：{values.join('、') || '暂无数据'}</figcaption></figure>; }
+type TrendChartProps = {
+  values: number[];
+  label?: string;
+};
+
+export default function TrendChart({ values, label = '最近趋势' }: TrendChartProps) {
+  const max = Math.max(1, ...values);
+  const widthStep = 100 / Math.max(1, values.length - 1);
+  const points = values
+    .map((value, index) => `${index * widthStep},${100 - (value / max) * 100}`)
+    .join(' ');
+
+  return (
+    <figure>
+      <svg viewBox="0 0 100 100" role="img" aria-label={label} width="100%" height="120">
+        <polyline points={points} fill="none" stroke="#2563eb" strokeWidth="2" />
+      </svg>
+      <figcaption>趋势：{values.length ? values.join('、') : '暂无数据'}</figcaption>
+    </figure>
+  );
+}
