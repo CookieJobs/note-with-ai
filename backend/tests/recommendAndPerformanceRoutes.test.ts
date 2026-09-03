@@ -63,6 +63,9 @@ describe('recommend and performance route contracts', () => {
       if (filters.length === 1) {
         return { select: async () => ({ revision: 7 }) } as never;
       }
+      if (filters.length === 3) {
+        return { select: async () => null } as never;
+      }
       return null as never;
     });
 
@@ -71,8 +74,9 @@ describe('recommend and performance route contracts', () => {
 
     assert.ok(error);
     globalErrorHandler(error as never, { method: 'POST', path: '/semantic-notes' } as never, response as never, (() => undefined) as NextFunction);
-    assert.equal(filters.length, 2);
+    assert.equal(filters.length, 3);
     assert.deepEqual(filters[1], { _id: 'note-1', userId: 'user-1', revision: 7 });
+    assert.deepEqual(filters[2], { _id: 'note-1', userId: 'user-1' });
     assert.equal(response.statusCode, 502);
     assert.deepEqual(response.body, {
       success: false,
@@ -100,6 +104,44 @@ describe('recommend and performance route contracts', () => {
       message: '笔记不存在或无权限',
       type: 'NOT_FOUND_ERROR',
     });
+  });
+
+  it('retries once on a recoverable revision drift instead of returning a 5xx', async () => {
+    const handler = findRouteHandler(recommendRouter as never, '/semantic-notes');
+    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
+    mock.method(ResourceValidator, 'validateOwnership', async () => ({ userId: { toString: () => 'user-1' } }) as never);
+    const sourceReads: unknown[] = [];
+    const currentNote = {
+      _id: 'note-1', userId: 'user-1', revision: 8,
+      content: '', contentText: '', title: '', summary: '', concepts: [],
+      recommendCache: null, updatedAt: new Date('2026-09-03T00:00:00.000Z'),
+    };
+    mock.method(Note, 'findOne', (filter: Record<string, unknown>) => {
+      sourceReads.push(filter);
+      if (filter.revision === 7) return null as never;
+      if (filter.revision === 8) return currentNote as never;
+      const revision = sourceReads.length === 1 ? 7 : 8;
+      return {
+        ...currentNote,
+        revision,
+        select: async () => ({ revision }),
+      } as never;
+    });
+    mock.method(Note, 'updateOne', async () => ({ matchedCount: 1 }) as never);
+
+    const response = makeResponse();
+    const error = await invokeRoute(handler, { body: { noteId: 'note-1' } }, response);
+
+    assert.equal(error, undefined);
+    assert.equal(response.statusCode, 200);
+    assert.equal((response.body as { success: boolean }).success, true);
+    assert.deepEqual(sourceReads, [
+      { _id: 'note-1', userId: 'user-1' },
+      { _id: 'note-1', userId: 'user-1', revision: 7 },
+      { _id: 'note-1', userId: 'user-1' },
+      { _id: 'note-1', userId: 'user-1', revision: 8 },
+      { _id: 'note-1', userId: 'user-1' },
+    ]);
   });
 
   it('maps a stale worker status to a retryable error even after a stale callback result', () => {

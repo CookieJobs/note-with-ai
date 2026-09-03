@@ -77,23 +77,41 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
 
   await ResourceValidator.validateOwnership(Note, noteId, user._id.toString(), '笔记');
 
-  const source = await Note.findOne({ _id: noteId, userId: user._id }).select('revision');
+  const userId = user._id.toString();
+  const source = await Note.findOne({ _id: noteId, userId }).select('revision');
   if (!source) {
     throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
   }
-  const sourceRevision = typeof source.revision === 'number' && source.revision > 0 ? source.revision : 1;
+  let sourceRevision = typeof source.revision === 'number' && source.revision > 0 ? source.revision : 1;
   let result: RecommendationResult | undefined;
-  const status = await runProductionNoteEnrichmentTask({
-    noteId,
-    userId: user._id.toString(),
-    sourceRevision,
-    artifact: 'recommendations',
-  }, {
-    onRecommendationResult: (completed) => {
-      result = completed;
-    },
-    recommendationOptions: { recallK, finalK, s1Threshold, hardThreshold },
-  });
+  let status: EnrichmentTaskStatus = 'stale';
+
+  // Recommendation generation can span multiple external calls. If a user
+  // write advances the revision while it is running, retry once against the
+  // newly-read canonical revision; every attempt still uses the worker's
+  // revision/user CAS guard and stale results are never written through.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    result = undefined;
+    status = await runProductionNoteEnrichmentTask({
+      noteId,
+      userId,
+      sourceRevision,
+      artifact: 'recommendations',
+    }, {
+      onRecommendationResult: (completed) => {
+        result = completed;
+      },
+      recommendationOptions: { recallK, finalK, s1Threshold, hardThreshold },
+    });
+
+    if (status !== 'stale' || attempt === 1) break;
+
+    const latest = await Note.findOne({ _id: noteId, userId }).select('revision');
+    if (!latest) break;
+    const latestRevision = typeof latest.revision === 'number' && latest.revision > 0 ? latest.revision : 1;
+    if (latestRevision === sourceRevision) break;
+    sourceRevision = latestRevision;
+  }
 
   result = getRecommendationTaskResult(status, result);
 
