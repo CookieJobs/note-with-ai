@@ -1,14 +1,309 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { adminFetch, adminPatch } from '../lib/adminApi';
-import type { AdminIdentity, Feedback, FeedbackCategory, FeedbackStatus, ListResponse, Pagination } from '../lib/contracts';
+
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+
 import styles from '../admin.module.scss';
-const statuses: Array<'' | FeedbackStatus> = ['', 'open', 'in_progress', 'resolved']; const categories: Array<'' | FeedbackCategory> = ['', 'bug', 'experience', 'feature', 'billing', 'other'];
-type Filters = { status: string; category: string; userId: string; assignedToSelf: boolean; from: string; to: string; page: number }; const initial: Filters = { status: '', category: '', userId: '', assignedToSelf: false, from: '', to: '', page: 1 }; const emptyPage: Pagination = { page: 1, limit: 20, total: 0, hasNext: false };
+import { adminFetch, adminPatch } from '../lib/adminApi';
+import type {
+  AdminIdentity,
+  Feedback,
+  FeedbackCategory,
+  FeedbackStatus,
+  ListResponse,
+  Pagination,
+} from '../lib/contracts';
+
+type FeedbackFilters = {
+  status: '' | FeedbackStatus;
+  category: '' | FeedbackCategory;
+  userId: string;
+  assignedToSelf: boolean;
+  from: string;
+  to: string;
+  page: number;
+};
+
+type FeedbackEdit = {
+  status: FeedbackStatus;
+  internalNote: string;
+  assignedToSelf: boolean;
+};
+
+const statuses: FeedbackStatus[] = ['open', 'in_progress', 'resolved'];
+const categories: FeedbackCategory[] = ['bug', 'experience', 'feature', 'billing', 'other'];
+const initialFilters: FeedbackFilters = {
+  status: '',
+  category: '',
+  userId: '',
+  assignedToSelf: false,
+  from: '',
+  to: '',
+  page: 1,
+};
+const emptyPagination: Pagination = { page: 1, limit: 20, total: 0, hasNext: false };
+
+function feedbackUrl(filters: FeedbackFilters): string {
+  const params = new URLSearchParams({ page: String(filters.page), limit: '20' });
+  if (filters.status) params.set('status', filters.status);
+  if (filters.category) params.set('category', filters.category);
+  if (filters.userId) params.set('userId', filters.userId);
+  if (filters.assignedToSelf) params.set('assignedToSelf', 'true');
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  return `/api/admin/feedback?${params.toString()}`;
+}
+
 export default function FeedbackPage() {
- const [draft,setDraft]=useState(initial); const [filters,setFilters]=useState(initial); const [result,setResult]=useState<ListResponse<Feedback>>({items:[],pagination:emptyPage}); const [admin,setAdmin]=useState<AdminIdentity|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [pending,setPending]=useState<string|null>(null);
-async function load(next: Filters=filters){setLoading(true);setError('');const p=new URLSearchParams({page:String(next.page),limit:'20'});Object.entries(next).forEach(([k,v])=>{if(k!=='page'&&v)p.set(k,String(v));});try{const [r,m]=await Promise.all([adminFetch<ListResponse<Feedback>>(`/api/admin/feedback?${p}`),adminFetch<{admin:AdminIdentity}>('/api/admin/auth/me')]);setResult({items:r.items??[],pagination:r.pagination??emptyPage});setAdmin(m.admin);}catch(e:unknown){setError(e instanceof Error?e.message:'加载失败');}finally{setLoading(false);}}
- useEffect(()=>{void load(initial);},[]); const items=result.items??[]; const pagination=result.pagination??emptyPage; const writable=admin?.role!=='viewer'&&admin!==null;
- async function update(item:Feedback,body:{status?:FeedbackStatus;assignedToSelf?:boolean;internalNote?:string}){setPending(item.id);setError('');try{await adminPatch(`/api/admin/feedback/${item.id}`,body);await load();}catch(e:unknown){setError(e instanceof Error?e.message:'更新失败');}finally{setPending(null);}}
- return <section><h2>用户反馈</h2><div className={styles.toolbar}><select aria-label="反馈状态筛选" value={draft.status} onChange={e=>setDraft({...draft,status:e.target.value})}>{statuses.map(s=><option key={s} value={s}>{s||'全部状态'}</option>)}</select><select aria-label="反馈分类筛选" value={draft.category} onChange={e=>setDraft({...draft,category:e.target.value})}>{categories.map(s=><option key={s} value={s}>{s||'全部分类'}</option>)}</select><input aria-label="反馈用户筛选" value={draft.userId} onChange={e=>setDraft({...draft,userId:e.target.value})} placeholder="用户 ID"/><label>从 <input aria-label="反馈开始日期" type="date" value={draft.from} onChange={e=>setDraft({...draft,from:e.target.value})}/></label><label>至 <input aria-label="反馈结束日期" type="date" value={draft.to} onChange={e=>setDraft({...draft,to:e.target.value})}/></label><label><input type="checkbox" checked={draft.assignedToSelf} onChange={e=>setDraft({...draft,assignedToSelf:e.target.checked})}/>只看分配给我</label><button onClick={()=>{const n={...draft,page:1};setFilters(n);void load(n);}}>筛选</button></div>{loading&&<p>加载反馈中…</p>}{error&&<p role="alert" className={styles.error}>{error}</p>}<table className={styles.table}><thead><tr><th>时间</th><th>分类</th><th>状态</th><th>内容</th><th>内部备注</th>{writable&&<th>操作</th>}</tr></thead><tbody>{result.items.map(item=><tr key={item.id}><td>{new Date(item.createdAt).toLocaleString('zh-CN')}</td><td>{item.category}</td><td>{item.status}</td><td>{item.content}</td><td>{item.internalNote||'—'}</td>{writable&&<td><button disabled={pending===item.id} onClick={()=>void update(item,{status:item.status==='open'?'in_progress':'resolved'})}>{pending===item.id?'更新中…':'更新'}</button><button disabled={pending===item.id} onClick={()=>void update(item,{assignedToSelf:!item.assignedTo})}>{item.assignedTo?'取消分配':'分配给我'}</button></td>}</tr>)}</tbody></table>{!loading&&!result.items.length&&!error&&<p className={styles.muted}>暂无反馈</p>}<div className={styles.toolbar}><span>第 {result.pagination.page} 页 · 共 {result.pagination.total} 条</span><button disabled={result.pagination.page<=1||loading} onClick={()=>{const n={...filters,page:filters.page-1};setFilters(n);void load(n);}}>上一页</button><button disabled={!result.pagination.hasNext||loading} onClick={()=>{const n={...filters,page:filters.page+1};setFilters(n);void load(n);}}>下一页</button></div></section>;
+  const [draft, setDraft] = useState(initialFilters);
+  const [filters, setFilters] = useState(initialFilters);
+  const [result, setResult] = useState<ListResponse<Feedback>>({
+    items: [],
+    pagination: emptyPagination,
+  });
+  const [admin, setAdmin] = useState<AdminIdentity | null>(null);
+  const [edits, setEdits] = useState<Record<string, FeedbackEdit>>({});
+  const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState('');
+  const [mutationError, setMutationError] = useState('');
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [success, setSuccess] = useState('');
+  const adminIdRef = useRef<string | null>(null);
+
+  const loadFeedback = useCallback(async (nextFilters: FeedbackFilters) => {
+    setLoading(true);
+    setListError('');
+    try {
+      const nextResult = await adminFetch<ListResponse<Feedback>>(feedbackUrl(nextFilters));
+      setResult(nextResult);
+      setEdits(Object.fromEntries(nextResult.items.map((item) => [
+        item.id,
+        {
+          status: item.status,
+          internalNote: item.internalNote,
+          assignedToSelf: item.assignedTo !== null && item.assignedTo === adminIdRef.current,
+        },
+      ])));
+    } catch (error: unknown) {
+      setListError(error instanceof Error ? error.message : '加载失败');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void adminFetch<{ admin: AdminIdentity }>('/api/admin/auth/me')
+      .then((response) => {
+        adminIdRef.current = response.admin.id;
+        setAdmin(response.admin);
+      })
+      .catch(() => setAdmin(null))
+      .finally(() => { void loadFeedback(initialFilters); });
+  }, [loadFeedback]);
+
+  function submitFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextFilters = { ...draft, page: 1 };
+    setFilters(nextFilters);
+    void loadFeedback(nextFilters);
+  }
+
+  function changePage(page: number) {
+    const nextFilters = { ...filters, page };
+    setFilters(nextFilters);
+    void loadFeedback(nextFilters);
+  }
+
+  function setEdit(id: string, next: Partial<FeedbackEdit>) {
+    setEdits((current) => ({
+      ...current,
+      [id]: { ...current[id], ...next },
+    }));
+    setMutationError('');
+    setSuccess('');
+  }
+
+  async function save(item: Feedback) {
+    const edit = edits[item.id];
+    if (!edit) return;
+    setPendingId(item.id);
+    setMutationError('');
+    setSuccess('');
+    try {
+      await adminPatch(`/api/admin/feedback/${item.id}`, edit);
+      await loadFeedback(filters);
+      setSuccess('反馈已更新');
+    } catch (error: unknown) {
+      setMutationError(error instanceof Error ? error.message : '更新失败');
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  const writable = admin !== null && admin.role !== 'viewer';
+  const { items, pagination } = result;
+
+  return (
+    <section>
+      <h2>用户反馈</h2>
+      <form className={styles.toolbar} onSubmit={submitFilters}>
+        <select
+          aria-label="反馈状态筛选"
+          value={draft.status}
+          onChange={(event) => setDraft({
+            ...draft,
+            status: event.target.value as FeedbackFilters['status'],
+          })}
+        >
+          <option value="">全部状态</option>
+          {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
+        <select
+          aria-label="反馈分类筛选"
+          value={draft.category}
+          onChange={(event) => setDraft({
+            ...draft,
+            category: event.target.value as FeedbackFilters['category'],
+          })}
+        >
+          <option value="">全部分类</option>
+          {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+        </select>
+        <input
+          aria-label="反馈用户筛选"
+          value={draft.userId}
+          placeholder="用户 ID"
+          onChange={(event) => setDraft({ ...draft, userId: event.target.value })}
+        />
+        <label>
+          从
+          <input
+            aria-label="反馈开始日期"
+            type="date"
+            value={draft.from}
+            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+          />
+        </label>
+        <label>
+          至
+          <input
+            aria-label="反馈结束日期"
+            type="date"
+            value={draft.to}
+            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.assignedToSelf}
+            onChange={(event) => setDraft({ ...draft, assignedToSelf: event.target.checked })}
+          />
+          只看分配给我
+        </label>
+        <button type="submit" disabled={loading}>筛选</button>
+      </form>
+
+      {loading && <p role="status">加载反馈中…</p>}
+      {listError && (
+        <div>
+          <p role="alert" className={styles.error}>{listError}</p>
+          <button type="button" onClick={() => void loadFeedback(filters)}>重新加载反馈</button>
+        </div>
+      )}
+      {mutationError && <p role="alert" className={styles.error}>{mutationError}</p>}
+      {success && <p role="status">{success}</p>}
+
+      {!listError && items.length > 0 && (
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>时间</th><th>分类</th><th>内容</th><th>状态</th><th>内部备注</th><th>分配</th>
+                {writable && <th>操作</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => {
+                const edit = edits[item.id];
+                const pending = pendingId === item.id;
+                return (
+                  <tr key={item.id}>
+                    <td>{new Date(item.createdAt).toLocaleString('zh-CN')}</td>
+                    <td>{item.category}</td>
+                    <td>{item.content}</td>
+                    <td>
+                      {writable && edit ? (
+                        <select
+                          aria-label={`反馈状态 ${item.id}`}
+                          value={edit.status}
+                          disabled={pending}
+                          onChange={(event) => setEdit(item.id, {
+                            status: event.target.value as FeedbackStatus,
+                          })}
+                        >
+                          {statuses.map((status) => <option key={status}>{status}</option>)}
+                        </select>
+                      ) : item.status}
+                    </td>
+                    <td>
+                      {writable && edit ? (
+                        <textarea
+                          aria-label={`内部备注 ${item.id}`}
+                          value={edit.internalNote}
+                          maxLength={2000}
+                          disabled={pending}
+                          onChange={(event) => setEdit(item.id, { internalNote: event.target.value })}
+                        />
+                      ) : (item.internalNote || '—')}
+                    </td>
+                    <td>
+                      {writable && edit ? (
+                        <label>
+                          <input
+                            aria-label={`分配给我 ${item.id}`}
+                            type="checkbox"
+                            checked={edit.assignedToSelf}
+                            disabled={pending}
+                            onChange={(event) => setEdit(item.id, {
+                              assignedToSelf: event.target.checked,
+                            })}
+                          />
+                          分配给我
+                        </label>
+                      ) : (item.assignedTo ? '已分配' : '未分配')}
+                    </td>
+                    {writable && (
+                      <td>
+                        <button
+                          type="button"
+                          aria-label={pending ? `保存中 ${item.id}` : `保存反馈 ${item.id}`}
+                          disabled={pending || !edit}
+                          onClick={() => void save(item)}
+                        >{pending ? '保存中…' : '保存'}</button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!loading && !listError && items.length === 0 && <p>暂无反馈</p>}
+
+      <div className={styles.toolbar} aria-label="反馈分页">
+        <span>第 {pagination.page} 页 · 共 {pagination.total} 条</span>
+        <button
+          type="button"
+          disabled={pagination.page <= 1 || loading}
+          onClick={() => changePage(pagination.page - 1)}
+        >上一页</button>
+        <button
+          type="button"
+          disabled={!pagination.hasNext || loading}
+          onClick={() => changePage(pagination.page + 1)}
+        >下一页</button>
+      </div>
+    </section>
+  );
 }
