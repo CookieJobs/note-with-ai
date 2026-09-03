@@ -41,6 +41,42 @@ test('audit query is read-only and sanitizes arbitrary metadata', async () => {
   assert.equal((view.metadata as any).password, undefined);
 });
 
+test('audit DTO drops objects and arrays even under approved metadata keys', async () => {
+  const { toAdminAuditView } = await import('../services/admin/adminUserService');
+  const view = toAdminAuditView({
+    _id: 'audit-2', requestId: 'req-2', action: 'feedback.updated', status: 'succeeded',
+    metadata: {
+      command: { reason: { secret: 'body' }, changedFields: ['status'] },
+      result: { retryStatus: 'saved', count: 3, idempotent: true },
+    },
+    createdAt: new Date(),
+  });
+  assert.deepEqual(view.metadata, { retryStatus: 'saved', count: 3, idempotent: true });
+});
+
+test('user list uses bounded grouped lookups instead of per-row enrichment queries', async () => {
+  const User = (await import('../models/User')).default as any;
+  const Note = (await import('../models/Note')).Note as any;
+  const Chat = (await import('../models/Chat')).default as any;
+  const AiUsageEvent = (await import('../models/AiUsageEvent')).default as any;
+  const originals = { find: User.find, count: User.countDocuments, note: Note.aggregate, chat: Chat.aggregate, ai: AiUsageEvent.aggregate };
+  const calls = { note: 0, chat: 0, ai: 0 };
+  try {
+    User.find = () => ({ select: () => ({ sort: () => ({ skip: () => ({ limit: () => ({ lean: async () => Array.from({ length: 100 }, (_, index) => ({ _id: `507f1f77bcf86cd7994390${String(index).padStart(2, '0')}`, username: `u${index}`, email: `u${index}@example.com`, isActive: true, isVerified: true, createdAt: new Date() })) }) }) }) }) });
+    User.countDocuments = async () => 100;
+    Note.aggregate = async () => (calls.note += 1, []);
+    Chat.aggregate = async () => (calls.chat += 1, []);
+    AiUsageEvent.aggregate = async () => (calls.ai += 1, []);
+    const { listUsers } = await import('../services/admin/adminUserService');
+    const result = await listUsers({ role: 'owner', limit: 100 });
+    assert.equal(result.items.length, 100);
+    assert.deepEqual(calls, { note: 1, chat: 1, ai: 1 });
+  } finally {
+    User.find = originals.find; User.countDocuments = originals.count;
+    Note.aggregate = originals.note; Chat.aggregate = originals.chat; AiUsageEvent.aggregate = originals.ai;
+  }
+});
+
 test('admin list date ranges reject invalid order and ranges over 90 days', async () => {
   const { validateAdminDateRange } = await import('../utils/adminQueryValidation');
   assert.doesNotThrow(() => validateAdminDateRange('2026-01-01T00:00:00.000Z', '2026-01-02T00:00:00.000Z'));

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import styles from '../admin.module.scss';
 import { adminFetch, adminPatch } from '../lib/adminApi';
+import ReasonDialog from '../components/ReasonDialog';
 import type {
   AdminIdentity,
   Feedback,
@@ -67,6 +68,7 @@ export default function FeedbackPage() {
   const [mutationError, setMutationError] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
+  const [selectedForSave, setSelectedForSave] = useState<Feedback | null>(null);
   const adminIdRef = useRef<string | null>(null);
 
   const loadFeedback = useCallback(async (nextFilters: FeedbackFilters) => {
@@ -122,16 +124,17 @@ export default function FeedbackPage() {
     setSuccess('');
   }
 
-  async function save(item: Feedback) {
+  async function save(item: Feedback, reason: string) {
     const edit = edits[item.id];
     if (!edit) return;
     setPendingId(item.id);
     setMutationError('');
     setSuccess('');
     try {
-      await adminPatch(`/api/admin/feedback/${item.id}`, edit);
+      await adminPatch(`/api/admin/feedback/${item.id}`, { ...edit, reason });
       await loadFeedback(filters);
       setSuccess('反馈已更新');
+      setSelectedForSave(null);
     } catch (error: unknown) {
       setMutationError(error instanceof Error ? error.message : '更新失败');
     } finally {
@@ -278,7 +281,7 @@ export default function FeedbackPage() {
                           type="button"
                           aria-label={pending ? `保存中 ${item.id}` : `保存反馈 ${item.id}`}
                           disabled={pending || !edit}
-                          onClick={() => void save(item)}
+                          onClick={() => setSelectedForSave(item)}
                         >{pending ? '保存中…' : '保存'}</button>
                       </td>
                     )}
@@ -304,6 +307,13 @@ export default function FeedbackPage() {
           onClick={() => changePage(pagination.page + 1)}
         >下一页</button>
       </div>
+      {selectedForSave && (
+        <ReasonDialog
+          title="填写反馈更新原因"
+          onClose={() => setSelectedForSave(null)}
+          onSubmit={(reason) => save(selectedForSave, reason)}
+        />
+      )}
     </section>
   );
 }

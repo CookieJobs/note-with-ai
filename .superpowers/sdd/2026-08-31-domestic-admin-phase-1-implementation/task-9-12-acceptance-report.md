@@ -76,3 +76,33 @@ All commands were run from `/Users/liujin/.codex/worktrees/599a/noteWithAI` unle
 ## Open concerns
 
 None. The final backend contract correction preserves real Token totals whenever at least one successful call has complete provider usage, uses `null` only for zero coverage, and keeps the existing content/privacy allowlists intact.
+
+## Final whole-branch remediation (2026-09-04)
+
+**DONE.** The final whole-branch review findings are closed without extending the Phase 1 scope.
+
+| Finding | Fix and evidence |
+|---|---|
+| Disabled ordinary JWT subject | `authenticateToken` now resolves the JWT subject and requires `isActive`; optional authentication also never attaches a disabled subject. Real HTTP coverage exercises `/api/cache/clear` and `/api/performance/stats/:operationName` for disabled (401) and active (200) users. |
+| Embedding telemetry and AI aggregation | Each provider batch creates its own terminal embedding event and preserves provider `usage`; embedding coverage/cost is input-only while chat-like operations require both directions. Provider multi-batch, no-content, and failure tests cover it. |
+| Retention | Shanghai cohort D1/D7/D30 now uses bounded user/event aggregation; mature cohorts return ratios and absent cohorts return `null`. |
+| Feedback contract | Public submission imports the shared category tuple; an atomic per-user/hour reservation enforces five submissions. Admin PATCH requires a trimmed 5–200-character reason, audits it with changed fields, and the feedback UI opens `ReasonDialog` before sending the exact PATCH body. |
+| Retry audit truthfulness | `retryStatus: 'failed'` ends the audit as `failed`, retains safe retry metadata, and carries the normalized artifact failure code. `saved` remains succeeded; `stale` remains an explicitly successful no-op result. |
+| Bounded/safe admin queries | User list enrichment uses three grouped aggregation queries for any page size. Audit metadata rejects object/array values even under allowed keys in both persistence and DTO projection. |
+| Best-effort telemetry observability | Unavailable persistence emits only `{ requestId, errorCode: 'AI_USAGE_PERSISTENCE_UNAVAILABLE' }`, never request/provider content. |
+
+### Final verification
+
+All commands exited 0 from `/Users/liujin/.codex/worktrees/599a/noteWithAI`:
+
+1. Focused backend: `npm --prefix backend exec -- tsx --test backend/tests/adminAuthAndRbac.test.ts backend/tests/adminAiOperations.test.ts backend/tests/adminOverviewAndSystem.test.ts backend/tests/adminUsersAndAudit.test.ts backend/tests/feedbackWorkflow.test.ts backend/tests/aiUsageTelemetry.test.ts backend/tests/embeddingProvider.test.ts` — 51 tests passed.
+2. Focused frontend: `npm --prefix frontend test -- src/app/admin/feedback/page.test.tsx` — 6 tests passed.
+3. `npm --prefix backend run typecheck` and `npm --prefix frontend run typecheck` — passed.
+4. `npm --prefix backend test` — **21 suites, 125 tests passed**.
+5. `npm --prefix frontend test` — **22 files, 140 tests passed**.
+6. `npm --prefix frontend run build` — passed; all 17 pages generated.
+7. `node_modules/.bin/eslint src/app/admin` (from `frontend`) — passed.
+8. `npm run verify` — passed; **125 backend + 140 frontend tests**.
+9. Admin privacy/route scans and `git diff --check` — passed; the audit router has no mutation route, and only the documented embedding/public-feedback content references remain in the safe admin scan.
+
+The expected warning lines during tests are deliberate best-effort telemetry/fallback-path coverage, not failures.

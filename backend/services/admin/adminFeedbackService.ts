@@ -2,13 +2,27 @@ import UserFeedback, { FEEDBACK_CATEGORIES, FEEDBACK_STATUSES } from '../../mode
 import { ProductEventService } from '../productEventService';
 import { ErrorHandler } from '../../utils/errorHandler';
 import { AdminRole } from '../../models/AdminAccount';
+import FeedbackSubmissionWindow from '../../models/FeedbackSubmissionWindow';
 
 export function toPublicFeedback(row: any): Record<string, unknown> { return { id: String(row._id), status: row.status, category: row.category, content: row.content, createdAt: row.createdAt }; }
 export function toAdminFeedback(row: any): Record<string, unknown> { return { ...toPublicFeedback(row), userId: String(row.userId), contact: row.contact ?? null, appVersion: row.appVersion ?? null, internalNote: row.internalNote ?? '', assignedTo: row.assignedTo ? String(row.assignedTo) : null, resolvedAt: row.resolvedAt ?? null, updatedAt: row.updatedAt ?? null }; }
 
 export async function submitFeedback(input: { userId: string; content: string; category: typeof FEEDBACK_CATEGORIES[number]; contact?: string; appVersion?: string }) {
-  const since = new Date(Date.now() - 3600000);
-  if (await UserFeedback.countDocuments({ userId: input.userId, createdAt: { $gte: since } }) >= 5) throw ErrorHandler.createValidationError('提交反馈过于频繁，请稍后再试');
+  const now = new Date();
+  const hourKey = new Date(now); hourKey.setMinutes(0, 0, 0);
+  const reserve = async (upsert: boolean) => FeedbackSubmissionWindow.findOneAndUpdate(
+    { userId: input.userId, hourKey, count: { $lt: 5 } },
+    { $inc: { count: 1 }, $setOnInsert: { userId: input.userId, hourKey } },
+    { new: true, upsert },
+  );
+  let window;
+  try {
+    window = await reserve(true);
+  } catch (error: unknown) {
+    if (!(error && typeof error === 'object' && (error as { code?: unknown }).code === 11000)) throw error;
+    window = await reserve(false);
+  }
+  if (!window) throw ErrorHandler.createValidationError('提交反馈过于频繁，请稍后再试');
   const feedback = await UserFeedback.create(input);
   ProductEventService.trackProductEventBestEffort({ name: 'feedback_submitted', userId: input.userId, source: 'server', properties: {} });
   return { id: String(feedback._id) };

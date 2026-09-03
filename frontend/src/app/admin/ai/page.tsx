@@ -24,7 +24,9 @@ const percentage = (numerator: number, denominator: number): string => (
 );
 
 const groupTokens = (group: UsageGroup): string => {
-  if (group.inputTokens === null || group.outputTokens === null) return '数据积累中';
+  if (group.inputTokens === null) return '数据积累中';
+  if (group.operation === 'embedding') return String(group.inputTokens);
+  if (group.outputTokens === null) return '数据积累中';
   return String(group.inputTokens + group.outputTokens);
 };
 
