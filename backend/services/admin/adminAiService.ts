@@ -10,12 +10,67 @@ export function toFailedArtifactView(note: any, artifact: AdminArtifact): Record
   const state = note.enrichment?.[artifact];
   return { noteId: String(note._id), userId: String(note.userId), artifact, sourceRevision: state.sourceRevision, currentRevision: note.revision, attemptedAt: state.attemptedAt, errorCode: state.errorCode ?? null };
 }
-export function toUsageSummary(rows: any[]): Record<string, unknown>[] { return rows.map((row) => { const calls = Number(row.calls ?? 0); const knownTokenCalls = Number(row.knownTokenCalls ?? 0); const costKnownCalls = Number(row.costKnownCalls ?? (row.costKnown === undefined && row.cost != null ? 1 : 0)); return { provider: row._id?.provider, operation: row._id?.operation, calls, succeeded: Number(row.succeeded ?? 0), inputTokens: knownTokenCalls === calls ? Number(row.inputTokens ?? 0) : null, outputTokens: knownTokenCalls === calls ? Number(row.outputTokens ?? 0) : null, knownTokenCalls, costKnownCalls, estimatedCostMicros: costKnownCalls > 0 ? Number(row.cost ?? 0) : null }; }); }
+export function toUsageSummary(rows: any[]): Record<string, unknown>[] {
+  return rows.map((row) => {
+    const calls = Number(row.calls ?? 0);
+    const knownTokenCalls = Number(row.knownTokenCalls ?? 0);
+    const costKnownCalls = Number(
+      row.costKnownCalls ?? (row.costKnown === undefined && row.cost != null ? 1 : 0),
+    );
+    return {
+      provider: row._id?.provider,
+      operation: row._id?.operation,
+      calls,
+      succeeded: Number(row.succeeded ?? 0),
+      inputTokens: knownTokenCalls > 0 ? Number(row.inputTokens ?? 0) : null,
+      outputTokens: knownTokenCalls > 0 ? Number(row.outputTokens ?? 0) : null,
+      knownTokenCalls,
+      costKnownCalls,
+      estimatedCostMicros: costKnownCalls > 0 ? Number(row.cost ?? 0) : null,
+    };
+  });
+}
 
 export async function getAiUsage(input: { range: '7d' | '30d' }) {
-  const days = input.range === '7d' ? 7 : input.range === '30d' ? 30 : 0; if (!days) throw ErrorHandler.createValidationError('range must be 7d or 30d');
+  const days = input.range === '7d' ? 7 : input.range === '30d' ? 30 : 0;
+  if (!days) throw ErrorHandler.createValidationError('range must be 7d or 30d');
   const since = new Date(Date.now() - days * 86400000);
-  const rows = await AiUsageEvent.aggregate([{ $match: { startedAt: { $gte: since } } }, { $group: { _id: { provider: '$provider', operation: '$operation' }, calls: { $sum: 1 }, succeeded: { $sum: { $cond: [{ $eq: ['$status', 'succeeded'] }, 1, 0] } }, inputTokens: { $sum: { $ifNull: ['$inputTokens', 0] } }, outputTokens: { $sum: { $ifNull: ['$outputTokens', 0] } }, knownTokenCalls: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'succeeded'] }, { $ne: ['$inputTokens', null] }, { $ne: ['$outputTokens', null] }] }, 1, 0] } }, costKnownCalls: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'succeeded'] }, { $ne: ['$estimatedCostMicros', null] }] }, 1, 0] } }, cost: { $sum: { $ifNull: ['$estimatedCostMicros', 0] } } } }, { $sort: { '_id.provider': 1, '_id.operation': 1 } }]);
+  const completeSucceededUsage = {
+    $and: [
+      { $eq: ['$status', 'succeeded'] },
+      { $ne: ['$inputTokens', null] },
+      { $ne: ['$outputTokens', null] },
+    ],
+  };
+  const rows = await AiUsageEvent.aggregate([
+    { $match: { startedAt: { $gte: since } } },
+    {
+      $group: {
+        _id: { provider: '$provider', operation: '$operation' },
+        calls: { $sum: 1 },
+        succeeded: { $sum: { $cond: [{ $eq: ['$status', 'succeeded'] }, 1, 0] } },
+        inputTokens: { $sum: { $cond: [completeSucceededUsage, '$inputTokens', 0] } },
+        outputTokens: { $sum: { $cond: [completeSucceededUsage, '$outputTokens', 0] } },
+        knownTokenCalls: { $sum: { $cond: [completeSucceededUsage, 1, 0] } },
+        costKnownCalls: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$status', 'succeeded'] },
+                  { $ne: ['$estimatedCostMicros', null] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        cost: { $sum: { $ifNull: ['$estimatedCostMicros', 0] } },
+      },
+    },
+    { $sort: { '_id.provider': 1, '_id.operation': 1 } },
+  ]);
   return { range: input.range, groups: toUsageSummary(rows) };
 }
 

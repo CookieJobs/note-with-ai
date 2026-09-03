@@ -16,8 +16,8 @@ const usage: AiUsage = {
   groups: [{
     provider: 'deepseek',
     operation: 'chat',
-    calls: 2,
-    succeeded: 1,
+    calls: 3,
+    succeeded: 2,
     inputTokens: 10,
     outputTokens: 20,
     knownTokenCalls: 1,
@@ -173,7 +173,7 @@ describe('AiPage', () => {
     expect(screen.getByText('暂无失败任务')).toBeInTheDocument();
   });
 
-  it('renders success, token, cost, coverage, and unknown semantics per group', async () => {
+  it('renders partial token totals with coverage and reserves accumulation copy for zero coverage', async () => {
     const mixedUsage: AiUsage = {
       range: '30d',
       groups: [
@@ -199,13 +199,18 @@ describe('AiPage', () => {
     render(<AiPage />);
 
     const knownRow = await screen.findByRole('row', { name: /deepseek/ });
-    expect(within(knownRow).getByText('50%')).toBeInTheDocument();
-    expect(within(knownRow).getByText('30')).toBeInTheDocument();
-    expect(within(knownRow).getAllByText('100%')).toHaveLength(2);
-    expect(within(knownRow).getByText('¥2.00')).toBeInTheDocument();
+    const knownCells = within(knownRow).getAllByRole('cell');
+    expect(knownCells[3]).toHaveTextContent('67%');
+    expect(knownCells[4]).toHaveTextContent('30');
+    expect(knownCells[5]).toHaveTextContent('50%');
+    expect(knownCells[6]).toHaveTextContent('¥2.00');
+    expect(knownCells[7]).toHaveTextContent('50%');
 
     const unknownRow = screen.getByRole('row', { name: /dashscope/ });
-    expect(within(unknownRow).getAllByText('数据积累中').length).toBeGreaterThanOrEqual(2);
+    const unknownCells = within(unknownRow).getAllByRole('cell');
+    expect(unknownCells[4]).toHaveTextContent('数据积累中');
+    expect(unknownCells[5]).toHaveTextContent('0%');
+    expect(unknownCells[6]).toHaveTextContent('数据积累中');
   });
 
   it.each([
