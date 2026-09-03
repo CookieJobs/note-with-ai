@@ -78,11 +78,24 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
   await ResourceValidator.validateOwnership(Note, noteId, user._id.toString(), '笔记');
 
   const userId = user._id.toString();
-  const source = await Note.findOne({ _id: noteId, userId }).select('revision');
+  // Use a lean projection here: hydrated Mongoose documents apply the schema
+  // default (`revision: 1`) even when the persisted field is absent.
+  const source = await Note.findOne({ _id: noteId, userId }).select('revision').lean();
   if (!source) {
     throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
   }
-  let sourceRevision = typeof source.revision === 'number' && source.revision > 0 ? source.revision : 1;
+  const hasCanonicalRevision = typeof source.revision === 'number' && source.revision > 0;
+  let sourceRevision = hasCanonicalRevision ? source.revision : 1;
+  if (source.revision === undefined) {
+    // Legacy Mongo notes predate the revision field. Normalize only the
+    // missing-field case before entering the revision-CAS enrichment path;
+    // otherwise the worker's `{ revision: 1 }` lookup cannot see the note.
+    await Note.updateOne(
+      { _id: noteId, userId, revision: { $exists: false } },
+      { $set: { revision: 1 } },
+      { timestamps: false },
+    );
+  }
   let result: RecommendationResult | undefined;
   let status: EnrichmentTaskStatus = 'stale';
 
@@ -106,7 +119,7 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
 
     if (status !== 'stale' || attempt === 1) break;
 
-    const latest = await Note.findOne({ _id: noteId, userId }).select('revision');
+    const latest = await Note.findOne({ _id: noteId, userId }).select('revision').lean();
     if (!latest) break;
     const latestRevision = typeof latest.revision === 'number' && latest.revision > 0 ? latest.revision : 1;
     if (latestRevision === sourceRevision) break;

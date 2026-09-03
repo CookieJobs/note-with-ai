@@ -50,15 +50,10 @@ export default function RelatedNotesDrawer({
   useEffect(() => {
     if (!isOpen || !currentNote || !onRefreshRecommendCache || !cacheState.needsRefresh) return;
 
-    const attemptKey = [
-      currentNote._id,
-      currentNote.revision,
-      currentNote.updatedAt || '',
-      currentNote.recommendCache?.sourceRevision ?? '',
-      currentNote.recommendCache?.sourceUpdatedAt || '',
-      currentNote.recommendCache?.generatedAt || '',
-      cacheState.status,
-    ].join(':');
+    // A refresh is scoped to the selected Note revision. List polling can
+    // replace the same-revision snapshot (and its timestamps/cache metadata),
+    // but that must not turn one failed attempt into a retry loop.
+    const attemptKey = `${currentNote._id}:${currentNote.revision}`;
 
     if (lastAttemptKeyRef.current === attemptKey) return;
     lastAttemptKeyRef.current = attemptKey;

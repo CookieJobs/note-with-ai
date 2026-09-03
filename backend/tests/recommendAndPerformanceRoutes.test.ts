@@ -61,10 +61,10 @@ describe('recommend and performance route contracts', () => {
     mock.method(Note, 'findOne', (filter: unknown) => {
       filters.push(filter);
       if (filters.length === 1) {
-        return { select: async () => ({ revision: 7 }) } as never;
+        return { select: () => ({ lean: async () => ({ revision: 7 }) }) } as never;
       }
       if (filters.length === 3) {
-        return { select: async () => null } as never;
+        return { select: () => ({ lean: async () => null }) } as never;
       }
       return null as never;
     });
@@ -90,7 +90,7 @@ describe('recommend and performance route contracts', () => {
     const handler = findRouteHandler(recommendRouter as never, '/semantic-notes');
     mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
     mock.method(ResourceValidator, 'validateOwnership', async () => ({ userId: { toString: () => 'user-1' } }) as never);
-    mock.method(Note, 'findOne', () => ({ select: async () => null }) as never);
+    mock.method(Note, 'findOne', () => ({ select: () => ({ lean: async () => null }) }) as never);
 
     const response = makeResponse();
     const error = await invokeRoute(handler, { body: { noteId: 'note-1' } }, response);
@@ -104,6 +104,62 @@ describe('recommend and performance route contracts', () => {
       message: '笔记不存在或无权限',
       type: 'NOT_FOUND_ERROR',
     });
+  });
+
+  it('backfills a missing revision before running recommendation enrichment', async () => {
+    const handler = findRouteHandler(recommendRouter as never, '/semantic-notes');
+    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
+    mock.method(ResourceValidator, 'validateOwnership', async () => ({ userId: { toString: () => 'user-1' } }) as never);
+    let legacyBackfilled = false;
+    let initialRead = true;
+    let usedLeanRead = false;
+    const hydratedLegacy = Note.hydrate({
+      _id: 'note-1', userId: 'user-1', content: '正文', contentText: '正文', title: '标题',
+      summary: '', concepts: [], updatedAt: new Date('2026-09-03T00:00:00.000Z'),
+    });
+    const source = {
+      _id: 'note-1', userId: 'user-1', content: '正文', contentText: '正文', title: '标题',
+      summary: '', concepts: [], revision: undefined, updatedAt: new Date('2026-09-03T00:00:00.000Z'),
+    };
+    assert.equal(hydratedLegacy.revision, 1, 'Mongoose hydration applies the schema default to legacy documents');
+    mock.method(Note, 'findOne', (filter: Record<string, unknown>) => {
+      if (filter.revision === 1) return legacyBackfilled ? { ...source, revision: 1 } : null as never;
+      if (initialRead) {
+        initialRead = false;
+        return {
+          select: () => ({
+            lean: async () => {
+              usedLeanRead = true;
+              return source;
+            },
+            then: (resolve: (value: typeof hydratedLegacy) => unknown) => resolve(hydratedLegacy),
+          }),
+        } as never;
+      }
+      return source as never;
+    });
+    mock.method(Note, 'find', () => ({
+      select() { return this; },
+      lean: async () => [],
+    }) as never);
+    const backfills: unknown[] = [];
+    mock.method(Note, 'updateOne', async (...args: unknown[]) => {
+      backfills.push(args);
+      legacyBackfilled = true;
+      return { matchedCount: 1 } as never;
+    });
+
+    const response = makeResponse();
+    const error = await invokeRoute(handler, { body: { noteId: 'note-1' } }, response);
+
+    assert.equal(error, undefined);
+    assert.equal(response.statusCode, 200);
+    assert.equal(usedLeanRead, true);
+    assert.deepEqual(backfills[0], [
+      { _id: 'note-1', userId: 'user-1', revision: { $exists: false } },
+      { $set: { revision: 1 } },
+      { timestamps: false },
+    ]);
   });
 
   it('retries once on a recoverable revision drift instead of returning a 5xx', async () => {
@@ -124,7 +180,7 @@ describe('recommend and performance route contracts', () => {
       return {
         ...currentNote,
         revision,
-        select: async () => ({ revision }),
+        select: () => ({ lean: async () => ({ revision }) }),
       } as never;
     });
     mock.method(Note, 'updateOne', async () => ({ matchedCount: 1 }) as never);
