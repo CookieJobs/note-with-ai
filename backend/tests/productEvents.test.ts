@@ -129,7 +129,9 @@ describe('first-party product events', () => {
     const { generateToken } = require('../utils/jwt');
     const { UserValidator } = require('../utils/userValidation');
     const { ProductEventService } = require('../services/productEventService');
+    const User = require('../models/User').default;
     replaceMethod(UserValidator, 'validateAndGetUser', (async () => ({ _id: { toString: () => 'user-1' } })) as never);
+    replaceMethod(User, 'findById', (() => ({ select: () => ({ lean: async () => ({ isActive: true }) }) })) as never);
     const received: unknown[] = [];
     replaceMethod(ProductEventService, 'recordWebEvent', (async (...args: unknown[]) => { received.push(args); }) as never);
 

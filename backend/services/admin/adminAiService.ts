@@ -23,7 +23,9 @@ export function toUsageSummary(rows: any[]): Record<string, unknown>[] {
       calls,
       succeeded: Number(row.succeeded ?? 0),
       inputTokens: knownTokenCalls > 0 ? Number(row.inputTokens ?? 0) : null,
-      outputTokens: knownTokenCalls > 0 ? Number(row.outputTokens ?? 0) : null,
+      outputTokens: row._id?.operation === 'embedding'
+        ? null
+        : knownTokenCalls > 0 ? Number(row.outputTokens ?? 0) : null,
       knownTokenCalls,
       costKnownCalls,
       estimatedCostMicros: costKnownCalls > 0 ? Number(row.cost ?? 0) : null,
@@ -39,7 +41,7 @@ export async function getAiUsage(input: { range: '7d' | '30d' }) {
     $and: [
       { $eq: ['$status', 'succeeded'] },
       { $ne: ['$inputTokens', null] },
-      { $ne: ['$outputTokens', null] },
+      { $or: [{ $eq: ['$operation', 'embedding'] }, { $ne: ['$outputTokens', null] }] },
     ],
   };
   const rows = await AiUsageEvent.aggregate([
@@ -50,7 +52,7 @@ export async function getAiUsage(input: { range: '7d' | '30d' }) {
         calls: { $sum: 1 },
         succeeded: { $sum: { $cond: [{ $eq: ['$status', 'succeeded'] }, 1, 0] } },
         inputTokens: { $sum: { $cond: [completeSucceededUsage, '$inputTokens', 0] } },
-        outputTokens: { $sum: { $cond: [completeSucceededUsage, '$outputTokens', 0] } },
+        outputTokens: { $sum: { $cond: [completeSucceededUsage, { $cond: [{ $eq: ['$operation', 'embedding'] }, 0, '$outputTokens'] }, 0] } },
         knownTokenCalls: { $sum: { $cond: [completeSucceededUsage, 1, 0] } },
         costKnownCalls: {
           $sum: {
@@ -93,5 +95,7 @@ export async function retryFailedArtifact(input: { noteId: string; artifact: Adm
   const update = await Note.updateOne({ _id: input.noteId, revision: input.expectedRevision, [`${path}.status`]: 'failed', [`${path}.sourceRevision`]: input.expectedRevision }, { $set: { [path]: { status: 'pending', sourceRevision: input.expectedRevision, attemptedAt: new Date() } } }, { timestamps: false });
   if (!update.matchedCount) throw ErrorHandler.createValidationError('任务已过期或不可重试');
   const status = await runProductionNoteEnrichmentTask({ noteId: input.noteId, userId: String(note.userId), artifact: input.artifact, sourceRevision: input.expectedRevision });
-  return { retryStatus: status };
+  return status === 'failed'
+    ? { retryStatus: status, errorCode: `NOTE_ENRICHMENT_${input.artifact.toUpperCase()}_FAILED` }
+    : { retryStatus: status };
 }

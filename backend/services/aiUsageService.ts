@@ -56,8 +56,19 @@ function configuredPrices(provider: AiProviderInfo['provider']): Pick<AiProvider
   return { inputPriceCnyPerMillion: price };
 }
 
-function estimatedCostMicros(usage: ProviderUsage, provider: AiProviderInfo): number | null {
+function requiresOutputTokens(operation: AiTelemetryContext['operation']): boolean {
+  return operation !== 'embedding';
+}
+
+function estimatedCostMicros(
+  usage: ProviderUsage,
+  provider: AiProviderInfo,
+  operation: AiTelemetryContext['operation'],
+): number | null {
   const prices = { ...configuredPrices(provider.provider), ...provider };
+  if (usage.inputTokens === null || (requiresOutputTokens(operation) && usage.outputTokens === null)) {
+    return null;
+  }
   let result = 0;
   if (usage.inputTokens !== null) {
     if (typeof prices.inputPriceCnyPerMillion !== 'number') return null;
@@ -67,7 +78,7 @@ function estimatedCostMicros(usage: ProviderUsage, provider: AiProviderInfo): nu
     if (typeof prices.outputPriceCnyPerMillion !== 'number') return null;
     result += usage.outputTokens * prices.outputPriceCnyPerMillion;
   }
-  return usage.inputTokens === null && usage.outputTokens === null ? null : Math.round(result);
+  return Math.round(result);
 }
 
 export class AiUsageService {
@@ -132,11 +143,19 @@ export class AiUsageRecorder {
       finishedAt,
       durationMs: Math.max(0, finishedAt.getTime() - this.startedAt.getTime()),
       ...tokens,
-      estimatedCostMicros: status === 'succeeded' ? estimatedCostMicros(tokens, this.provider) : null,
+      estimatedCostMicros: status === 'succeeded'
+        ? estimatedCostMicros(tokens, this.provider, this.context.operation)
+        : null,
       currency: 'CNY' as const,
       ...(errorCode ? { errorCode } : {}),
     };
-    if (!this.persistenceReady()) return;
+    if (!this.persistenceReady()) {
+      logger.warn('AI usage telemetry unavailable', {
+        requestId: this.context.requestId,
+        errorCode: 'AI_USAGE_PERSISTENCE_UNAVAILABLE',
+      });
+      return;
+    }
     try {
       await AiUsageEvent.create(event);
     } catch (error: unknown) {

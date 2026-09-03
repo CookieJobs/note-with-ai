@@ -36,7 +36,11 @@ const SAFE_AUDIT_KEYS = new Set(['reason', 'outcome', 'permission', 'status', 'p
 export function toAdminAuditView(row: any): Record<string, unknown> {
   const metadata: Record<string, unknown> = {};
   const raw = row.metadata?.command || row.metadata?.result ? { ...(row.metadata?.command ?? {}), ...(row.metadata?.result ?? {}) } : (row.metadata ?? {});
-  for (const [key, value] of Object.entries(raw)) if (SAFE_AUDIT_KEYS.has(key) && (typeof value !== 'string' || value.length <= 256)) metadata[key] = value;
+  for (const [key, value] of Object.entries(raw)) {
+    const scalar = value === null || typeof value === 'number' || typeof value === 'boolean'
+      || (typeof value === 'string' && value.length <= 256);
+    if (SAFE_AUDIT_KEYS.has(key) && scalar) metadata[key] = value;
+  }
   const actor = row.actorId && typeof row.actorId === 'object' ? { id: String(row.actorId._id ?? row.actorId.id ?? ''), displayName: row.actorId.displayName ?? '' } : { id: row.actorId ? String(row.actorId) : null, displayName: '' };
   return { id: String(row._id), requestId: row.requestId, action: row.action, status: row.status, targetType: row.targetType ?? null, targetId: row.targetId ?? null, actor, metadata, errorCode: row.errorCode ?? null, createdAt: row.createdAt, updatedAt: row.updatedAt };
 }
@@ -50,14 +54,27 @@ function dateFilter(from?: string, to?: string): Record<string, Date> | undefine
   return result;
 }
 
-async function enrich(row: any): Promise<AdminUserRow> {
-  const id = row._id;
+async function enrichRows(rows: any[]): Promise<AdminUserRow[]> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((row) => row._id);
   const since = new Date(Date.now() - 30 * 86400000);
-  const [noteCount, chatCount, ai] = await Promise.all([
-    Note.countDocuments({ userId: id }), Chat.countDocuments({ userId: id }),
-    AiUsageEvent.aggregate([{ $match: { userId: id, startedAt: { $gte: since } } }, { $group: { _id: null, calls: { $sum: 1 }, tokens: { $sum: { $ifNull: ['$totalTokens', 0] } } } }]),
+  const [notes, chats, ai] = await Promise.all([
+    Note.aggregate([{ $match: { userId: { $in: ids } } }, { $group: { _id: '$userId', count: { $sum: 1 } } }]),
+    Chat.aggregate([{ $match: { userId: { $in: ids } } }, { $group: { _id: '$userId', count: { $sum: 1 } } }]),
+    AiUsageEvent.aggregate([{ $match: { userId: { $in: ids }, startedAt: { $gte: since } } }, { $group: { _id: '$userId', calls: { $sum: 1 }, tokens: { $sum: { $ifNull: ['$totalTokens', 0] } } } }]),
   ]);
-  return { ...row, noteCount, chatCount, aiCalls30d: ai[0]?.calls ?? 0, aiKnownTokens30d: ai[0]?.tokens ?? 0 };
+  const counts = (source: Array<{ _id: unknown; count?: number; calls?: number; tokens?: number }>) => new Map(source.map((row) => [String(row._id), row]));
+  const noteByUser = counts(notes); const chatByUser = counts(chats); const aiByUser = counts(ai);
+  return rows.map((row) => {
+    const id = String(row._id);
+    return {
+      ...row,
+      noteCount: noteByUser.get(id)?.count ?? 0,
+      chatCount: chatByUser.get(id)?.count ?? 0,
+      aiCalls30d: aiByUser.get(id)?.calls ?? 0,
+      aiKnownTokens30d: aiByUser.get(id)?.tokens ?? 0,
+    };
+  });
 }
 
 export async function listUsers(input: { query?: string; status?: 'active' | 'disabled'; from?: string; to?: string; page?: number; limit?: number; role: AdminRole }) {
@@ -75,7 +92,7 @@ export async function listUsers(input: { query?: string; status?: 'active' | 'di
     User.find(filter).select('username email isActive isVerified createdAt lastActiveAt').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     User.countDocuments(filter),
   ]);
-  const enriched = await Promise.all(rows.map((row) => enrich(row)));
+  const enriched = await enrichRows(rows);
   return { items: enriched.map((row) => toAdminUserView(row, input.role, false)), pagination: { page, limit, total, hasNext: page * limit < total } };
 }
 
@@ -83,7 +100,8 @@ export async function getUser(id: string, role: AdminRole) {
   if (!validId(id)) throw ErrorHandler.createNotFoundError('用户不存在');
   const row = await User.findById(id).select('username email isActive isVerified createdAt lastActiveAt').lean();
   if (!row) throw ErrorHandler.createNotFoundError('用户不存在');
-  return toAdminUserView(await enrich(row), role, true);
+  const [enriched] = await enrichRows([row]);
+  return toAdminUserView(enriched, role, true);
 }
 
 export async function setUserActive(id: string, isActive: boolean) {

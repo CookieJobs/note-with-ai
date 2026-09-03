@@ -109,11 +109,14 @@ describe('FeedbackPage', () => {
     fireEvent.change(screen.getByLabelText('内部备注 feedback-1'), { target: { value: '已联系用户并修复' } });
     fireEvent.click(screen.getByLabelText('分配给我 feedback-1'));
     fireEvent.click(screen.getByRole('button', { name: '保存反馈 feedback-1' }));
+    fireEvent.change(screen.getByLabelText('原因'), { target: { value: '已确认用户反馈并完成处理' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认' }));
 
     expect(patch).toHaveBeenCalledWith('/api/admin/feedback/feedback-1', {
       status: 'resolved',
       internalNote: '已联系用户并修复',
       assignedToSelf: true,
+      reason: '已确认用户反馈并完成处理',
     });
     expect(screen.getByRole('button', { name: '保存中 feedback-1' })).toBeDisabled();
     resolvePatch(feedback);
@@ -131,11 +134,14 @@ describe('FeedbackPage', () => {
 
     fireEvent.click(screen.getByLabelText('分配给我 feedback-1'));
     fireEvent.click(screen.getByRole('button', { name: '保存反馈 feedback-1' }));
+    fireEvent.change(screen.getByLabelText('原因'), { target: { value: '取消当前分配以便重新处理' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认' }));
 
     await waitFor(() => expect(patch).toHaveBeenCalledWith('/api/admin/feedback/feedback-1', {
       status: 'open',
       internalNote: '等待复现',
       assignedToSelf: false,
+      reason: '取消当前分配以便重新处理',
     }));
   });
 
@@ -147,6 +153,8 @@ describe('FeedbackPage', () => {
 
     fireEvent.change(screen.getByLabelText('内部备注 feedback-1'), { target: { value: '保留这段编辑' } });
     fireEvent.click(screen.getByRole('button', { name: '保存反馈 feedback-1' }));
+    fireEvent.change(screen.getByLabelText('原因'), { target: { value: '尝试更新内部备注以便跟进' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('反馈更新失败');
     expect(screen.getByLabelText('内部备注 feedback-1')).toHaveValue('保留这段编辑');

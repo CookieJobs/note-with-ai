@@ -36,8 +36,13 @@ export interface ResolvedEmbeddingOptions {
 interface EmbeddingProvider {
   readonly name: EmbeddingProviderName;
   readonly maxBatchSize: number;
-  generateEmbeddings(texts: string[], options: ResolvedEmbeddingOptions): Promise<number[][]>;
+  generateEmbeddings(texts: string[], options: ResolvedEmbeddingOptions): Promise<EmbeddingProviderResult>;
 }
+
+type EmbeddingProviderResult = {
+  embeddings: number[][];
+  usage?: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null };
+};
 
 export function resolveEmbeddingOptions(options: EmbeddingGenerationOptions = {}): ResolvedEmbeddingOptions {
   const defaults = getDefaultEmbeddingOptions();
@@ -114,6 +119,20 @@ function extractEmbeddingsFromResponse(data: any): number[][] {
   return [];
 }
 
+function extractProviderUsage(data: unknown): EmbeddingProviderResult['usage'] {
+  const usage = (data as { usage?: Record<string, unknown>; output?: { usage?: Record<string, unknown> } })?.usage
+    ?? (data as { output?: { usage?: Record<string, unknown> } })?.output?.usage;
+  if (!usage) return undefined;
+  const token = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : null;
+  return {
+    inputTokens: token(usage.prompt_tokens ?? usage.input_tokens ?? usage.inputTokens),
+    outputTokens: token(usage.completion_tokens ?? usage.output_tokens ?? usage.outputTokens),
+    totalTokens: token(usage.total_tokens ?? usage.totalTokens),
+  };
+}
+
 function extractErrorMessage(error: unknown): string {
   const responseMessage =
     (error as { response?: { data?: { error?: { message?: string }; message?: string } } })?.response?.data?.error?.message
@@ -151,7 +170,7 @@ const openRouterProvider: EmbeddingProvider = {
       }
     );
 
-    return extractEmbeddingsFromResponse(response.data);
+    return { embeddings: extractEmbeddingsFromResponse(response.data), usage: extractProviderUsage(response.data) };
   },
 };
 
@@ -197,7 +216,7 @@ const dashScopeProvider: EmbeddingProvider = {
       }
     );
 
-    return extractEmbeddingsFromResponse(response.data);
+    return { embeddings: extractEmbeddingsFromResponse(response.data), usage: extractProviderUsage(response.data) };
   },
 };
 
@@ -229,11 +248,18 @@ async function generateEmbeddingsInternal(
   const results: number[][] = [];
 
   try {
-    return await aiUsageService.run(telemetry, { provider: resolved.provider, model: resolved.model }, async () => {
     for (let index = 0; index < normalizedTexts.length; index += provider.maxBatchSize) {
       const batch = normalizedTexts.slice(index, index + provider.maxBatchSize);
-      const batchEmbeddings = await provider.generateEmbeddings(batch, resolved);
-      results.push(...batchEmbeddings);
+      const requestId = index === 0 ? telemetry.requestId : `${telemetry.requestId}.batch-${index / provider.maxBatchSize + 1}`;
+      const batchResult = await aiUsageService.run(
+        { ...telemetry, requestId },
+        { provider: resolved.provider, model: resolved.model },
+        async () => {
+          const generated = await provider.generateEmbeddings(batch, resolved);
+          return { value: generated.embeddings, usage: generated.usage };
+        },
+      );
+      results.push(...batchResult);
 
       logger.info(
         `✅ 批量生成向量 ${index + 1}-${Math.min(index + batch.length, normalizedTexts.length)}/${normalizedTexts.length} `
@@ -245,8 +271,7 @@ async function generateEmbeddingsInternal(
       }
     }
 
-      return { value: results };
-    });
+    return results;
   } catch (error: unknown) {
     logger.error('Embedding generation failed', {
       provider: resolved.provider,

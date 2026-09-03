@@ -28,6 +28,9 @@ function evaluateMongoExpression(expression: unknown, fixture: UsageFixture): un
   if ('$and' in operator) {
     return (operator.$and as unknown[]).every((item) => evaluateMongoExpression(item, fixture));
   }
+  if ('$or' in operator) {
+    return (operator.$or as unknown[]).some((item) => evaluateMongoExpression(item, fixture));
+  }
   if ('$eq' in operator) {
     const [left, right] = evaluateMongoExpression(operator.$eq, fixture) as unknown[];
     return left === right;
@@ -132,14 +135,20 @@ test('usage aggregation sums tokens only for succeeded calls with complete provi
     $and: [
       { $eq: ['$status', 'succeeded'] },
       { $ne: ['$inputTokens', null] },
-      { $ne: ['$outputTokens', null] },
+      { $or: [{ $eq: ['$operation', 'embedding'] }, { $ne: ['$outputTokens', null] }] },
     ],
   };
   assert.deepEqual(group.inputTokens, {
     $sum: { $cond: [completeSucceededUsage, '$inputTokens', 0] },
   });
   assert.deepEqual(group.outputTokens, {
-    $sum: { $cond: [completeSucceededUsage, '$outputTokens', 0] },
+    $sum: {
+      $cond: [
+        completeSucceededUsage,
+        { $cond: [{ $eq: ['$operation', 'embedding'] }, 0, '$outputTokens'] },
+        0,
+      ],
+    },
   });
   assert.deepEqual(group.knownTokenCalls, {
     $sum: { $cond: [completeSucceededUsage, 1, 0] },
@@ -191,4 +200,30 @@ test('usage aggregation behavior excludes failed, aborted, and incomplete usage 
 test('unknown grouped cost is null rather than zero', async () => {
   const { toUsageSummary } = await import('../services/admin/adminAiService');
   assert.equal(toUsageSummary([{ _id: { provider: 'dashscope', operation: 'embedding' }, calls: 1, succeeded: 1, inputTokens: 0, outputTokens: 0, cost: null }])[0].estimatedCostMicros, null);
+});
+
+test('embedding groups use input-only telemetry coverage while chat requires both directions', async () => {
+  const { toUsageSummary } = await import('../services/admin/adminAiService');
+  const groups = toUsageSummary([
+    { _id: { provider: 'openrouter', operation: 'embedding' }, calls: 2, succeeded: 2, inputTokens: 15, outputTokens: 0, knownTokenCalls: 1, costKnownCalls: 1, cost: 3 },
+    { _id: { provider: 'deepseek', operation: 'chat' }, calls: 1, succeeded: 1, inputTokens: 9, outputTokens: 0, knownTokenCalls: 0, costKnownCalls: 0, cost: 0 },
+  ]);
+  assert.deepEqual(groups[0], { provider: 'openrouter', operation: 'embedding', calls: 2, succeeded: 2, inputTokens: 15, outputTokens: null, knownTokenCalls: 1, costKnownCalls: 1, estimatedCostMicros: 3 });
+  assert.equal(groups[1].inputTokens, null);
+  assert.equal(groups[1].outputTokens, null);
+});
+
+test('retry failure status is preserved as a failed audit terminal state', async () => {
+  const { AdminAuditLog } = await import('../models/AdminAuditLog');
+  const { runAuditedAdminCommand } = await import('../services/admin/adminAuditService');
+  const model = AdminAuditLog as any; const create = model.create; const update = model.updateOne; const updates: any[] = [];
+  try {
+    model.create = async () => ({ _id: 'audit-retry' });
+    model.updateOne = async (_query: unknown, value: unknown) => { updates.push(value); };
+    const result = await runAuditedAdminCommand({ requestId: 'retry-request', action: 'ai.artifact_retry' }, async () => ({ retryStatus: 'failed', errorCode: 'EMBEDDING_PROVIDER_FAILED' }));
+    assert.deepEqual(result, { retryStatus: 'failed', errorCode: 'EMBEDDING_PROVIDER_FAILED' });
+    assert.equal(updates[0].$set.status, 'failed');
+    assert.deepEqual(updates[0].$set.metadata.result, { retryStatus: 'failed' });
+    assert.equal(updates[0].$set.errorCode, 'EMBEDDING_PROVIDER_FAILED');
+  } finally { model.create = create; model.updateOne = update; }
 });

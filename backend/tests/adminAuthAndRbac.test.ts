@@ -70,6 +70,26 @@ test('HTTP middleware rejects bearer/wrong-type/inactive/stale sessions and acce
   } finally { model.findById = original; }
 });
 
+test('ordinary JWT middleware rejects a disabled subject on every protected route and allows active subjects', async () => {
+  const { createApp } = await import('../index');
+  const { generateToken } = await import('../utils/jwt');
+  const User = (await import('../models/User')).default as any;
+  const originalFindById = User.findById;
+  let active = false;
+  try {
+    User.findById = () => ({ select: () => ({ lean: async () => ({ _id: { toString: () => '507f1f77bcf86cd799439011' }, isActive: active }) }) });
+    const app = createApp();
+    const token = generateToken({ userId: '507f1f77bcf86cd799439011', username: 'user', email: 'user@example.com' });
+    for (const path of ['/api/cache/clear', '/api/performance/stats/ordinary-auth']) {
+      const response = await request(app, path, { method: path.includes('cache') ? 'POST' : 'GET', headers: { authorization: `Bearer ${token}` } });
+      assert.equal(response.status, 401, path);
+    }
+    active = true;
+    const accepted = await request(app, '/api/performance/stats/ordinary-auth', { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(accepted.status, 200);
+  } finally { User.findById = originalFindById; }
+});
+
 test('HTTP mutation Origin defence, logout envelope, and permission matrix denial use stable envelopes', async () => {
   const { createApp } = await import('../index');
   const { requireAdminPermission, adminNoStore } = await import('../middleware/adminAuth');

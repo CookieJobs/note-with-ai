@@ -149,4 +149,26 @@ describe('AiUsageService', () => {
 
     assert.equal(saved.length, 1);
   });
+
+  it('emits a content-free structured warning when telemetry persistence is unavailable', async () => {
+    const { AiUsageService } = require('../services/aiUsageService') as typeof import('../services/aiUsageService');
+    const { logger } = require('../utils/logger') as typeof import('../utils/logger');
+    const warnings: Array<[unknown, unknown]> = [];
+    const originalWarn = logger.warn;
+    logger.warn = ((message: unknown, metadata: unknown) => { warnings.push([message, metadata]); return logger; }) as unknown as typeof logger.warn;
+
+    try {
+      await new AiUsageService(() => false).run(
+        { requestId: 'req-persistence-unavailable', operation: 'embedding' },
+        { provider: 'openrouter', model: 'embedding-model' },
+        async () => ({ value: 'ok', usage: { inputTokens: 4 } }),
+      );
+      assert.deepEqual(warnings, [[
+        'AI usage telemetry unavailable',
+        { requestId: 'req-persistence-unavailable', errorCode: 'AI_USAGE_PERSISTENCE_UNAVAILABLE' },
+      ]]);
+    } finally {
+      logger.warn = originalWarn;
+    }
+  });
 });

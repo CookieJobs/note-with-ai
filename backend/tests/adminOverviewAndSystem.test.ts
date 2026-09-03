@@ -31,7 +31,7 @@ test('overview aggregates bounded metrics, fills buckets, and never exposes cont
   const result = await getOverview({ range: '7d', now: new Date('2026-09-01T04:00:00.000Z') });
   assert.equal(result.summary.totalUsers, 4);
   assert.equal(result.summary.dau, 3);
-  assert.equal(result.retention.d30, null);
+  assert.equal(result.retention.d30, 0);
   assert.equal(result.coverage.tokens.knownCalls, 2);
   assert.equal(result.coverage.tokens.totalSucceededCalls, 3);
   assert.ok(Array.isArray(result.timeseries));
@@ -81,4 +81,16 @@ test('overview reads independent Shanghai active windows and real cost coverage'
     assert.equal(result.costCoverage.estimatedCostMicros, 120);
     assert.equal(result.costCoverage.rate, 0.5);
   } finally { ProductEvent.aggregate = original; AiUsageEvent.aggregate = aiOriginal; User.aggregate = userOriginal; Note.aggregate = noteOriginal; Chat.aggregate = chatOriginal; }
+});
+
+test('cohort retention reports mature ratios and null only before an observation window exists', async () => {
+  const User = models[0] as any;
+  const original = User.aggregate;
+  try {
+    User.aggregate = async () => [{ total: 4, retained: 1 }];
+    const { getCohortRetention } = await import('../services/admin/adminOverviewService');
+    assert.equal(await getCohortRetention(1, new Date('2026-09-04T04:00:00.000Z')), 0.25);
+    User.aggregate = async () => [];
+    assert.equal(await getCohortRetention(7, new Date('2026-09-04T04:00:00.000Z')), null);
+  } finally { User.aggregate = original; }
 });
