@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { buildNoteEmbeddingMetadataFilter, getCachedEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 import { rerankRecommendedNotes } from './llmService';
+import { AiUsageService } from './aiUsageService';
 
 type NoteSummaryRecord = {
   _id: unknown;
@@ -295,7 +296,7 @@ async function recallTopCandidates(params: {
       if (Array.isArray(q.embedding) && q.embedding.length > 0) return q.embedding;
       const emb = await getCachedEmbedding(String(q.text || '').trim(), {
         inputType: QUERY_INPUT_TYPE,
-      });
+      }, AiUsageService.newContext('embedding', userId));
       return Array.isArray(emb) ? emb : [];
     })
   );
@@ -474,12 +475,13 @@ function buildRerankCandidates(topForLLM: ResolvedRecommendCandidate[]): RerankC
 }
 
 async function resolveRerankStage(params: {
+  userId: string;
   currentNote: any;
   currentUpdatedAt: unknown;
   currentForLLM: CurrentNoteContext['currentForLLM'];
   topForLLM: ResolvedRecommendCandidate[];
 }): Promise<RerankStageResult> {
-  const { currentNote, currentUpdatedAt, currentForLLM, topForLLM } = params;
+  const { userId, currentNote, currentUpdatedAt, currentForLLM, topForLLM } = params;
   const candidates = buildRerankCandidates(topForLLM);
   const topNoteById = new Map<string, ResolvedRecommendCandidate>(topForLLM.map((item) => [String(item.note._id), item]));
   const cache = (currentNote as any).recommendCache;
@@ -516,7 +518,7 @@ async function resolveRerankStage(params: {
 
   const tRerank0 = Date.now();
   if (missing.length > 0) {
-    const rr = await rerankRecommendedNotes({ current: currentForLLM, candidates: missing });
+    const rr = await rerankRecommendedNotes({ current: currentForLLM, candidates: missing }, userId);
     for (const r of rr) rrMap.set(r.id, r);
   }
   const tRerankMs = Date.now() - tRerank0;
@@ -717,6 +719,7 @@ export async function updateNoteRecommendations(
 
   const recallStage = recallStageResult.stage!;
   const rerankStage = await resolveRerankStage({
+    userId,
     currentNote: currentContext.currentNote,
     currentUpdatedAt: currentContext.currentUpdatedAt,
     currentForLLM: currentContext.currentForLLM,

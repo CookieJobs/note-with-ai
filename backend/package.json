@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "repair:embeddings": "ts-node scripts/repair_embeddings.ts",
     "backfill:note-revisions": "ts-node scripts/backfill_note_revisions.ts",
+    "admin:create": "ts-node scripts/create_admin.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts"
   },
@@ -20,6 +21,7 @@
     "axios": "^1.19.0",
     "bcryptjs": "^3.0.2",
     "cheerio": "^1.1.2",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
@@ -29,12 +31,14 @@
     "mongoose": "^8.24.3",
     "node-cron": "^4.6.0",
     "nodemailer": "^9.0.5",
+    "otpauth": "^9.5.1",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/cheerio": "^0.22.35",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.10",

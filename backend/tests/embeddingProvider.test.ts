@@ -161,4 +161,60 @@ describe('embedding providers', () => {
     );
     assert.equal(requests[0].body.model, 'qwen3-vl-embedding');
   });
+
+  it('records one content-free embedding telemetry event per provider batch with provider usage', async () => {
+    const { axios, embeddingUtils } = await loadModules();
+    const { AiUsageEvent } = require('../models/AiUsageEvent') as typeof import('../models/AiUsageEvent');
+    const saved: Array<Record<string, unknown>> = [];
+    const readyState = Object.getOwnPropertyDescriptor(AiUsageEvent.db, 'readyState');
+    Object.defineProperty(AiUsageEvent.db, 'readyState', { configurable: true, value: 1 });
+    mock.method(AiUsageEvent, 'create', async (event: Record<string, unknown>) => (saved.push(event), event as never));
+    let calls = 0;
+    replaceMethod(axios, 'post', (async () => {
+      calls += 1;
+      return {
+        data: {
+          data: Array.from({ length: calls === 1 ? 25 : 1 }, () => ({ embedding: [0.1, 0.2] })),
+          usage: { prompt_tokens: calls === 1 ? 25 : 1, total_tokens: calls === 1 ? 25 : 1 },
+        },
+      };
+    }) as never);
+
+    try {
+      const embeddings = await embeddingUtils.generateEmbeddingsBatch(
+        Array.from({ length: 26 }, (_, index) => `document-${index}`),
+        { provider: 'openrouter', model: 'test-embedding', dimensions: 2 },
+        { requestId: 'embedding-batches', operation: 'embedding' },
+      );
+
+      assert.equal(embeddings.length, 26);
+      assert.equal(calls, 2);
+      assert.deepEqual(saved.map((event) => ({ requestId: event.requestId, status: event.status, inputTokens: event.inputTokens, outputTokens: event.outputTokens, totalTokens: event.totalTokens })), [
+        { requestId: 'embedding-batches', status: 'succeeded', inputTokens: 25, outputTokens: null, totalTokens: 25 },
+        { requestId: 'embedding-batches.batch-2', status: 'succeeded', inputTokens: 1, outputTokens: null, totalTokens: 1 },
+      ]);
+      assert.equal(saved.some((event) => JSON.stringify(event).includes('document-')), false);
+    } finally {
+      if (readyState) Object.defineProperty(AiUsageEvent.db, 'readyState', readyState);
+    }
+  });
+
+  it('records a failed content-free embedding event when a provider call fails', async () => {
+    const { axios, embeddingUtils } = await loadModules();
+    const { AiUsageEvent } = require('../models/AiUsageEvent') as typeof import('../models/AiUsageEvent');
+    const saved: Array<Record<string, unknown>> = [];
+    const readyState = Object.getOwnPropertyDescriptor(AiUsageEvent.db, 'readyState');
+    Object.defineProperty(AiUsageEvent.db, 'readyState', { configurable: true, value: 1 });
+    mock.method(AiUsageEvent, 'create', async (event: Record<string, unknown>) => (saved.push(event), event as never));
+    replaceMethod(axios, 'post', (async () => { throw Object.assign(new Error('private document body'), { code: 'ECONNRESET' }); }) as never);
+
+    try {
+      const embeddings = await embeddingUtils.generateEmbeddingsBatch(['private document body'], {}, { requestId: 'embedding-failure', operation: 'embedding' });
+      assert.deepEqual(embeddings, []);
+      assert.deepEqual({ status: saved[0].status, errorCode: saved[0].errorCode }, { status: 'failed', errorCode: 'ECONNRESET' });
+      assert.equal(JSON.stringify(saved[0]).includes('private document body'), false);
+    } finally {
+      if (readyState) Object.defineProperty(AiUsageEvent.db, 'readyState', readyState);
+    }
+  });
 });
