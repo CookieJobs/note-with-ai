@@ -47,7 +47,7 @@ All commands were run from `/Users/liujin/.codex/worktrees/599a/noteWithAI` unle
 1. `npm --prefix backend run typecheck`
    - exit 0; TypeScript passed.
 2. `npm --prefix backend test`
-   - exit 0; **21 suites, 113 tests passed, 0 failed**.
+   - exit 0; **21 suites, 128 tests passed, 0 failed**.
 3. `npm --prefix frontend run typecheck`
    - exit 0; TypeScript passed with incremental compilation disabled by the script.
 4. `npm --prefix frontend test -- src/app/admin/components/AdminShell.test.tsx src/app/admin/login/page.test.tsx src/app/admin/page.test.tsx src/app/admin/users/users.test.tsx src/app/admin/ai/page.test.tsx src/app/admin/feedback/page.test.tsx src/app/admin/system/page.test.tsx src/app/admin/audit/page.test.tsx src/app/admin/lib/adminApi.test.ts src/app/admin/components/ReasonDialog.test.tsx`
@@ -59,7 +59,7 @@ All commands were run from `/Users/liujin/.codex/worktrees/599a/noteWithAI` unle
 7. `node_modules/.bin/eslint src/app/admin` (from `frontend`)
    - exit 0; no output and no warnings.
 8. `npm run verify`
-   - exit 0; backend and frontend typechecks passed; **113 backend + 140 frontend tests passed, 0 failed**. Redis fallback warning lines in the backend output are intentional assertions from failure-path tests, not verification failures.
+   - exit 0; backend and frontend typechecks passed; **128 backend + 140 frontend tests passed, 0 failed**. Redis fallback warning lines in the backend output are intentional assertions from failure-path tests, not verification failures.
 9. `rg -n "content|contentText|contentJson|messages|prompt|embedding|recommendCache" backend/routes/admin backend/services/admin`
    - only expected bounded implementation matches: the overview activation lookup, public feedback `content`, and the `embedding` artifact enum. No note body/message/prompt or derived-content projection is exposed.
 10. `rg -n "router\.(post|put|patch|delete)" backend/routes/admin/audit.ts`
@@ -83,7 +83,7 @@ None. The final backend contract correction preserves real Token totals whenever
 
 | Finding | Fix and evidence |
 |---|---|
-| Disabled ordinary JWT subject | `authenticateToken` now resolves the JWT subject and requires `isActive`; optional authentication also never attaches a disabled subject. Real HTTP coverage exercises `/api/cache/clear` and `/api/performance/stats/:operationName` for disabled (401) and active (200) users. |
+| Disabled ordinary JWT subject | `authenticateToken` now resolves the JWT subject and rejects only an explicit `isActive === false`; optional authentication follows the same rule. Existing legacy records with no `isActive` field remain active. Real HTTP coverage exercises `/api/cache/clear` and `/api/performance/stats/:operationName` for disabled (401), active (200), and legacy missing-field (200) users; admin view/filter/status tests use the same compatibility rule. |
 | Embedding telemetry and AI aggregation | Each provider batch creates its own terminal embedding event and preserves provider `usage`; embedding coverage/cost is input-only while chat-like operations require both directions. Provider multi-batch, no-content, and failure tests cover it. |
 | Retention | Shanghai cohort D1/D7/D30 now uses bounded user/event aggregation; mature cohorts return ratios and absent cohorts return `null`. |
 | Feedback contract | Public submission imports the shared category tuple; an atomic per-user/hour reservation enforces five submissions. Admin PATCH requires a trimmed 5–200-character reason, audits it with changed fields, and the feedback UI opens `ReasonDialog` before sending the exact PATCH body. |
@@ -91,18 +91,20 @@ None. The final backend contract correction preserves real Token totals whenever
 | Bounded/safe admin queries | User list enrichment uses three grouped aggregation queries for any page size. Audit metadata rejects object/array values even under allowed keys in both persistence and DTO projection. |
 | Best-effort telemetry observability | Unavailable persistence emits only `{ requestId, errorCode: 'AI_USAGE_PERSISTENCE_UNAVAILABLE' }`, never request/provider content. |
 
+The scoped final re-review found one compatibility regression in the first disabled-user remediation: legacy `User` documents created before this branch can lack `isActive`. The final controller correction consistently treats only explicit `false` as disabled across central/optional authentication, login/load validators, admin presentation, active filtering, and status mutation. The regression was reproduced first, then closed with real HTTP and service tests.
+
 ### Final verification
 
 All commands exited 0 from `/Users/liujin/.codex/worktrees/599a/noteWithAI`:
 
-1. Focused backend: `npm --prefix backend exec -- tsx --test backend/tests/adminAuthAndRbac.test.ts backend/tests/adminAiOperations.test.ts backend/tests/adminOverviewAndSystem.test.ts backend/tests/adminUsersAndAudit.test.ts backend/tests/feedbackWorkflow.test.ts backend/tests/aiUsageTelemetry.test.ts backend/tests/embeddingProvider.test.ts` — 51 tests passed.
+1. Focused backend: `npm --prefix backend exec -- tsx --test backend/tests/adminAuthAndRbac.test.ts backend/tests/adminAiOperations.test.ts backend/tests/adminOverviewAndSystem.test.ts backend/tests/adminUsersAndAudit.test.ts backend/tests/feedbackWorkflow.test.ts backend/tests/aiUsageTelemetry.test.ts backend/tests/embeddingProvider.test.ts` — 54 tests passed.
 2. Focused frontend: `npm --prefix frontend test -- src/app/admin/feedback/page.test.tsx` — 6 tests passed.
 3. `npm --prefix backend run typecheck` and `npm --prefix frontend run typecheck` — passed.
-4. `npm --prefix backend test` — **21 suites, 125 tests passed**.
+4. `npm --prefix backend test` — **21 suites, 128 tests passed**.
 5. `npm --prefix frontend test` — **22 files, 140 tests passed**.
 6. `npm --prefix frontend run build` — passed; all 17 pages generated.
 7. `node_modules/.bin/eslint src/app/admin` (from `frontend`) — passed.
-8. `npm run verify` — passed; **125 backend + 140 frontend tests**.
+8. `npm run verify` — passed; **128 backend + 140 frontend tests**.
 9. Admin privacy/route scans and `git diff --check` — passed; the audit router has no mutation route, and only the documented embedding/public-feedback content references remain in the safe admin scan.
 
 The expected warning lines during tests are deliberate best-effort telemetry/fallback-path coverage, not failures.

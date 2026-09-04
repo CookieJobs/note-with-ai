@@ -98,7 +98,7 @@ export class AuthService {
       throw ErrorHandler.createAuthenticationError('邮箱或密码错误');
     }
 
-    if (!user.isActive) {
+    if (user.isActive === false) {
       throw ErrorHandler.createAuthorizationError('账号已被禁用');
     }
 

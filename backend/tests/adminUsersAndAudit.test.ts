@@ -17,6 +17,59 @@ test('admin user views expose only privacy-safe metadata and mask email for view
   assert.ok(!JSON.stringify(view).match(/password|content|embedding|email@example/));
 });
 
+test('legacy users without isActive remain active in admin views', async () => {
+  const { toAdminUserView } = await import('../services/admin/adminUserService');
+  const view = toAdminUserView({
+    _id: 'legacy-user', username: 'legacy', email: 'legacy@example.com',
+    isActive: undefined, isVerified: true, createdAt: new Date(),
+  }, 'support');
+  assert.equal(view.isActive, true);
+});
+
+test('active user filtering includes legacy rows without isActive', async () => {
+  const User = (await import('../models/User')).default as any;
+  const originals = { find: User.find, count: User.countDocuments };
+  let receivedFilter: unknown;
+  try {
+    User.find = (filter: unknown) => {
+      receivedFilter = filter;
+      return { select: () => ({ sort: () => ({ skip: () => ({ limit: () => ({ lean: async () => [] }) }) }) }) };
+    };
+    User.countDocuments = async () => 0;
+    const { listUsers } = await import('../services/admin/adminUserService');
+    await listUsers({ role: 'owner', status: 'active' });
+    assert.deepEqual(receivedFilter, { isActive: { $ne: false } });
+  } finally {
+    User.find = originals.find;
+    User.countDocuments = originals.count;
+  }
+});
+
+test('legacy user status treats a missing isActive field as active', async () => {
+  const User = (await import('../models/User')).default as any;
+  const originals = { findById: User.findById, findOneAndUpdate: User.findOneAndUpdate };
+  let updates = 0;
+  try {
+    User.findById = () => ({ select: () => ({ lean: async () => ({ _id: '507f1f77bcf86cd799439011' }) }) });
+    User.findOneAndUpdate = () => {
+      updates += 1;
+      return { select: () => ({ lean: async () => ({ isActive: false }) }) };
+    };
+    const { setUserActive } = await import('../services/admin/adminUserService');
+    assert.deepEqual(await setUserActive('507f1f77bcf86cd799439011', true), {
+      id: '507f1f77bcf86cd799439011', isActive: true, idempotent: true,
+    });
+    assert.equal(updates, 0);
+    assert.deepEqual(await setUserActive('507f1f77bcf86cd799439011', false), {
+      id: '507f1f77bcf86cd799439011', isActive: false, idempotent: false,
+    });
+    assert.equal(updates, 1);
+  } finally {
+    User.findById = originals.findById;
+    User.findOneAndUpdate = originals.findOneAndUpdate;
+  }
+});
+
 test('admin user view reveals exact email only to support and stronger roles', async () => {
   const { toAdminUserView } = await import('../services/admin/adminUserService');
   const view = toAdminUserView({ _id: 'u', username: 'a', email: 'a@example.com', isActive: true, isVerified: false, createdAt: new Date(), lastActiveAt: null, noteCount: 0, chatCount: 0, aiCalls30d: 0, aiKnownTokens30d: 0 }, 'support', true);

@@ -9,7 +9,7 @@ import { AdminRole } from '../../models/AdminAccount';
 import { ErrorHandler } from '../../utils/errorHandler';
 
 export type AdminUserRow = {
-  _id: unknown; username?: string; email: string; isActive: boolean; isVerified: boolean;
+  _id: unknown; username?: string; email: string; isActive?: boolean; isVerified: boolean;
   createdAt: Date; lastActiveAt?: Date | null; noteCount?: number; chatCount?: number;
   aiCalls30d?: number; aiKnownTokens30d?: number;
 };
@@ -24,7 +24,7 @@ export function maskEmail(email: string): string {
 export function toAdminUserView(row: AdminUserRow, role: AdminRole, includeEmail = false): Record<string, unknown> {
   const view: Record<string, unknown> = {
     id: String(row._id), username: row.username ?? '', maskedEmail: maskEmail(row.email),
-    isActive: Boolean(row.isActive), isVerified: Boolean(row.isVerified), createdAt: row.createdAt,
+    isActive: row.isActive !== false, isVerified: Boolean(row.isVerified), createdAt: row.createdAt,
     lastActiveAt: row.lastActiveAt ?? null, noteCount: Number(row.noteCount ?? 0), chatCount: Number(row.chatCount ?? 0),
     aiCalls30d: Number(row.aiCalls30d ?? 0), aiKnownTokens30d: Number(row.aiKnownTokens30d ?? 0),
   };
@@ -81,7 +81,8 @@ export async function listUsers(input: { query?: string; status?: 'active' | 'di
   const page = Math.max(1, input.page ?? 1); const limit = Math.min(100, Math.max(1, input.limit ?? 20));
   if (limit > 100) throw ErrorHandler.createValidationError('limit 不能超过 100');
   const filter: any = {};
-  if (input.status) filter.isActive = input.status === 'active';
+  if (input.status === 'active') filter.isActive = { $ne: false };
+  if (input.status === 'disabled') filter.isActive = false;
   const dates = dateFilter(input.from, input.to); if (dates) filter.createdAt = dates;
   const query = input.query?.trim();
   if (query) {
@@ -108,10 +109,11 @@ export async function setUserActive(id: string, isActive: boolean) {
   if (!validId(id)) throw ErrorHandler.createNotFoundError('用户不存在');
   const current: any = await User.findById(id).select('isActive').lean();
   if (!current) throw ErrorHandler.createNotFoundError('用户不存在');
-  if (Boolean(current.isActive) === isActive) return { id, isActive, idempotent: true };
+  const currentIsActive = current.isActive !== false;
+  if (currentIsActive === isActive) return { id, isActive, idempotent: true };
   const updated: any = await User.findOneAndUpdate({ _id: id }, { $set: { isActive } }, { new: true }).select('isActive').lean();
   if (!updated) throw ErrorHandler.createNotFoundError('用户不存在');
-  return { id, isActive: Boolean(updated.isActive), idempotent: false };
+  return { id, isActive: updated.isActive !== false, idempotent: false };
 }
 
 export async function listAudits(input: { actorId?: string; action?: string; status?: 'pending' | 'succeeded' | 'failed'; from?: string; to?: string; page?: number; limit?: number }) {
