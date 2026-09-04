@@ -4,21 +4,14 @@ import { logger } from '../utils/logger';
 import { buildNoteEmbeddingMetadataFilter, getCachedEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 import { rerankRecommendedNotes } from './llmService';
-import {
-  buildRelationshipFromCandidate,
-  filterVisibleRelationships,
-  type NoteRelationship,
-} from './relationshipService';
 
 type NoteSummaryRecord = {
   _id: unknown;
-  revision?: unknown;
   title?: unknown;
   summary?: unknown;
   content?: unknown;
   contentText?: unknown;
   updatedAt?: unknown;
-  createdAt?: unknown;
 };
 
 type RecommendCacheEntry = {
@@ -26,8 +19,6 @@ type RecommendCacheEntry = {
   type?: unknown;
   reason?: unknown;
   candidateUpdatedAt?: unknown;
-  candidateRevision?: unknown;
-  relationship?: NoteRelationship;
 };
 
 type RecommendCandidate = {
@@ -90,11 +81,6 @@ type RerankStageResult = {
   tRerankMs: number;
 };
 
-type RelationshipStageResult = {
-  relationships: NoteRelationship[];
-  relationshipByCandidate: Record<string, NoteRelationship>;
-};
-
 export type RecommendationWriteMode = 'await' | 'background';
 
 export interface RecommendationOptions {
@@ -122,11 +108,6 @@ export interface RecommendationDiagnostics {
 }
 
 export interface RecommendationResult {
-  sourceNoteId: string;
-  sourceRevision: number;
-  status: 'insufficient_history' | 'enriching' | 'ready' | 'failed';
-  relationships: NoteRelationship[];
-  generatedAt: string;
   recommendations: Array<{
     note: {
       _id: string;
@@ -196,17 +177,8 @@ function buildThresholdCounts(pool: RecommendCandidate[], s1Threshold: number) {
   }, {});
 }
 
-function buildEmptyResult(
-  message: string,
-  meta: Partial<RecommendationResult['meta']> = {},
-  context: Pick<RecommendationResult, 'sourceNoteId' | 'sourceRevision'> = { sourceNoteId: '', sourceRevision: 0 },
-  status: RecommendationResult['status'] = 'insufficient_history',
-): RecommendationResult {
+function buildEmptyResult(message: string, meta: Partial<RecommendationResult['meta']> = {}): RecommendationResult {
   return {
-    ...context,
-    status,
-    relationships: [],
-    generatedAt: new Date().toISOString(),
     recommendations: [],
     meta: {
       recallQueries: 0,
@@ -240,7 +212,7 @@ async function loadCurrentNoteContext(params: {
           reason: 'note_not_found',
         },
         timingsMs: { total: Date.now() - t0 },
-      }, { sourceNoteId: noteId, sourceRevision: 0 }, 'failed'),
+      }),
     };
   }
 
@@ -272,7 +244,7 @@ async function loadCurrentNoteContext(params: {
           total: Date.now() - t0,
           currentNote: tNoteMs,
         },
-      }, { sourceNoteId: noteId, sourceRevision: currentRevision }),
+      }),
     };
   }
 
@@ -305,9 +277,8 @@ async function recallTopCandidates(params: {
   s1Threshold: number;
   t0: number;
   tNoteMs: number;
-  sourceRevision: number;
 }): Promise<{ stage?: RecallStageResult; emptyResult?: RecommendationResult }> {
-  const { noteId, userId, queryItems, recallK, finalK, s1Threshold, t0, tNoteMs, sourceRevision } = params;
+  const { noteId, userId, queryItems, recallK, finalK, s1Threshold, t0, tNoteMs } = params;
   const tDb0 = Date.now();
   const userNotesPromise = Note.find({
     userId,
@@ -350,7 +321,7 @@ async function recallTopCandidates(params: {
           dbEmbeddings: tDbMs,
           queryEmbeddings: tEmbMs,
         },
-      }, { sourceNoteId: noteId, sourceRevision }),
+      }),
     };
   }
 
@@ -372,7 +343,7 @@ async function recallTopCandidates(params: {
           dbEmbeddings: tDbMs,
           queryEmbeddings: tEmbMs,
         },
-      }, { sourceNoteId: noteId, sourceRevision }, 'failed'),
+      }),
     };
   }
 
@@ -430,14 +401,14 @@ async function recallTopCandidates(params: {
           queryEmbeddings: tEmbMs,
           recall: tRecallMs,
         },
-      }, { sourceNoteId: noteId, sourceRevision }),
+      }),
     };
   }
 
   const tTopDb0 = Date.now();
   const topIds = topRaw.map((x) => x.id);
   const topNotes = await Note.find({ userId, _id: { $in: topIds } })
-    .select('_id title summary content contentText revision createdAt updatedAt')
+    .select('_id title summary content contentText updatedAt')
     .lean();
   const tTopDbMs = Date.now() - tTopDb0;
 
@@ -471,7 +442,7 @@ async function recallTopCandidates(params: {
           recall: tRecallMs,
           dbTopNotes: tTopDbMs,
         },
-      }, { sourceNoteId: noteId, sourceRevision }, 'failed'),
+      }),
     };
   }
 
@@ -560,65 +531,6 @@ async function resolveRerankStage(params: {
   };
 }
 
-async function resolveRelationshipStage(params: {
-  source: Record<string, unknown>;
-  candidates: ResolvedRecommendCandidate[];
-  rrMap: RerankStageResult['rrMap'];
-  cacheById: Record<string, unknown>;
-}): Promise<RelationshipStageResult> {
-  const { source, candidates, rrMap, cacheById } = params;
-  const relationships: NoteRelationship[] = [];
-  const relationshipByCandidate: Record<string, NoteRelationship> = {};
-
-  for (const candidate of candidates) {
-    if (relationships.length >= 3) break;
-    const id = String(candidate.note._id);
-    const cached = cacheById[id] as RecommendCacheEntry | undefined;
-    const cachedRelationship = cached?.relationship;
-    const sourceRevision = Number(source.revision);
-    const candidateRevision = Number(candidate.note.revision);
-    const cacheIsFresh = cachedRelationship
-      && cachedRelationship.source.noteId === String(source._id)
-      && cachedRelationship.source.revision === sourceRevision
-      && cachedRelationship.candidate.noteId === id
-      && cachedRelationship.candidate.revision === candidateRevision;
-    const relationship = cacheIsFresh
-      ? cachedRelationship
-      : await buildRelationshipFromCandidate({
-        source: {
-          _id: source._id,
-          revision: sourceRevision,
-          content: source.content,
-          contentText: source.contentText,
-          createdAt: source.createdAt,
-          updatedAt: source.updatedAt,
-        },
-        candidate: {
-          _id: candidate.note._id,
-          revision: candidateRevision,
-          content: candidate.note.content,
-          contentText: candidate.note.contentText,
-          createdAt: candidate.note.createdAt,
-          updatedAt: candidate.note.updatedAt,
-        },
-        rerankReason: rrMap.get(id)?.reason,
-        rerankType: rrMap.get(id)?.type,
-      });
-    if (!relationship) continue;
-    relationships.push(relationship);
-    relationshipByCandidate[id] = relationship;
-  }
-
-  const visible = await filterVisibleRelationships(String(source.userId), relationships);
-  const visibleIds = new Set(visible.map((item) => item.relationshipId));
-  return {
-    relationships: visible,
-    relationshipByCandidate: Object.fromEntries(
-      Object.entries(relationshipByCandidate).filter(([, relationship]) => visibleIds.has(relationship.relationshipId)),
-    ),
-  };
-}
-
 function buildRecommendations(params: {
   topForLLM: ResolvedRecommendCandidate[];
   rrMap: RerankStageResult['rrMap'];
@@ -660,7 +572,6 @@ async function persistRecommendCache(params: {
   cacheById: Record<string, unknown>;
   topForLLM: RecommendCandidate[];
   rrMap: Map<string, { id: string; s2: number; type: string; reason: string }>;
-  relationshipByCandidate?: Record<string, NoteRelationship>;
   diagnostics?: RecommendationDiagnostics;
   recommendationParams: {
     recallK: number;
@@ -669,7 +580,7 @@ async function persistRecommendCache(params: {
     hardThreshold: number;
   };
 }) {
-  const { noteId, userId, currentUpdatedAt, sourceRevision, cacheOk, cacheById, topForLLM, rrMap, relationshipByCandidate, diagnostics, recommendationParams } = params;
+  const { noteId, userId, currentUpdatedAt, sourceRevision, cacheOk, cacheById, topForLLM, rrMap, diagnostics, recommendationParams } = params;
   const byCandidateId: Record<string, unknown> = cacheOk ? { ...cacheById } : {};
 
   for (const x of topForLLM) {
@@ -677,14 +588,11 @@ async function persistRecommendCache(params: {
     const r = rrMap.get(id);
     if (!r) continue;
     byCandidateId[id] = {
-      ...(byCandidateId[id] as Record<string, unknown> || {}),
       s1: x.s1max,
       s2: r.s2,
       type: r.type,
       reason: r.reason,
       candidateUpdatedAt: String((x.note as Record<string, unknown>).updatedAt || ''),
-      candidateRevision: Number((x.note as Record<string, unknown>).revision || 1),
-      ...(relationshipByCandidate?.[id] ? { relationship: relationshipByCandidate[id] } : {}),
       cachedAt: new Date().toISOString(),
     };
   }
@@ -701,7 +609,6 @@ async function persistRecommendCache(params: {
           params: recommendationParams,
           diagnostics,
           byCandidateId,
-          ...(relationshipByCandidate ? { relationships: Object.values(relationshipByCandidate) } : {}),
         },
       },
     },
@@ -727,7 +634,6 @@ async function persistEmptyResultCache(params: {
   cacheById: Record<string, unknown>;
   topForLLM: RecommendCandidate[];
   rrMap: Map<string, { id: string; s2: number; type: string; reason: string }>;
-  relationshipByCandidate?: Record<string, NoteRelationship>;
   diagnostics: RecommendationDiagnostics;
   recommendationParams: {
     recallK: number;
@@ -775,7 +681,7 @@ export async function updateNoteRecommendations(
     return buildEmptyResult('笔记已被更新，跳过旧推荐写回', {
       diagnostics: { stage: 'context', reason: 'stale_source_revision' },
       timingsMs: { total: Date.now() - t0 },
-    }, { sourceNoteId: noteId, sourceRevision: currentContext.currentRevision }, 'failed');
+    });
   }
   const effectiveSourceRevision = sourceRevision ?? currentContext.currentRevision;
   const recallStageResult = await recallTopCandidates({
@@ -787,7 +693,6 @@ export async function updateNoteRecommendations(
     s1Threshold,
     t0,
     tNoteMs: currentContext.tNoteMs,
-    sourceRevision: effectiveSourceRevision,
   });
   if (recallStageResult.emptyResult) {
     const diagnostics = recallStageResult.emptyResult.meta.diagnostics;
@@ -821,13 +726,6 @@ export async function updateNoteRecommendations(
     topForLLM: recallStage.topForLLM,
     rrMap: rerankStage.rrMap,
     hardThreshold,
-  });
-
-  const relationshipStage = await resolveRelationshipStage({
-    source: currentContext.currentNote as Record<string, unknown>,
-    candidates: recallStage.topForLLM,
-    rrMap: rerankStage.rrMap,
-    cacheById: rerankStage.cacheById,
   });
 
   if (recommendations.length === 0) {
@@ -867,23 +765,17 @@ export async function updateNoteRecommendations(
       writeMode,
       noteId,
       userId,
-      currentUpdatedAt: currentContext.currentUpdatedAt,
-      sourceRevision: effectiveSourceRevision,
+        currentUpdatedAt: currentContext.currentUpdatedAt,
+        sourceRevision: effectiveSourceRevision,
       cacheOk: rerankStage.cacheOk,
       cacheById: rerankStage.cacheById,
       topForLLM: recallStage.topForLLM,
       rrMap: rerankStage.rrMap,
-      relationshipByCandidate: relationshipStage.relationshipByCandidate,
       diagnostics,
       recommendationParams: { recallK, finalK, s1Threshold, hardThreshold },
     });
 
     return withThresholdMeta({
-      sourceNoteId: noteId,
-      sourceRevision: effectiveSourceRevision,
-      status: 'ready',
-      relationships: relationshipStage.relationships,
-      generatedAt: new Date().toISOString(),
       recommendations: [],
       meta: {
         recallQueries: recallStage.queryCount,
@@ -917,7 +809,6 @@ export async function updateNoteRecommendations(
     cacheById: rerankStage.cacheById,
     topForLLM: recallStage.topForLLM,
     rrMap: rerankStage.rrMap,
-    relationshipByCandidate: relationshipStage.relationshipByCandidate,
     diagnostics: undefined,
     recommendationParams: { recallK, finalK, s1Threshold, hardThreshold },
   });
@@ -931,11 +822,6 @@ export async function updateNoteRecommendations(
   }
 
   return withThresholdMeta({
-    sourceNoteId: noteId,
-    sourceRevision: effectiveSourceRevision,
-    status: 'ready',
-    relationships: relationshipStage.relationships,
-    generatedAt: new Date().toISOString(),
     recommendations,
     meta: {
       recallQueries: recallStage.queryCount,

@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { NoteWriteConflict, type Note } from '../hooks/useNotes';
 import ModernNoteCard from './ModernNoteCard';
-import type { NoteRelationship } from '../types/relationships';
 
 const note: Note = {
   _id: 'note-1',
@@ -20,35 +19,7 @@ const note: Note = {
   updatedAt: '2026-08-19T00:00:00.000Z',
 };
 
-const relationship: NoteRelationship = {
-  relationshipId: 'relationship:note-1:4:note-2:1',
-  source: { noteId: 'note-1', revision: 4, excerpt: '正文', occurredAt: '2026-08-19T00:00:00.000Z' },
-  candidate: { noteId: 'note-2', revision: 1, excerpt: '过去的正文', occurredAt: '2026-08-18T00:00:00.000Z' },
-  kind: 'continuation',
-  headline: '一条关系',
-  explanation: '两条记录有联系。',
-  confidence: 'supported',
-  generatedAt: '2026-08-19T00:00:00.000Z',
-};
-
 describe('ModernNoteCard title conflict feedback', () => {
-  it('exposes a visible relationship entry in the card body when the cached evidence is current', () => {
-    const onClick = vi.fn();
-    render(
-      <ModernNoteCard
-        note={{ ...note, recommendCache: { sourceRevision: 4, relationships: [relationship] } as Note['recommendCache'] }}
-        onRequestDelete={vi.fn()}
-        updateNote={vi.fn()}
-        onClick={onClick}
-      />,
-    );
-
-    const entry = screen.getByRole('button', { name: '发现 1 条关系线索' });
-    expect(entry).toBeInTheDocument();
-    fireEvent.click(entry);
-    expect(onClick).toHaveBeenCalledTimes(1);
-  });
-
   it('keeps a title conflict visible through the native save mousedown-to-blur sequence and retries explicitly', async () => {
     const current: Note = {
       ...note,

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 import type { NextFunction } from 'express';
 import performanceRouter from '../routes/performance';
-import recommendRouter, { getRecommendationTaskResult, toPublicRecommendationResult } from '../routes/recommend';
+import recommendRouter, { getRecommendationTaskResult } from '../routes/recommend';
 import { Note } from '../models/Note';
 import { globalErrorHandler } from '../utils/errorHandler';
 import { ResourceValidator, UserValidator } from '../utils/userValidation';
@@ -233,46 +233,5 @@ describe('recommend and performance route contracts', () => {
 
     assert.equal(response.statusCode, 400);
     assert.equal((response.body as { type: string }).type, 'VALIDATION_ERROR');
-  });
-
-  it('exposes an authenticated relationship feedback route inside the recommend domain', () => {
-    const handler = findRouteHandler(recommendRouter as never, '/relationships/:relationshipId/feedback');
-    assert.equal(typeof handler, 'function');
-  });
-
-  it('returns the relationship DTO without numeric diagnostics when the candidate list is empty', async () => {
-    const data = toPublicRecommendationResult({
-        sourceNoteId: 'note-1',
-        sourceRevision: 4,
-        status: 'ready',
-        relationships: [],
-        generatedAt: '2026-09-02T00:00:00.000Z',
-        recommendations: [],
-        meta: { diagnostics: { stage: 'rerank', reason: 'all_candidates_below_hard_threshold' } },
-      } as never);
-    assert.deepEqual(data, {
-      sourceNoteId: 'note-1', sourceRevision: 4, status: 'ready', relationships: [], generatedAt: '2026-09-02T00:00:00.000Z',
-    });
-  });
-
-  it('uses the same relationship DTO for a low-threshold empty result', async () => {
-    const data = toPublicRecommendationResult({
-        sourceNoteId: 'note-2',
-        sourceRevision: 5,
-        status: 'insufficient_history',
-        relationships: [],
-        generatedAt: '2026-09-02T00:01:00.000Z',
-        recommendations: [],
-        meta: { diagnostics: { stage: 'recall', reason: 'all_candidates_below_s1_threshold', bestS1Score: 0.2 } },
-      } as never);
-    assert.deepEqual(data, {
-      sourceNoteId: 'note-2',
-      sourceRevision: 5,
-      status: 'insufficient_history',
-      relationships: [],
-      generatedAt: '2026-09-02T00:01:00.000Z',
-    });
-    assert.equal('meta' in data, false);
-    assert.equal('recommendations' in data, false);
   });
 });

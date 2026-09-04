@@ -414,8 +414,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
       }
       throw new Error('刷新相关推荐失败');
     }
-    if (!isRecord(payload) || payload.success !== true || !isRecord(payload.data) ||
-      (!Array.isArray(payload.data.relationships) && !Array.isArray(payload.data.recommendations))) {
+    if (!isRecord(payload) || payload.success !== true || !isRecord(payload.data) || !Array.isArray(payload.data.recommendations)) {
       throw new Error('推荐响应无效');
     }
 

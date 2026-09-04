@@ -1,31 +1,93 @@
 import React from 'react';
-import type { IRelatedNote } from '../types';
-import type { RelationshipContext } from '../app/notes/types/relationships';
+import { IRelatedNote } from '../types';
 
 interface ChatRelatedNotesPanelProps {
-  relatedNotes?: IRelatedNote[];
-  relationshipContext?: RelationshipContext | null;
+  relatedNotes: IRelatedNote[];
   className?: string;
   onNoteClick?: (noteId: string) => void;
-  onRemoveContextNote?: (noteId: string) => void;
 }
 
-export const ChatRelatedNotesPanel: React.FC<ChatRelatedNotesPanelProps> = ({ relatedNotes = [], relationshipContext, className = '', onNoteClick, onRemoveContextNote }) => {
-  const notes = relationshipContext?.notes || relatedNotes.map((note) => ({ noteId: note.noteId || note.id || '', title: note.title || '无标题', occurredAt: note.createdAt || '', excerpt: note.content || '' }));
+export const ChatRelatedNotesPanel: React.FC<ChatRelatedNotesPanelProps> = ({
+  relatedNotes,
+  className = '',
+  onNoteClick
+}) => {
+  // 开发模式下打印日志，方便调试数据更新
+  if (process.env.NODE_ENV === 'development') {
+    console.log('📝 ChatRelatedNotesPanel received notes:', relatedNotes?.length);
+  }
+
+  const getSimilarityLabel = (similarity: number) => {
+    if (similarity >= 0.9) return '高度相关';
+    if (similarity >= 0.8) return '相关';
+    if (similarity >= 0.7) return '可能相关';
+    return '弱相关';
+  };
+
   return (
-    <aside className={`flex h-full flex-col overflow-hidden bg-white ${className}`} aria-label="关系上下文">
-      <div className="shrink-0 border-b border-gray-100 p-6"><h2 className="text-lg font-semibold text-gray-900">{relationshipContext ? '关系上下文' : '相关笔记'}</h2><p className="mt-1 text-xs text-gray-500">{relationshipContext ? '发送前先看看这两个时刻' : '对话中提到的笔记'}</p></div>
-      <div className="flex-1 space-y-3 overflow-y-auto p-6">
-        {relationshipContext && <p className="rounded-lg bg-gray-50 p-3 text-sm leading-6 text-gray-600">{relationshipContext.relationship.explanation}</p>}
-        {notes.length === 0 ? <div className="py-16 text-center text-sm text-gray-500">暂无相关笔记</div> : notes.map((note) => (
-          <article key={note.noteId} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-            <div className="flex items-start justify-between gap-2"><button type="button" className="min-h-11 text-left font-medium text-gray-900 underline-offset-2 hover:underline" onClick={() => note.noteId && onNoteClick?.(note.noteId)}>{note.title || '无标题'}</button>{relationshipContext && <button type="button" className="min-h-11 min-w-11 rounded-lg text-xs text-gray-500 hover:bg-gray-200" aria-label={`移除${note.title || '这条笔记'}`} onClick={() => onRemoveContextNote?.(note.noteId)}>移除</button>}</div>
-            <p className="mt-2 text-xs text-gray-400">{note.occurredAt ? new Date(note.occurredAt).toLocaleDateString('zh-CN') : ''}</p>
-            <blockquote className="mt-2 text-sm leading-6 text-gray-600">“{note.excerpt || '暂无摘录'}”</blockquote>
-          </article>
-        ))}
+    <div className={`flex flex-col bg-white h-full overflow-hidden ${className}`}>
+      <div className="flex items-center justify-between p-6 border-b border-gray-100 shrink-0">
+        <h2 className="text-lg font-semibold text-gray-900">
+          相关笔记
+          {relatedNotes.length > 0 && <span className="ml-2 text-sm text-gray-500 font-normal">({relatedNotes.length})</span>}
+        </h2>
       </div>
-    </aside>
+
+      <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+        {relatedNotes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center mt-20 gap-3">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-300" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <circle cx="10" cy="13" r="2"></circle>
+              <line x1="11.4" y1="14.4" x2="15" y2="18"></line>
+            </svg>
+            <div className="text-gray-500 font-medium">暂无相关笔记</div>
+            <div className="text-xs text-gray-400 max-w-[200px]">
+              随着对话进行，这里会显示相关的笔记内容
+            </div>
+          </div>
+        ) : (
+          relatedNotes.map((note, index) => {
+            const score = typeof note.score === 'number' ? note.score : (note.similarity || 0);
+            const noteId = note.noteId || note.id || '';
+            return (
+              <div
+                key={`${noteId}-${index}`}
+                className="p-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:shadow-sm hover:border-gray-200 transition-all cursor-pointer flex flex-col gap-2"
+                onClick={() => noteId && onNoteClick && onNoteClick(noteId)}
+              >
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-medium text-gray-900 truncate flex-1">{note.title || '无标题'}</div>
+                <span className="shrink-0 bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 text-[10px] font-medium border-none">
+                  {getSimilarityLabel(score)}
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-3 text-[10px] text-gray-400 font-mono bg-gray-100/50 p-1.5 rounded-lg border border-gray-100 w-fit">
+                <div className="flex flex-col">
+                  <span className="text-gray-500 font-semibold text-[11px]">
+                    {score ? score.toFixed(2) : '0.00'}
+                  </span>
+                  <span>相关度</span>
+                </div>
+              </div>
+              
+              <div className="text-sm text-gray-600 line-clamp-3">
+                {note.content || '暂无内容...'}
+              </div>
+              
+              {note.reason && (
+                <div className="mt-2 text-xs text-gray-400 bg-gray-100/50 p-2 rounded-lg leading-relaxed">
+                  💡 {note.reason}
+                </div>
+              )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 };
 
