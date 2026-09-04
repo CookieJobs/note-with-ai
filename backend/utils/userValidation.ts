@@ -51,7 +51,7 @@ export class UserValidator {
       throw ErrorHandler.createAuthenticationError('登录已失效，请重新登录');
     }
     
-    if (!user.isActive) {
+    if (user.isActive === false) {
       throw ErrorHandler.createAuthorizationError('账号已被禁用');
     }
     recordActiveUser(user._id.toString());
@@ -117,7 +117,7 @@ export class UserValidator {
       throw ErrorHandler.createAuthenticationError('登录已失效，请重新登录');
     }
 
-    if (!user.isActive) {
+    if (user.isActive === false) {
       throw ErrorHandler.createAuthorizationError('账号已被禁用');
     }
 

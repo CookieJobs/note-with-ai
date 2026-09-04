@@ -30,7 +30,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
   try {
     const decoded = verifyToken(token);
     const user = await User.findById(decoded.userId).select('_id isActive').lean() as { isActive?: boolean } | null;
-    if (!user || !user.isActive) {
+    if (!user || user.isActive === false) {
       res.status(401).json({ error: '登录已失效或账号已被禁用' });
       return;
     }
@@ -51,7 +51,7 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
     try {
       const decoded = verifyToken(token);
       const user = await User.findById(decoded.userId).select('_id isActive').lean() as { isActive?: boolean } | null;
-      if (user?.isActive) req.user = decoded;
+      if (user && user.isActive !== false) req.user = decoded;
     } catch (error) {
       // 忽略错误，继续执行
     }
