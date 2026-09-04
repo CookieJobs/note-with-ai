@@ -13,6 +13,8 @@ import { runProductionNoteEnrichmentTask, type EnrichmentTaskStatus } from '../s
 import { authenticateToken } from '../middleware/auth';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
+import { requireSingleRouteParam } from '../utils/requestParams';
+import { findRelationshipContext, submitRelationshipFeedback, type RelationshipFeedbackVerdict } from '../services/relationshipService';
 
 const router = express.Router();
 
@@ -27,6 +29,16 @@ export function getRecommendationTaskResult(
     throw ErrorHandler.createExternalApiError('刷新相关推荐失败', 'recommendation');
   }
   return result;
+}
+
+export function toPublicRecommendationResult(result: RecommendationResult) {
+  return {
+    sourceNoteId: result.sourceNoteId,
+    sourceRevision: result.sourceRevision,
+    status: result.status,
+    relationships: result.relationships,
+    generatedAt: result.generatedAt,
+  };
 }
 
 router.get('/', authenticateToken, asyncHandler(async (req, res) => {
@@ -128,18 +140,53 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
 
   result = getRecommendationTaskResult(status, result);
 
-  if (result.recommendations.length === 0) {
-    ResponseHandler.success(res, {
-      recommendations: [],
-      meta: result.meta,
-    }, result.message || '无满足阈值的候选');
-    return;
-  }
+  ResponseHandler.success(res, toPublicRecommendationResult(result), result.message || '语义联想成功');
+}));
 
-  ResponseHandler.success(res, {
-    recommendations: result.recommendations,
-    meta: result.meta,
-  }, '语义联想成功');
+router.post('/relationships/:relationshipId/feedback', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
+  const user = await UserValidator.authenticateUser(req);
+  const relationshipId = requireSingleRouteParam(req.params.relationshipId, 'relationshipId');
+  const body = req.body || {};
+  const verdicts = new Set(['helpful', 'not_relevant', 'hide_pair']);
+  if (!verdicts.has(body.verdict)) {
+    throw ErrorHandler.createValidationError('关系反馈参数无效');
+  }
+  const numericFields = ['sourceRevision', 'candidateRevision'];
+  if (typeof body.sourceNoteId !== 'string' || typeof body.candidateNoteId !== 'string' ||
+    numericFields.some((key) => !Number.isInteger(body[key]) || body[key] < 1)) {
+    throw ErrorHandler.createValidationError('关系反馈参数无效');
+  }
+  try {
+    const feedback = await submitRelationshipFeedback({
+      userId: user._id.toString(),
+      relationshipId,
+      sourceNoteId: body.sourceNoteId,
+      candidateNoteId: body.candidateNoteId,
+      sourceRevision: body.sourceRevision,
+      candidateRevision: body.candidateRevision,
+      verdict: body.verdict as RelationshipFeedbackVerdict,
+    });
+    const storedVerdict = feedback && !Array.isArray(feedback) && typeof feedback === 'object' && 'verdict' in feedback
+      ? (feedback as { verdict?: unknown }).verdict
+      : undefined;
+    ResponseHandler.success(res, { relationshipId, verdict: storedVerdict || body.verdict });
+  } catch (error) {
+    if (error instanceof Error && error.message === '关系已更新，请刷新后重试') {
+      throw ErrorHandler.createExternalApiError(error.message, 'relationship');
+    }
+    if (error instanceof Error && (error.message === '关系不存在或无权限' || error.message === '关系不存在')) {
+      throw ErrorHandler.createAuthorizationError(error.message);
+    }
+    throw error;
+  }
+}));
+
+router.get('/relationships/:relationshipId/context', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
+  const user = await UserValidator.authenticateUser(req);
+  const relationshipId = requireSingleRouteParam(req.params.relationshipId, 'relationshipId');
+  const context = await findRelationshipContext(user._id.toString(), relationshipId);
+  if (!context) throw ErrorHandler.createAuthorizationError('关系上下文不可用');
+  ResponseHandler.success(res, context);
 }));
 
 export default router;

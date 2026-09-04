@@ -16,6 +16,7 @@ import { preloadRichTextEditor } from './components/richTextEditorLoader';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
 import { useNotes } from './hooks/useNotes';
+import { useQuickCaptureDraft, type QuickCaptureContext } from './hooks/useQuickCaptureDraft';
 import { NOTE_EDITOR_INSIDE_SELECTOR } from './utils/editorInside';
 import layoutStyles from './styles/layout.module.scss';
 import cardStyles from './styles/note-card.module.scss';
@@ -56,6 +57,7 @@ function NotesContent() {
 
   // 选中笔记状态（侧边栏抽屉）
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [captureContext, setCaptureContext] = useState<QuickCaptureContext | undefined>();
 
   // 数据逻辑 Hook
   const {
@@ -67,6 +69,8 @@ function NotesContent() {
     refreshRecommendCache,
   } = useNotes(user, { onError: setError });
 
+  const { draft, saveDraft, clearDraft, storageAvailable } = useQuickCaptureDraft(user?.id);
+
   // 新建笔记 Hook
   const {
     newContentText,
@@ -75,7 +79,7 @@ function NotesContent() {
     setNewContentJson,
     loading: createLoading,
     handleSubmit,
-  } = useCreateNote(createNote, { onError: setError });
+  } = useCreateNote(createNote, { onError: setError, onSuccess: () => { clearDraft(); setCaptureContext(undefined); } });
 
   const buildJsonFromPlain = (plainText: string) => {
     const t = plainText || '';
@@ -92,6 +96,18 @@ function NotesContent() {
   const [drafts, setDrafts] = useState<Record<string, { json: JSONContent; text: string; dirty: boolean }>>({});
   const editingNoteId = activeEditor.type === 'note' ? activeEditor.noteId : null;
   const isComposeOpen = activeEditor.type === 'compose';
+
+  useEffect(() => {
+    if (!draft || newContentText.trim() || isComposeOpen) return;
+    setNewContentText(draft.text);
+    setNewContentJson(draft.editorMode === 'rich' ? buildJsonFromPlain(draft.text) : null);
+    setCaptureContext(draft.context);
+  }, [draft, isComposeOpen, newContentText, setNewContentJson, setNewContentText]);
+
+  useEffect(() => {
+    if (!isComposeOpen) return;
+    saveDraft({ text: newContentText, editorMode: newContentJson ? 'rich' : 'plain', context: captureContext });
+  }, [captureContext, isComposeOpen, newContentJson, newContentText, saveDraft]);
   
   // 用于存储笔记 DOM 节点的引用，实现自动滚动
   const noteRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -190,9 +206,9 @@ function NotesContent() {
     setActiveEditor({ type: 'none' });
   }, [setNewContentJson, setNewContentText]);
 
-  const handleComposeSubmit = useCallback(() => {
-    setActiveEditor({ type: 'none' });
-    void handleSubmit();
+  const handleComposeSubmit = useCallback(async () => {
+    const saved = await handleSubmit();
+    if (saved) setActiveEditor({ type: 'none' });
   }, [handleSubmit]);
 
   const handleContentEditingChange = useCallback((id: string, isEditing: boolean) => {
@@ -269,10 +285,31 @@ function NotesContent() {
                     onSubmit={handleComposeSubmit}
                     onCancel={handleComposeCancel}
                     loading={createLoading}
+                    context={captureContext}
+                    onClearContext={() => setCaptureContext(undefined)}
+                    onDiscardDraft={() => {
+                      if (window.confirm('确定放弃这份草稿吗？')) {
+                        clearDraft();
+                        setCaptureContext(undefined);
+                        setNewContentText('');
+                        setNewContentJson(null);
+                        setActiveEditor({ type: 'none' });
+                      }
+                    }}
                   />
+                  {!storageAvailable && isComposeOpen && <div role="status" className="mt-2 text-xs text-amber-700">这台设备暂时无法自动恢复草稿，请保存到云端。</div>}
                 </div>
                 <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
                   <NoteCounter count={notes.length} />
+                  <div className="mb-4 rounded-xl bg-white/70 px-4 py-3 text-sm leading-6 text-gray-500" role="status">
+                    {notes.length === 0
+                      ? '先记下一件刚刚发生的事。记录多起来后，这里会帮你找到过去与现在的联系。'
+                      : notes.length === 1
+                        ? '已经记住这一刻。再有新的记录时，我们会开始寻找联系。'
+                        : notes.some((note) => Array.isArray((note.recommendCache as { relationships?: unknown[] } | null | undefined)?.relationships) && ((note.recommendCache as { relationships?: unknown[] }).relationships?.length || 0) > 0)
+                          ? '有一条新的关系线索可以回望。'
+                          : '还没有足够明确的联系。继续自然记录，不需要刻意分类。'}
+                  </div>
 
                   {notes.map((note) => (
                     <motion.div
@@ -317,6 +354,13 @@ function NotesContent() {
                 selectedNoteId={selectedNoteId}
                 allNotes={notes}
                 onRefreshRecommendCache={refreshRecommendCache}
+                onContinueWriting={(relationship) => {
+                  setNewContentText('');
+                  setNewContentJson(null);
+                  setCaptureContext({ origin: 'relationship', relationshipId: relationship.relationshipId, sourceNoteIds: [relationship.source.noteId, relationship.candidate.noteId] });
+                  setActiveEditor({ type: 'compose' });
+                }}
+                onStartChat={(relationship) => router.push(`/chat?source=relationship&relationshipId=${encodeURIComponent(relationship.relationshipId)}`)}
               />
             </div>
           )}
