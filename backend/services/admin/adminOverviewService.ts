@@ -29,6 +29,15 @@ const buckets = (now: Date, days: number): Bucket[] => {
 async function aggregate(model: any, pipeline: unknown[]): Promise<any[]> {
   return model.aggregate(pipeline as any);
 }
+
+// Historical notes created before enrichment was introduced do not have this field.
+// Normalize it at the aggregation boundary so operational metrics remain available.
+const failedArtifactCountPipeline = () => [
+  { $project: { enrichment: { $ifNull: ['$enrichment', {}] } } },
+  { $project: { count: { $size: { $filter: { input: { $objectToArray: '$enrichment' }, as: 'artifact', cond: { $eq: ['$$artifact.v.status', 'failed'] } } } } } },
+  { $group: { _id: null, failed: { $sum: '$count' } } },
+];
+
 function fill(rows: any[], expected: Bucket[]): Bucket[] {
   const values = new Map(rows.map((row) => [String(row._id ?? row.day), Number(row.value ?? row.count ?? 0)]));
   return expected.map((bucket) => ({ ...bucket, value: values.get(bucket.day) ?? 0 }));
@@ -58,8 +67,8 @@ export async function getOverview(input: { range: OverviewRange; now?: Date }) {
   const retentionValues = await Promise.all(([1, 7, 30] as const).map((day) => getCohortRetention(day, now)));
   const activeWindows = [1, 7, 30].map((windowDays) => aggregate(ProductEvent, [{ $match: { name: 'user_active_day', occurredAt: { $gte: new Date(startOfShanghaiDay(now).getTime() - (windowDays - 1) * 86400000), $lt: new Date(startOfShanghaiDay(now).getTime() + 86400000) } } }, { $group: { _id: '$userId' } }, { $count: 'value' }]));
   const [users, notes, chats, events, ai, ...active] = await Promise.all([
-    aggregate(User, [{ $facet: { total: [{ $count: 'value' }], todayNew: [{ $match: { createdAt: { $gte: startOfShanghaiDay(now), $lt: new Date(startOfShanghaiDay(now).getTime() + 86400000) } }, $count: 'value' }], activation: [{ $lookup: { from: 'notes', let: { uid: '$_id', registeredAt: '$createdAt' }, pipeline: [{ $match: { $expr: { $and: [{ $eq: ['$userId', '$$uid'] }, { $gte: ['$createdAt', '$$registeredAt'] }, { $lte: ['$createdAt', { $add: ['$$registeredAt', 7 * 86400000] }] }, { $or: [{ $eq: ['$enrichment.meta.status', 'ready'] }, { $eq: ['$enrichment.embedding.status', 'ready'] }, { $eq: ['$enrichment.recommendations.status', 'ready'] }] }] } } }, { $limit: 1 }], as: 'activatedNotes' } }, { $match: { 'activatedNotes.0': { $exists: true } } }, { $count: 'value' }] } }]),
-    aggregate(Note, [{ $facet: { total: [{ $count: 'value' }], timeseries: [{ $match: { createdAt: { $gte: start } } }, { $project: { createdAt: 1 } }, { $group: { _id: { $dateToString: { date: '$createdAt', timezone: 'Asia/Shanghai', format: '%Y-%m-%d' } }, value: { $sum: 1 } } }], failed: [{ $project: { enrichment: 1 } }, { $project: { count: { $size: { $filter: { input: { $objectToArray: '$enrichment' }, as: 'artifact', cond: { $eq: ['$$artifact.v.status', 'failed'] } } } } } }, { $group: { _id: null, failed: { $sum: '$count' } } }] } }]),
+    aggregate(User, [{ $facet: { total: [{ $count: 'value' }], todayNew: [{ $match: { createdAt: { $gte: startOfShanghaiDay(now), $lt: new Date(startOfShanghaiDay(now).getTime() + 86400000) } } }, { $count: 'value' }], activation: [{ $lookup: { from: 'notes', let: { uid: '$_id', registeredAt: '$createdAt' }, pipeline: [{ $match: { $expr: { $and: [{ $eq: ['$userId', '$$uid'] }, { $gte: ['$createdAt', '$$registeredAt'] }, { $lte: ['$createdAt', { $add: ['$$registeredAt', 7 * 86400000] }] }, { $or: [{ $eq: ['$enrichment.meta.status', 'ready'] }, { $eq: ['$enrichment.embedding.status', 'ready'] }, { $eq: ['$enrichment.recommendations.status', 'ready'] }] }] } } }, { $limit: 1 }], as: 'activatedNotes' } }, { $match: { 'activatedNotes.0': { $exists: true } } }, { $count: 'value' }] } }]),
+    aggregate(Note, [{ $facet: { total: [{ $count: 'value' }], timeseries: [{ $match: { createdAt: { $gte: start } } }, { $project: { createdAt: 1 } }, { $group: { _id: { $dateToString: { date: '$createdAt', timezone: 'Asia/Shanghai', format: '%Y-%m-%d' } }, value: { $sum: 1 } } }], failed: failedArtifactCountPipeline() } }]),
     aggregate(Chat, [{ $facet: { total: [{ $count: 'value' }] } }]),
     aggregate(ProductEvent, [{ $match: { occurredAt: { $gte: start } } }, { $facet: { timeseries: [{ $match: { name: { $in: ['note_created', 'chat_turn_committed'] } } }, { $group: { _id: { day: { $dateToString: { date: '$occurredAt', timezone: 'Asia/Shanghai', format: '%Y-%m-%d' } }, name: '$name' }, value: { $sum: 1 } } }] } }]),
     aggregate(AiUsageEvent, [{ $match: { startedAt: { $gte: start } } }, { $facet: { summary: [{ $group: { _id: null, succeeded: { $sum: { $cond: [{ $eq: ['$status', 'succeeded'] }, 1, 0] } }, total: { $sum: 1 }, knownTokenCalls: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'succeeded'] }, { $ne: ['$inputTokens', null] }, { $or: [{ $eq: ['$operation', 'embedding'] }, { $ne: ['$outputTokens', null] }] }] }, 1, 0] } }, costKnown: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'succeeded'] }, { $ne: ['$estimatedCostMicros', null] }] }, 1, 0] } }, cost: { $sum: { $ifNull: ['$estimatedCostMicros', 0] } }, inputTokens: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'succeeded'] }, { $ne: ['$inputTokens', null] }, { $or: [{ $eq: ['$operation', 'embedding'] }, { $ne: ['$outputTokens', null] }] }] }, '$inputTokens', 0] } }, outputTokens: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'succeeded'] }, { $ne: ['$inputTokens', null] }, { $ne: ['$outputTokens', null] }, { $ne: ['$operation', 'embedding'] }] }, '$outputTokens', 0] } } } }] } }]),
@@ -92,7 +101,7 @@ export async function getOverview(input: { range: OverviewRange; now?: Date }) {
 export async function getSystemHealth() {
   const since = new Date(Date.now() - 86400000);
   const [notes, ai] = await Promise.all([
-    aggregate(Note, [{ $project: { enrichment: 1 } }, { $project: { count: { $size: { $filter: { input: { $objectToArray: '$enrichment' }, as: 'artifact', cond: { $eq: ['$$artifact.v.status', 'failed'] } } } } } }, { $group: { _id: null, failed: { $sum: '$count' } } }]),
+    aggregate(Note, failedArtifactCountPipeline()),
     aggregate(AiUsageEvent, [{ $match: { startedAt: { $gte: since } } }, { $group: { _id: null, succeeded: { $sum: { $cond: [{ $eq: ['$status', 'succeeded'] }, 1, 0] } }, total: { $sum: 1 } } }]),
   ]);
   const row = ai[0] ?? {};
