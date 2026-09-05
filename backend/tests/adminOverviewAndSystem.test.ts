@@ -55,6 +55,57 @@ test('system health exposes only safe public fields', async () => {
   void mongoose;
 });
 
+test('overview and system health treat legacy notes without enrichment as having no failed artifacts', async () => {
+  mockAggregates({
+    User: [{ total: 1, todayNew: 0, activation: 0 }],
+    Note: [{ total: 0, timeseries: [], failed: [] }],
+    Chat: [{ total: 0 }],
+    ProductEvent: [],
+    AiUsageEvent: [{ summary: [] }],
+  });
+  const Note = models[1] as any;
+  const original = Note.aggregate;
+  Note.aggregate = async (pipeline: any[]) => {
+    const text = JSON.stringify(pipeline);
+    assert.match(text, /\$ifNull/);
+    return [{ total: [], timeseries: [], failed: [] }];
+  };
+  try {
+    const { getOverview, getSystemHealth } = await import('../services/admin/adminOverviewService');
+    await assert.doesNotReject(() => getOverview({ range: '7d' }));
+    await assert.doesNotReject(() => getSystemHealth());
+  } finally {
+    Note.aggregate = original;
+  }
+});
+
+test('overview uses separate Mongo stages to count today’s new users', async () => {
+  mockAggregates({
+    User: [{ total: [], todayNew: [], activation: [] }],
+    Note: [{ total: [], timeseries: [], failed: [] }],
+    Chat: [{ total: [] }],
+    ProductEvent: [],
+    AiUsageEvent: [{ summary: [] }],
+  });
+  const User = models[0] as any;
+  const original = User.aggregate;
+  User.aggregate = async (pipeline: any[]) => {
+    const todayNew = pipeline[0]?.$facet?.todayNew;
+    if (todayNew) {
+      assert.equal(todayNew.length, 2);
+      assert.deepEqual(Object.keys(todayNew[0]), ['$match']);
+      assert.deepEqual(Object.keys(todayNew[1]), ['$count']);
+    }
+    return original(pipeline);
+  };
+  try {
+    const { getOverview } = await import('../services/admin/adminOverviewService');
+    await assert.doesNotReject(() => getOverview({ range: '7d' }));
+  } finally {
+    User.aggregate = original;
+  }
+});
+
 test('overview reads independent Shanghai active windows and real cost coverage', async () => {
   const ProductEvent = models[3] as any;
   const original = ProductEvent.aggregate;
