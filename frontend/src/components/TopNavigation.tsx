@@ -10,6 +10,7 @@ import { Menu } from 'lucide-react';
 const menuItems = [
   { label: '笔记', href: '/notes' },
   { label: '聊天', href: '/chat' },
+  { label: '灵感', href: '/inspiration' },
 ];
 
 interface TopNavigationProps {
@@ -20,7 +21,7 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const activeIndex = pathname.startsWith('/chat') ? 1 : 0;
+  const activeIndex = pathname.startsWith('/chat') ? 1 : pathname.startsWith('/inspiration') ? 2 : 0;
 
   useEffect(() => {
     const userData = getUser();
@@ -131,6 +132,20 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
                       <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                     个人中心
+                  </Link>
+                  <Link
+                    href="/memory"
+                    className={styles.menuLink}
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    AI 记忆
+                  </Link>
+                  <Link
+                    href="/publish"
+                    className={styles.menuLink}
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    公开内容
                   </Link>
 
                   <div className={styles.userMenuDivider} />

@@ -10,6 +10,21 @@ const propertySchemas = {
   chat_turn_committed: z.object({}).strict(),
   association_opened: z.object({ surface: z.enum(['notes', 'chat']) }).strict(),
   feedback_submitted: z.object({}).strict(),
+  memory_viewed: z.object({}).strict(),
+  memory_evidence_opened: z.object({ memoryId: stringProperty }).strict(),
+  memory_confirmed: z.object({}).strict(),
+  memory_corrected: z.object({}).strict(),
+  memory_deleted: z.object({}).strict(),
+  note_ai_preference_changed: z.object({ included: z.boolean() }).strict(),
+  publication_created: z.object({}).strict(),
+  publication_snapshot_updated: z.object({}).strict(),
+  publication_revoked: z.object({}).strict(),
+  inspiration_requested: z.object({}).strict(),
+  inspiration_source_opened: z.object({ inspirationId: stringProperty }).strict(),
+  inspiration_generated: z.object({}).strict(),
+  inspiration_generation_failed: z.object({}).strict(),
+  inspiration_saved: z.object({}).strict(),
+  inspiration_dismissed: z.object({}).strict(),
 } as const;
 
 const eventSchema = z.object({
@@ -68,7 +83,7 @@ export class ProductEventService {
   }
 
   static async recordWebEvent(userId: string, name: ProductEventName, properties: Record<string, string | number | boolean | null>): Promise<void> {
-    if (name !== 'association_opened') throw new Error('不允许上报该事件');
+    if (!['association_opened', 'memory_evidence_opened', 'inspiration_source_opened'].includes(name)) throw new Error('不允许上报该事件');
     await this.trackProductEvent({ name, userId, source: 'web', properties });
   }
 }

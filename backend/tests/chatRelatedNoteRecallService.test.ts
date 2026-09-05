@@ -21,6 +21,7 @@ async function loadModules() {
   return {
     axios: require('axios').default,
     vectorStore: require('../services/vectorStore').vectorStore,
+    NoteAiPreference: require('../models/NoteAiPreference').default,
     chatRelatedNoteRecallService: require('../services/chatRelatedNoteRecallService').chatRelatedNoteRecallService,
   };
 }
@@ -42,8 +43,9 @@ describe('chatRelatedNoteRecallService', () => {
   });
 
   it('recallFromMessages 使用 search_query 语义生成聊天召回向量', async () => {
-    const { axios, vectorStore, chatRelatedNoteRecallService } = await loadModules();
+    const { axios, vectorStore, NoteAiPreference, chatRelatedNoteRecallService } = await loadModules();
     const requests: Array<Record<string, unknown>> = [];
+    mock.method(NoteAiPreference, 'find', () => ({ select: () => ({ lean: async () => [] }) }) as never);
 
     replaceMethod(axios, 'post', (async (_url: string, body: Record<string, unknown>) => {
       requests.push(body);
@@ -87,5 +89,16 @@ describe('chatRelatedNoteRecallService', () => {
     ]);
     assert.equal(requests.length, 1);
     assert.equal(requests[0].input_type, 'search_query');
+  });
+
+  it('does not return notes that the user excluded from AI', async () => {
+    const { axios, vectorStore, NoteAiPreference, chatRelatedNoteRecallService } = await loadModules();
+    replaceMethod(axios, 'post', (async () => ({ data: { data: [{ embedding: [0.1, 0.2, 0.3] }] } })) as any);
+    replaceMethod(vectorStore, 'search', (async () => ([{ item: { _id: 'note-hidden', title: '私密笔记', content: '不应进入对话上下文' }, score: 0.9 }])) as any);
+    mock.method(NoteAiPreference, 'find', () => ({ select: () => ({ lean: async () => [{ noteId: 'note-hidden' }] }) }) as never);
+
+    const result = await chatRelatedNoteRecallService.recallFromMessages({ userId: 'user-1', messages: [{ role: 'user', content: '回忆一下' }] });
+
+    assert.deepEqual(result, []);
   });
 });

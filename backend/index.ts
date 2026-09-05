@@ -22,6 +22,12 @@ import adminRoutes from './routes/admin';
 import eventRoutes from './routes/events';
 import feedbackRoutes from './routes/feedback';
 import adminFeedbackRoutes from './routes/admin/feedback';
+import memoryInsightsRoutes from './routes/memoryInsights';
+import noteAiPreferencesRoutes from './routes/noteAiPreferences';
+import publicationsRoutes from './routes/publications';
+import inspirationsRoutes from './routes/inspirations';
+import inspirationSettingsRoutes from './routes/inspirationSettings';
+import { startInspirationScheduler } from './services/inspirationScheduler';
 
 dotenv.config();
 
@@ -61,6 +67,11 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/chat', chatRelatedNotesRoutes);
 app.use('/api/recommend', recommendRoutes);
 app.use('/api/feed', feedRoutes);
+app.use('/api/memory-insights', memoryInsightsRoutes);
+app.use('/api/note-ai-preferences', noteAiPreferencesRoutes);
+app.use('/api/publications', publicationsRoutes);
+app.use('/api/inspirations', inspirationsRoutes);
+app.use('/api/inspiration-settings', inspirationSettingsRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/cache', cacheRoutes);
 app.use('/api/performance', performanceRoutes);
@@ -106,6 +117,7 @@ export default async (req: Request, res: Response) => {
 // Local Development Server
 if (require.main === module) {
   connectDB().then(() => {
+    startInspirationScheduler();
     app.listen(PORT, () => {
       logger.info(`🚀 Backend running at http://localhost:${PORT}`);
     });

@@ -48,7 +48,7 @@
 .nav {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   align-items: center;
   gap: 4px;
   background: #f3f4f6;
@@ -60,13 +60,14 @@
 /* data-active-index → 同时设置 --nav-active 和 --nav-target */
 .nav[data-active-index="0"] { --nav-active: 0; --nav-target: 0; }
 .nav[data-active-index="1"] { --nav-active: 1; --nav-target: 1; }
+.nav[data-active-index="2"] { --nav-active: 2; --nav-target: 2; }
 
 .navHoverPill {
   position: absolute;
   top: 4px;
   left: 4px;
   height: calc(100% - 8px);
-  width: calc((100% - 12px) / 2);
+  width: calc((100% - 16px) / 3);
   border-radius: 10px;
   pointer-events: none;
   background: #ffffff;
@@ -113,6 +114,9 @@
   }
   .nav:has(.navItem:nth-child(3):hover) {
     --nav-target: 1;
+  }
+  .nav:has(.navItem:nth-child(4):hover) {
+    --nav-target: 2;
   }
 
   .nav:has(.navItem:hover) .navHoverPill {

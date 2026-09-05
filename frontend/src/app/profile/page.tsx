@@ -1,14 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, isAuthenticated } from '../../utils/auth';
-import { getFeed, triggerAnalysis, getStats, FeedResponse, UserStats } from '../../services/feedService';
+import { getStats, UserStats } from '../../services/feedService';
 import { updateProfile, changePassword } from '../../services/userService';
 import TopNavigation from '../../components/TopNavigation';
 import styles from './profile.module.scss';
 import { toast } from 'sonner';
-import { defaultProfileBackgroundTheme, mapUserProfileToBackgroundTheme } from './profileBackgroundTheme';
+import { defaultProfileBackgroundTheme } from './profileBackgroundTheme';
 
 /* ========== Helpers ========== */
 
@@ -66,7 +66,6 @@ function StatsBar({ stats }: { stats: UserStats | null }) {
     { value: stats.streakDays, unit: '天', label: '连续' },
     { value: formatWords(stats.totalWords), unit: '', label: '总字数' },
     { value: stats.avgWordsPerNote, unit: '字', label: '平均' },
-    { value: stats.interestCount, unit: '个', label: '兴趣' },
   ];
 
   return (
@@ -77,14 +76,6 @@ function StatsBar({ stats }: { stats: UserStats | null }) {
           <strong>{item.value}</strong> {item.unit} {item.label}
         </span>
       ))}
-      {stats.lastAnalyzedAt && (
-        <>
-          <span className={styles.statsBarDivider} />
-          <span className={styles.statsBarTime}>
-            画像更新于 {formatTimeAgo(stats.lastAnalyzedAt)}
-          </span>
-        </>
-      )}
     </div>
   );
 }
@@ -244,119 +235,21 @@ function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => 
 export default function ProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  const [data, setData] = useState<FeedResponse | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [analyzing, setAnalyzing] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const [aiExpanded, setAiExpanded] = useState(true);
-  const previousProfileStatusRef = useRef<FeedResponse['profileStatus']>();
-
-  const theme = useMemo(() => {
-    if (data?.userProfile?.theme && data.userProfile.theme.cssValue) {
-      const isValid = /^linear-gradient|^radial-gradient|#|rgba?/i.test(data.userProfile.theme.cssValue.trim());
-      if (isValid) return { id: 'ai-generated' as any, background: data.userProfile.theme.cssValue.trim() };
-    }
-    const computed = mapUserProfileToBackgroundTheme(data?.userProfile, { seed: user?.email || user?.username });
-    if (loading || !data?.userProfile || data?.profileStatus === 'analyzing') return defaultProfileBackgroundTheme;
-    return computed;
-  }, [data?.profileStatus, data?.userProfile, loading, user?.email, user?.username]);
-
-  const pageStyle = useMemo(
-    () => ({ ['--profile-background' as any]: theme.background }) as CSSProperties,
-    [theme.background],
-  );
-
-  const loadFeedPanel = useCallback(async (options: { silent?: boolean } = {}) => {
-    const { silent = false } = options;
-
-    try {
-      if (!silent) {
-        setLoading(true);
-      }
-
-      const nextFeed = await getFeed();
-      setData(nextFeed);
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
-  }, []);
+  const pageStyle = { ['--profile-background' as any]: defaultProfileBackgroundTheme.background } as CSSProperties;
 
   const loadStatsBar = useCallback(async () => {
     const nextStats = await getStats();
     setStats(nextStats);
   }, []);
 
-  const loadInitialData = useCallback(async () => {
-    setLoading(true);
-
-    try {
-      const [feedRes, statsRes] = await Promise.allSettled([
-        loadFeedPanel({ silent: true }),
-        loadStatsBar(),
-      ]);
-
-      if (feedRes.status === 'rejected' && statsRes.status === 'rejected') {
-        setData(null);
-        setStats(null);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [loadFeedPanel, loadStatsBar]);
-
   useEffect(() => {
     if (!isAuthenticated()) { router.push('/auth'); return; }
     setUser(getUser());
-    void loadInitialData();
-  }, [loadInitialData, router]);
-
-  // Auto-collapse AI when analyzing, expand when ready
-  useEffect(() => {
-    if (data?.profileStatus === 'analyzing') setAiExpanded(false);
-  }, [data?.profileStatus]);
-
-  useEffect(() => {
-    const previousStatus = previousProfileStatusRef.current;
-    const currentStatus = data?.profileStatus;
-
-    if (previousStatus === 'analyzing' && currentStatus && currentStatus !== 'analyzing') {
-      void loadStatsBar();
-    }
-
-    previousProfileStatusRef.current = currentStatus;
-  }, [data?.profileStatus, loadStatsBar]);
-
-  useEffect(() => {
-    if (data?.profileStatus !== 'analyzing') return;
-
-    const timer = window.setTimeout(() => {
-      void loadFeedPanel({ silent: true });
-    }, 4000);
-
-    return () => window.clearTimeout(timer);
-  }, [data?.profileStatus, loadFeedPanel]);
-
-  const handleTriggerAnalysis = async () => {
-    try {
-      setAnalyzing(true);
-      toast.info('正在开始画像分析，请稍候...');
-      const result = await triggerAnalysis();
-      toast.success(result.accepted ? '分析任务已触发，分析完成后将自动刷新' : '已有画像分析任务在运行');
-      setData((prev) => ({
-        feed: prev?.feed || [],
-        userProfile: prev?.userProfile,
-        profileStatus: result.profileStatus,
-        analysisError: result.analysisError,
-      }));
-    } catch { toast.error('触发分析失败'); }
-    finally { setAnalyzing(false); }
-  };
-
-  const handleFeedClick = (noteId: string) => router.push(`/notes?highlight=${noteId}`);
+    void loadStatsBar().catch(() => setStats(null));
+  }, [loadStatsBar, router]);
 
   const handleProfileSaved = (updated: { username?: string; avatar?: string }) => {
     setUser((prev: any) => ({ ...prev, ...updated }));
@@ -419,108 +312,6 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* AI Profile Section */}
-            <div className={`${styles.sectionGroup} ${styles.aiGroup}`}>
-              <div className={styles.sectionGroupHeader}>
-                <span className={styles.sectionGroupTitle}>AI 画像</span>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button
-                    className={styles.btnGhostSm}
-                    onClick={handleTriggerAnalysis}
-                    disabled={analyzing || data?.profileStatus === 'analyzing'}
-                  >
-                    {data?.profileStatus === 'analyzing' ? '分析中...' : data?.profileStatus === 'failed' ? '重新分析' : '更新画像'}
-                  </button>
-                  <button
-                    className={styles.aiGroupToggle}
-                    onClick={() => setAiExpanded((v) => !v)}
-                    title={aiExpanded ? '收起' : '展开'}
-                  >
-                    <span className={`${styles.aiGroupCollapseIcon} ${aiExpanded ? styles.open : styles.closed}`}>▼</span>
-                  </button>
-                </div>
-              </div>
-              <p className={styles.sectionGroupHint}>
-                基于你的笔记内容自动生成，点击更新画像将重新分析最近笔记
-                {data?.profileStatus === 'failed' && data.analysisError ? `；最近一次失败：${data.analysisError}` : ''}
-              </p>
-
-              <div className={`${styles.aiGroupBody} ${aiExpanded ? styles.expanded : styles.collapsed}`}>
-                {/* Interest Graph */}
-                {data?.userProfile?.interests && data.userProfile.interests.length > 0 && (
-                  <InterestGraph interests={data.userProfile.interests} />
-                )}
-
-                {/* Expertise */}
-                {data?.userProfile?.expertise && data.userProfile.expertise.length > 0 && (
-                  <div className={styles.aiSubCard}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.5rem' }}>技能领域</div>
-                    <div className={styles.expertiseList}>
-                      {data.userProfile.expertise.map((exp, idx) => (
-                        <div key={idx} className={styles.expertiseItem}>
-                          <span className={styles.expertiseArea}>{exp.area}</span>
-                          <span className={styles.expertiseLevel}>{exp.level}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Biography */}
-                {data?.userProfile?.summary && (
-                  <div className={styles.aiSubCard}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.4rem' }}>个人传记</div>
-                    <div className={styles.biography}>{data.userProfile.summary}</div>
-                  </div>
-                )}
-
-                {/* AI Theme */}
-                {data?.userProfile?.theme && data.userProfile.theme.themeName && (
-                  <div className={styles.aiSubCard}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.4rem' }}>专属氛围色：{data.userProfile.theme.themeName}</div>
-                    <div className={styles.themeDisplay}>{data.userProfile.theme.reasoning}</div>
-                  </div>
-                )}
-
-                {/* Empty state when no AI data yet */}
-                {!data?.userProfile?.interests?.length &&
-                  !data?.userProfile?.expertise?.length &&
-                  !data?.userProfile?.summary && (
-                  <div style={{ fontSize: '0.8rem', color: '#9ca3af', textAlign: 'center', padding: '1rem 0' }}>
-                    还没有画像数据，点击「更新画像」开始分析
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Feed */}
-          <div className={styles.rightColumn}>
-            <h2 className={styles.pageTitle}>每日推荐 (For You)</h2>
-
-            {loading ? (
-              <SkeletonFeed />
-            ) : data?.feed && data.feed.length > 0 ? (
-              <div className={styles.feedList}>
-                {data.feed.map((item, idx) => (
-                  <div key={idx} className={styles.feedItem} onClick={() => handleFeedClick(item.noteId)}>
-                    <div className={styles.feedAccent} data-type={item.type} />
-                    <div className={styles.feedHeader}>
-                      <span className={styles.feedType} data-type={item.type}>{item.type === 'rediscover' ? '温故知新' : '最新动态'}</span>
-                      <span className={styles.feedReason}>{item.reason}</span>
-                    </div>
-                    <div className={styles.feedTitle}>{item.title || '未命名笔记'}</div>
-                    <div className={styles.feedPreview}>{item.content}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className={styles.emptyState}>
-                <p>暂无推荐内容。</p>
-                <p>多写几条笔记，或者点击左侧「更新画像」来生成推荐。</p>
-                <button onClick={() => router.push('/notes')}>去写笔记</button>
-              </div>
-            )}
           </div>
         </div>
       </div>

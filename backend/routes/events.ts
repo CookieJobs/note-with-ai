@@ -8,10 +8,11 @@ const router = express.Router();
 
 router.post('/', authenticateToken, asyncHandler(async (req, res) => {
   const body = req.body;
-  if (!body || typeof body !== 'object' || Array.isArray(body) || body.name !== 'association_opened'
-    || !body.properties || typeof body.properties !== 'object' || Array.isArray(body.properties)
-    || Object.keys(body).length !== 2 || Object.keys(body.properties).length !== 1
-    || !['notes', 'chat'].includes(body.properties.surface)) {
+  const validAssociation = body?.name === 'association_opened' && body?.properties && Object.keys(body.properties).length === 1 && ['notes', 'chat'].includes(body.properties.surface);
+  const validMemoryEvidence = body?.name === 'memory_evidence_opened' && body?.properties && Object.keys(body.properties).length === 1 && typeof body.properties.memoryId === 'string' && body.properties.memoryId.length <= 100;
+  const validInspirationSource = body?.name === 'inspiration_source_opened' && body?.properties && Object.keys(body.properties).length === 1 && typeof body.properties.inspirationId === 'string' && body.properties.inspirationId.length <= 100;
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 2 || !body.properties || typeof body.properties !== 'object' || Array.isArray(body.properties)
+    || (!validAssociation && !validMemoryEvidence && !validInspirationSource)) {
     throw ErrorHandler.createValidationError('事件请求无效');
   }
   const user = await UserValidator.validateAndGetUser(req);

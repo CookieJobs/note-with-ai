@@ -1,0 +1,9 @@
+.page { min-height: 100vh; background: #f8fafc; }
+.content { max-width: 760px; margin: 0 auto; padding: 2rem 1rem; }
+.card, .empty { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1rem; margin: 1rem 0; }
+.card span { display: block; margin-top: .35rem; color: #64748b; font-size: .85rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.actions button, .dialog button { min-height: 44px; padding: .35rem .7rem; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; }
+.dialog { margin-top: .75rem; padding: .75rem; border-radius: 8px; background: #f1f5f9; }
+.dialog textarea { display: block; width: 100%; min-height: 84px; margin-bottom: .5rem; }
+.card blockquote { margin: .35rem 0; color: #475569; }
