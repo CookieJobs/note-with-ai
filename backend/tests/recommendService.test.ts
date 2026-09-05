@@ -30,6 +30,7 @@ function createFindResult<T>(rows: T[]) {
 async function loadModules() {
   return {
     Note: require('../models/Note').Note,
+    NoteAiPreference: require('../models/NoteAiPreference').default,
     vectorStore: require('../services/vectorStore').vectorStore,
     updateNoteRecommendations: require('../services/recommendService').updateNoteRecommendations,
     axios: require('axios').default,
@@ -53,7 +54,7 @@ describe('recommendService', () => {
   });
 
   it('在召回为空时返回阈值与诊断信息，便于定位被 s1Threshold 过滤的情况', async () => {
-    const { Note, vectorStore, updateNoteRecommendations, axios } = await loadModules();
+    const { Note, NoteAiPreference, vectorStore, updateNoteRecommendations, axios } = await loadModules();
     const requests: Array<Record<string, unknown>> = [];
     const noteFindQueries: Array<Record<string, unknown>> = [];
 
@@ -76,6 +77,7 @@ describe('recommendService', () => {
     ];
 
     mock.method(Note, 'findOne', async () => currentNote as any);
+    mock.method(NoteAiPreference, 'find', () => createFindResult([]) as never);
     mock.method(Note, 'find', (query: Record<string, unknown>) => {
       noteFindQueries.push(query);
       if ('embedding.0' in query) {

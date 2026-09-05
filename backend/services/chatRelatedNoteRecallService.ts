@@ -2,6 +2,7 @@ import { EMBEDDING_CONFIG } from '../config/embedding';
 import { getCachedEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 import { AiUsageService } from './aiUsageService';
+import NoteAiPreference from '../models/NoteAiPreference';
 
 type RecallMessage = {
   role: 'user' | 'assistant';
@@ -88,12 +89,15 @@ class ChatRelatedNoteRecallService {
     }, AiUsageService.newContext('embedding', userId));
     const searchLimit = Math.max(limit, 1) * 2;
     const rawResults = await vectorStore.search(userId, queryEmbedding, searchLimit);
+    const excluded = await NoteAiPreference.find({ userId, included: false }).select('noteId').lean();
+    const excludedNoteIds = new Set((excluded as any[]).map((preference) => String(preference.noteId)));
 
     return rawResults
       .filter((item) => item.score >= threshold)
       .map((item) => this.toRelatedNoteDto(item.item as VectorNoteRecord, item.score))
       .filter((item): item is RelatedNoteDto => item !== null)
       .filter((item) => !excludeNoteId || item.noteId !== excludeNoteId)
+      .filter((item) => !excludedNoteIds.has(item.noteId))
       .slice(0, limit);
   }
 }

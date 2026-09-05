@@ -26,6 +26,8 @@ const envSchema = z.object({
 
   // DeepSeek API 配置
   DEEPSEEK_API_KEY: z.string().optional(),
+  SEARCH_PROVIDER_URL: z.string().url().optional(),
+  SEARCH_PROVIDER_API_KEY: z.string().min(1).optional(),
 
   // Legacy DashScope API 配置
   DASHSCOPE_API_KEY: z.string().optional(),

@@ -5,6 +5,7 @@ import { buildNoteEmbeddingMetadataFilter, getCachedEmbedding } from '../utils/e
 import { vectorStore } from './vectorStore';
 import { rerankRecommendedNotes } from './llmService';
 import { AiUsageService } from './aiUsageService';
+import NoteAiPreference from '../models/NoteAiPreference';
 
 type NoteSummaryRecord = {
   _id: unknown;
@@ -278,12 +279,13 @@ async function recallTopCandidates(params: {
   s1Threshold: number;
   t0: number;
   tNoteMs: number;
+  excludedNoteIds: Set<string>;
 }): Promise<{ stage?: RecallStageResult; emptyResult?: RecommendationResult }> {
-  const { noteId, userId, queryItems, recallK, finalK, s1Threshold, t0, tNoteMs } = params;
+  const { noteId, userId, queryItems, recallK, finalK, s1Threshold, t0, tNoteMs, excludedNoteIds } = params;
   const tDb0 = Date.now();
   const userNotesPromise = Note.find({
     userId,
-    _id: { $ne: noteId },
+    _id: { $ne: noteId, ...(excludedNoteIds.size > 0 ? { $nin: Array.from(excludedNoteIds) } : {}) },
     'embedding.0': { $exists: true },
     ...CURRENT_DOCUMENT_EMBEDDING_FILTER,
   })
@@ -673,6 +675,14 @@ export async function updateNoteRecommendations(
   } = options;
 
   const t0 = Date.now();
+  const excludedPreferences = await NoteAiPreference.find({ userId, included: false }).select('noteId').lean();
+  const excludedNoteIds = new Set((excludedPreferences as any[]).map((preference) => String(preference.noteId)));
+  if (excludedNoteIds.has(noteId)) {
+    return withThresholdMeta(buildEmptyResult('该笔记已设置为不参与 AI', {
+      diagnostics: { stage: 'context', reason: 'note_excluded_from_ai' },
+      timingsMs: { total: Date.now() - t0 },
+    }), { s1Threshold, hardThreshold });
+  }
   const currentNoteStage = await loadCurrentNoteContext({ noteId, userId, t0 });
   if (currentNoteStage.emptyResult) {
     return withThresholdMeta(currentNoteStage.emptyResult, { s1Threshold, hardThreshold });
@@ -695,6 +705,7 @@ export async function updateNoteRecommendations(
     s1Threshold,
     t0,
     tNoteMs: currentContext.tNoteMs,
+    excludedNoteIds,
   });
   if (recallStageResult.emptyResult) {
     const diagnostics = recallStageResult.emptyResult.meta.diagnostics;

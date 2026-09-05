@@ -4,6 +4,7 @@ import type { NextFunction } from 'express';
 import performanceRouter from '../routes/performance';
 import recommendRouter, { getRecommendationTaskResult } from '../routes/recommend';
 import { Note } from '../models/Note';
+import NoteAiPreference from '../models/NoteAiPreference';
 import { globalErrorHandler } from '../utils/errorHandler';
 import { ResourceValidator, UserValidator } from '../utils/userValidation';
 
@@ -142,6 +143,7 @@ describe('recommend and performance route contracts', () => {
       select() { return this; },
       lean: async () => [],
     }) as never);
+    mock.method(NoteAiPreference, 'find', () => ({ select: () => ({ lean: async () => [] }) }) as never);
     const backfills: unknown[] = [];
     mock.method(Note, 'updateOne', async (...args: unknown[]) => {
       backfills.push(args);
@@ -184,6 +186,7 @@ describe('recommend and performance route contracts', () => {
       } as never;
     });
     mock.method(Note, 'updateOne', async () => ({ matchedCount: 1 }) as never);
+    mock.method(NoteAiPreference, 'find', () => ({ select: () => ({ lean: async () => [] }) }) as never);
 
     const response = makeResponse();
     const error = await invokeRoute(handler, { body: { noteId: 'note-1' } }, response);

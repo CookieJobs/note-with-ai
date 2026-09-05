@@ -5,6 +5,7 @@ import { ErrorHandler } from '../utils/errorHandler';
 import { chatWithDeepSeekStream, summarizeChatTitle, chatWithDeepSeek } from './llmService';
 import { AiUsageService } from './aiUsageService';
 import mongoose from 'mongoose';
+import NoteAiPreference from '../models/NoteAiPreference';
 
 type RelatedNoteRecord = Omit<IRelatedNote, 'noteId'> & {
   noteId: string | { _id?: string | null } | null;
@@ -76,6 +77,10 @@ function normalizeSessionRecord(session: ChatSessionSource): ChatSessionRecord {
 }
 
 class ChatService {
+  private async excludedNoteIds(userId: string): Promise<Set<string>> {
+    const preferences = await NoteAiPreference.find({ userId, included: false }).select('noteId').lean();
+    return new Set((preferences as any[]).map((preference) => String(preference.noteId)));
+  }
   /**
    * Save or update a chat session
    */
@@ -92,7 +97,8 @@ class ChatService {
       .map(m => ({ role: m.role, content: m.content.trim() }));
 
     let chat;
-    const cleanedRelatedNotes = normalizeRelatedNotes(relatedNotes);
+    const excludedNoteIds = await this.excludedNoteIds(userId);
+    const cleanedRelatedNotes = normalizeRelatedNotes(relatedNotes)?.filter((note) => !excludedNoteIds.has(String(note.noteId)));
     const updateData: Partial<IChat> = { messages: cleanedMessages, updatedAt: new Date() };
     if (title) updateData.title = title;
     if (cleanedRelatedNotes) updateData.relatedNotes = cleanedRelatedNotes;
@@ -143,7 +149,14 @@ class ChatService {
       })
       .lean();
 
-    return (sessions as unknown as ChatSessionRecord[]).map((session) => normalizeSessionRecord(session));
+    const excludedNoteIds = await this.excludedNoteIds(userId);
+    return (sessions as unknown as ChatSessionRecord[]).map((session) => {
+      const normalized = normalizeSessionRecord(session);
+      return {
+        ...normalized,
+        relatedNotes: normalized.relatedNotes?.filter((note) => !excludedNoteIds.has(String(note.noteId))),
+      };
+    });
   }
 
   /**

@@ -1,83 +1,45 @@
-/*
-Input: 待补充
-Output: 待补充
-Pos: 后端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
-*/
-// backend/services/search.ts
+import axios from 'axios';
+import { config } from '../config';
+import { AppError, ErrorType } from '../utils/errorHandler';
+import { normalizeProviderResult, type NormalizedProviderResult } from './searchValidation';
 
+export interface SearchOptions { limit: number; }
 export interface SearchResult {
-  title: string;
   url: string;
-  snippet: string;
-  source: string;
-  publishDate?: string;
+  title: string;
+  publisher?: string;
+  snippet?: string;
+  publishedAt?: string;
+}
+export interface SearchProvider { search(query: string, options: SearchOptions): Promise<SearchResult[]>; }
+
+export function isSearchProviderConfigured() {
+  return Boolean(config.SEARCH_PROVIDER_URL && config.SEARCH_PROVIDER_API_KEY);
 }
 
-// 模拟从网络搜索相关文章
-// 未来可替换为调用 Google/Bing/Zhihu/微信公众号爬虫等
-export async function searchArticlesByKeyword(keywords: string[]): Promise<{ title: string; url: string }[]> {
-    // 模拟数据
-    const dummyResults = keywords.flatMap((kw, index) => [
-      {
-        title: `关于「${kw}」的深度文章 ${index + 1}`,
-        url: `https://example.com/article-${kw}-${index + 1}`,
-      },
-      {
-        title: `从零理解「${kw}」的关键概念`,
-        url: `https://example.com/guide-${kw}-${index + 1}`,
-      },
-    ]);
-  
-    return dummyResults;
-}
-
-// 为 For Me 页面提供增强的搜索服务
-export async function searchArticlesForNote(keywords: string[]): Promise<SearchResult[]> {
-  // 模拟高质量的搜索结果
-  const sources = ['知乎', '掘金', '博客园', 'CSDN', '简书', 'Medium'];
-  const articleTypes = ['深度解析', '实战指南', '最佳实践', '技术分享', '经验总结', '案例研究'];
-  
-  const results: SearchResult[] = [];
-  
-  for (const keyword of keywords) {
-    // 为每个关键词生成 2-3 个高质量结果
-    const numResults = Math.floor(Math.random() * 2) + 2; // 2-3个结果
-    
-    for (let i = 0; i < numResults; i++) {
-      const source = sources[Math.floor(Math.random() * sources.length)];
-      const articleType = articleTypes[Math.floor(Math.random() * articleTypes.length)];
-      
-      results.push({
-        title: `${keyword}${articleType}：从入门到精通`,
-        url: `https://${source.toLowerCase()}.com/article/${keyword}-${i + 1}`,
-        snippet: `这是一篇关于${keyword}的${articleType}文章，深入探讨了${keyword}的核心概念、实际应用场景以及最佳实践方法。文章通过详细的案例分析和实战经验分享，帮助读者全面理解${keyword}的重要性和应用价值...`,
-        source: source,
-        publishDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 最近30天内的随机日期
-      });
+class HttpSearchProvider implements SearchProvider {
+  async search(query: string, options: SearchOptions): Promise<SearchResult[]> {
+    if (!isSearchProviderConfigured()) {
+      throw new AppError('目前无法寻找新灵感', ErrorType.EXTERNAL_API, 503, true, { code: 'SEARCH_PROVIDER_UNAVAILABLE' });
     }
+    const response = await axios.post(config.SEARCH_PROVIDER_URL!, { query, limit: Math.max(1, Math.min(10, options.limit)) }, {
+      headers: { Authorization: `Bearer ${config.SEARCH_PROVIDER_API_KEY}`, 'Content-Type': 'application/json' },
+      timeout: 8000,
+    });
+    const records = Array.isArray(response.data?.results) ? response.data.results : [];
+    return records.map(normalizeProviderResult).filter((value: NormalizedProviderResult | null): value is NormalizedProviderResult => value !== null);
   }
-  
-  // 按发布日期排序，最新的在前
-  return results.sort((a, b) => {
-    if (!a.publishDate || !b.publishDate) return 0;
-    return new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime();
-  });
 }
 
-// 秘塔 API 接口（预留，暂时使用模拟数据）
-export async function searchWithMetaso(query: string): Promise<SearchResult[]> {
-  // TODO: 集成秘塔 API
-  // const conn = http.client.HTTPSConnection("metaso.cn")
-  // const payload = {
-  //   "q": query,
-  //   "scope": "webpage",
-  //   "includeSummary": false,
-  //   "size": "10",
-  //   "includeRawContent": false
-  // }
-  
-  // 暂时返回模拟数据
-  return searchArticlesForNote([query]);
+export const searchProvider: SearchProvider = new HttpSearchProvider();
+
+export async function searchArticlesByKeyword(keywords: string[]): Promise<{ title: string; url: string }[]> {
+  const results = await searchProvider.search(keywords.slice(0, 3).join(' ').slice(0, 160), { limit: 6 });
+  return results.map(({ title, url }) => ({ title, url }));
 }
-  
+export async function searchArticlesForNote(keywords: string[]): Promise<SearchResult[]> {
+  return searchProvider.search(keywords.slice(0, 3).join(' ').slice(0, 160), { limit: 6 });
+}
+export async function searchWithMetaso(query: string): Promise<SearchResult[]> {
+  return searchProvider.search(query.slice(0, 160), { limit: 6 });
+}

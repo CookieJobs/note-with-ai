@@ -13,6 +13,7 @@ import { useNoteEditor } from '../hooks/useNoteEditor';
 import { JSONContent } from '@tiptap/react';
 import { flomoEditorChromeProps } from './richTextEditorPresets';
 import { loadRichTextEditor } from './richTextEditorLoader';
+import { getNoteAiPreference, saveNoteAiPreference } from '../../../services/memoryService';
 
 function EditorLoadingPlaceholder() {
   return (
@@ -115,6 +116,16 @@ export default function ModernNoteCard({
 
   // 控制高亮动画的生命周期
   const [activeHighlight, setActiveHighlight] = useState(false);
+  const [aiIncluded, setAiIncluded] = useState(true);
+  const [aiPreferenceSaving, setAiPreferenceSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void getNoteAiPreference(note._id)
+      .then((preference) => { if (active) setAiIncluded(preference.included); })
+      .catch(() => { if (active) setAiIncluded(true); });
+    return () => { active = false; };
+  }, [note._id]);
 
   useEffect(() => {
     if (isHighlighted) {
@@ -412,6 +423,17 @@ export default function ModernNoteCard({
     '!rounded-xl'
   ].filter(Boolean).join(' ');
   const hasUnsavedDraft = !!draft?.dirty;
+  const toggleAiParticipation = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const next = !aiIncluded;
+    setAiPreferenceSaving(true);
+    try {
+      await saveNoteAiPreference(note._id, next);
+      setAiIncluded(next);
+    } finally {
+      setAiPreferenceSaving(false);
+    }
+  };
 
   return (
     <div
@@ -491,6 +513,23 @@ export default function ModernNoteCard({
             </button>
           )}
           <span className={`${cardStyles.noteDate} !bg-transparent !text-gray-400 !border-none !p-0 !text-sm`}>{formatDate(note.createdAt)}</span>
+          <a
+            href={`/publish/${note._id}`}
+            className="text-xs text-gray-500 hover:text-indigo-600"
+            onClick={(event) => event.stopPropagation()}
+          >
+            公开
+          </a>
+          <button
+            type="button"
+            className="bg-transparent border-none text-xs text-gray-500 hover:text-indigo-600"
+            aria-pressed={aiIncluded}
+            aria-label={aiIncluded ? '设为不参与 AI' : '恢复参与 AI'}
+            disabled={aiPreferenceSaving}
+            onClick={(event) => { void toggleAiParticipation(event); }}
+          >
+            {aiPreferenceSaving ? '保存中' : aiIncluded ? '参与 AI' : '不参与 AI'}
+          </button>
           <button
             className={`${cardStyles.deleteButton} !bg-transparent !text-gray-400 hover:!text-red-500 hover:!bg-gray-100 !rounded-md !border-none !shadow-none !p-1`}
             onClick={(e) => {

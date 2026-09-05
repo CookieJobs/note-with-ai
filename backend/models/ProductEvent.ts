@@ -7,6 +7,21 @@ export const PRODUCT_EVENT_NAMES = [
   'chat_turn_committed',
   'association_opened',
   'feedback_submitted',
+  'memory_viewed',
+  'memory_evidence_opened',
+  'memory_confirmed',
+  'memory_corrected',
+  'memory_deleted',
+  'note_ai_preference_changed',
+  'publication_created',
+  'publication_snapshot_updated',
+  'publication_revoked',
+  'inspiration_requested',
+  'inspiration_source_opened',
+  'inspiration_generated',
+  'inspiration_generation_failed',
+  'inspiration_saved',
+  'inspiration_dismissed',
 ] as const;
 
 export type ProductEventName = typeof PRODUCT_EVENT_NAMES[number];
