@@ -23,6 +23,8 @@ const envSchema = z.object({
     const decoded = Buffer.from(value, 'base64');
     return decoded.length === 32 && decoded.toString('base64') === value;
   }, 'ADMIN_ENCRYPTION_KEY must be a canonical base64-encoded 32-byte key'),
+  // Local development convenience only. Production rejects this setting below.
+  ADMIN_LOCAL_PASSWORD_ONLY: z.string().default('false').transform((value) => value === 'true'),
 
   // DeepSeek API 配置
   DEEPSEEK_API_KEY: z.string().optional(),
@@ -94,6 +96,9 @@ export function parseConfig(environment: Environment = process.env) {
   if (!result.success) throw new Error('Invalid environment variables');
   if (result.data.NODE_ENV === 'production' && result.data.ADMIN_JWT_SECRET === result.data.JWT_SECRET) {
     throw new Error('ADMIN_JWT_SECRET must differ from JWT_SECRET');
+  }
+  if (result.data.NODE_ENV !== 'development' && result.data.ADMIN_LOCAL_PASSWORD_ONLY) {
+    throw new Error('ADMIN_LOCAL_PASSWORD_ONLY is only allowed in development');
   }
   return result.data;
 }

@@ -11,7 +11,7 @@
     "backfill:note-revisions": "ts-node scripts/backfill_note_revisions.ts",
     "admin:create": "ts-node scripts/create_admin.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "ADMIN_LOCAL_PASSWORD_ONLY=false tsx --test tests/*.test.ts"
   },
   "keywords": [],
   "author": "",

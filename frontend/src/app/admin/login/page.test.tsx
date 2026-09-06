@@ -17,7 +17,11 @@ function fillLoginForm() {
 }
 
 describe('AdminLoginPage', () => {
-  beforeEach(() => navigation.replace.mockReset());
+  beforeEach(() => {
+    navigation.replace.mockReset();
+    vi.stubEnv('NEXT_PUBLIC_ADMIN_LOCAL_PASSWORD_ONLY', 'false');
+    vi.stubEnv('NODE_ENV', 'test');
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it('submits the independent admin credentials and redirects after success', async () => {
@@ -65,5 +69,25 @@ describe('AdminLoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('邮箱、密码或验证码错误');
     expect(screen.queryByText('数据库中的敏感错误')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '登录' })).toBeEnabled();
+  });
+
+  it('uses a password-only payload and hides TOTP when explicitly enabled for local development', async () => {
+    vi.stubEnv('NEXT_PUBLIC_ADMIN_LOCAL_PASSWORD_ONLY', 'true');
+    const post = vi.spyOn(api, 'adminPost').mockResolvedValue({});
+    render(<AdminLoginPage />);
+    expect(screen.queryByLabelText('6 位验证码')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'owner@example.com' } });
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'password1234' } });
+    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/api/admin/auth/login', {
+      email: 'owner@example.com', password: 'password1234',
+    }));
+  });
+
+  it('keeps the TOTP field in a production build even if a local flag was copied there', () => {
+    vi.stubEnv('NEXT_PUBLIC_ADMIN_LOCAL_PASSWORD_ONLY', 'true');
+    vi.stubEnv('NODE_ENV', 'production');
+    render(<AdminLoginPage />);
+    expect(screen.getByLabelText('6 位验证码')).toBeInTheDocument();
   });
 });
