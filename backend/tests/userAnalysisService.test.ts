@@ -16,6 +16,7 @@ const manualRestores: Array<() => void> = [];
 async function loadModules() {
   return {
     Note: require('../models/Note').Note,
+    NoteAiPreference: require('../models/NoteAiPreference').default,
     UserProfile: require('../models/UserProfile').default,
     userAnalysisService: require('../services/userAnalysisService').userAnalysisService,
   };
@@ -38,7 +39,14 @@ describe('userAnalysisService', () => {
   });
 
   it('在笔记不足时会把当前运行任务标记为 ready，避免页面长期停留在分析中', async () => {
-    const { Note, UserProfile, userAnalysisService } = await loadModules();
+    const { Note, NoteAiPreference, UserProfile, userAnalysisService } = await loadModules();
+
+    mock.method(NoteAiPreference, 'find', () => ({
+      select() {
+        return this;
+      },
+      lean: async () => [],
+    }) as any);
 
     mock.method(Note, 'find', () => ({
       sort() {
@@ -73,8 +81,44 @@ describe('userAnalysisService', () => {
     assert.ok(updateCalls[0].update.$set.lastAnalyzedAt instanceof Date);
   });
 
+  it('画像分析会排除用户明确设为不参与 AI 的笔记', async () => {
+    const { Note, NoteAiPreference, UserProfile, userAnalysisService } = await loadModules();
+    let noteQuery: Record<string, unknown> | undefined;
+
+    mock.method(NoteAiPreference, 'find', () => ({
+      select() {
+        return this;
+      },
+      lean: async () => [{ noteId: 'excluded-note' }],
+    }) as any);
+    mock.method(Note, 'find', (query: Record<string, unknown>) => {
+      noteQuery = query;
+      return {
+        sort() {
+          return this;
+        },
+        limit: async () => [],
+      } as any;
+    });
+    mock.method(UserProfile, 'updateOne', async () => ({ matchedCount: 1 }) as any);
+
+    await userAnalysisService.analyzeUserProfile({ userId: 'user-1', analysisVersion: 3 });
+
+    assert.deepEqual(noteQuery, {
+      userId: 'user-1',
+      _id: { $nin: ['excluded-note'] },
+    });
+  });
+
   it('在旧版本结果提交失败时返回 stale_analysis_version，避免覆盖新画像', async () => {
-    const { Note, UserProfile, userAnalysisService } = await loadModules();
+    const { Note, NoteAiPreference, UserProfile, userAnalysisService } = await loadModules();
+
+    mock.method(NoteAiPreference, 'find', () => ({
+      select() {
+        return this;
+      },
+      lean: async () => [],
+    }) as any);
 
     const notes = [
       { createdAt: new Date('2026-01-01T00:00:00.000Z'), title: 'A', content: '内容A' },
