@@ -1,1 +1,16 @@
-.page{min-height:100vh;background:#f8fafc}.content{max-width:760px;margin:auto;padding:2rem 1rem}.primary{display:inline-flex;align-items:center;min-height:44px;margin:.5rem 0;padding:0 .85rem;border:0;border-radius:8px;background:#312e81;color:#fff;text-decoration:none}.card,.preview,.empty{margin:1rem 0;padding:1rem;border:1px solid #e2e8f0;border-radius:14px;background:#fff}.card h2,.preview h2{margin-top:0}.card button,.preview button{min-height:44px;margin-left:.6rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:.35rem .7rem}.preview p{white-space:pre-wrap;line-height:1.7}
+.page { min-height: 100vh; background: #f7f8fc; color: #172033; }
+.content { width: min(100% - 2rem, 880px); margin: 0 auto; padding: 4.5rem 0 5rem; }
+.content > h1 { margin: 0; font-size: 2.1rem; letter-spacing: -.035em; line-height: 1.08; }
+.content > h1 + p { max-width: 42rem; margin: .55rem 0 1.1rem; color: #5c677a; line-height: 1.7; }
+.primary { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; margin: .2rem 0 1.15rem; padding: .55rem .9rem; border: 1px solid #41369a; border-radius: 9px; background: #41369a; color: #fff; font-size: .9rem; font-weight: 650; text-decoration: none; transition: background .18s ease, transform .18s ease; }
+.primary:hover { background: #342b7c; transform: translateY(-1px); }
+.card, .preview, .empty { margin: .75rem 0; padding: 1.2rem; border: 1px solid #e0e4ed; border-radius: 14px; background: #fff; }
+.card h2, .preview h2 { margin: 0; font-size: 1.05rem; line-height: 1.45; }
+.card h2 + p { margin: .38rem 0 .95rem; color: #637087; font-size: .9rem; }
+.card a, .card button, .preview button { display: inline-flex; align-items: center; justify-content: center; min-height: 37px; margin: 0 .48rem .2rem 0; padding: .35rem .68rem; border: 1px solid #d7dce7; border-radius: 8px; background: #fff; color: #443898; font: inherit; font-size: .84rem; font-weight: 650; text-decoration: none; cursor: pointer; }
+.card a:hover, .card button:hover, .preview button:hover { border-color: #aeb7c7; background: #f7f8fb; }
+.card button:last-child { color: #a33145; }
+.preview { margin-top: 1.2rem; }
+.preview p { margin: .8rem 0 1rem; color: #4e5c71; white-space: pre-wrap; line-height: 1.75; }
+.empty { color: #647188; line-height: 1.6; }
+@media (max-width: 650px) { .content { width: min(100% - 1.25rem, 880px); padding-top: 2rem; } }

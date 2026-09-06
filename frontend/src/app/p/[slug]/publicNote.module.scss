@@ -1,1 +1,7 @@
-.page,.missing{min-height:100vh;background:#fff;color:#1f2937;padding:8vh 1rem}.page article{max-width:700px;margin:auto}.page h1{font-size:clamp(2rem,6vw,3rem);line-height:1.15}.brand,.page footer{color:#64748b;font-size:.9rem}.body{font-size:1.05rem;line-height:1.8}.body a{color:#3730a3}.body blockquote{border-left:3px solid #c7d2fe;margin-left:0;padding-left:1rem;color:#475569}.missing{display:grid;place-items:center}
+.page, .missing { min-height: 100vh; background: #fbfbfd; color: #1c2537; padding: 11vh 1.25rem 4rem; }
+.page article { width: min(100%, 720px); margin: auto; }
+.page h1 { margin: .55rem 0 .75rem; font-size: clamp(2.2rem, 5vw, 3.65rem); letter-spacing: -.045em; line-height: 1.07; text-wrap: balance; }
+.brand { display: inline-flex; align-items: center; gap: .35rem; margin: 0; color: #5d5797; font-size: .84rem; font-weight: 700; }
+.body { max-width: 68ch; color: #364156; font-size: 1.08rem; line-height: 1.86; text-wrap: pretty; }
+.body > :first-child { margin-top: 0; }.body h2 { margin: 2.3rem 0 .7rem; color: #202b3e; font-size: 1.45rem; letter-spacing: -.02em; line-height: 1.3; }.body a { color: #41369a; font-weight: 650; text-underline-offset: .18em; }.body blockquote { margin: 1.5rem 0; padding: .1rem 0 .1rem 1.1rem; border-left: 1px solid #8f87ce; color: #58657a; }.body code { padding: .12rem .3rem; border-radius: 4px; background: #f0eff8; color: #433a86; font-size: .9em; }.page footer { margin-top: 2.6rem; padding-top: 1rem; border-top: 1px solid #e5e8f0; color: #6a7486; font-size: .9rem; }.missing { display: grid; place-items: center; color: #68758a; font-size: .96rem; }
+@media (max-width: 650px) { .page, .missing { padding-top: 4.5rem; }.page h1 { font-size: 2.35rem; }.body { font-size: 1rem; line-height: 1.8; } }
