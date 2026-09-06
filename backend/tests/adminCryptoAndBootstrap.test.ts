@@ -4,7 +4,7 @@ import test from 'node:test';
 import path from 'node:path';
 import { AdminAccount, ADMIN_ROLES } from '../models/AdminAccount';
 import { AdminAuditLog } from '../models/AdminAuditLog';
-import { parseConfig } from '../config';
+import { config, parseConfig } from '../config';
 import { decryptAdminSecret, encryptAdminSecret } from '../services/admin/adminCrypto';
 import { createAdminFromEnvironment, runCreateAdminCli } from '../scripts/create_admin';
 
@@ -66,6 +66,27 @@ test('production configuration rejects reused ordinary and admin JWT secrets', (
     }),
     /ADMIN_JWT_SECRET must differ from JWT_SECRET/
   );
+});
+
+test('password-only admin login can only be enabled in development', () => {
+  const common = {
+    JWT_SECRET: 'a'.repeat(32),
+    ADMIN_JWT_SECRET: 'b'.repeat(32),
+    ADMIN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+    MONGODB_URI: 'mongodb://localhost:27017/note-with-ai',
+    REDIS_URL: 'redis://localhost:6379',
+    QQ_EMAIL_USER: 'sender@example.com',
+    QQ_EMAIL_PASS: 'password',
+  };
+  assert.equal(parseConfig({ ...common, NODE_ENV: 'development', ADMIN_LOCAL_PASSWORD_ONLY: 'true' }).ADMIN_LOCAL_PASSWORD_ONLY, true);
+  assert.throws(
+    () => parseConfig({ ...common, NODE_ENV: 'production', ADMIN_LOCAL_PASSWORD_ONLY: 'true' }),
+    /ADMIN_LOCAL_PASSWORD_ONLY is only allowed in development/
+  );
+});
+
+test('the test command disables a locally inherited password-only admin login flag', () => {
+  assert.equal(config.ADMIN_LOCAL_PASSWORD_ONLY, false);
 });
 
 test('production configuration rejects missing, malformed, and non-32-byte encryption keys', () => {

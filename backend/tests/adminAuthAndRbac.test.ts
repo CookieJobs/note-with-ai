@@ -171,6 +171,31 @@ test('real admin authentication maps limiter rejection to the identical generic 
   } finally { limiter.assertLoginAllowed = allowed; audit.create = create; }
 });
 
+test('local password-only mode permits a correct password without a TOTP, while the default keeps TOTP mandatory', async () => {
+  const { authenticateAdmin } = await import('../services/admin/adminAuthService');
+  const { config } = await import('../config');
+  const { AdminAccount } = await import('../models/AdminAccount');
+  const { AdminAuditLog } = await import('../models/AdminAuditLog');
+  const { RateLimitService } = await import('../services/auth/RateLimitService');
+  const model = AdminAccount as any; const audit = AdminAuditLog as any; const limiter = RateLimitService as any;
+  const original = { findOne: model.findOne, updateOne: model.updateOne, create: audit.create, assertLoginAllowed: limiter.assertLoginAllowed, clearLoginFailures: limiter.clearLoginFailures, recordLoginFailure: limiter.recordLoginFailure, localOnly: (config as any).ADMIN_LOCAL_PASSWORD_ONLY };
+  const passwordHash = await (await import('bcryptjs')).hash('password123', 10);
+  try {
+    model.findOne = () => ({ select: () => ({ lean: async () => ({ _id: { toString: () => 'admin-id' }, email: 'owner@example.com', displayName: 'Owner', passwordHash, totpSecretEncrypted: 'malformed-secret', role: 'owner', isActive: true, tokenVersion: 0 }) }) });
+    model.updateOne = async () => ({ acknowledged: true }); audit.create = async () => ({ _id: 'audit-id' });
+    limiter.assertLoginAllowed = async () => {}; limiter.clearLoginFailures = async () => {}; limiter.recordLoginFailure = async () => {};
+    (config as any).ADMIN_LOCAL_PASSWORD_ONLY = true;
+    const accepted = await authenticateAdmin({ email: 'owner@example.com', password: 'password123', ip: '127.0.0.1', requestId: 'request-1' });
+    assert.equal(accepted.admin.email, 'owner@example.com');
+    (config as any).ADMIN_LOCAL_PASSWORD_ONLY = false;
+    await assert.rejects(authenticateAdmin({ email: 'owner@example.com', password: 'password123', ip: '127.0.0.1', requestId: 'request-2' }), (error: any) => error.statusCode === 401);
+  } finally {
+    model.findOne = original.findOne; model.updateOne = original.updateOne; audit.create = original.create;
+    limiter.assertLoginAllowed = original.assertLoginAllowed; limiter.clearLoginFailures = original.clearLoginFailures; limiter.recordLoginFailure = original.recordLoginFailure;
+    (config as any).ADMIN_LOCAL_PASSWORD_ONLY = original.localOnly;
+  }
+});
+
 test('real admin login route gives the same generic envelope for unknown accounts, bad passwords, and bad one-window-old TOTPs', async () => {
   // This fails if the route exposes which credential check failed, or if the TOTP
   // validation window is narrowed from the documented one step to zero.

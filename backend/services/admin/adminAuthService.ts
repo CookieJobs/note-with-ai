@@ -7,6 +7,7 @@ import { RateLimitService } from '../auth/RateLimitService';
 import { signAdminToken } from '../../utils/adminJwt';
 import { recordAdminSecurityAudit } from './adminAuditService';
 import { ErrorHandler } from '../../utils/errorHandler';
+import { config } from '../../config';
 
 export const ADMIN_LOGIN_FAILURE_MESSAGE = '邮箱、密码或验证码错误';
 
@@ -18,7 +19,7 @@ function validOtp(secret: string, otp: string): boolean {
   return totp.validate({ token: otp, window: 1 }) !== null;
 }
 
-export async function authenticateAdmin(input: { email: string; password: string; otp: string; ip: string; requestId: string }) {
+export async function authenticateAdmin(input: { email: string; password: string; otp?: string; ip: string; requestId: string }) {
   const email = input.email.trim().toLowerCase();
   try {
     await RateLimitService.assertLoginAllowed(email, input.ip);
@@ -29,9 +30,10 @@ export async function authenticateAdmin(input: { email: string; password: string
   }
   const account = await AdminAccount.findOne({ email }).select('+passwordHash +totpSecretEncrypted').lean() as AdminRecord | null;
   const passwordValid = account ? await bcrypt.compare(input.password, account.passwordHash) : false;
-  let otpValid = false;
-  if (account && passwordValid) {
-    try { otpValid = validOtp(decryptAdminSecret(account.totpSecretEncrypted), input.otp); } catch { otpValid = false; }
+  const passwordOnlyLocalLogin = config.NODE_ENV === 'development' && config.ADMIN_LOCAL_PASSWORD_ONLY;
+  let otpValid = passwordOnlyLocalLogin;
+  if (!passwordOnlyLocalLogin && account && passwordValid) {
+    try { otpValid = validOtp(decryptAdminSecret(account.totpSecretEncrypted), input.otp ?? ''); } catch { otpValid = false; }
   }
   if (!account || !account.isActive || !passwordValid || !otpValid) {
     await RateLimitService.recordLoginFailure(email, input.ip);

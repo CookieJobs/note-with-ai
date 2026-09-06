@@ -13,9 +13,10 @@ type LoginForm = {
 };
 
 const initialForm: LoginForm = { email: '', password: '', otp: '' };
-
 export default function AdminLoginPage() {
   const router = useRouter();
+  const passwordOnlyLocalLogin = process.env.NODE_ENV !== 'production'
+    && process.env.NEXT_PUBLIC_ADMIN_LOCAL_PASSWORD_ONLY === 'true';
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
@@ -25,10 +26,12 @@ export default function AdminLoginPage() {
     setPending(true);
     setError('');
     try {
-      await adminPost('/api/admin/auth/login', form);
+      await adminPost('/api/admin/auth/login', passwordOnlyLocalLogin
+        ? { email: form.email, password: form.password }
+        : form);
       router.replace('/admin');
     } catch {
-      setError('邮箱、密码或验证码错误');
+      setError(passwordOnlyLocalLogin ? '邮箱或密码错误' : '邮箱、密码或验证码错误');
     } finally {
       setPending(false);
     }
@@ -58,18 +61,20 @@ export default function AdminLoginPage() {
             required
           />
         </label>
-        <label>
-          6 位验证码
-          <input
-            inputMode="numeric"
-            pattern="[0-9]{6}"
-            maxLength={6}
-            autoComplete="one-time-code"
-            value={form.otp}
-            onChange={(event) => setForm({ ...form, otp: event.target.value })}
-            required
-          />
-        </label>
+        {!passwordOnlyLocalLogin && (
+          <label>
+            6 位验证码
+            <input
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              autoComplete="one-time-code"
+              value={form.otp}
+              onChange={(event) => setForm({ ...form, otp: event.target.value })}
+              required
+            />
+          </label>
+        )}
         {error && <p role="alert" className={styles.error}>{error}</p>}
         <button type="submit" disabled={pending}>{pending ? '登录中…' : '登录'}</button>
       </form>
