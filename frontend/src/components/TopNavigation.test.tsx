@@ -74,6 +74,14 @@ describe('TopNavigation', () => {
     expect(screen.getByText('聊天')).toHaveAttribute('aria-current', 'page');
   });
 
+  it('keeps the chat sidebar trigger at the 44px minimum target size', () => {
+    mockUsePathname.mockReturnValue('/chat');
+
+    render(<TopNavigation onMenuClick={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: '打开侧边栏' })).toHaveClass('min-h-11', 'min-w-11');
+  });
+
   it('opens and closes the account menu from the keyboard', async () => {
     mockUsePathname.mockReturnValue('/notes');
     mockGetUser.mockReturnValue({ username: 'Ada', email: 'ada@example.com' });

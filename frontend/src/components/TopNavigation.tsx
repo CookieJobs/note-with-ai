@@ -38,7 +38,7 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
         <div className={styles.leftSection}>
           {pathname.startsWith('/chat') && (
             <button
-              className="md:hidden mr-2 p-2 -ml-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center bg-transparent border-none"
+              className="md:hidden mr-2 -ml-2 flex min-h-11 min-w-11 items-center justify-center rounded-lg border-none bg-transparent p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
               onClick={onMenuClick}
               aria-label="打开侧边栏"
             >
