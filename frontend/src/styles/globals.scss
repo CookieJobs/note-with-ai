@@ -1,6 +1,6 @@
 /*
-Input: 待补充
-Output: 待补充
+Input: Tailwind 基础层、TipTap 样式变量和全局无障碍样式
+Output: NoteWithAI 全局字体、焦点环和 reduced-motion 样式入口
 Pos: 前端 样式
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
@@ -93,6 +93,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 /* TipTap UI Components 基础样式（由 @tiptap/cli 安装生成） */
 @include meta.load-css("./_variables.scss");
 @include meta.load-css("./_keyframe-animations.scss");
+@include meta.load-css("./reduced-motion.scss");
 
 /* 全局样式重置 */
 * {
@@ -108,9 +109,16 @@ body {
 }
 
 body {
-  font-family: Arial, var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "Roboto", "Oxygen", "Ubuntu", "Cantarell", sans-serif;
+  font-family: var(--font-sans), "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei",
+    sans-serif;
   background-attachment: fixed;
+}
+
+:focus-visible,
+.focus-ring {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
 }
 
 /* 全局选中背景（避免浏览器默认紫色） */
@@ -139,4 +147,3 @@ body {
   font-family: var(--font-mono), "JetBrains Mono NL", ui-monospace, SFMono-Regular,
     Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
-
