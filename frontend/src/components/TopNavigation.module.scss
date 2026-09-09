@@ -1,45 +1,53 @@
-/* 顶部导航栏样式 — 与 RelatedNotesDrawer 统一的白底毛玻璃风格 */
 .topNav {
   position: sticky;
   top: 8px;
   z-index: 1000;
-  margin: 0 16px;
   width: calc(100% - 32px);
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 16px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+  max-width: calc(100% - 32px);
+  margin: 0 16px;
   overflow: visible;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 1px 8px rgb(23 32 51 / 8%);
 }
 
 .container {
-  max-width: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  height: var(--top-nav-height, 60px);
   margin: 0;
   padding: 0 var(--page-pad-x, 18px);
-  height: var(--top-nav-height, 60px);
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  z-index: 1100;
 }
 
-/* 左侧 logo */
+.leftSection,
+.middleSection,
+.rightSection {
+  min-width: 0;
+}
+
 .leftSection {
   display: flex;
   align-items: center;
 }
 
 .logo {
-  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
   font-size: 18px;
   font-weight: 750;
-  color: #111827;
   letter-spacing: -0.01em;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--color-action-primary-hover);
+  }
 }
 
-/* 中间菜单 */
 .middleSection {
   display: flex;
   justify-content: center;
@@ -51,13 +59,12 @@
   grid-template-columns: repeat(3, 1fr);
   align-items: center;
   gap: 4px;
-  background: #f3f4f6;
-  border: 1px solid rgba(0, 0, 0, 0.05);
   padding: 4px;
-  border-radius: 12px;
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
 }
 
-/* data-active-index → 同时设置 --nav-active 和 --nav-target */
 .nav[data-active-index="0"] { --nav-active: 0; --nav-target: 0; }
 .nav[data-active-index="1"] { --nav-active: 1; --nav-target: 1; }
 .nav[data-active-index="2"] { --nav-active: 2; --nav-target: 2; }
@@ -66,15 +73,15 @@
   position: absolute;
   top: 4px;
   left: 4px;
-  height: calc(100% - 8px);
   width: calc((100% - 16px) / 3);
-  border-radius: 10px;
+  height: calc(100% - 8px);
   pointer-events: none;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgb(23 32 51 / 8%);
   transform: translateX(calc(var(--nav-target, 0) * (100% + 4px)));
-  transition: transform 260ms cubic-bezier(0.22, 1.0, 0.36, 1);
+  transition: transform var(--motion-duration-default) var(--motion-easing-emphasized);
 }
 
 .navItem {
@@ -83,48 +90,42 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 44px;
   padding: 6px 14px;
-  color: #6b7280;
-  text-decoration: none;
-  border-radius: 10px;
-  font-weight: 500;
+  color: var(--color-text-secondary);
   font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
   background: transparent;
   border: 1px solid transparent;
-  transition: color 140ms ease;
+  border-radius: var(--radius-md);
+  transition: color var(--motion-duration-fast) var(--motion-easing-standard);
 
   &:hover {
-    color: #374151;
+    color: var(--color-text-primary);
   }
 }
 
 .active {
-  color: #111827 !important;
+  color: var(--color-text-primary) !important;
   font-weight: 600;
 }
 
-/* 在支持 :has 的浏览器里启用 hover 滑动 */
 @supports selector(.nav:has(a)) {
   .nav {
     --nav-target: var(--nav-active, 0);
   }
 
-  .nav:has(.navItem:nth-child(2):hover) {
-    --nav-target: 0;
-  }
-  .nav:has(.navItem:nth-child(3):hover) {
-    --nav-target: 1;
-  }
-  .nav:has(.navItem:nth-child(4):hover) {
-    --nav-target: 2;
-  }
+  .nav:has(.navItem:nth-child(2):hover) { --nav-target: 0; }
+  .nav:has(.navItem:nth-child(3):hover) { --nav-target: 1; }
+  .nav:has(.navItem:nth-child(4):hover) { --nav-target: 2; }
 
   .nav:has(.navItem:hover) .navHoverPill {
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 2px 6px rgb(23 32 51 / 10%);
   }
 }
 
-/* 右侧用户信息 */
 .rightSection {
   display: flex;
   align-items: center;
@@ -132,60 +133,58 @@
   padding-right: 10px;
 }
 
-.userSection { position: relative; }
-
 .userInfo {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  cursor: pointer;
+  max-width: min(45vw, 240px);
   padding: 6px 10px;
-  border-radius: 10px;
+  color: var(--color-text-secondary);
   background: transparent;
   border: 1px solid transparent;
-  transition: background 140ms ease;
+  border-radius: var(--radius-md);
+  transition: background var(--motion-duration-fast) var(--motion-easing-standard);
 
   &:hover {
-    background: #f3f4f6;
+    background: var(--color-action-secondary-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow: var(--focus-ring);
+  }
+
+  &[aria-expanded="true"] .chevron {
+    transform: rotate(180deg);
   }
 }
 
 .userName {
+  overflow: hidden;
+  color: inherit;
   font-size: 14px;
-  color: #374151;
   font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chevron {
-  color: #9ca3af;
-  transition: transform 0.2s ease;
+  flex: none;
+  color: var(--color-text-tertiary);
+  transition: transform var(--motion-duration-default) var(--motion-easing-standard);
 }
-.chevronUp { transform: rotate(180deg); }
 
-/* 用户菜单 */
 .userMenu {
-  position: absolute;
-  right: 0;
-  top: 44px;
   width: 256px;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 14px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
   overflow: hidden;
-  animation: dropdown 0.15s ease-out;
-  z-index: 1100;
-}
-
-@keyframes dropdown {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgb(23 32 51 / 16%);
 }
 
 .userMenuHeader {
   display: flex;
   align-items: center;
-  gap: 12px;
   padding: 12px 14px;
 }
 
@@ -193,66 +192,96 @@
   display: flex;
   flex-direction: column;
 }
+
 .userNameLarge {
+  color: var(--color-text-primary);
   font-size: 15px;
   font-weight: 650;
-  color: #111827;
 }
+
 .userEmail {
+  color: var(--color-text-tertiary);
   font-size: 12px;
-  color: #9ca3af;
 }
 
 .userMenuDivider {
   height: 1px;
-  background: #f3f4f6;
   margin: 2px 0;
+  background: var(--color-border-subtle);
 }
 
-.menuLink {
+.menuLink,
+.logoutButton {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  color: #374151;
-  text-decoration: none;
   font-size: 14px;
   font-weight: 500;
-  transition: background 0.15s ease;
-  cursor: pointer;
+}
 
-  &:hover {
-    background: #f9fafb;
-  }
+.menuLink {
+  color: var(--color-text-secondary);
 
   svg {
-    color: #9ca3af;
+    color: var(--color-text-tertiary);
   }
 }
 
 .logoutButton {
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #ef4444;
-  font-weight: 500;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-
-  &:hover {
-    background: #fef2f2;
-  }
+  color: var(--color-action-danger);
 }
 
-/* 覆盖层用于关闭用户菜单 */
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: transparent;
-  z-index: 900;
+@media (max-width: 767px) {
+  .topNav {
+    top: 4px;
+    width: calc(100% - 16px);
+    max-width: calc(100% - 16px);
+    margin: 0 8px;
+  }
+
+  .container {
+    grid-template-areas:
+      "brand account"
+      "nav nav";
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    height: auto;
+    min-height: var(--top-nav-height, 60px);
+    padding: 8px 12px;
+  }
+
+  .leftSection {
+    grid-area: brand;
+  }
+
+  .rightSection {
+    grid-area: account;
+    padding-right: 0;
+  }
+
+  .middleSection {
+    grid-area: nav;
+    justify-content: flex-start;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .nav {
+    display: flex;
+    flex-wrap: nowrap;
+    width: max-content;
+    min-width: 100%;
+    white-space: nowrap;
+  }
+
+  .navItem {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .navHoverPill {
+    display: none;
+  }
 }
