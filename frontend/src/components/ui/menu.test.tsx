@@ -4,6 +4,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from './menu';
 
 describe('Menu', () => {
+  it('gives triggers and items a 44px minimum touch target', async () => {
+    render(
+      <Menu>
+        <MenuTrigger>Actions</MenuTrigger>
+        <MenuContent aria-label="Note actions">
+          <MenuItem>Rename</MenuItem>
+        </MenuContent>
+      </Menu>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Actions' });
+    expect(trigger).toHaveClass('min-h-11', 'min-w-11');
+
+    fireEvent.click(trigger);
+
+    const item = await screen.findByRole('menuitem', { name: 'Rename' });
+    expect(item).toHaveClass('min-h-11', 'min-w-11');
+  });
+
   it('opens with the keyboard, roves between items, selects, and restores focus', async () => {
     const selectSecond = vi.fn();
 

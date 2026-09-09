@@ -124,7 +124,7 @@ const MenuTrigger = React.forwardRef<
       }}
       type="button"
       className={cn(
-        "inline-flex items-center rounded-[var(--radius-md)] px-3 py-2 [color:var(--color-text-primary)] hover:[background:var(--color-action-secondary-hover)]",
+        "inline-flex min-h-11 min-w-11 items-center rounded-[var(--radius-md)] px-3 py-2 [color:var(--color-text-primary)] hover:[background:var(--color-action-secondary-hover)]",
         className,
       )}
       {...(getReferenceProps({
@@ -194,7 +194,7 @@ const MenuItem = React.forwardRef<
       type="button"
       disabled={disabled}
       className={cn(
-        "flex w-full items-center rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm hover:[background:var(--color-action-secondary-hover)] disabled:cursor-not-allowed disabled:opacity-50",
+        "flex min-h-11 min-w-11 w-full items-center rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm hover:[background:var(--color-action-secondary-hover)] disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...(getItemProps({
