@@ -70,12 +70,29 @@ function NotesContent() {
   // 新建笔记 Hook
   const {
     newContentText,
-    setNewContentText,
     newContentJson,
-    setNewContentJson,
+    changeContent,
+    discardDraft,
     loading: createLoading,
+    saveState,
+    localDraftState,
+    draftRestored,
+    savedNote,
+    saveError,
     handleSubmit,
-  } = useCreateNote(createNote, { onError: setError });
+  } = useCreateNote(createNote, { userId: user?.id });
+
+  const latestSavedNote = notes.find(note => note._id === savedNote?._id) ?? savedNote;
+  const localDraftMessage = localDraftState === 'unavailable'
+    ? '无法读取或保留本机草稿，离开前请保存到云端。'
+    : newContentText.trim() ? '草稿已保留在本机，尚未保存到云端。' : '';
+  const captureStatus = saveError
+    ? `${saveError} ${newContentText.trim() ? localDraftMessage : ''}`
+    : saveState === 'saving' ? `正在保存到云端… ${localDraftMessage}`
+    : saveState === 'saved' && newContentText.trim() ? `提交时的内容已保存，当前更改尚未保存到云端。${localDraftState === 'unavailable' ? localDraftMessage : '草稿已保留在本机。'}`
+    : saveState === 'saved' ? `已保存到云端。${latestSavedNote?.enrichment?.status === 'pending' ? 'AI 正在后台理解这条记录，你可以继续记录。' : latestSavedNote?.enrichment?.status === 'degraded' ? 'AI 处理暂未完成，不影响笔记保存。' : ''}`
+    : draftRestored ? '已恢复本机草稿，可以继续编辑。'
+    : localDraftMessage;
 
   const buildJsonFromPlain = (plainText: string) => {
     const t = plainText || '';
@@ -184,15 +201,14 @@ function NotesContent() {
     setActiveEditor({ type: 'compose' });
   }, []);
 
-  const handleComposeCancel = useCallback(() => {
-    setNewContentText('');
-    setNewContentJson(null);
-    setActiveEditor({ type: 'none' });
-  }, [setNewContentJson, setNewContentText]);
+  const handleComposeDiscard = useCallback(() => {
+    if (discardDraft()) setActiveEditor({ type: 'none' });
+  }, [discardDraft]);
 
-  const handleComposeSubmit = useCallback(() => {
-    setActiveEditor({ type: 'none' });
-    void handleSubmit();
+  const handleComposeSubmit = useCallback(async () => {
+    if (await handleSubmit()) {
+      setActiveEditor(current => current.type === 'compose' ? { type: 'none' } : current);
+    }
   }, [handleSubmit]);
 
   const handleContentEditingChange = useCallback((id: string, isEditing: boolean) => {
@@ -258,17 +274,19 @@ function NotesContent() {
               >
                 <div className={styles.feedComposeAnchor}>
                   <FloatingQuickCompose
+                    key={user?.id ?? 'anonymous'}
                     open={isComposeOpen}
                     valueJson={newContentJson ?? buildJsonFromPlain(newContentText)}
                     valueText={newContentText}
                     onOpen={openCompose}
-                    onChange={({ json, text }) => {
-                      setNewContentJson(json);
-                      setNewContentText(text);
-                    }}
+                    onChange={changeContent}
                     onSubmit={handleComposeSubmit}
-                    onCancel={handleComposeCancel}
+                    onClose={closeActiveEditor}
+                    onDiscard={handleComposeDiscard}
                     loading={createLoading}
+                    saveFailed={saveState === 'failed'}
+                    status={captureStatus}
+                    statusIsError={Boolean(saveError) || localDraftState === 'unavailable'}
                   />
                 </div>
                 <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>

@@ -299,7 +299,7 @@
 .floatingComposeBarText {
   font-size: 14px;
   font-weight: 400;
-  color: #9ca3af;
+  color: #4b5563;
 }
 
 .floatingComposeBarInner {
@@ -345,7 +345,7 @@
 .floatingComposeHint {
   font-size: 11px;
   font-weight: 400;
-  color: #c2c9d4;
+  color: #64748b;
   display: inline-flex;
   align-items: center;
   height: 30px;
@@ -447,4 +447,42 @@
   padding-top: 12px;
   border-top: 1px solid rgba(243, 244, 246, 0.92);
   will-change: transform, opacity;
+}
+
+.floatingComposeHint { margin-right: auto; }
+
+.composeDiscardBtn {
+  border: none;
+  background: transparent;
+  color: #b91c1c;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover { background: #fef2f2; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+.discardConfirmation {
+  padding-top: 12px;
+  color: #374151;
+  font-size: 13px;
+
+  p { margin: 0 0 8px; }
+  > div { display: flex; gap: 8px; justify-content: flex-end; }
+}
+
+.captureStatus {
+  margin: 8px 4px 0;
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.captureStatusError { color: #b91c1c; }
+
+.floatingComposeShell button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
 }
