@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { BookOpen, CheckCircle2, PencilLine, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 import TopNavigation from '../../components/TopNavigation';
+import { Button } from '../../components/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { confirmMemoryInsight, correctMemoryInsight, deleteMemoryInsight, generateMemoryInsights, getMemoryInsights, type MemoryInsight } from '../../services/memoryService';
 import styles from './memory.module.scss';
 import { recordProductEvent } from '../../services/productEventService';
@@ -45,9 +47,9 @@ export default function MemoryPage() {
           <p>这是可编辑的理解，不是对你的定义。每一条都能回到原始记录核对。</p>
           <div className={styles.trustLine}><ShieldCheck size={17} aria-hidden="true" /><span>只整理你允许参与 AI 的笔记，删除或修正会立即停止后续使用。</span></div>
         </div>
-        <button className={styles.primary} disabled={generating} onClick={() => { void generate(); }}>
+        <Button variant="default" className={`${styles.generateButton} gap-2`} disabled={generating} onClick={() => { void generate(); }}>
           <Sparkles size={17} aria-hidden="true" />{generating ? '正在整理…' : '从我的笔记整理记忆'}
-        </button>
+        </Button>
       </header>
       {generationError && <p className={styles.feedbackError} role="alert">{generationError}</p>}
       {message && <p className={styles.feedback} role="status">{message}</p>}
@@ -59,25 +61,39 @@ export default function MemoryPage() {
         {insights.map((insight) => <article className={styles.card} key={insight.id}>
         <div className={styles.cardHeader}><div><strong>{insight.displayStatement}</strong><span>{insight.status === 'corrected' ? '已按你的表述修正' : insight.confidence === 'supported' ? '有多条依据' : '等待核对'}</span></div><CheckCircle2 size={19} aria-hidden="true" /></div>
         <div className={styles.actions}>
-          <button className={styles.confirm} onClick={() => { void confirmMemoryInsight(insight.id).then(load); }}><CheckCircle2 size={16} aria-hidden="true" />这是准确的</button>
-          <button onClick={() => { setEditing(insight.id); setCorrection(insight.displayStatement); }}><PencilLine size={16} aria-hidden="true" />修改</button>
-          <button className={styles.destructive} onClick={() => setDeleting(insight.id)}><Trash2 size={16} aria-hidden="true" />删除这条记忆</button>
-          <button className={styles.evidenceToggle} aria-expanded={expanded === insight.id} onClick={() => setExpanded(expanded === insight.id ? null : insight.id)}>{expanded === insight.id ? '收起依据' : '查看依据'}</button>
+          <Button variant="default" size="sm" className="gap-2" onClick={() => { void confirmMemoryInsight(insight.id).then(load); }}><CheckCircle2 size={16} aria-hidden="true" />这是准确的</Button>
+          <Dialog open={editing === insight.id} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => { setEditing(insight.id); setCorrection(insight.displayStatement); }}><PencilLine size={16} aria-hidden="true" />修改</Button>
+            </DialogTrigger>
+            <DialogContent aria-modal="true">
+              <DialogTitle>用你的话重新表述</DialogTitle>
+              <DialogDescription>修改后，这条记忆会按你的表述用于后续对话和推荐。</DialogDescription>
+              <textarea className={styles.dialogTextarea} aria-label="修改后的记忆" value={correction} onChange={(event) => setCorrection(event.target.value)} />
+              <div className={styles.dialogActions}>
+                <Button variant="default" onClick={() => { void correctMemoryInsight(insight.id, correction).then(() => { setEditing(null); load(); }); }}>保存修改</Button>
+                <DialogClose asChild><Button variant="outline">取消</Button></DialogClose>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={deleting === insight.id} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
+            <DialogTrigger asChild>
+              <Button variant="destructive" size="sm" className="gap-2" onClick={() => setDeleting(insight.id)}><Trash2 size={16} aria-hidden="true" />删除这条记忆</Button>
+            </DialogTrigger>
+            <DialogContent aria-modal="true">
+              <DialogTitle>删除这条记忆</DialogTitle>
+              <DialogDescription>删除后，它不会再用于对话或推荐。</DialogDescription>
+              <div className={styles.dialogActions}>
+                <Button variant="destructive" onClick={() => { void deleteMemoryInsight(insight.id).then(() => { setDeleting(null); load(); }); }}>确认删除</Button>
+                <DialogClose asChild><Button variant="outline">取消</Button></DialogClose>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Button variant="link" size="sm" className={styles.evidenceToggle} aria-expanded={expanded === insight.id} onClick={() => setExpanded(expanded === insight.id ? null : insight.id)}>{expanded === insight.id ? '收起依据' : '查看依据'}</Button>
         </div>
         {expanded === insight.id && <ul className={styles.evidence}>{insight.evidence.map((evidence) => <li key={evidence.noteId + evidence.noteRevision}>
           <a href={'/notes?highlight=' + evidence.noteId} onClick={() => recordProductEvent('memory_evidence_opened', { memoryId: insight.id })}>查看原文</a><blockquote>{evidence.excerpt}</blockquote>
         </li>)}</ul>}
-        {editing === insight.id && <div className={styles.dialog} role="dialog" aria-label="修改 AI 记忆">
-          <h3>用你的话重新表述</h3>
-          <textarea value={correction} onChange={(event) => setCorrection(event.target.value)} />
-          <button className={styles.confirm} onClick={() => { void correctMemoryInsight(insight.id, correction).then(() => { setEditing(null); load(); }); }}>保存修改</button>
-          <button onClick={() => setEditing(null)}>取消</button>
-        </div>}
-        {deleting === insight.id && <div className={styles.dialog} role="dialog" aria-label="删除这条记忆">
-          <h3>删除这条记忆？</h3><p>删除后，它不会再用于对话或推荐。</p>
-          <button className={styles.destructive} onClick={() => { void deleteMemoryInsight(insight.id).then(() => { setDeleting(null); load(); }); }}>确认删除</button>
-          <button onClick={() => setDeleting(null)}>取消</button>
-        </div>}
       </article>)}</section>}
     </section>
   </main>;
