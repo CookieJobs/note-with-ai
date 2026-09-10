@@ -47,7 +47,7 @@ export default function MemoryPage() {
           <p>这是可编辑的理解，不是对你的定义。每一条都能回到原始记录核对。</p>
           <div className={styles.trustLine}><ShieldCheck size={17} aria-hidden="true" /><span>只整理你允许参与 AI 的笔记，删除或修正会立即停止后续使用。</span></div>
         </div>
-        <Button variant="default" className={`${styles.generateButton} gap-2`} disabled={generating} onClick={() => { void generate(); }}>
+        <Button variant="default" className={`${styles.memoryPrimaryAction} ${styles.generateButton} gap-2`} disabled={generating} aria-busy={generating || undefined} onClick={() => { void generate(); }}>
           <Sparkles size={17} aria-hidden="true" />{generating ? '正在整理…' : '从我的笔记整理记忆'}
         </Button>
       </header>
@@ -61,7 +61,7 @@ export default function MemoryPage() {
         {insights.map((insight) => <article className={styles.card} key={insight.id}>
         <div className={styles.cardHeader}><div><strong>{insight.displayStatement}</strong><span>{insight.status === 'corrected' ? '已按你的表述修正' : insight.confidence === 'supported' ? '有多条依据' : '等待核对'}</span></div><CheckCircle2 size={19} aria-hidden="true" /></div>
         <div className={styles.actions}>
-          <Button variant="default" size="sm" className="gap-2" onClick={() => { void confirmMemoryInsight(insight.id).then(load); }}><CheckCircle2 size={16} aria-hidden="true" />这是准确的</Button>
+          <Button variant="default" size="sm" className={`${styles.memoryPrimaryAction} gap-2`} onClick={() => { void confirmMemoryInsight(insight.id).then(load); }}><CheckCircle2 size={16} aria-hidden="true" />这是准确的</Button>
           <Dialog open={editing === insight.id} onOpenChange={(open) => { if (!open) setEditing(null); }}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2" onClick={() => { setEditing(insight.id); setCorrection(insight.displayStatement); }}><PencilLine size={16} aria-hidden="true" />修改</Button>
@@ -71,7 +71,7 @@ export default function MemoryPage() {
               <DialogDescription>修改后，这条记忆会按你的表述用于后续对话和推荐。</DialogDescription>
               <textarea className={styles.dialogTextarea} aria-label="修改后的记忆" value={correction} onChange={(event) => setCorrection(event.target.value)} />
               <div className={styles.dialogActions}>
-                <Button variant="default" onClick={() => { void correctMemoryInsight(insight.id, correction).then(() => { setEditing(null); load(); }); }}>保存修改</Button>
+                <Button variant="default" className={styles.memoryPrimaryAction} onClick={() => { void correctMemoryInsight(insight.id, correction).then(() => { setEditing(null); load(); }); }}>保存修改</Button>
                 <DialogClose asChild><Button variant="outline">取消</Button></DialogClose>
               </div>
             </DialogContent>

@@ -1,6 +1,48 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MemoryPage from './page';
+import styles from './memory.module.scss';
+
+const memoryStyles = readFileSync('src/app/memory/memory.module.scss', 'utf8');
+const semanticVariables = readFileSync('src/styles/_variables.scss', 'utf8');
+
+function blockFor(selector: ':root' | '.dark') {
+  const start = semanticVariables.indexOf(`${selector} {`);
+  const end = semanticVariables.indexOf('\n}', start);
+
+  return semanticVariables.slice(start, end);
+}
+
+function tokenValue(block: string, token: string) {
+  const value = block.match(new RegExp(`${token}:\\s*([^;]+);`))?.[1];
+
+  if (!value) throw new Error(`Missing ${token}`);
+  return value;
+}
+
+function parseHex(value: string) {
+  const hex = value.match(/#([\da-f]{6})/i)?.[1];
+  if (!hex) throw new Error(`Expected a hexadecimal color, received ${value}`);
+
+  return [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16),
+  ] as const;
+}
+
+function contrastRatio(first: readonly number[], second: readonly number[]) {
+  const luminance = (color: readonly number[]) => color.reduce((total, channel, index) => {
+    const normalized = channel / 255;
+    const linear = normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+
+    return total + [0.2126, 0.7152, 0.0722][index] * linear;
+  }, 0);
+  const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a);
+
+  return (lighter + 0.05) / (darker + 0.05);
+}
 
 const { mockConfirm, mockCorrect, mockDelete, mockGenerate, mockGet } = vi.hoisted(() => ({
   mockConfirm: vi.fn(),
@@ -37,12 +79,34 @@ describe('MemoryPage', () => {
     expect(screen.getByRole('dialog', { name: '删除这条记忆' })).toBeInTheDocument();
   });
 
-  it('presents confirmation with the shared primary action treatment', async () => {
+  it('keeps the confirmation action distinct on semantic light and dark cards', async () => {
     render(<MemoryPage />);
 
     const confirm = await screen.findByRole('button', { name: '这是准确的' });
 
     expect(confirm).toHaveClass('bg-primary');
+    expect(confirm).toHaveClass(styles.memoryPrimaryAction);
+    expect(memoryStyles).toMatch(/\.card\s*\{[^}]*background:\s*var\(--color-surface-raised\)/);
+    expect(memoryStyles).toMatch(/\.memoryPrimaryAction\s*\{[^}]*background:\s*var\(--color-action-primary\)/);
+    expect(memoryStyles).toMatch(/\.memoryPrimaryAction\s*\{[^}]*color:\s*var\(--color-text-inverse\)/);
+    expect(memoryStyles).toMatch(/&:hover:not\(:disabled\)\s*\{[^}]*background:\s*var\(--color-action-primary-hover\)/);
+    expect(memoryStyles).toMatch(/&:focus-visible\s*\{[^}]*box-shadow:\s*var\(--focus-ring\)/);
+    expect(memoryStyles).toMatch(/&:disabled\s*\{[^}]*background:\s*var\(--color-action-primary-active\)/);
+    expect(memoryStyles).toMatch(/&\[aria-busy=['"]true['"]\]\s*\{[^}]*background:\s*var\(--color-action-primary-hover\)/);
+
+    [blockFor(':root'), blockFor('.dark')].forEach((tokens) => {
+      const card = parseHex(tokenValue(tokens, '--color-surface-raised'));
+      const foreground = parseHex(tokenValue(tokens, '--color-text-inverse'));
+
+      [
+        tokenValue(tokens, '--color-action-primary'),
+        tokenValue(tokens, '--color-action-primary-hover'),
+      ].forEach((action) => {
+        const actionColor = parseHex(action);
+        expect(contrastRatio(actionColor, card)).toBeGreaterThanOrEqual(3);
+        expect(contrastRatio(foreground, actionColor)).toBeGreaterThanOrEqual(4.5);
+      });
+    });
   });
 
   it('opens the edit form as a labelled modal', async () => {

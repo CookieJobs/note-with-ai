@@ -8,6 +8,16 @@
 .trustLine { display: flex; gap: .5rem; align-items: flex-start; margin-top: 1rem; color: #526078; font-size: .86rem; line-height: 1.55; }
 .trustLine svg { flex: 0 0 auto; margin-top: .08rem; color: #4f46a5; }
 .generateButton { align-self: flex-end; }
+.memoryPrimaryAction {
+  background: var(--color-action-primary);
+  border-color: var(--color-action-primary);
+  color: var(--color-text-inverse);
+
+  &:hover:not(:disabled) { background: var(--color-action-primary-hover); border-color: var(--color-action-primary-hover); }
+  &:focus-visible { box-shadow: var(--focus-ring); }
+  &:disabled { background: var(--color-action-primary-active); border-color: var(--color-action-primary-active); color: var(--color-text-inverse); opacity: .72; }
+  &[aria-busy='true'] { background: var(--color-action-primary-hover); border-color: var(--color-action-primary-hover); cursor: wait; }
+}
 .feedback, .feedbackError { margin: 1.15rem 0 0; padding: .78rem .9rem; border-radius: 10px; font-size: .92rem; line-height: 1.55; }
 .feedback { background: #eef3ff; color: #33427b; }
 .feedbackError { background: #fff1f2; color: #a13242; }
@@ -18,7 +28,7 @@
 .insightList { margin-top: 1.7rem; }
 .listHeader { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: .7rem; }
 .listHeader span { color: #718096; font-size: .84rem; }
-.card { margin: .7rem 0; padding: 1.18rem 1.2rem; border: 1px solid #e0e4ed; border-radius: 14px; background: #fff; }
+.card { margin: .7rem 0; padding: 1.18rem 1.2rem; border: 1px solid #e0e4ed; border-radius: 14px; background: var(--color-surface-raised); }
 .cardHeader { display: flex; justify-content: space-between; gap: 1rem; }
 .cardHeader strong { display: block; font-size: 1.02rem; line-height: 1.5; }
 .cardHeader span { display: block; margin-top: .3rem; color: #68768d; font-size: .82rem; }
