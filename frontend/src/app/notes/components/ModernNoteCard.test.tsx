@@ -117,3 +117,39 @@ describe('ModernNoteCard title conflict feedback', () => {
     expect(updateNote).toHaveBeenNthCalledWith(2, expect.objectContaining({ expectedRevision: 5 }));
   });
 });
+
+describe('ModernNoteCard touch-safe actions', () => {
+  it('opens related notes from a visible named action without hover', () => {
+    const onOpenRelated = vi.fn();
+    render(
+      <ModernNoteCard
+        note={note}
+        onRequestDelete={vi.fn()}
+        updateNote={vi.fn()}
+        onOpenRelated={onOpenRelated}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '查看相关笔记' }));
+
+    expect(onOpenRelated).toHaveBeenCalledWith('note-1');
+  });
+
+  it('keeps secondary actions in a named menu with keyboard-operable items', () => {
+    render(
+      <ModernNoteCard
+        note={note}
+        onRequestDelete={vi.fn()}
+        updateNote={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '编辑标题' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '笔记操作' }));
+
+    expect(screen.getByRole('menu', { name: '笔记操作' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: '公开笔记' })).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: '删除笔记' })).toBeEnabled();
+  });
+});

@@ -310,7 +310,7 @@ function NotesContent() {
                         isContentEditingActive={editingNoteId === note._id}
                         isHighlighted={note._id === highlightId}
                         isSelected={note._id === selectedNoteId}
-                        onClick={() => setSelectedNoteId(note._id)}
+                        onOpenRelated={(id) => setSelectedNoteId(id)}
                         onContentEditingChange={handleContentEditingChange}
                       />
                     </motion.div>

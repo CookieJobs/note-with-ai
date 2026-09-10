@@ -4,8 +4,8 @@ import dynamic from 'next/dynamic';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import cardStyles from '../styles/note-card.module.scss';
 import editorStyles from '../styles/rich-editor.module.scss';
-import TrashIcon from '../../../components/icons/TrashIcon';
 import PlusIcon from '../../../components/icons/PlusIcon';
+import { Button } from '../../../components/ui/button';
 import type { Note, UpdateNoteCommand } from '../hooks/useNotes';
 import { focusProseMirrorWithin } from './focusProseMirror';
 import RichTextViewer from './RichTextViewer';
@@ -14,6 +14,7 @@ import { JSONContent } from '@tiptap/react';
 import { flomoEditorChromeProps } from './richTextEditorPresets';
 import { loadRichTextEditor } from './richTextEditorLoader';
 import { getNoteAiPreference, saveNoteAiPreference } from '../../../services/memoryService';
+import NoteCardActionsMenu from './NoteCardActionsMenu';
 
 function EditorLoadingPlaceholder() {
   return (
@@ -38,7 +39,7 @@ interface NoteCardProps {
   draft?: { json: JSONContent; text: string; dirty: boolean };
   onDraftChange?: (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => void;
   isContentEditingActive?: boolean;
-  onClick?: () => void;
+  onOpenRelated?: (noteId: string) => void;
   isSelected?: boolean;
 }
 
@@ -82,7 +83,7 @@ export default function ModernNoteCard({
   draft,
   onDraftChange,
   isContentEditingActive = false,
-  onClick,
+  onOpenRelated,
   isSelected,
 }: NoteCardProps) {
   const {
@@ -416,15 +417,10 @@ export default function ModernNoteCard({
     cardStyles.noteCard,
     activeHighlight ? cardStyles.noteCardHighlight : '',
     state.content.isEditing ? cardStyles.noteCardEditing : '',
-    // 当处于高亮状态时，移除 !bg-white 和 !shadow-none 强制覆盖，让 CSS Module 中的动画样式接管
-    !activeHighlight ? '!bg-white !shadow-none' : '',
-    '!border',
-    isSelected ? '!border-blue-500 !ring-1 !ring-blue-500' : '!border-gray-100',
-    '!rounded-xl'
+    isSelected ? cardStyles.noteCardSelected : '',
   ].filter(Boolean).join(' ');
   const hasUnsavedDraft = !!draft?.dirty;
-  const toggleAiParticipation = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
+  const toggleAiParticipation = async () => {
     const next = !aiIncluded;
     setAiPreferenceSaving(true);
     try {
@@ -441,30 +437,13 @@ export default function ModernNoteCard({
       className={cardClassName}
       data-note-id={note._id}
     >
-      {/* 右侧悬浮把手 */}
-      <button
-        className={`${cardStyles.relatedHandle} ${isSelected ? cardStyles.relatedHandleActive : ''}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick?.();
-        }}
-        title="查看相关笔记"
-        aria-label="查看相关笔记"
-      >
-        <div className={cardStyles.relatedHandleIcon}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="15" y1="3" x2="15" y2="21"></line>
-          </svg>
-        </div>
-      </button>
-
       <div
         className={cardStyles.noteHeader}
         onClick={() => dispatch({ type: 'TOGGLE_EXPANDED' })}
       >
-        {state.title.isEditing ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, flexWrap: 'wrap' }}>
+        <div className={cardStyles.noteHeaderTitle} onClick={(event) => event.stopPropagation()}>
+          {state.title.isEditing ? (
+            <div className={cardStyles.noteTitleEditor}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
               <input
                 autoFocus
@@ -485,60 +464,53 @@ export default function ModernNoteCard({
                 {state.title.conflictCurrentTitle ? ` 服务端标题：${state.title.conflictCurrentTitle}` : ''}
               </div>
             )}
-          </div>
-        ) : (
-          <div
-            className={`${cardStyles.noteTitle} !font-semibold !text-gray-900 !text-lg`}
-            onClick={(e) => {
-              e.stopPropagation();
-              beginTitleEdit();
-            }}
-          >
-          {note.enrichment?.status === 'pending' && (!note.title || note.title.trim().length === 0) ? (
-              <div className={cardStyles.titleSkeleton} />
-            ) : (
-              note.title || '点击添加标题'
-            )}
-          </div>
-        )}
-        <div className={`${cardStyles.noteActions} !gap-2`}>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              className={cardStyles.noteTitleButton}
+              aria-label="编辑标题"
+              onClick={beginTitleEdit}
+            >
+              {note.enrichment?.status === 'pending' && (!note.title || note.title.trim().length === 0) ? (
+                <span className={cardStyles.titleSkeleton} />
+              ) : (
+                note.title || '点击添加标题'
+              )}
+            </Button>
+          )}
+        </div>
+        <div className={cardStyles.noteActions} onClick={(event) => event.stopPropagation()}>
+          <span className={cardStyles.noteDate}>{formatDate(note.createdAt)}</span>
+          {onOpenRelated && (
+            <Button
+              type="button"
+              variant="outline"
+              className={`${cardStyles.relatedAction} ${isSelected ? cardStyles.relatedActionActive : ''}`}
+              aria-label="查看相关笔记"
+              onClick={() => onOpenRelated(note._id)}
+            >
+              相关笔记
+            </Button>
+          )}
           {state.title.isEditing && (
             <button
               onMouseDown={handleTitleSaveMouseDown}
-              className={`${cardStyles.noteEditTitleConfirm} !bg-gray-100 hover:!bg-gray-200 !text-gray-600`}
+              className={cardStyles.noteEditTitleConfirm}
               aria-label="保存标题"
               disabled={state.title.saving}
             >
               ✓
             </button>
           )}
-          <span className={`${cardStyles.noteDate} !bg-transparent !text-gray-400 !border-none !p-0 !text-sm`}>{formatDate(note.createdAt)}</span>
-          <a
-            href={`/publish/${note._id}`}
-            className="text-xs text-gray-500 hover:text-indigo-600"
-            onClick={(event) => event.stopPropagation()}
-          >
-            公开
-          </a>
-          <button
-            type="button"
-            className="bg-transparent border-none text-xs text-gray-500 hover:text-indigo-600"
-            aria-pressed={aiIncluded}
-            aria-label={aiIncluded ? '设为不参与 AI' : '恢复参与 AI'}
-            disabled={aiPreferenceSaving}
-            onClick={(event) => { void toggleAiParticipation(event); }}
-          >
-            {aiPreferenceSaving ? '保存中' : aiIncluded ? '参与 AI' : '不参与 AI'}
-          </button>
-          <button
-            className={`${cardStyles.deleteButton} !bg-transparent !text-gray-400 hover:!text-red-500 hover:!bg-gray-100 !rounded-md !border-none !shadow-none !p-1`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRequestDelete(note._id);
-            }}
-          >
-            <TrashIcon />
-          </button>
+          <NoteCardActionsMenu
+            noteId={note._id}
+            aiIncluded={aiIncluded}
+            aiPreferenceSaving={aiPreferenceSaving}
+            onToggleAi={() => { void toggleAiParticipation(); }}
+            onRequestDelete={() => onRequestDelete(note._id)}
+          />
         </div>
       </div>
 
@@ -570,7 +542,7 @@ export default function ModernNoteCard({
           ) : (
             <div
               ref={textRef as React.RefObject<HTMLDivElement>}
-              className={`${cardStyles.noteText} !leading-relaxed !text-gray-600`}
+              className={cardStyles.noteText}
             >
               {(() => {
                 const draftText = draft?.dirty ? draft?.text : contentTextDraft;
