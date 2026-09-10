@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Ref } from 'react';
 import { Menu } from 'lucide-react';
 import { getUser, logout } from '../utils/auth';
 import { Menu as AccountMenu, MenuContent, MenuItem, MenuTrigger } from './ui/menu';
@@ -16,9 +16,10 @@ const menuItems = [
 
 interface TopNavigationProps {
   onMenuClick?: () => void;
+  menuButtonRef?: Ref<HTMLButtonElement>;
 }
 
-export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) {
+export default function TopNavigation({ onMenuClick, menuButtonRef }: TopNavigationProps = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -38,6 +39,7 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
         <div className={styles.leftSection}>
           {pathname.startsWith('/chat') && (
             <button
+              ref={menuButtonRef}
               className="md:hidden mr-2 -ml-2 flex min-h-11 min-w-11 items-center justify-center rounded-lg border-none bg-transparent p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
               onClick={onMenuClick}
               aria-label="打开侧边栏"

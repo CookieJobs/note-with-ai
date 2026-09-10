@@ -49,7 +49,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   const containerClassName = cn(
     styles.inputContainer,
     centered && styles.inputContainerCentered,
-    "flex flex-col items-center justify-center transition-all duration-300"
+    "flex flex-col items-center justify-center motion-safe:transition-[margin,padding] motion-safe:duration-300"
   );
 
   return (

@@ -19,6 +19,7 @@ interface ChatHistoryPanelProps {
   onSessionSelect: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (e: React.MouseEvent, sessionId: string) => void;
+  menuButtonRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
 interface HistoryListProps extends Pick<
@@ -159,6 +160,10 @@ const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = (props) => {
     >
       <DrawerContent
         aria-describedby={undefined}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          props.menuButtonRef?.current?.focus();
+        }}
         className="w-[min(100%,24rem)] max-w-[calc(100%-1rem)] gap-0 overflow-hidden p-0"
       >
         <DialogTitle className="px-4 pt-4 text-lg font-semibold">聊天记录</DialogTitle>

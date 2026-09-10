@@ -6,7 +6,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 */
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { BookOpen, X } from 'lucide-react';
@@ -30,6 +30,7 @@ export default function ChatPage() {
   const [showCare, setShowCare] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isRelatedNotesOpen, setIsRelatedNotesOpen] = useState(false);
+  const mobileSidebarTriggerRef = useRef<HTMLButtonElement>(null);
 
   const { user, isClient } = useAuthGuard();
 
@@ -135,7 +136,10 @@ export default function ChatPage() {
   if (!isClient || !user) {
     return (
       <div className={`${styles.container} ${styles.emptyContainer}`}>
-        <TopNavigation onMenuClick={() => setIsMobileSidebarOpen(true)} />
+        <TopNavigation
+          onMenuClick={() => setIsMobileSidebarOpen(true)}
+          menuButtonRef={mobileSidebarTriggerRef}
+        />
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flex: 1, color: '#888' }}>
           <div className="flex flex-col items-center gap-3">
             <div className="loading-spinner" style={{
@@ -172,7 +176,10 @@ export default function ChatPage() {
 
   return (
     <div className={`${styles.container} ${messages.length === 0 ? styles.emptyContainer : ''}`}>
-      <TopNavigation onMenuClick={() => setIsMobileSidebarOpen(true)} />
+      <TopNavigation
+        onMenuClick={() => setIsMobileSidebarOpen(true)}
+        menuButtonRef={mobileSidebarTriggerRef}
+      />
       
       <div className={styles.bodyWrapper}>
         <ChatHistoryPanel
@@ -184,6 +191,7 @@ export default function ChatPage() {
           onSessionSelect={setCurrentSessionId}
           onNewSession={startNewSession}
           onDeleteSession={handleDeleteClick}
+          menuButtonRef={mobileSidebarTriggerRef}
         />
 
         <div className={styles.mainCenter}>
