@@ -38,15 +38,38 @@ describe('AuthPage', () => {
     expect(screen.getByLabelText(/^验证码 \*$/)).toBeRequired();
   });
 
-  it('moves selection and focus between modes with arrow keys', () => {
+  it('keeps one tab stop while keyboard navigation moves mode selection', () => {
     render(<AuthPage />);
 
     const login = screen.getByRole('tab', { name: '登录' });
+    const register = screen.getByRole('tab', { name: '注册' });
+    const reset = screen.getByRole('tab', { name: '重置密码' });
+
+    expect(login).toHaveAttribute('tabindex', '0');
+    expect(register).toHaveAttribute('tabindex', '-1');
+    expect(reset).toHaveAttribute('tabindex', '-1');
+
     login.focus();
     fireEvent.keyDown(login, { key: 'ArrowRight' });
 
-    expect(screen.getByRole('tab', { name: '注册' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: '注册' })).toHaveFocus();
+    expect(register).toHaveAttribute('aria-selected', 'true');
+    expect(register).toHaveAttribute('tabindex', '0');
+    expect(login).toHaveAttribute('tabindex', '-1');
+    expect(register).toHaveFocus();
+
+    fireEvent.keyDown(register, { key: 'End' });
+
+    expect(reset).toHaveAttribute('aria-selected', 'true');
+    expect(reset).toHaveAttribute('tabindex', '0');
+    expect(register).toHaveAttribute('tabindex', '-1');
+    expect(reset).toHaveFocus();
+
+    fireEvent.keyDown(reset, { key: 'Home' });
+
+    expect(login).toHaveAttribute('aria-selected', 'true');
+    expect(login).toHaveAttribute('tabindex', '0');
+    expect(reset).toHaveAttribute('tabindex', '-1');
+    expect(login).toHaveFocus();
   });
 
   it('names the password visibility action by its next result', () => {

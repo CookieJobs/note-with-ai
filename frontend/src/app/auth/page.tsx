@@ -221,6 +221,7 @@ export default function AuthPage() {
                 role="tab"
                 aria-selected={isSelected}
                 aria-controls="auth-form-panel"
+                tabIndex={isSelected ? 0 : -1}
                 className={`${styles.modeTab} ${isSelected ? styles.active : ''}`}
                 variant="ghost"
                 onClick={() => setMode(authMode)}
