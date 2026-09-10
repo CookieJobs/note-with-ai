@@ -135,8 +135,25 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 .disclaimer {
   text-align: center;
   font-size: 12px;
-  color: #9ca3af;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
   padding: 8px 16px 12px;
+}
+
+.composer {
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-text-primary) 2%, transparent), 0 8px 24px color-mix(in srgb, var(--color-text-primary) 3%, transparent);
+  transition: border-color var(--motion-duration-fast) var(--motion-easing-standard), box-shadow var(--motion-duration-fast) var(--motion-easing-standard);
+
+  &:focus-within {
+    border-color: var(--color-border-strong);
+    box-shadow: var(--focus-ring);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer {
+    transition: none;
+  }
 }
 
 .rightPanel {
