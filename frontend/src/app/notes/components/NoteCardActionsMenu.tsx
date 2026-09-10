@@ -7,6 +7,7 @@ type NoteCardActionsMenuProps = {
   noteId: string;
   aiIncluded: boolean;
   aiPreferenceSaving: boolean;
+  onPublish?: () => void;
   onToggleAi: () => void;
   onRequestDelete: () => void;
 };
@@ -15,6 +16,7 @@ export default function NoteCardActionsMenu({
   noteId,
   aiIncluded,
   aiPreferenceSaving,
+  onPublish,
   onToggleAi,
   onRequestDelete,
 }: NoteCardActionsMenuProps) {
@@ -24,7 +26,7 @@ export default function NoteCardActionsMenu({
         操作
       </MenuTrigger>
       <MenuContent className={styles.noteActionsMenuContent} aria-label="笔记操作">
-        <MenuItem onClick={() => window.location.assign(`/publish/${noteId}`)}>
+        <MenuItem onClick={() => onPublish ? onPublish() : window.location.assign(`/publish/${noteId}`)}>
           公开笔记
         </MenuItem>
         <MenuItem

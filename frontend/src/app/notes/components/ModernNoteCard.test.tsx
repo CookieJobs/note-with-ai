@@ -1,7 +1,20 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { NoteWriteConflict, type Note } from '../hooks/useNotes';
 import ModernNoteCard from './ModernNoteCard';
+
+const noteCardStyles = readFileSync(join(process.cwd(), 'src/app/notes/styles/note-card.module.scss'), 'utf8');
+const memory = vi.hoisted(() => ({
+  getPreference: vi.fn().mockResolvedValue({ noteId: 'note-1', included: true }),
+  savePreference: vi.fn().mockResolvedValue({ noteId: 'note-1', included: false }),
+}));
+
+vi.mock('../../../services/memoryService', () => ({
+  getNoteAiPreference: memory.getPreference,
+  saveNoteAiPreference: memory.savePreference,
+}));
 
 const note: Note = {
   _id: 'note-1',
@@ -135,21 +148,62 @@ describe('ModernNoteCard touch-safe actions', () => {
     expect(onOpenRelated).toHaveBeenCalledWith('note-1');
   });
 
-  it('keeps secondary actions in a named menu with keyboard-operable items', () => {
+  it('reduces card motion when the user requests reduced motion', () => {
+    expect(noteCardStyles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+    expect(noteCardStyles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.noteCard\s*,[\s\S]*?\.noteCard\s+\*/);
+    expect(noteCardStyles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?animation:\s*none\s*!important/);
+    expect(noteCardStyles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?transition:\s*none\s*!important/);
+    expect(noteCardStyles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?transform:\s*none\s*!important/);
+  });
+
+  it('activates title, relationship, and secondary actions with the keyboard', async () => {
+    const onOpenRelated = vi.fn();
+    const onRequestDelete = vi.fn();
+    const onPublish = vi.fn();
+    memory.savePreference.mockClear();
     render(
       <ModernNoteCard
         note={note}
-        onRequestDelete={vi.fn()}
+        onRequestDelete={onRequestDelete}
         updateNote={vi.fn()}
+        onOpenRelated={onOpenRelated}
+        onPublish={onPublish}
       />,
     );
 
-    expect(screen.getByRole('button', { name: '编辑标题' })).toBeEnabled();
+    const related = screen.getByRole('button', { name: '查看相关笔记' });
+    related.focus();
+    fireEvent.keyDown(related, { key: 'Enter' });
+    expect(onOpenRelated).toHaveBeenCalledWith('note-1');
 
-    fireEvent.click(screen.getByRole('button', { name: '笔记操作' }));
+    const trigger = screen.getByRole('button', { name: '笔记操作' });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const publish = await screen.findByRole('menuitem', { name: '公开笔记' });
+    await waitFor(() => expect(publish).toHaveFocus());
+    fireEvent.keyDown(publish, { key: 'Enter' });
+    expect(onPublish).toHaveBeenCalledWith('note-1');
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
 
-    expect(screen.getByRole('menu', { name: '笔记操作' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: '公开笔记' })).toBeEnabled();
-    expect(screen.getByRole('menuitem', { name: '删除笔记' })).toBeEnabled();
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const ai = await screen.findByRole('menuitem', { name: '设为不参与 AI' });
+    fireEvent.keyDown(ai, { key: 'Enter' });
+    await waitFor(() => expect(memory.savePreference).toHaveBeenCalledWith('note-1', false));
+
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const publishAgain = await screen.findByRole('menuitem', { name: '公开笔记' });
+    fireEvent.keyDown(publishAgain, { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('menuitem', { name: '恢复参与 AI' }), { key: 'ArrowDown' });
+    const remove = screen.getByRole('menuitem', { name: '删除笔记' });
+    await waitFor(() => expect(remove).toHaveFocus());
+    fireEvent.keyDown(remove, { key: 'Enter' });
+    expect(onRequestDelete).toHaveBeenCalledWith('note-1');
+
+    const title = screen.getByRole('button', { name: '编辑标题' });
+    title.focus();
+    fireEvent.keyDown(title, { key: 'Enter' });
+    expect(screen.getByPlaceholderText('添加标题...')).toHaveFocus();
   });
 });

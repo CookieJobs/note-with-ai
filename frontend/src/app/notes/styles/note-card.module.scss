@@ -1209,6 +1209,24 @@
   transform: scale(0.96);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .noteCard,
+  .noteCard *,
+  .noteCard *::before,
+  .noteCard *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto;
+  }
+
+  .noteCard:hover,
+  .noteCard:active,
+  .noteCard *:hover,
+  .noteCard *:active {
+    transform: none !important;
+  }
+}
+
 @media (max-width: 649px) {
   .noteCard {
     padding: 16px;

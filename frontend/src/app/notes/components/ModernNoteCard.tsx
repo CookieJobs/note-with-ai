@@ -40,6 +40,7 @@ interface NoteCardProps {
   onDraftChange?: (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => void;
   isContentEditingActive?: boolean;
   onOpenRelated?: (noteId: string) => void;
+  onPublish?: (noteId: string) => void;
   isSelected?: boolean;
 }
 
@@ -84,6 +85,7 @@ export default function ModernNoteCard({
   onDraftChange,
   isContentEditingActive = false,
   onOpenRelated,
+  onPublish,
   isSelected,
 }: NoteCardProps) {
   const {
@@ -413,6 +415,16 @@ export default function ModernNoteCard({
     dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' });
   };
 
+  const activateWithKeyboard = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    action: () => void,
+  ) => {
+    if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    action();
+  };
+
   const cardClassName = [
     cardStyles.noteCard,
     activeHighlight ? cardStyles.noteCardHighlight : '',
@@ -472,6 +484,7 @@ export default function ModernNoteCard({
               className={cardStyles.noteTitleButton}
               aria-label="编辑标题"
               onClick={beginTitleEdit}
+              onKeyDown={(event) => activateWithKeyboard(event, beginTitleEdit)}
             >
               {note.enrichment?.status === 'pending' && (!note.title || note.title.trim().length === 0) ? (
                 <span className={cardStyles.titleSkeleton} />
@@ -490,6 +503,7 @@ export default function ModernNoteCard({
               className={`${cardStyles.relatedAction} ${isSelected ? cardStyles.relatedActionActive : ''}`}
               aria-label="查看相关笔记"
               onClick={() => onOpenRelated(note._id)}
+              onKeyDown={(event) => activateWithKeyboard(event, () => onOpenRelated(note._id))}
             >
               相关笔记
             </Button>
@@ -508,6 +522,7 @@ export default function ModernNoteCard({
             noteId={note._id}
             aiIncluded={aiIncluded}
             aiPreferenceSaving={aiPreferenceSaving}
+            onPublish={onPublish ? () => onPublish(note._id) : undefined}
             onToggleAi={() => { void toggleAiParticipation(); }}
             onRequestDelete={() => onRequestDelete(note._id)}
           />
