@@ -32,6 +32,10 @@ function parseHex(value: string) {
   ] as const;
 }
 
+function composite(foreground: readonly number[], background: readonly number[], opacity: number) {
+  return foreground.map((channel, index) => channel * opacity + background[index] * (1 - opacity));
+}
+
 function contrastRatio(first: readonly number[], second: readonly number[]) {
   const luminance = (color: readonly number[]) => color.reduce((total, channel, index) => {
     const normalized = channel / 255;
@@ -93,6 +97,8 @@ describe('MemoryPage', () => {
     expect(memoryStyles).toMatch(/&:focus-visible\s*\{[^}]*box-shadow:\s*var\(--focus-ring\)/);
     expect(memoryStyles).toMatch(/&:disabled\s*\{[^}]*background:\s*var\(--color-action-primary-active\)/);
     expect(memoryStyles).toMatch(/&\[aria-busy=['"]true['"]\]\s*\{[^}]*background:\s*var\(--color-action-primary-hover\)/);
+    const disabledOpacity = Number(memoryStyles.match(/&:disabled\s*\{[^}]*opacity:\s*([\d.]+)/)?.[1]);
+    expect(disabledOpacity).toBeGreaterThan(0);
 
     [blockFor(':root'), blockFor('.dark')].forEach((tokens) => {
       const card = parseHex(tokenValue(tokens, '--color-surface-raised'));
@@ -106,6 +112,15 @@ describe('MemoryPage', () => {
         expect(contrastRatio(actionColor, card)).toBeGreaterThanOrEqual(3);
         expect(contrastRatio(foreground, actionColor)).toBeGreaterThanOrEqual(4.5);
       });
+
+      const disabledAction = composite(
+        parseHex(tokenValue(tokens, '--color-action-primary-active')),
+        card,
+        disabledOpacity,
+      );
+      const disabledForeground = composite(foreground, card, disabledOpacity);
+      expect(contrastRatio(disabledAction, card)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(disabledForeground, disabledAction)).toBeGreaterThanOrEqual(4.5);
     });
   });
 
