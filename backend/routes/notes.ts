@@ -10,7 +10,7 @@ import { authenticateToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/errorHandler';
 import { noteController } from '../controllers/noteController';
 import { validate } from '../middleware/validate';
-import { createNoteSchema, updateTitleSchema, chatNoteSchema, ensureSchema, updateNoteSchema, noteIdParamSchema } from '../schemas/noteSchemas';
+import { createNoteSchema, updateTitleSchema, chatNoteSchema, ensureSchema, updateNoteSchema, noteIdParamSchema, noteListSchema } from '../schemas/noteSchemas';
 
 const router = express.Router();
 
@@ -19,7 +19,7 @@ router.get('/test', (req, res) => {
 });
 
 // 获取当前用户的所有笔记，按创建时间倒序排列
-router.get('/', authenticateToken, asyncHandler((req, res, next) => noteController.getNotes(req, res, next)));
+router.get('/', authenticateToken, validate(noteListSchema), asyncHandler((req, res, next) => noteController.getNotes(req, res, next)));
 
 // 添加笔记
 router.post('/', authenticateToken, validate(createNoteSchema), asyncHandler((req, res, next) => noteController.createNote(req, res, next)));
@@ -35,6 +35,9 @@ router.post('/embedding/ensure', authenticateToken, validate(ensureSchema), asyn
 
 // 当前用户 summary 补齐 (必须在 /:id 之前)
 router.post('/summary/ensure', authenticateToken, validate(ensureSchema), asyncHandler((req, res, next) => noteController.ensureSummaries(req, res, next)));
+
+// 读取单条已归属的笔记，必须在 mutation routes 之前供发布预览直接使用。
+router.get('/:id', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.getNote(req, res, next)));
 
 // 删除笔记
 router.delete('/:id', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.deleteNote(req, res, next)));

@@ -1,6 +1,8 @@
 import { Note } from '../models/Note';
+import NoteAiPreference from '../models/NoteAiPreference';
 import { chatWithDeepSeek } from './llmService';
 import { ErrorHandler } from '../utils/errorHandler';
+import { decodeNoteCursor, encodeNoteCursor } from './noteListCursor';
 import { noteEmbeddingService } from './noteEmbeddingService';
 import {
   getEnrichmentView,
@@ -14,7 +16,45 @@ import {
 } from './NoteUpdateOrchestrator';
 import { runProductionNoteEnrichmentTask } from './noteEnrichmentWorker';
 
-type NoteListItem = NoteDto & { enrichment: ReturnType<typeof getEnrichmentView> };
+export type NoteListItem = NoteDto & {
+  enrichment: ReturnType<typeof getEnrichmentView>;
+  aiIncluded: boolean;
+};
+
+export type NotePage = {
+  notes: NoteListItem[];
+  pageInfo: {
+    hasNextPage: boolean;
+    nextCursor: string | null;
+  };
+};
+
+type NotePageOptions = {
+  limit?: number;
+  cursor?: string;
+};
+
+const DEFAULT_NOTE_PAGE_LIMIT = 30;
+const MAX_NOTE_PAGE_LIMIT = 50;
+
+function normalizePageLimit(limit: number | undefined): number {
+  if (limit === undefined) return DEFAULT_NOTE_PAGE_LIMIT;
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw ErrorHandler.createValidationError('笔记分页大小无效', { code: 'NOTE_PAGE_LIMIT_INVALID' });
+  }
+  return Math.min(limit, MAX_NOTE_PAGE_LIMIT);
+}
+
+function toListItem(value: unknown, aiIncluded: boolean): NoteListItem {
+  const record = typeof value === 'object' && value !== null && 'toObject' in value && typeof value.toObject === 'function'
+    ? value.toObject()
+    : value;
+  return {
+    ...toNoteDto(record as Parameters<typeof toNoteDto>[0]),
+    enrichment: getEnrichmentView(record as Parameters<typeof getEnrichmentView>[0]),
+    aiIncluded,
+  };
+}
 
 function toLlmRole(role: string): 'user' | 'assistant' | 'system' {
   if (role === 'assistant' || role === 'system') return role;
@@ -22,15 +62,50 @@ function toLlmRole(role: string): 'user' | 'assistant' | 'system' {
 }
 
 class NoteService {
+  async getNotesPage(userId: string, options: NotePageOptions): Promise<NotePage> {
+    const limit = normalizePageLimit(options.limit);
+    const decodedCursor = options.cursor === undefined ? null : decodeNoteCursor(options.cursor);
+    const filter = decodedCursor
+      ? {
+        userId,
+        $or: [
+          { createdAt: { $lt: decodedCursor.createdAt } },
+          { createdAt: decodedCursor.createdAt, _id: { $lt: decodedCursor.id } },
+        ],
+      }
+      : { userId };
+    const records = await Note.find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit + 1).lean();
+    const hasNextPage = records.length > limit;
+    const pageRecords = hasNextPage ? records.slice(0, limit) : records;
+    const noteIds = pageRecords.map((note) => String(note._id));
+    const preferences = noteIds.length === 0
+      ? []
+      : await NoteAiPreference.find({ userId, noteId: { $in: noteIds } }).lean();
+    const includedByNoteId = new Map(preferences.map((preference) => [String(preference.noteId), preference.included !== false]));
+    const notes = pageRecords.map((note) => toListItem(note, includedByNoteId.get(String(note._id)) ?? true));
+    const lastNote = pageRecords[pageRecords.length - 1];
+
+    return {
+      notes,
+      pageInfo: {
+        hasNextPage,
+        nextCursor: hasNextPage && lastNote
+          ? encodeNoteCursor({ createdAt: new Date(lastNote.createdAt), id: String(lastNote._id) })
+          : null,
+      },
+    };
+  }
+
+  async getNote(userId: string, noteId: string): Promise<NoteListItem> {
+    const note = await Note.findOne({ _id: noteId, userId }).lean();
+    if (!note) throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
+    const preference = await NoteAiPreference.findOne({ userId, noteId }).lean();
+    const included = (preference as { included?: boolean } | null)?.included !== false;
+    return toListItem(note, included);
+  }
+
   async getNotes(userId: string): Promise<NoteListItem[]> {
-    const notes = await Note.find({ userId }).sort({ createdAt: -1 });
-    return notes.map((note) => {
-      const value = typeof note.toObject === 'function' ? note.toObject() : note;
-      return {
-        ...toNoteDto(value),
-        enrichment: getEnrichmentView(value),
-      };
-    });
+    return (await this.getNotesPage(userId, { limit: MAX_NOTE_PAGE_LIMIT })).notes;
   }
 
   async createNote(userId: string, data: Pick<CreateNoteInput, 'body'>): Promise<NoteWriteResult> {

@@ -88,6 +88,9 @@ const NoteSchema = new mongoose.Schema(
 // 1. 用户ID索引 - 提升按用户查询笔记的性能
 NoteSchema.index({ userId: 1 });
 
+// Cursor pagination is ordered by both fields so equal timestamps remain deterministic.
+NoteSchema.index({ userId: 1, createdAt: -1, _id: -1 });
+
 // 2. 复合索引 - 优化有向量的笔记查询
 NoteSchema.index({ userId: 1, embedding: 1 });
 
