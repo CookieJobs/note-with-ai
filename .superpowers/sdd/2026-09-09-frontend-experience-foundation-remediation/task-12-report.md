@@ -32,6 +32,38 @@ The prior worker left uncommitted changes in `useNotes.ts`, `useNotes.test.tsx`,
 - Added a deferred `fetchNextPage` deletion race. It proves a stale next-page response cannot resurrect a deleted note or append an otherwise absent page.
 - Re-ran the focused suite (33 tests), Notes suite (86 tests), lint, typecheck, build, and diff check. The implementation is recorded in the fix-round commit below.
 
+## Fix round 2 — restore historical hook regressions
+
+- Restored the 16 independently named historical `useNotes` mutation/list guards that were lost in the `Note[]` to `InfiniteData<NotePage>` migration. Their fixtures now seed and assert `NotePages` via `flattenNotePages`, so the tests exercise the production cache shape rather than an array compatibility shim.
+- The restored cases cover malformed successful and 409 canonical envelopes (including fractional/mismatched enrichment revisions), delayed 409 precedence, delayed concurrent writes, ready/pending and equal-ready enrichment precedence, legacy enrichment fill-in, hydrated create precedence (newer and equal-revision), complete first-page hydration, pending-to-ready list merging, recommendation response validation and revision advancement, and a late first-page GET after a 409.
+- Added the four previously deferred `fetchNextPage` races for create, successful PATCH, PATCH 409, recommendation refresh, and polling; the existing deletion race remains. Each proves that a response for a cursor absent after the later cache generation cannot append, overwrite, or resurrect data.
+- The create race also awaits `loadMore()` after the stale response and asserts `isFetchNextPageError === false`. This verifies React Query's `CancelledError({ revert: true, silent: true })` path is a reverted, silent completion rather than a load-more failure.
+
+### Case accounting
+
+| Hook cases | Count |
+| --- | ---: |
+| Pagination-era cases retained before this round | 14 |
+| Historical independent regressions migrated | 16 |
+| New deferred next-page races | 4 |
+| `useNotes.test.tsx` total | 34 |
+
+### Fix round 2 verification
+
+| Command | Result |
+| --- | --- |
+| `cd frontend && npm test -- src/app/notes/hooks/notePages.test.ts src/app/notes/hooks/useNotes.test.tsx src/app/notes/hooks/useNotesPolling.test.tsx src/app/notes/page.test.tsx` | PASS — 4 files, 53 tests |
+| `cd frontend && npm test -- src/app/notes` | PASS — 13 files, 106 tests |
+| `cd frontend && npm test` | PASS — 36 files, 245 tests |
+| `cd frontend && npm run typecheck` | PASS |
+| `cd frontend && npm run lint` | PASS |
+| `cd frontend && npm run build` | PASS |
+| `git diff --check` | PASS |
+
+### Fix round 2 hash
+
+- Regression-test commit: `373a42fd47e279e06725257dfd2968b8ef8296c2` (`test(notes): restore pagination write regressions`).
+
 ## Verification
 
 | Command | Result |
