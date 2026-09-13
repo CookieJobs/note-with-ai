@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 const variables = readFileSync(new URL('./_variables.scss', import.meta.url), 'utf8');
 const globals = readFileSync(new URL('./globals.scss', import.meta.url), 'utf8');
+const inspirationStyles = readFileSync(new URL('../app/inspiration/inspiration.module.scss', import.meta.url), 'utf8');
+const publishStyles = readFileSync(new URL('../app/publish/publish.module.scss', import.meta.url), 'utf8');
+const chatStyles = readFileSync(new URL('../app/chat/chat.module.scss', import.meta.url), 'utf8');
+const memoryPage = readFileSync(new URL('../app/memory/page.tsx', import.meta.url), 'utf8');
 const reducedMotionUrl = new URL('./reduced-motion.scss', import.meta.url);
 const reducedMotion = existsSync(reducedMotionUrl) ? readFileSync(reducedMotionUrl, 'utf8') : '';
 const coreRouteStyles = [
@@ -18,17 +22,23 @@ const coreRouteStyles = [
 const rawHexAllowlist = [
   {
     path: '../app/notes/styles/layout.module.scss',
-    selector: 'radial-gradient',
+    selector: /^\.container\b/,
+    property: /^background$/,
+    value: /(?:radial|linear)-gradient\(/,
     purpose: 'the notes workspace atmosphere resolver output',
   },
   {
     path: '../app/notes/styles/note-card.module.scss',
-    selector: 'radial-gradient',
+    selector: /^\.workspaceOverlayPanel\b/,
+    property: /^background$/,
+    value: /(?:radial|linear)-gradient\(/,
     purpose: 'editor atmosphere output',
   },
   {
     path: '../app/notes/styles/note-card.module.scss',
-    selector: ':global(.hljs)',
+    selector: /:global\(\.hljs(?:[-\w]*)?\)/,
+    property: /^color$/,
+    value: /#[\da-f]{3,8}\b/i,
     purpose: 'temporary editor syntax output',
   },
 ] as const;
@@ -102,11 +112,35 @@ function parseColor(value: string) {
   return [Number(rgba[1]), Number(rgba[2]), Number(rgba[3]), Number(rgba[4] ?? 1)] as const;
 }
 
+function declarationFor(source: string, index: number) {
+  const openBrace = source.lastIndexOf('{', index);
+  const declarationStart = Math.max(source.lastIndexOf(';', index), openBrace) + 1;
+  const nextSemicolon = source.indexOf(';', index);
+  const nextBrace = source.indexOf('}', index);
+  const declarationEnd = Math.min(
+    nextSemicolon === -1 ? source.length : nextSemicolon,
+    nextBrace === -1 ? source.length : nextBrace,
+  );
+  const declaration = source.slice(declarationStart, declarationEnd).trim();
+  const [property, ...valueParts] = declaration.split(':');
+  const selectorStart = Math.max(source.lastIndexOf('}', openBrace), source.lastIndexOf('{', openBrace - 1)) + 1;
+
+  return {
+    property: property?.trim() ?? '',
+    value: valueParts.join(':').trim(),
+    selector: source.slice(selectorStart, openBrace).trim(),
+  };
+}
+
 function hasAllowedRawHex(path: string, source: string, index: number) {
+  const declaration = declarationFor(source, index);
+
   return rawHexAllowlist.some(
     (allowance) =>
       allowance.path === path &&
-      source.lastIndexOf(allowance.selector, index) > source.lastIndexOf('}', index),
+      allowance.selector.test(declaration.selector) &&
+      allowance.property.test(declaration.property) &&
+      allowance.value.test(declaration.value),
   );
 }
 
@@ -185,5 +219,31 @@ describe('style foundation contract', () => {
 
       expect(rawHexMatches, `${path} should not introduce a business-page hex literal`).toEqual([]);
     }
+  });
+
+  it('keeps named primary route controls at least 44px tall', () => {
+    expect(inspirationStyles).toMatch(/\.primary\s*\{[^}]*min-height:\s*44px/);
+    expect(publishStyles).toMatch(/\.primary\s*\{[^}]*min-height:\s*44px/);
+    expect(memoryPage).toMatch(/<Button variant="default" size="lg"[^>]*generateButton/);
+    expect(memoryPage).toMatch(/<Button variant="default" size="lg"[^>]*>.*这是准确的/);
+    expect(chatStyles).toMatch(/\.relatedNotesFab\s*\{[^}]*height:\s*44px/);
+  });
+
+  it('does not let a raw color piggyback on an allowed atmosphere declaration', () => {
+    const source = '.container { background: radial-gradient(circle, #123456, transparent); color: #654321; }';
+    const allowedGradientIndex = source.indexOf('#123456');
+    const unrelatedColorIndex = source.indexOf('#654321');
+
+    expect(hasAllowedRawHex('../app/notes/styles/layout.module.scss', source, allowedGradientIndex)).toBe(true);
+    expect(hasAllowedRawHex('../app/notes/styles/layout.module.scss', source, unrelatedColorIndex)).toBe(false);
+  });
+
+  it('does not let a non-syntax declaration piggyback on an hljs selector', () => {
+    const source = ':global(.hljs) { color: #123456; border-color: #654321; }';
+    const syntaxColorIndex = source.indexOf('#123456');
+    const nonSyntaxColorIndex = source.indexOf('#654321');
+
+    expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, syntaxColorIndex)).toBe(true);
+    expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, nonSyntaxColorIndex)).toBe(false);
   });
 });

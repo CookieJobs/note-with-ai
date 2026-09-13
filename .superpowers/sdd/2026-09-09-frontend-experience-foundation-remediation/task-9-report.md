@@ -80,3 +80,58 @@ rg -n -o '#[0-9A-Fa-f]{3,8}\\b|transition\\s*:\\s*all\\b' \
 - Confirmed that the visual connector is decoration only and that the named link remains a semantic anchor.
 - Confirmed the style contract deliberately permits only scoped editor/atmosphere contexts, retaining freedom for non-business visual output without exempting an entire Notes file.
 - No remaining concerns found in the scoped change.
+
+## Fix Round 1
+
+### Changes
+
+- Raised the Inspiration and Publish primary CTA minimum height from 42px to 44px.
+- Applied the shared `lg` Button size to the named Memory generation and “这是准确的” primary actions; compact secondary controls remain compact.
+- Raised the mobile Chat related-notes entry height from 40px to 44px.
+- Replaced the raw-hex allowlist substring check with parsed rule and declaration validation. The only allowed hex contexts are the designated Notes atmosphere `background` gradient declarations and `color` declarations in `:global(.hljs...)` syntax selectors.
+- Added control-size assertions and negative tests covering a raw `color` after an allowed radial gradient and a `border-color` inside an hljs rule.
+
+### RED/GREEN evidence
+
+```text
+cd frontend && npm test -- src/styles/style-contract.test.ts
+FAIL 3 tests
+- named primary route controls were below 44px
+- raw color after an allowed atmosphere declaration was incorrectly allowed
+- non-syntax declaration inside an hljs rule was incorrectly allowed
+
+cd frontend && npm test -- src/styles/style-contract.test.ts
+Test Files  1 passed (1)
+Tests  10 passed (10)
+
+cd frontend && npm test -- src/components/ui/relationship-cue.test.tsx src/app/memory/page.test.tsx src/app/inspiration/page.test.tsx
+Test Files  3 passed (3)
+Tests  9 passed (9)
+
+cd frontend && npm test -- src/app/publish/page.test.tsx
+Test Files  1 passed (1)
+Tests  1 passed (1)
+```
+
+### Final verification
+
+```text
+cd frontend && npm test
+Test Files  34 passed (34)
+Tests  217 passed (217)
+
+cd frontend && npm run lint
+exit 0
+
+cd frontend && npm run typecheck
+exit 0
+
+git diff --check
+exit 0
+```
+
+### Self-review
+
+- Each named primary control is covered by the style contract and resolves to at least 44px; secondary actions were not broadly resized.
+- The allowlist now evaluates the enclosing rule selector, CSS property, and declaration value, so an unrelated declaration cannot inherit an allowance from a nearby gradient or hljs selector.
+- No remaining concerns found in this fix round.
