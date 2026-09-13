@@ -69,7 +69,7 @@ The follow-up implementation is `f53f572` (`fix(notes): harden related note summ
 - Public summary strings are whitespace-normalized and capped server-side (title 200, content text 2000, type 80, reason 500). The frontend validates the same caps, normalized text, and exact canonical ISO timestamps before rendering.
 - The relationship target itself is the semantic primary link and carries `min-h-11 min-w-11`; no nested control was introduced.
 
-Round evidence: focused frontend tests passed 16 tests; full backend passed 168 tests plus typecheck/build; full frontend passed 35 files and 227 tests plus typecheck/lint/build; `git diff --check` passed.
+Round evidence: `cd frontend && npm test -- src/app/notes/services/relatedNotes.test.ts src/app/notes/components/RelatedNotesDrawer.test.tsx src/app/notes/page.test.tsx` passed 15 tests across 3 relevant files; full backend passed 168 tests plus typecheck/build; full frontend passed 35 files and 227 tests plus typecheck/lint/build; `git diff --check` passed.
 
 ## Fix round 2/5
 
