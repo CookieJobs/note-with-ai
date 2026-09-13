@@ -22,21 +22,42 @@ const coreRouteStyles = [
 const rawHexAllowlist = [
   {
     path: '../app/notes/styles/layout.module.scss',
-    selector: /^\.container\b/,
+    selector: /^\.container$/,
     property: /^background$/,
     value: /(?:radial|linear)-gradient\(/,
     purpose: 'the notes workspace atmosphere resolver output',
   },
   {
     path: '../app/notes/styles/note-card.module.scss',
-    selector: /^\.workspaceOverlayPanel\b/,
+    selector: /^\.workspaceOverlayPanel \.noteCard\.noteCardDetail::before$/,
     property: /^background$/,
     value: /(?:radial|linear)-gradient\(/,
     purpose: 'editor atmosphere output',
   },
   {
     path: '../app/notes/styles/note-card.module.scss',
-    selector: /:global\(\.hljs(?:[-\w]*)?\)/,
+    selector: /^\.workspaceOverlayPanel \.noteCard\.noteCardDetail::after$/,
+    property: /^background$/,
+    value: /(?:radial|linear)-gradient\(/,
+    purpose: 'editor atmosphere output',
+  },
+  {
+    path: '../app/notes/styles/note-card.module.scss',
+    selector: /^\.workspaceOverlayPanel \.noteCard\.noteCardDetail\.noteCardEditing \.noteTextWrapperEditing::before$/,
+    property: /^background$/,
+    value: /(?:radial|linear)-gradient\(/,
+    purpose: 'editor atmosphere output',
+  },
+  {
+    path: '../app/notes/styles/note-card.module.scss',
+    selector: /^\.workspaceOverlayPanel \.noteCard\.noteCardDetail\.noteCardEditing \.noteTextWrapperEditing::after$/,
+    property: /^background$/,
+    value: /(?:radial|linear)-gradient\(/,
+    purpose: 'editor atmosphere output',
+  },
+  {
+    path: '../app/notes/styles/note-card.module.scss',
+    selector: /^:global\(\.hljs(?:[-\w]*)?\)$/,
     property: /^color$/,
     value: /#[\da-f]{3,8}\b/i,
     purpose: 'temporary editor syntax output',
@@ -226,6 +247,7 @@ describe('style foundation contract', () => {
     expect(publishStyles).toMatch(/\.primary\s*\{[^}]*min-height:\s*44px/);
     expect(memoryPage).toMatch(/<Button variant="default" size="lg"[^>]*generateButton/);
     expect(memoryPage).toMatch(/<Button variant="default" size="lg"[^>]*>.*这是准确的/);
+    expect(memoryPage).toMatch(/<Button variant="default" size="lg"[^>]*memoryPrimaryAction[^>]*>.*保存修改/);
     expect(chatStyles).toMatch(/\.relatedNotesFab\s*\{[^}]*height:\s*44px/);
   });
 
@@ -245,5 +267,17 @@ describe('style foundation contract', () => {
 
     expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, syntaxColorIndex)).toBe(true);
     expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, nonSyntaxColorIndex)).toBe(false);
+  });
+
+  it('does not allow a descendant selector to inherit an atmosphere exception', () => {
+    const layoutSource = '.container .business-card { background: radial-gradient(circle, #123456, transparent); }';
+    const noteSource = '.workspaceOverlayPanel .business-card { background: radial-gradient(circle, #654321, transparent); }';
+
+    expect(
+      hasAllowedRawHex('../app/notes/styles/layout.module.scss', layoutSource, layoutSource.indexOf('#123456')),
+    ).toBe(false);
+    expect(
+      hasAllowedRawHex('../app/notes/styles/note-card.module.scss', noteSource, noteSource.indexOf('#654321')),
+    ).toBe(false);
   });
 });

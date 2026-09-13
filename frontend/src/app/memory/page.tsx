@@ -72,7 +72,7 @@ export default function MemoryPage() {
               <DialogDescription>修改后，这条记忆会按你的表述用于后续对话和推荐。</DialogDescription>
               <textarea className={styles.dialogTextarea} aria-label="修改后的记忆" value={correction} onChange={(event) => setCorrection(event.target.value)} />
               <div className={styles.dialogActions}>
-                <Button variant="default" className={styles.memoryPrimaryAction} onClick={() => { void correctMemoryInsight(insight.id, correction).then(() => { setEditing(null); load(); }); }}>保存修改</Button>
+                <Button variant="default" size="lg" className={styles.memoryPrimaryAction} onClick={() => { void correctMemoryInsight(insight.id, correction).then(() => { setEditing(null); load(); }); }}>保存修改</Button>
                 <DialogClose asChild><Button variant="outline">取消</Button></DialogClose>
               </div>
             </DialogContent>
