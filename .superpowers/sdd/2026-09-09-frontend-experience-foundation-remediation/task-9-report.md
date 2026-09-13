@@ -136,6 +136,45 @@ exit 0
 - The allowlist now evaluates the enclosing rule selector, CSS property, and declaration value, so an unrelated declaration cannot inherit an allowance from a nearby gradient or hljs selector.
 - No remaining concerns found in this fix round.
 
+## Fix Round 3
+
+### Changes
+
+- Inspected the scoped Notes styles and found no `:global(.hljs…)` syntax selectors. Replaced the broad hljs-name regex with an explicit empty `designatedSyntaxHighlightSelectors` set, documenting that no syntax exception is currently designated.
+- Kept the permitted declaration shape ready for future explicit selectors: only `color` declarations containing a raw hex may use that exact set.
+- Added a negative fixture confirming both `:global(.hljs)` and `:global(.hljs-evil)` are rejected when they are not explicitly designated.
+
+### RED/GREEN evidence
+
+```text
+cd frontend && npm test -- src/styles/style-contract.test.ts
+FAIL 1 test
+- unlisted :global(.hljs) raw color was accepted by the broad regex
+
+cd frontend && npm test -- src/styles/style-contract.test.ts
+Test Files  1 passed (1)
+Tests  11 passed (11)
+
+cd frontend && npm test
+Test Files  34 passed (34)
+Tests  218 passed (218)
+
+cd frontend && npm run lint
+exit 0
+
+cd frontend && npm run typecheck
+exit 0
+
+git diff --check
+exit 0
+```
+
+### Commit and self-review
+
+- Fix commit: `0a8eff6 fix(ui): restrict syntax color allowlist`.
+- The raw-hex exception has no wildcard syntax selector: any future syntax selector must be intentionally added to the exact set and retains the `color`-only declaration constraint.
+- No remaining concerns found in this fix round.
+
 ## Fix Round 2
 
 ### Changes
