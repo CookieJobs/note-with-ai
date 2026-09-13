@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { CancelledError, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { authFetch } from '../../../utils/auth';
 import { generateUUID } from '../../../utils/uuid';
 import type { IUserProfile } from '../../../types';
@@ -172,6 +172,9 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
           const cached = queryClient.getQueryData<NotePages>(NOTES_QUERY_KEY);
           const pageIndex = cached?.pageParams.findIndex((cachedPageParam) => cachedPageParam === pageParam) ?? -1;
           if (pageIndex >= 0 && cached) return cached.pages[pageIndex];
+          // A next-page request that began before a write must not append its
+          // now-stale transport payload after the write has cancelled it.
+          throw new CancelledError({ revert: true, silent: true });
         }
         return mergeFetchedPageWithTemporaryNotes({
           notes: response.data.notes as Note[],

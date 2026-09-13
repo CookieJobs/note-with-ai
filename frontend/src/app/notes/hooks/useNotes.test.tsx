@@ -246,4 +246,21 @@ describe('useNotes stale list protection', () => {
     await expect(result.current.updateNote({ noteId: 'note-1', expectedRevision: 4, changes: { title: '新标题' } })).resolves.toEqual(newer);
     expect(cachedNotes(queryClient)).toEqual([newer]);
   });
+
+  it('discards a stale newly requested next page after deletion instead of appending it', async () => {
+    const next = deferred<ReturnType<typeof pageResponse>>();
+    authFetch.mockImplementation((url: string) => {
+      if (url === '/api/notes?limit=30') return Promise.resolve(pageResponse([staleNote], { hasNextPage: true, nextCursor: 'cursor-2' }));
+      if (url.includes('cursor=cursor-2')) return next.promise;
+      return Promise.resolve({ ok: true });
+    });
+    const { queryClient, wrapper } = makeHarness();
+    const { result } = renderHook(() => useNotes(user), { wrapper });
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
+    act(() => { void result.current.loadMore(); });
+    await waitFor(() => expect(authFetch).toHaveBeenCalledWith('/api/notes?limit=30&cursor=cursor-2', expect.anything()));
+    await act(async () => { await result.current.deleteNote('note-1'); });
+    await act(async () => { next.resolve(pageResponse([{ ...staleNote, _id: 'resurrected' }])); });
+    expect(cachedNotes(queryClient)).toEqual([]);
+  });
 });

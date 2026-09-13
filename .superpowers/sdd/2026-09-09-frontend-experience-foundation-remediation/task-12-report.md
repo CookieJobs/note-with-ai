@@ -23,14 +23,20 @@ The prior worker left uncommitted changes in `useNotes.ts`, `useNotes.test.tsx`,
 
 - **Takeover RED:** `cd frontend && npm test -- src/app/notes/hooks/notePages.test.ts src/app/notes/hooks/useNotes.test.tsx src/app/notes/hooks/useNotesPolling.test.tsx src/app/notes/page.test.tsx` initially had all 7 polling tests fail with `TypeError: Cannot read properties of undefined (reading 'length')`; the polling suite was still seeding `Note[]` into `useInfiniteQuery`.
 - **UI RED:** after adding the page-level pagination expectation, `cd frontend && npm test -- src/app/notes/page.test.tsx` failed because no accessible button named `加载更多笔记` existed.
-- **Focused GREEN:** `cd frontend && npm test -- src/app/notes/hooks/useNotes.test.tsx src/app/notes/hooks/notePages.test.ts src/app/notes/hooks/useNotesPolling.test.tsx src/app/notes/page.test.tsx` passed 30 tests.
-- **Notes GREEN:** `cd frontend && npm test -- src/app/notes` passed 13 files and 83 tests, including the dependent editor-cache suite.
+- **Focused GREEN:** `cd frontend && npm test -- src/app/notes/hooks/notePages.test.ts src/app/notes/hooks/useNotes.test.tsx src/app/notes/hooks/useNotesPolling.test.tsx src/app/notes/page.test.tsx` passed 33 tests.
+- **Notes GREEN:** `cd frontend && npm test -- src/app/notes` passed 13 files and 86 tests, including the dependent editor-cache suite.
+
+## Fix round 1/5
+
+- A generation-mismatched response now returns a cached page only when its `pageParam` is still present. A response for a newly requested cursor that is absent after a write throws TanStack Query's reverting `CancelledError`, so it cannot append stale network data.
+- Added a deferred `fetchNextPage` deletion race. It proves a stale next-page response cannot resurrect a deleted note or append an otherwise absent page.
+- Re-ran the focused suite (33 tests), Notes suite (86 tests), lint, typecheck, build, and diff check. The implementation is recorded in the fix-round commit below.
 
 ## Verification
 
 | Command | Result |
 | --- | --- |
-| `cd frontend && npm test` | PASS — 36 files, 224 tests |
+| `cd frontend && npm test` | PASS — 36 files, 224 tests (Task 12 implementation gate) |
 | `cd frontend && npm run lint` | PASS |
 | `cd frontend && npm run typecheck` | PASS |
 | `cd frontend && npm run build` | PASS |
