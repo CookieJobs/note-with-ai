@@ -8,7 +8,7 @@ import { updateProfile, changePassword } from '../../services/userService';
 import TopNavigation from '../../components/TopNavigation';
 import styles from './profile.module.scss';
 import { toast } from 'sonner';
-import { defaultProfileBackgroundTheme, mapUserProfileToBackgroundTheme } from './profileBackgroundTheme';
+import { mapUserProfileToBackgroundTheme, resolveProfileAtmosphere } from './profileBackgroundTheme';
 
 /* ========== Helpers ========== */
 
@@ -89,35 +89,19 @@ function StatsBar({ stats }: { stats: UserStats | null }) {
   );
 }
 
-/* ========== Interest Graph ========== */
+/* ========== AI understanding ========== */
 
 function InterestGraph({ interests }: { interests: { topic: string; score: number }[] }) {
   if (!interests || interests.length === 0) return null;
 
-  const barColors = [
-    '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981',
-    '#f59e0b', '#ef4444', '#ec4899', '#6366f1',
-  ];
-
   return (
-    <div className={styles.aiSubCard}>
-      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.5rem' }}>兴趣图谱</div>
-      <div className={styles.interestBars}>
-        {interests.map((interest, idx) => {
-          const color = barColors[idx % barColors.length];
-          const pct = Math.round(interest.score * 100);
-          return (
-            <div key={idx} className={styles.interestBarRow}>
-              <span className={styles.interestLabel}>{interest.topic}</span>
-              <div className={styles.interestTrack}>
-                <div className={styles.interestFill} style={{ width: `${Math.max(pct, 5)}%`, backgroundColor: color }} />
-              </div>
-              <span className={styles.interestScore} style={{ color }}>{pct}%</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <section className={styles.profileDetail} aria-labelledby="interest-heading">
+      <h3 id="interest-heading">兴趣主题（{interests.length}）</h3>
+      <p className={styles.sourceContext}>基于 {interests.length} 个主题和你的笔记内容整理。</p>
+      <ul className={styles.topicList}>
+        {interests.map((interest) => <li key={interest.topic}>{interest.topic}</li>)}
+      </ul>
+    </section>
   );
 }
 
@@ -253,19 +237,17 @@ export default function ProfilePage() {
   const [aiExpanded, setAiExpanded] = useState(true);
   const previousProfileStatusRef = useRef<FeedResponse['profileStatus']>();
 
-  const theme = useMemo(() => {
-    if (data?.userProfile?.theme && data.userProfile.theme.cssValue) {
-      const isValid = /^linear-gradient|^radial-gradient|#|rgba?/i.test(data.userProfile.theme.cssValue.trim());
-      if (isValid) return { id: 'ai-generated' as any, background: data.userProfile.theme.cssValue.trim() };
-    }
-    const computed = mapUserProfileToBackgroundTheme(data?.userProfile, { seed: user?.email || user?.username });
-    if (loading || !data?.userProfile || data?.profileStatus === 'analyzing') return defaultProfileBackgroundTheme;
-    return computed;
-  }, [data?.profileStatus, data?.userProfile, loading, user?.email, user?.username]);
+  const atmosphere = useMemo(() => resolveProfileAtmosphere(
+    data?.userProfile?.theme ?? mapUserProfileToBackgroundTheme(data?.userProfile, { seed: user?.email || user?.username }),
+  ), [data?.userProfile, user?.email, user?.username]);
 
   const pageStyle = useMemo(
-    () => ({ ['--profile-background' as any]: theme.background }) as CSSProperties,
-    [theme.background],
+    () => ({
+      ['--profile-atmosphere-accent' as any]: atmosphere.accent,
+      ['--profile-atmosphere-soft' as any]: atmosphere.soft,
+      ['--profile-atmosphere-glow' as any]: atmosphere.glow,
+    }) as CSSProperties,
+    [atmosphere],
   );
 
   const loadFeedPanel = useCallback(async (options: { silent?: boolean } = {}) => {
@@ -345,8 +327,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleFeedClick = (noteId: string) => router.push(`/notes?highlight=${noteId}`);
-
   const handleProfileSaved = (updated: { username?: string; avatar?: string }) => {
     setUser((prev: any) => ({ ...prev, ...updated }));
     const stored = localStorage.getItem('user');
@@ -359,13 +339,7 @@ export default function ProfilePage() {
     return (
       <div className={styles.page} style={pageStyle}>
         <TopNavigation />
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 60px)', color: '#888' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 24, height: 24, border: '3px solid rgba(0,0,0,0.1)', borderTopColor: '#333', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-            <span>Loading...</span>
-          </div>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
+        <div className={styles.loadingState}><span className={styles.loadingSpinner} /><span>正在加载个人资料</span></div>
       </div>
     );
   }
@@ -375,7 +349,24 @@ export default function ProfilePage() {
       <TopNavigation />
       <div className={styles.container}>
 
-        {/* Horizontal Stats Bar */}
+        <section className={styles.profileHero} aria-labelledby="profile-title">
+          <div className={styles.heroTitle}><h1 id="profile-title">个人资料</h1><p>管理账户信息，并查看基于笔记整理的 AI 画像。</p></div>
+          <div className={styles.profileHeader}>
+            <div className={styles.avatar}>
+              {user.avatar ? (
+                // Avatar URLs are user-provided and cannot safely be allowlisted for next/image.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatar} alt={`${user.username || '用户'}的头像`} className={styles.avatarImg} loading="lazy" decoding="async" />
+              ) : <span>{(user.username || 'U')[0]?.toUpperCase()}</span>}
+            </div>
+            <div className={styles.userInfo}><h2>{user.username || '未设置用户名'}</h2><p>{user.email}</p></div>
+          </div>
+          <div className={styles.profileActions}>
+            <button className={styles.btnOutlineSm} onClick={() => setEditOpen(true)}>编辑资料</button>
+            <button className={styles.btnOutlineSm} onClick={() => setPasswordOpen(true)}>修改密码</button>
+          </div>
+        </section>
+
         <StatsBar stats={stats} />
 
         {/* Two Column Grid */}
@@ -384,34 +375,10 @@ export default function ProfilePage() {
           {/* Left Column */}
           <div className={styles.leftColumn}>
 
-            {/* Account Section */}
-            <div className={`${styles.sectionGroup} ${styles.accountGroup}`}>
+            <section className={`${styles.sectionGroup} ${styles.aiGroup}`} aria-labelledby="ai-profile-heading">
               <div className={styles.sectionGroupHeader}>
-                <span className={styles.sectionGroupTitle}>账户设置</span>
-              </div>
-              <div className={styles.profileHeader}>
-                <div className={styles.avatar}>
-                  {user.avatar ? (
-                    // Avatar URLs are user-provided and cannot safely be allowlisted for next/image.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={user.avatar} alt="" className={styles.avatarImg} loading="lazy" decoding="async" />
-                  ) : <span>{(user.username || 'U')[0]?.toUpperCase()}</span>}
-                </div>
-                <div className={styles.userInfo}>
-                  <h2>{user.username || '未设置用户名'}</h2>
-                  <p>{user.email}</p>
-                </div>
-              </div>
-              <div className={styles.profileActions}>
-                <button className={styles.btnOutlineSm} onClick={() => setEditOpen(true)}>编辑资料</button>
-                <button className={styles.btnOutlineSm} onClick={() => setPasswordOpen(true)}>修改密码</button>
-              </div>
-            </div>
-
-            <div className={`${styles.sectionGroup} ${styles.aiGroup}`}>
-              <div className={styles.sectionGroupHeader}>
-                <span className={styles.sectionGroupTitle}>AI 画像</span>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <h2 id="ai-profile-heading" className={styles.sectionGroupTitle}>AI 画像</h2>
+                <div className={styles.sectionActions}>
                   <button
                     className={styles.btnGhostSm}
                     onClick={handleTriggerAnalysis}
@@ -422,9 +389,10 @@ export default function ProfilePage() {
                   <button
                     className={styles.aiGroupToggle}
                     onClick={() => setAiExpanded((v) => !v)}
-                    title={aiExpanded ? '收起' : '展开'}
+                    aria-expanded={aiExpanded}
+                    aria-label={aiExpanded ? '收起 AI 画像' : '展开 AI 画像'}
                   >
-                    <span className={`${styles.aiGroupCollapseIcon} ${aiExpanded ? styles.open : styles.closed}`}>▼</span>
+                    <span className={`${styles.aiGroupCollapseIcon} ${aiExpanded ? '' : styles.closed}`}>▼</span>
                   </button>
                 </div>
               </div>
@@ -438,49 +406,43 @@ export default function ProfilePage() {
                   <InterestGraph interests={data.userProfile.interests} />
                 )}
                 {data?.userProfile?.expertise && data.userProfile.expertise.length > 0 && (
-                  <div className={styles.aiSubCard}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.5rem' }}>技能领域</div>
-                    <div className={styles.expertiseList}>
+                  <section className={styles.profileDetail} aria-labelledby="expertise-heading">
+                    <h3 id="expertise-heading">擅长领域</h3>
+                    <ul className={styles.expertiseList}>
                       {data.userProfile.expertise.map((exp, idx) => (
-                        <div key={idx} className={styles.expertiseItem}>
+                        <li key={idx} className={styles.expertiseItem}>
                           <span className={styles.expertiseArea}>{exp.area}</span>
-                          <span className={styles.expertiseLevel}>{exp.level}</span>
-                        </div>
+                          <span className={styles.expertiseLevel}>熟悉程度：{exp.level}</span>
+                        </li>
                       ))}
-                    </div>
-                  </div>
+                    </ul>
+                  </section>
                 )}
                 {data?.userProfile?.summary && (
-                  <div className={styles.aiSubCard}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.4rem' }}>个人传记</div>
-                    <div className={styles.biography}>{data.userProfile.summary}</div>
-                  </div>
+                  <section className={styles.profileDetail} aria-labelledby="biography-heading"><h3 id="biography-heading">个人简介</h3><p className={styles.biography}>{data.userProfile.summary}</p></section>
                 )}
                 {data?.userProfile?.theme?.themeName && (
-                  <div className={styles.aiSubCard}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.4rem' }}>专属氛围色：{data.userProfile.theme.themeName}</div>
-                    <div className={styles.themeDisplay}>{data.userProfile.theme.reasoning}</div>
-                  </div>
+                  <section className={styles.themePreview} aria-labelledby="theme-preview-heading"><h3 id="theme-preview-heading">主题预览：{data.userProfile.theme.themeName}</h3><p className={styles.themeDisplay}>{data.userProfile.theme.reasoning}</p></section>
                 )}
                 {!data?.userProfile?.interests?.length &&
                   !data?.userProfile?.expertise?.length &&
                   !data?.userProfile?.summary && (
-                  <div style={{ fontSize: '0.8rem', color: '#9ca3af', textAlign: 'center', padding: '1rem 0' }}>
+                  <div className={styles.aiEmptyState}>
                     还没有画像数据，点击「更新画像」开始分析
                   </div>
                 )}
               </div>
-            </div>
+            </section>
           </div>
 
           <div className={styles.rightColumn}>
-            <h2 className={styles.pageTitle}>每日推荐 (For You)</h2>
+            <h2 className={styles.pageTitle}>推荐笔记</h2>
             {loading ? (
               <SkeletonFeed />
             ) : data?.feed && data.feed.length > 0 ? (
               <div className={styles.feedList}>
                 {data.feed.map((item, idx) => (
-                  <div key={idx} className={styles.feedItem} onClick={() => handleFeedClick(item.noteId)}>
+                  <a key={idx} className={styles.feedItem} href={`/notes?highlight=${encodeURIComponent(item.noteId)}`} aria-label={`查看笔记：${item.title || '未命名笔记'}`}>
                     <div className={styles.feedAccent} data-type={item.type} />
                     <div className={styles.feedHeader}>
                       <span className={styles.feedType} data-type={item.type}>{item.type === 'rediscover' ? '温故知新' : '最新动态'}</span>
@@ -488,7 +450,7 @@ export default function ProfilePage() {
                     </div>
                     <div className={styles.feedTitle}>{item.title || '未命名笔记'}</div>
                     <div className={styles.feedPreview}>{item.content}</div>
-                  </div>
+                  </a>
                 ))}
               </div>
             ) : (

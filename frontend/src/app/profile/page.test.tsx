@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './page';
+import './profileBackgroundTheme.selftest';
 
 const {
   mockPush,
@@ -85,12 +86,35 @@ describe('ProfilePage', () => {
       expect(mockGetStats).toHaveBeenCalledTimes(1);
     });
     expect(await screen.findByText('AI 画像')).toBeInTheDocument();
-    expect(screen.getByText(/每日推荐/)).toBeInTheDocument();
+    expect(screen.getByText('推荐笔记')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '更新画像' }));
     await waitFor(() => expect(mockTriggerAnalysis).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(mockGetFeed).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(mockGetStats).toHaveBeenCalledTimes(2));
     expect(mockToastSuccess).toHaveBeenCalledWith('分析任务已触发，分析完成后将自动刷新');
+  });
+
+  it('用来源说明呈现 AI 画像，并将推荐笔记作为语义链接', async () => {
+    mockGetFeed.mockReset();
+    mockGetStats.mockReset();
+    mockGetFeed.mockResolvedValue({
+      feed: [{ type: 'rediscover', title: '旧笔记', content: '重新阅读的内容', noteId: 'note-9', reason: '与你的写作主题相关' }],
+      profileStatus: 'ready',
+      userProfile: {
+        interests: [{ topic: '写作', score: 0.92 }, { topic: '阅读', score: 0.75 }],
+        expertise: [{ area: '内容整理', level: '熟悉' }],
+        summary: '持续记录阅读与写作。',
+        theme: { themeName: '静谧蓝', cssType: 'color', cssValue: '#9db9ff', reasoning: '来自近期笔记的主题。' },
+      },
+    });
+    mockGetStats.mockResolvedValue({ totalNotes: 3, notesThisMonth: 1, notesThisWeek: 1, streakDays: 1, maxStreak: 2, totalWords: 120, avgWordsPerNote: 40, interestCount: 2, lastAnalyzedAt: '2026-08-01T08:00:00.000Z' });
+
+    render(<ProfilePage />);
+
+    expect(await screen.findByText('兴趣主题（2）')).toBeInTheDocument();
+    expect(screen.getByText('基于 2 个主题和你的笔记内容整理。')).toBeInTheDocument();
+    expect(screen.queryByText('92%')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '查看笔记：旧笔记' })).toHaveAttribute('href', '/notes?highlight=note-9');
   });
 });

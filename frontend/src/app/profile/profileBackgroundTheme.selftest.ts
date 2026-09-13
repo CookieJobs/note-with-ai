@@ -1,4 +1,9 @@
-import { mapUserProfileToBackgroundTheme } from './profileBackgroundTheme'
+import { describe, expect, it } from 'vitest'
+import {
+  defaultProfileBackgroundTheme,
+  mapUserProfileToBackgroundTheme,
+  resolveProfileAtmosphere,
+} from './profileBackgroundTheme'
 import type { UserProfile } from '../../services/feedService'
 
 const samples: Array<{ name: string; profile?: UserProfile }> = [
@@ -39,3 +44,51 @@ export const __profileBackgroundThemeSelfTest = samples.map((s) => ({
   theme: mapUserProfileToBackgroundTheme(s.profile, { seed: s.name }),
 }))
 
+const indigoFallback = {
+  accent: 'hsl(231 64% 52%)',
+  soft: 'hsl(231 56% 92% / 0.72)',
+  glow: 'hsl(231 60% 62% / 0.24)',
+}
+
+const readHsl = (color: string) => {
+  const match = /^hsl\((\d+) (\d+)% (\d+)%/.exec(color)
+  if (!match) throw new Error(`Expected bounded hsl color, received ${color}`)
+  return { hue: Number(match[1]), saturation: Number(match[2]), lightness: Number(match[3]) }
+}
+
+describe('resolveProfileAtmosphere', () => {
+  it('returns only safe indigo decoration tokens for the default theme', () => {
+    expect(resolveProfileAtmosphere(defaultProfileBackgroundTheme)).toEqual(indigoFallback)
+    expect(Object.keys(resolveProfileAtmosphere(defaultProfileBackgroundTheme))).toEqual(['accent', 'soft', 'glow'])
+  })
+
+  it('keeps a light source theme inside the decorative contrast bounds', () => {
+    const atmosphere = resolveProfileAtmosphere({ background: '#f8f8ff' })
+    const accent = readHsl(atmosphere.accent)
+
+    expect(accent.lightness).toBeGreaterThanOrEqual(45)
+    expect(accent.lightness).toBeLessThanOrEqual(62)
+    expect(accent.saturation).toBeGreaterThanOrEqual(38)
+    expect(accent.saturation).toBeLessThanOrEqual(68)
+  })
+
+  it('clamps a saturated source theme before it reaches decoration', () => {
+    const accent = readHsl(resolveProfileAtmosphere({ cssValue: 'hsl(0 100% 50%)' }).accent)
+
+    expect(accent.hue).toBe(0)
+    expect(accent.saturation).toBe(68)
+    expect(accent.lightness).toBe(50)
+  })
+
+  it('falls back to indigo when a source theme is malformed', () => {
+    expect(resolveProfileAtmosphere({ cssValue: 'linear-gradient(red, blue)' })).toEqual(indigoFallback)
+    expect(resolveProfileAtmosphere({ cssValue: 'url(javascript:alert(1))' })).toEqual(indigoFallback)
+  })
+
+  it('raises a very dark source theme into the safe decorative range', () => {
+    const accent = readHsl(resolveProfileAtmosphere({ background: '#000003' }).accent)
+
+    expect(accent.lightness).toBe(45)
+    expect(accent.saturation).toBe(38)
+  })
+})
