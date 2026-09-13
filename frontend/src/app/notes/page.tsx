@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 
 import TopNavigation from '../../components/TopNavigation';
 import { Button } from '../../components/ui/button';
@@ -13,7 +13,7 @@ import ModernNoteCard from './components/ModernNoteCard';
 import FloatingQuickCompose from './components/FloatingQuickCompose';
 import RelatedNotesDrawer from './components/RelatedNotesDrawer';
 import NoteCounter from './components/NoteCounter';
-import { preloadRichTextEditor } from './components/richTextEditorLoader';
+import { preloadRichTextEditorFromIntent } from './components/richTextEditorLoader';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
 import { useNotes, type Note } from './hooks/useNotes';
@@ -33,6 +33,8 @@ type ActiveEditorState =
   | { type: 'compose' }
   | { type: 'note'; noteId: string };
 
+const INITIAL_NOTE_ENTRANCE_LIMIT = 8;
+
 // 是 Next.js App Router 的一个“路由段配置”，用来告诉 Next.js：
 // 这个页面要强制走动态渲染（不要被静态生成/缓存成固定 HTML）
 export const dynamic = 'force-dynamic';
@@ -46,6 +48,14 @@ function NotesContent() {
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
   // 页面层统一维护当前活跃编辑壳层
   const [activeEditor, setActiveEditor] = useState<ActiveEditorState>({ type: 'none' });
+  const prefersReducedMotion = useReducedMotion();
+  const hasPreloadedEditor = useRef(false);
+
+  const preloadEditorFromIntent = useCallback(() => {
+    if (hasPreloadedEditor.current) return;
+    hasPreloadedEditor.current = true;
+    void preloadRichTextEditorFromIntent();
+  }, []);
 
   // 鉴权守卫
   const user = useAuthGuard({
@@ -194,30 +204,6 @@ function NotesContent() {
     };
   }, [highlightId, visibleNotes]);
 
-    useEffect(() => {
-      let cancelled = false;
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-      const warmUpEditor = () => {
-        if (cancelled) return;
-        preloadRichTextEditor();
-      };
-
-      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        const idleId = window.requestIdleCallback(warmUpEditor, { timeout: 1200 });
-        return () => {
-          cancelled = true;
-          window.cancelIdleCallback(idleId);
-        };
-      }
-
-      timeoutId = setTimeout(warmUpEditor, 350);
-      return () => {
-        cancelled = true;
-        if (timeoutId) clearTimeout(timeoutId);
-      };
-    }, []);
-
   const handleDraftChange = (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => {
     setDrafts((prev) => {
       if (!draft.dirty) {
@@ -235,9 +221,9 @@ function NotesContent() {
   }, []);
 
   const openCompose = useCallback(() => {
-      preloadRichTextEditor();
+    preloadEditorFromIntent();
     setActiveEditor({ type: 'compose' });
-  }, []);
+  }, [preloadEditorFromIntent]);
 
   const handleComposeDiscard = useCallback(() => {
     if (discardDraft()) setActiveEditor({ type: 'none' });
@@ -251,7 +237,7 @@ function NotesContent() {
 
   const handleContentEditingChange = useCallback((id: string, isEditing: boolean) => {
     if (isEditing) {
-        preloadRichTextEditor();
+      preloadEditorFromIntent();
       setActiveEditor((current) => (
         current.type === 'note' && current.noteId === id
           ? current
@@ -265,7 +251,16 @@ function NotesContent() {
         ? { type: 'none' }
         : current
     ));
-  }, []);
+  }, [preloadEditorFromIntent]);
+
+  const preloadEditorBeforeCardEdit = useCallback((event: React.SyntheticEvent<HTMLDivElement>) => {
+    const target = event.target as Element | null;
+    if (target?.closest(`.${styles.noteTextWrapper}`)) preloadEditorFromIntent();
+  }, [preloadEditorFromIntent]);
+
+  const handleCaptureKeyboardIntent = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') preloadEditorFromIntent();
+  }, [preloadEditorFromIntent]);
 
   // 详情浮层关闭逻辑
   useEffect(() => {
@@ -310,7 +305,13 @@ function NotesContent() {
                 className={styles.feedContainer}
                 ref={scrollContainerRef}
               >
-                <div className={styles.feedComposeAnchor}>
+                <div
+                  className={styles.feedComposeAnchor}
+                  onPointerEnter={preloadEditorFromIntent}
+                  onFocus={preloadEditorFromIntent}
+                  onTouchStart={preloadEditorFromIntent}
+                  onKeyDown={handleCaptureKeyboardIntent}
+                >
                   <FloatingQuickCompose
                     key={user?.id ?? 'anonymous'}
                     open={isComposeOpen}
@@ -327,32 +328,48 @@ function NotesContent() {
                     statusIsError={Boolean(saveError) || localDraftState === 'unavailable'}
                   />
                 </div>
-                <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
+                <div
+                  className={styles.feedList}
+                  onPointerDownCapture={preloadEditorBeforeCardEdit}
+                  onFocusCapture={preloadEditorBeforeCardEdit}
+                  onKeyDownCapture={handleCaptureKeyboardIntent}
+                >
                   <NoteCounter count={notes.length} />
 
-                  {visibleNotes.map((note) => (
-                    <motion.div
-                      layout={note._id !== editingNoteId}
-                      key={note._id}
-                      transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}
-                      ref={el => { noteRefs.current[note._id] = el; }}
-                    >
-                      <ModernNoteCard
-                        note={note}
-                        onRequestDelete={(id) => {
-                          setPendingDeleteNoteId(id);
-                        }}
-                        updateNote={updateNote}
-                        draft={drafts[note._id]}
-                        onDraftChange={handleDraftChange}
-                        isContentEditingActive={editingNoteId === note._id}
-                        isHighlighted={note._id === highlightId}
-                        isSelected={note._id === selectedNoteId}
-                        onOpenRelated={(id) => setSelectedNoteId(id)}
-                        onContentEditingChange={handleContentEditingChange}
-                      />
-                    </motion.div>
-                  ))}
+                  <AnimatePresence>
+                    {visibleNotes.map((note, index) => {
+                      const shouldAnimate = !prefersReducedMotion && index < INITIAL_NOTE_ENTRANCE_LIMIT;
+                      const listMotion = shouldAnimate ? 'enter' : 'none';
+
+                      return (
+                        <motion.div
+                          key={note._id}
+                          className={shouldAnimate ? styles.noteListAnimatedCard : undefined}
+                          data-note-list-motion={listMotion}
+                          initial={shouldAnimate ? { opacity: 0, y: 8 } : false}
+                          animate={shouldAnimate ? { opacity: 1, y: 0 } : undefined}
+                          exit={shouldAnimate ? { opacity: 0, y: -8 } : undefined}
+                          transition={shouldAnimate ? { duration: 0.16, ease: 'easeOut' } : { duration: 0 }}
+                          ref={el => { noteRefs.current[note._id] = el; }}
+                        >
+                          <ModernNoteCard
+                            note={note}
+                            onRequestDelete={(id) => {
+                              setPendingDeleteNoteId(id);
+                            }}
+                            updateNote={updateNote}
+                            draft={drafts[note._id]}
+                            onDraftChange={handleDraftChange}
+                            isContentEditingActive={editingNoteId === note._id}
+                            isHighlighted={note._id === highlightId}
+                            isSelected={note._id === selectedNoteId}
+                            onOpenRelated={(id) => setSelectedNoteId(id)}
+                            onContentEditingChange={handleContentEditingChange}
+                          />
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
 
                   <div className="flex flex-col items-center gap-2 py-4">
                     {hasNextPage ? (
@@ -376,7 +393,7 @@ function NotesContent() {
                       <p aria-live="polite" className="text-sm [color:var(--color-text-secondary)]">已加载全部笔记</p>
                     )}
                   </div>
-                </motion.div>
+                </div>
               </div>
 
               <DeleteNoteConfirmModal
