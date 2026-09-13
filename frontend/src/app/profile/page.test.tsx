@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './page';
+import styles from './profile.module.scss';
 import './profileBackgroundTheme.selftest';
 
 const profileStyles = readFileSync('src/app/profile/profile.module.scss', 'utf8');
@@ -29,6 +30,16 @@ const tokenBlock = (selector: ':root' | '.dark') => {
   const start = semanticTokens.indexOf(`${selector} {`);
   return semanticTokens.slice(start, semanticTokens.indexOf('\n}', start));
 };
+
+const atmosphereDeclarations = [...profileStyles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap(([, rawSelector, body]) =>
+  body.split(';').flatMap((declaration) => {
+    const propertyMatch = /^\s*([\w-]+)\s*:\s*(.+)$/.exec(declaration);
+    if (!propertyMatch) return [];
+    return [...propertyMatch[2].matchAll(/var\(--profile-atmosphere-(accent|soft|glow)\)/g)].map(([, token]) => ({
+      selector: rawSelector.trim(), property: propertyMatch[1], token, value: propertyMatch[2].trim(),
+    }));
+  }),
+);
 
 const {
   mockPush,
@@ -136,12 +147,13 @@ describe('ProfilePage', () => {
     });
     mockGetStats.mockResolvedValue({ totalNotes: 3, notesThisMonth: 1, notesThisWeek: 1, streakDays: 1, maxStreak: 2, totalWords: 120, avgWordsPerNote: 40, interestCount: 2, lastAnalyzedAt: '2026-08-01T08:00:00.000Z' });
 
-    render(<ProfilePage />);
+    const { container } = render(<ProfilePage />);
 
     expect(await screen.findByText('兴趣主题（2）')).toBeInTheDocument();
     expect(screen.getByText('基于 2 个主题和你的笔记内容整理。')).toBeInTheDocument();
     expect(screen.queryByText('92%')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: '查看笔记：旧笔记' })).toHaveAttribute('href', '/notes?highlight=note-9');
+    expect(container.querySelector(`.${styles.themeAtmosphereSwatch}`)).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('keeps atmosphere out of text-bearing surfaces and keeps profile text contrast-safe', () => {
@@ -157,8 +169,14 @@ describe('ProfilePage', () => {
     expect(avatarRule).not.toContain('background: var(--profile-atmosphere');
     expect(themePreviewRule).toContain('background: var(--color-surface-raised)');
     expect(themePreviewRule).not.toContain('var(--profile-atmosphere');
-    expect(profileStyles).toMatch(/\.themeAtmosphereSwatch \{[^}]*background: var\(--profile-atmosphere-soft\)/);
-    expect(profileStyles).not.toMatch(/color:\s*var\(--profile-atmosphere|:focus-visible\s*\{[^}]*var\(--profile-atmosphere/);
+    expect(atmosphereDeclarations).toEqual([
+      { selector: '.profileHero::before', property: 'background', token: 'glow', value: 'radial-gradient(42rem 16rem at 8% 0%, var(--profile-atmosphere-glow), transparent 72%)' },
+      { selector: '.avatar, .avatarPreview', property: 'box-shadow', token: 'accent', value: '0 0 0 .1875rem var(--profile-atmosphere-accent), 0 0 0 .375rem var(--profile-atmosphere-glow)' },
+      { selector: '.avatar, .avatarPreview', property: 'box-shadow', token: 'glow', value: '0 0 0 .1875rem var(--profile-atmosphere-accent), 0 0 0 .375rem var(--profile-atmosphere-glow)' },
+      { selector: '.themeAtmosphereSwatch', property: 'background', token: 'soft', value: 'var(--profile-atmosphere-soft)' },
+      { selector: '.themeAtmosphereSwatch', property: 'box-shadow', token: 'accent', value: '0 0 0 .1875rem var(--profile-atmosphere-accent), 0 0 1.25rem var(--profile-atmosphere-glow)' },
+      { selector: '.themeAtmosphereSwatch', property: 'box-shadow', token: 'glow', value: '0 0 0 .1875rem var(--profile-atmosphere-accent), 0 0 1.25rem var(--profile-atmosphere-glow)' },
+    ]);
 
     for (const block of [tokenBlock(':root'), tokenBlock('.dark')]) {
       expect(contrast(hexToken(block, '--color-text-inverse'), hexToken(block, '--color-action-primary'))).toBeGreaterThanOrEqual(4.5);
