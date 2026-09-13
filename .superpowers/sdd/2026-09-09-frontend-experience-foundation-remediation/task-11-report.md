@@ -59,3 +59,14 @@ Implemented an owner-scoped relationship-summary read path so the Related Notes 
 
 - The service intentionally reads every cached candidate ID before applying the five-result output cap so deleted or foreign early-ranked candidates do not suppress later valid results. Current recommendation generation bounds this cache; if that bound changes, add a defensive cache-entry cap or dedicated persisted ranking collection.
 - The drawer closes if list polling removes the currently selected source note. This avoids presenting a relationship context for a note the user can no longer access.
+
+## Fix round 1/5
+
+The follow-up implementation is `f53f572` (`fix(notes): harden related note summaries`).
+
+- Highlight links now use the existing owner-scoped `GET /api/notes/:id` contract to fetch and render a target absent from page one; no remaining pages are loaded.
+- Summary state records its source note ID, so an A response is never rendered while B is selected, including after a late ignored/aborted response.
+- Public summary strings are whitespace-normalized and capped server-side (title 200, content text 2000, type 80, reason 500). The frontend validates the same caps, normalized text, and exact canonical ISO timestamps before rendering.
+- The relationship target itself is the semantic primary link and carries `min-h-11 min-w-11`; no nested control was introduced.
+
+Round evidence: focused frontend tests passed 16 tests; full backend passed 168 tests plus typecheck/build; full frontend passed 35 files and 227 tests plus typecheck/lint/build; `git diff --check` passed.
