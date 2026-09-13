@@ -78,6 +78,27 @@ describe('RelatedNotesDrawer', () => {
     expect(await screen.findByText('B 的结果')).toBeInTheDocument();
   });
 
+  it('renders B as loading immediately after settled A success', async () => {
+    vi.mocked(fetchRelatedNotes).mockResolvedValueOnce([{
+      id: 'a', title: 'A 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
+    }]).mockImplementationOnce(() => new Promise(() => {}));
+    const { rerender } = render(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={note} />);
+    await screen.findByText('A 的结果');
+    rerender(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={{ ...note, _id: 'note-2', title: 'B' }} />);
+    expect(screen.getByRole('status')).toHaveTextContent('正在加载相关笔记');
+    expect(screen.queryByText('A 的结果')).not.toBeInTheDocument();
+    expect(screen.queryByText('暂无相关笔记')).not.toBeInTheDocument();
+  });
+
+  it('renders B as loading immediately after settled A error', async () => {
+    vi.mocked(fetchRelatedNotes).mockRejectedValueOnce(new Error('A failed')).mockImplementationOnce(() => new Promise(() => {}));
+    const { rerender } = render(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={note} />);
+    await screen.findByRole('alert');
+    rerender(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={{ ...note, _id: 'note-2', title: 'B' }} />);
+    expect(screen.getByRole('status')).toHaveTextContent('正在加载相关笔记');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('exposes loading, error retry, and empty states without falling back to local cache entries', async () => {
     vi.mocked(fetchRelatedNotes).mockRejectedValue(new Error('offline'));
     const { rerender } = render(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={note} />);

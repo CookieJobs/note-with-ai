@@ -14,6 +14,7 @@ interface RelatedNotesDrawerProps {
 
 type RequestState = 'idle' | 'loading' | 'success' | 'error';
 type RefreshState = 'idle' | 'refreshing' | 'error';
+type RelationshipRequest = { noteId: string | null; status: RequestState; relationships: RelatedNoteSummary[]; error: Error | null };
 
 function relationshipStrengthLabel(scoreBand: RelatedNoteSummary['scoreBand']): string {
   return scoreBand === 'supported' ? '关联线索较强' : '可能相关';
@@ -25,8 +26,7 @@ export default function RelatedNotesDrawer({
   selectedNote,
   onRefreshRecommendCache,
 }: RelatedNotesDrawerProps) {
-  const [relationshipResult, setRelationshipResult] = useState<{ noteId: string | null; relationships: RelatedNoteSummary[] }>({ noteId: null, relationships: [] });
-  const [requestState, setRequestState] = useState<RequestState>('idle');
+  const [relationshipRequest, setRelationshipRequest] = useState<RelationshipRequest>({ noteId: null, status: 'idle', relationships: [], error: null });
   const [refreshState, setRefreshState] = useState<RefreshState>('idle');
   const [reloadKey, setReloadKey] = useState(0);
   const lastAttemptKeyRef = useRef<string | null>(null);
@@ -53,23 +53,20 @@ export default function RelatedNotesDrawer({
 
   useEffect(() => {
     if (!isOpen || !selectedNoteId) {
-      setRelationshipResult({ noteId: null, relationships: [] });
-      setRequestState('idle');
+      setRelationshipRequest({ noteId: null, status: 'idle', relationships: [], error: null });
       return;
     }
 
     const controller = new AbortController();
-    setRelationshipResult({ noteId: selectedNoteId, relationships: [] });
-    setRequestState('loading');
+    setRelationshipRequest({ noteId: selectedNoteId, status: 'loading', relationships: [], error: null });
     void fetchRelatedNotes(selectedNoteId, controller.signal)
       .then((nextRelationships) => {
         if (controller.signal.aborted) return;
-        setRelationshipResult({ noteId: selectedNoteId, relationships: nextRelationships });
-        setRequestState('success');
+        setRelationshipRequest({ noteId: selectedNoteId, status: 'success', relationships: nextRelationships, error: null });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setRequestState('error');
+        setRelationshipRequest({ noteId: selectedNoteId, status: 'error', relationships: [], error: error instanceof Error ? error : new Error('相关笔记请求失败') });
       });
 
     return () => controller.abort();
@@ -100,8 +97,11 @@ export default function RelatedNotesDrawer({
   }, [cacheState.needsRefresh, isOpen, onRefreshRecommendCache, selectedNote]);
 
   const sourceLabel = selectedNote?.title || '当前笔记';
-  const showLoading = requestState === 'idle' || requestState === 'loading';
-  const relationships = relationshipResult.noteId === selectedNoteId ? relationshipResult.relationships : [];
+  const activeRequest: RelationshipRequest = relationshipRequest.noteId === selectedNoteId
+    ? relationshipRequest
+    : { noteId: selectedNoteId ?? null, status: selectedNoteId ? 'loading' : 'idle', relationships: [], error: null };
+  const showLoading = activeRequest.status === 'idle' || activeRequest.status === 'loading';
+  const relationships = activeRequest.relationships;
 
   return (
     <Dialog open={isOpen && !!selectedNote} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -134,14 +134,14 @@ export default function RelatedNotesDrawer({
             <div role="status" className="py-12 text-center text-sm [color:var(--color-text-secondary)]">正在加载相关笔记…</div>
           ) : null}
 
-          {requestState === 'error' ? (
+          {activeRequest.status === 'error' ? (
             <div role="alert" className="grid gap-3 py-12 text-center">
               <p className="m-0 text-sm [color:var(--color-text-secondary)]">无法加载相关笔记，请稍后重试。</p>
               <button type="button" className="min-h-11 justify-self-center rounded-[var(--radius-md)] px-3 text-sm font-medium [background:var(--color-action-secondary)] [color:var(--color-text-primary)]" onClick={() => setReloadKey((value) => value + 1)}>重试</button>
             </div>
           ) : null}
 
-          {requestState === 'success' && relationships.length === 0 ? (
+          {activeRequest.status === 'success' && relationships.length === 0 ? (
             <div className="py-12 text-center">
               <p className="m-0 text-sm font-medium [color:var(--color-text-secondary)]">暂无相关笔记</p>
               <p className="mt-2 text-xs [color:var(--color-text-tertiary)]">这条笔记暂时没有可展示的关联结果。</p>

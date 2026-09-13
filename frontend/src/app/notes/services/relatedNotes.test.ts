@@ -58,4 +58,21 @@ describe('fetchRelatedNotes', () => {
 
     await expect(fetchRelatedNotes('source-1')).rejects.toThrow('相关笔记响应无效');
   });
+
+  it.each([
+    ['title', { title: 'a'.repeat(201) }],
+    ['content text', { contentText: 'a'.repeat(2001) }],
+    ['type', { type: 'a'.repeat(81) }],
+    ['reason', { reason: 'a'.repeat(501) }],
+    ['noncanonical ISO date', { createdAt: '2026-09-12T00:00:00Z' }],
+  ])('rejects an oversized or invalid %s boundary independently', async (_name, override) => {
+    vi.mocked(authFetch).mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { sourceRevision: 3, relationships: [{ ...relationship, ...override }] } }) } as Response);
+    await expect(fetchRelatedNotes('source-1')).rejects.toThrow('相关笔记响应无效');
+  });
+
+  it('accepts every exact public field limit with a canonical date', async () => {
+    const exact = { ...relationship, title: 'a'.repeat(200), contentText: 'b'.repeat(2000), type: 'c'.repeat(80), reason: 'd'.repeat(500) };
+    vi.mocked(authFetch).mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { sourceRevision: 3, relationships: [exact] } }) } as Response);
+    await expect(fetchRelatedNotes('source-1')).resolves.toEqual([exact]);
+  });
 });
