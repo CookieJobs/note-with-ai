@@ -6,6 +6,7 @@ import { NoteWriteConflict, type Note } from '../hooks/useNotes';
 import ModernNoteCard from './ModernNoteCard';
 
 const noteCardStyles = readFileSync(join(process.cwd(), 'src/app/notes/styles/note-card.module.scss'), 'utf8');
+const noteCardSource = readFileSync(join(process.cwd(), 'src/app/notes/components/ModernNoteCard.tsx'), 'utf8');
 const memory = vi.hoisted(() => ({
   getPreference: vi.fn().mockResolvedValue({ noteId: 'note-1', included: true }),
   savePreference: vi.fn().mockResolvedValue({ noteId: 'note-1', included: false }),
@@ -132,6 +133,26 @@ describe('ModernNoteCard title conflict feedback', () => {
 });
 
 describe('ModernNoteCard touch-safe actions', () => {
+  it('loads the read-only rich text viewer outside the initial Notes entry chunk', () => {
+    expect(noteCardSource).toContain("dynamic(() => import('./RichTextViewer')");
+    expect(noteCardSource).not.toContain("import RichTextViewer from './RichTextViewer'");
+  });
+
+  it('presents the AI participation change as a named menu action, not an invalid pressed menuitem', async () => {
+    render(
+      <ModernNoteCard
+        note={note}
+        onRequestDelete={vi.fn()}
+        updateNote={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '笔记操作' }));
+
+    const action = await screen.findByRole('menuitem', { name: '设为不参与 AI' });
+    expect(action).not.toHaveAttribute('aria-pressed');
+  });
+
   it('opens related notes from a visible named action without hover', () => {
     const onOpenRelated = vi.fn();
     render(

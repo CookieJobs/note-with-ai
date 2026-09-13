@@ -1,6 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { useCreateNote } from './useCreateNote';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const createHookSource = readFileSync(join(process.cwd(), 'src/app/notes/hooks/useCreateNote.ts'), 'utf8');
 
 const createdNote = {
   _id: 'note-1', content: '正文', contentText: '正文', contentJson: null, title: '正文',
@@ -95,6 +99,12 @@ describe('useCreateNote', () => {
     expect(result.current.newContentJson).toEqual(json);
     expect(result.current.draftRestored).toBe(true);
     expect(localStorage.getItem('quick-capture-draft:alice')).toBe(raw);
+  });
+
+  it('keeps draft recovery independent of the editor schema so the editor stays off the initial Notes route', () => {
+    expect(createHookSource).not.toMatch(/from ['"]@tiptap\/react['"]/);
+    expect(createHookSource).not.toContain('createRichTextExtensions');
+    expect(createHookSource).not.toContain('getSchema(');
   });
 
   it.each([

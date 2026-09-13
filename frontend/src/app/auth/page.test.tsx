@@ -18,6 +18,10 @@ describe('AuthPage', () => {
     render(<AuthPage />);
 
     expect(screen.getByRole('tab', { name: '登录' })).toHaveAttribute('aria-selected', 'true');
+    const panel = document.getElementById('auth-form-panel');
+    expect(panel).toHaveAttribute('role', 'tabpanel');
+    expect(panel?.tagName).toBe('DIV');
+    expect(panel?.querySelector('form')).not.toHaveAttribute('role');
     expect(screen.getByLabelText(/^邮箱 \*$/)).toHaveAttribute('type', 'email');
     expect(screen.getByLabelText(/^密码 \*$/)).toHaveAttribute('type', 'password');
   });
@@ -84,7 +88,7 @@ describe('AuthPage', () => {
   it('associates validation errors with the invalid field', () => {
     render(<AuthPage />);
 
-    fireEvent.submit(screen.getByRole('tabpanel'));
+    fireEvent.submit(screen.getByRole('tabpanel').querySelector('form')!);
 
     const email = screen.getByLabelText(/^邮箱 \*$/);
     expect(email).toHaveAttribute('aria-invalid', 'true');

@@ -30,7 +30,6 @@ export default function NoteCardActionsMenu({
           公开笔记
         </MenuItem>
         <MenuItem
-          aria-pressed={aiIncluded}
           disabled={aiPreferenceSaving}
           onClick={onToggleAi}
         >

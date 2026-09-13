@@ -233,7 +233,8 @@ export default function AuthPage() {
           })}
         </div>
 
-        <form id="auth-form-panel" className={styles.authForm} role="tabpanel" aria-labelledby={`${mode}-tab`} onSubmit={handleSubmit}>
+        <div id="auth-form-panel" role="tabpanel" aria-labelledby={`${mode}-tab`}>
+        <form className={styles.authForm} onSubmit={handleSubmit}>
           <FormField id="auth-email" label="邮箱" error={errorField === 'email' ? error : undefined} required className={styles.inputGroup}>
             <input
               type="email"
@@ -297,6 +298,7 @@ export default function AuthPage() {
             {loading ? <span className={styles.spinner} aria-hidden="true" /> : submitLabel}
           </Button>
         </form>
+        </div>
 
         <div className={styles.authFooter}>
           {mode === 'login' && (

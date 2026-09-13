@@ -8,9 +8,8 @@ import PlusIcon from '../../../components/icons/PlusIcon';
 import { Button } from '../../../components/ui/button';
 import type { Note, UpdateNoteCommand } from '../hooks/useNotes';
 import { focusProseMirrorWithin } from './focusProseMirror';
-import RichTextViewer from './RichTextViewer';
 import { useNoteEditor } from '../hooks/useNoteEditor';
-import { JSONContent } from '@tiptap/react';
+import type { JSONContent } from '@tiptap/react';
 import { flomoEditorChromeProps } from './richTextEditorPresets';
 import { loadRichTextEditor } from './richTextEditorLoader';
 import { getNoteAiPreference, saveNoteAiPreference } from '../../../services/memoryService';
@@ -28,6 +27,11 @@ function EditorLoadingPlaceholder() {
 const RichTextEditor = dynamic(loadRichTextEditor, {
   ssr: false,
   loading: () => <EditorLoadingPlaceholder />,
+});
+
+const RichTextViewer = dynamic(() => import('./RichTextViewer'), {
+  ssr: false,
+  loading: () => <div role="status" aria-busy="true" aria-label="正在加载笔记内容" />,
 });
 
 interface NoteCardProps {

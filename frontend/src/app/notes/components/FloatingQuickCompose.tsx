@@ -22,7 +22,7 @@ const RichTextEditor = dynamic(loadRichTextEditor, {
   loading: () => <EditorLoadingPlaceholder />,
 });
 
-import { JSONContent } from '@tiptap/react';
+import type { JSONContent } from '@tiptap/react';
 
 type FloatingQuickComposeProps = {
   open: boolean;

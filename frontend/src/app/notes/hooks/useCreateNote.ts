@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSchema, type JSONContent } from '@tiptap/react';
-import { createRichTextExtensions } from '../components/tiptap/richTextPreset';
 import type { CreateNoteCommand, Note } from './useNotes';
 
 type UseCreateNoteOptions = { userId?: string | null; onError?: (message: string) => void };
 export type CaptureSaveState = 'idle' | 'saving' | 'saved' | 'failed';
 export type LocalDraftState = 'empty' | 'saved' | 'unavailable';
-type Content = { text: string; json: JSONContent | null };
+type RichTextDocument = Record<string, unknown> & { type: string; content?: unknown[] };
+type Content = { text: string; json: RichTextDocument | null };
 type Session = Content & {
   userId: string | null;
   revision: number;
@@ -24,8 +23,31 @@ const emptySession = (userId: string | null): Session => ({
   localDraftState: 'empty', draftRestored: false, saveState: 'idle', savedNote: null, error: '',
 });
 
-// Reuse the viewer/editor schema instead of maintaining a second list of rich-text nodes.
-let draftSchema: ReturnType<typeof getSchema> | undefined;
+const richTextNodes = new Set([
+  'doc', 'paragraph', 'text', 'hardBreak', 'heading', 'bulletList', 'orderedList', 'listItem',
+  'blockquote', 'codeBlock', 'taskList', 'taskItem', 'image', 'table', 'tableRow',
+  'tableHeader', 'tableCell', 'horizontalRule',
+]);
+const richTextMarks = new Set(['bold', 'italic', 'strike', 'code', 'link', 'highlight']);
+
+function isSafeRichTextNode(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const node = value as Record<string, unknown>;
+  if (typeof node.type !== 'string' || !richTextNodes.has(node.type)) return false;
+  if (node.type === 'text' && typeof node.text !== 'string') return false;
+  if (node.content !== undefined && (!Array.isArray(node.content) || !node.content.every(isSafeRichTextNode))) return false;
+  if (node.marks !== undefined && (!Array.isArray(node.marks) || !node.marks.every((mark) => (
+    !!mark && typeof mark === 'object' && !Array.isArray(mark)
+      && typeof (mark as Record<string, unknown>).type === 'string'
+      && richTextMarks.has((mark as Record<string, string>).type)
+  )))) return false;
+  return true;
+}
+
+function isSafeRichTextDocument(value: unknown): value is RichTextDocument {
+  return isSafeRichTextNode(value) && value.type === 'doc' && Array.isArray(value.content);
+}
+
 function restoreDraft(userId: string | null): Session {
   const session = emptySession(userId);
   if (!userId) return session;
@@ -41,9 +63,7 @@ function restoreDraft(userId: string | null): Session {
     let error = '';
     if (json !== null) {
       try {
-        if (json?.type !== 'doc') throw new Error('Invalid document');
-        draftSchema ??= getSchema(createRichTextExtensions());
-        draftSchema.nodeFromJSON(json).check();
+        if (!isSafeRichTextDocument(json)) throw new Error('Invalid document');
       } catch {
         json = null;
         error = '草稿格式无法恢复，已保留文字内容，请检查后保存。';
@@ -126,7 +146,7 @@ export function useCreateNote(
   const setNewContentText = useCallback((text: string) => {
     changeContent({ text, json: sessionRef.current.json });
   }, [changeContent]);
-  const setNewContentJson = useCallback((json: JSONContent | null) => {
+  const setNewContentJson = useCallback((json: RichTextDocument | null) => {
     changeContent({ text: sessionRef.current.text, json });
   }, [changeContent]);
 

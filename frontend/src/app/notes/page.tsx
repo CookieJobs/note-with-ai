@@ -421,7 +421,7 @@ function NotesContent() {
   );
 }
 
-import { JSONContent } from '@tiptap/react';
+import type { JSONContent } from '@tiptap/react';
 
 export default function NotesPage() {
   return (
