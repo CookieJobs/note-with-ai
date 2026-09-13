@@ -10,8 +10,25 @@ export type RelatedNoteSummary = {
   scoreBand: 'possible' | 'supported';
 };
 
+const MAX_TITLE_LENGTH = 200;
+const MAX_CONTENT_TEXT_LENGTH = 2000;
+const MAX_TYPE_LENGTH = 80;
+const MAX_REASON_LENGTH = 500;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNormalizedText(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string'
+    && value.length <= maxLength
+    && value === value.replace(/\s+/g, ' ').trim();
+}
+
+function isCanonicalIsoDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
 }
 
 function isRelatedNoteSummary(value: unknown): value is RelatedNoteSummary {
@@ -20,11 +37,11 @@ function isRelatedNoteSummary(value: unknown): value is RelatedNoteSummary {
     && !('s2' in value)
     && !('score' in value)
     && typeof value.id === 'string'
-    && typeof value.title === 'string'
-    && typeof value.contentText === 'string'
-    && typeof value.createdAt === 'string'
-    && typeof value.type === 'string'
-    && typeof value.reason === 'string'
+    && isNormalizedText(value.title, MAX_TITLE_LENGTH)
+    && isNormalizedText(value.contentText, MAX_CONTENT_TEXT_LENGTH)
+    && isCanonicalIsoDate(value.createdAt)
+    && isNormalizedText(value.type, MAX_TYPE_LENGTH)
+    && isNormalizedText(value.reason, MAX_REASON_LENGTH)
     && (value.scoreBand === 'possible' || value.scoreBand === 'supported');
 }
 

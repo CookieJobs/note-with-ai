@@ -6,6 +6,7 @@ export type RelationshipCueProps = {
   kind?: string;
   explanation?: string;
   href?: string;
+  linkClassName?: string;
   onLinkClick?: MouseEventHandler<HTMLAnchorElement>;
 };
 
@@ -15,10 +16,11 @@ export function RelationshipCue({
   kind,
   explanation,
   href,
+  linkClassName,
   onLinkClick,
 }: RelationshipCueProps) {
   const target: ReactNode = targetLabel ? (
-    href ? <a href={href} onClick={onLinkClick}>{targetLabel}</a> : <span>{targetLabel}</span>
+    href ? <a href={href} className={linkClassName} onClick={onLinkClick}>{targetLabel}</a> : <span>{targetLabel}</span>
   ) : null;
 
   return (

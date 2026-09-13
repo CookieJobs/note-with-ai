@@ -126,4 +126,34 @@ describe('related note summaries', () => {
     assert.deepEqual(summaries, []);
     assert.deepEqual(candidateQueries, []);
   });
+
+  it('normalizes and bounds every public summary field', async () => {
+    mock.method(Note, 'findOne', () => ({ lean: async () => ({
+      revision: 1,
+      recommendCache: {
+        sourceRevision: 1,
+        byCandidateId: {
+          candidate: { s2: 0.8, type: `  ${'类型'.repeat(50)}\n`, reason: `  ${'原因'.repeat(400)}\t` },
+        },
+      },
+    }) }) as never);
+    mock.method(Note, 'find', () => ({
+      select() { return this; },
+      lean: async () => [{
+        _id: 'candidate',
+        title: `  ${'标题'.repeat(200)}\n`,
+        contentText: `\t${'正文'.repeat(2000)}  `,
+        createdAt: new Date('2026-09-12T00:00:00.000Z'),
+      }],
+    }) as never);
+
+    const [summary] = await getRelatedNoteSummaries({ userId: 'owner-1', noteId: 'source-1' });
+
+    assert.equal(summary.title.length, 200);
+    assert.equal(summary.contentText.length, 2000);
+    assert.equal(summary.type.length, 80);
+    assert.equal(summary.reason.length, 500);
+    assert.equal(summary.title.includes('\n'), false);
+    assert.equal(summary.contentText.includes('\t'), false);
+  });
 });

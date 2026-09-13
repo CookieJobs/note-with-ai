@@ -43,4 +43,19 @@ describe('fetchRelatedNotes', () => {
 
     await expect(fetchRelatedNotes('source-1')).rejects.toThrow('相关笔记响应无效');
   });
+
+  it('rejects non-canonical dates, unnormalized whitespace, and oversized public fields', async () => {
+    vi.mocked(authFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          sourceRevision: 3,
+          relationships: [{ ...relationship, createdAt: '2026-09-12', title: ` ${'标题'.repeat(200)}` }],
+        },
+      }),
+    } as Response);
+
+    await expect(fetchRelatedNotes('source-1')).rejects.toThrow('相关笔记响应无效');
+  });
 });

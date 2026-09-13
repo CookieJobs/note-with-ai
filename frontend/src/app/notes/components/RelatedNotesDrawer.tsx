@@ -25,7 +25,7 @@ export default function RelatedNotesDrawer({
   selectedNote,
   onRefreshRecommendCache,
 }: RelatedNotesDrawerProps) {
-  const [relationships, setRelationships] = useState<RelatedNoteSummary[]>([]);
+  const [relationshipResult, setRelationshipResult] = useState<{ noteId: string | null; relationships: RelatedNoteSummary[] }>({ noteId: null, relationships: [] });
   const [requestState, setRequestState] = useState<RequestState>('idle');
   const [refreshState, setRefreshState] = useState<RefreshState>('idle');
   const [reloadKey, setReloadKey] = useState(0);
@@ -53,18 +53,18 @@ export default function RelatedNotesDrawer({
 
   useEffect(() => {
     if (!isOpen || !selectedNoteId) {
-      setRelationships([]);
+      setRelationshipResult({ noteId: null, relationships: [] });
       setRequestState('idle');
       return;
     }
 
     const controller = new AbortController();
-    setRelationships([]);
+    setRelationshipResult({ noteId: selectedNoteId, relationships: [] });
     setRequestState('loading');
     void fetchRelatedNotes(selectedNoteId, controller.signal)
       .then((nextRelationships) => {
         if (controller.signal.aborted) return;
-        setRelationships(nextRelationships);
+        setRelationshipResult({ noteId: selectedNoteId, relationships: nextRelationships });
         setRequestState('success');
       })
       .catch(() => {
@@ -101,6 +101,7 @@ export default function RelatedNotesDrawer({
 
   const sourceLabel = selectedNote?.title || '当前笔记';
   const showLoading = requestState === 'idle' || requestState === 'loading';
+  const relationships = relationshipResult.noteId === selectedNoteId ? relationshipResult.relationships : [];
 
   return (
     <Dialog open={isOpen && !!selectedNote} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -153,6 +154,7 @@ export default function RelatedNotesDrawer({
                 sourceLabel={sourceLabel}
                 targetLabel={relationship.title || '无标题'}
                 href={`/notes?highlight=${encodeURIComponent(relationship.id)}`}
+                linkClassName="inline-flex min-h-11 min-w-11 items-center rounded-[var(--radius-md)] px-2 font-medium [color:var(--color-action-primary)] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:[outline-color:var(--focus-ring)]"
                 onLinkClick={onClose}
                 kind={relationship.type || undefined}
                 explanation={relationship.reason || undefined}

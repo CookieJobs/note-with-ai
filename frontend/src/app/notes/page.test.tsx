@@ -2,11 +2,13 @@ import { act, fireEvent, render, screen, waitFor, cleanup } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import NotesPage from './page';
 
-const api = vi.hoisted(() => ({ createNote: vi.fn(), userId: 'alice' }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
+const api = vi.hoisted(() => ({ createNote: vi.fn(), authFetch: vi.fn(), userId: 'alice', notes: [] as any[], search: '' }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams(api.search) }));
 vi.mock('../../components/TopNavigation', () => ({ default: () => <nav>导航</nav> }));
 vi.mock('./hooks/useAuthGuard', () => ({ useAuthGuard: () => ({ id: api.userId, email: 'alice@example.com' }) }));
-vi.mock('./hooks/useNotes', () => ({ useNotes: () => ({ notes: [], isLoading: false, createNote: api.createNote, deleteNote: vi.fn(), updateNote: vi.fn(), refreshRecommendCache: vi.fn() }) }));
+vi.mock('../../utils/auth', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../utils/auth')>()), authFetch: api.authFetch }));
+vi.mock('./hooks/useNotes', () => ({ useNotes: () => ({ notes: api.notes, isLoading: false, createNote: api.createNote, deleteNote: vi.fn(), updateNote: vi.fn(), refreshRecommendCache: vi.fn() }) }));
+vi.mock('./components/ModernNoteCard', () => ({ default: ({ note, isHighlighted }: any) => <article data-highlighted={isHighlighted}>{note.title}</article> }));
 vi.mock('./components/richTextEditorLoader', () => ({ preloadRichTextEditor: vi.fn(), loadRichTextEditor: vi.fn() }));
 // The editor is a separately tested input boundary; keep the page, compose shell and draft hook real.
 vi.mock('next/dynamic', () => ({ default: () => function Editor({ value, onChange }: any) {
@@ -21,7 +23,7 @@ async function writeDraft(text = '这是一条尚未保存的想法') {
 }
 
 describe('desktop quick capture', () => {
-  beforeEach(() => { localStorage.clear(); api.userId = 'alice'; vi.spyOn(window, 'scrollTo').mockImplementation(() => {}); api.createNote.mockReset().mockResolvedValue(created); });
+  beforeEach(() => { localStorage.clear(); api.userId = 'alice'; api.notes = []; api.search = ''; api.authFetch.mockReset(); vi.spyOn(window, 'scrollTo').mockImplementation(() => {}); api.createNote.mockReset().mockResolvedValue(created); });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it('keeps a closed draft available after remount', async () => {
@@ -90,5 +92,23 @@ describe('desktop quick capture', () => {
     expect(screen.getByRole('textbox', { name: '记录正文' })).toHaveValue('这是一条尚未保存的想法');
     fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('已保存到云端'));
+  });
+
+  it('fetches and renders an owned highlighted note that is absent from page one', async () => {
+    api.search = 'highlight=candidate-not-loaded';
+    api.notes = [{ _id: 'page-one-note', title: '第一页笔记', content: '', contentText: '', revision: 1, createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:00.000Z' }];
+    api.authFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { note: {
+        _id: 'candidate-not-loaded', title: '关系目标', content: '只通过详情接口读取', contentText: '只通过详情接口读取',
+        revision: 1, createdAt: '2026-09-11T00:00:00.000Z', updatedAt: '2026-09-11T00:00:00.000Z',
+      } } }),
+    });
+
+    render(<NotesPage />);
+
+    expect(await screen.findByText('关系目标')).toBeInTheDocument();
+    expect(screen.getByText('关系目标').closest('article')).toHaveAttribute('data-highlighted', 'true');
+    expect(api.authFetch).toHaveBeenCalledWith('/api/notes/candidate-not-loaded', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 });

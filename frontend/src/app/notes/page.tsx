@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, Suspense, useRef, useCallback } from 'react';
+import { useEffect, useState, Suspense, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 import TopNavigation from '../../components/TopNavigation';
-import { getUser, isAuthenticated } from '../../utils/auth';
+import { authFetch, getUser, isAuthenticated } from '../../utils/auth';
 
 import DeleteNoteConfirmModal from './components/DeleteNoteConfirmModal';
 import ModernNoteCard from './components/ModernNoteCard';
@@ -15,7 +15,7 @@ import NoteCounter from './components/NoteCounter';
 import { preloadRichTextEditor } from './components/richTextEditorLoader';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
-import { useNotes } from './hooks/useNotes';
+import { useNotes, type Note } from './hooks/useNotes';
 import { NOTE_EDITOR_INSIDE_SELECTOR } from './utils/editorInside';
 import layoutStyles from './styles/layout.module.scss';
 import cardStyles from './styles/note-card.module.scss';
@@ -67,8 +67,6 @@ function NotesContent() {
     refreshRecommendCache,
   } = useNotes(user, { onError: setError });
 
-  const selectedNote = selectedNoteId ? notes.find((note) => note._id === selectedNoteId) ?? null : null;
-
   // 新建笔记 Hook
   const {
     newContentText,
@@ -108,6 +106,13 @@ function NotesContent() {
   };
 
   const highlightId = searchParams.get('highlight') || '';
+  const [highlightedNote, setHighlightedNote] = useState<Note | null>(null);
+  const visibleNotes = useMemo(() => (
+    highlightedNote && !notes.some((note) => note._id === highlightedNote._id)
+      ? [highlightedNote, ...notes]
+      : notes
+  ), [highlightedNote, notes]);
+  const selectedNote = selectedNoteId ? visibleNotes.find((note) => note._id === selectedNoteId) ?? null : null;
   const [drafts, setDrafts] = useState<Record<string, { json: JSONContent; text: string; dirty: boolean }>>({});
   const editingNoteId = activeEditor.type === 'note' ? activeEditor.noteId : null;
   const isComposeOpen = activeEditor.type === 'compose';
@@ -116,6 +121,32 @@ function NotesContent() {
   const noteRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // 滚动容器引用
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!highlightId || notes.some((note) => note._id === highlightId)) {
+      setHighlightedNote(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    void authFetch(`/api/notes/${encodeURIComponent(highlightId)}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`请求失败: ${response.status}`);
+        const payload: unknown = await response.json();
+        const note = payload && typeof payload === 'object'
+          && 'success' in payload && (payload as { success?: unknown }).success === true
+          && 'data' in payload && (payload as { data?: { note?: unknown } }).data?.note;
+        if (!note || typeof note !== 'object' || (note as { _id?: unknown })._id !== highlightId) {
+          throw new Error('笔记详情响应无效');
+        }
+        if (!controller.signal.aborted) setHighlightedNote(note as Note);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setHighlightedNote(null);
+      });
+
+    return () => controller.abort();
+  }, [highlightId, notes]);
 
   // 监听 highlightId 的变化，如果存在则自动滚动到对应的笔记
   useEffect(() => {
@@ -156,7 +187,7 @@ function NotesContent() {
       if (rafId != null) cancelAnimationFrame(rafId);
       if (timerId != null) clearTimeout(timerId);
     };
-  }, [highlightId, notes]);
+  }, [highlightId, visibleNotes]);
 
     useEffect(() => {
       let cancelled = false;
@@ -294,7 +325,7 @@ function NotesContent() {
                 <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
                   <NoteCounter count={notes.length} />
 
-                  {notes.map((note) => (
+                  {visibleNotes.map((note) => (
                     <motion.div
                       layout={note._id !== editingNoteId}
                       key={note._id}

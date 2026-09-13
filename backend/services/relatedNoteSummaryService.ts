@@ -17,13 +17,19 @@ export type RelatedNoteSummaryResult = {
 };
 
 const MAX_RELATIONSHIPS = 5;
+const MAX_TITLE_LENGTH = 200;
+const MAX_CONTENT_TEXT_LENGTH = 2000;
+const MAX_TYPE_LENGTH = 80;
+const MAX_REASON_LENGTH = 500;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function text(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+function text(value: unknown, maxLength: number): string {
+  return typeof value === 'string'
+    ? value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
+    : '';
 }
 
 function toIsoDate(value: unknown): string {
@@ -79,11 +85,11 @@ export async function getRelatedNoteSummaryResult(params: {
       if (!candidate) return null;
       return {
         id,
-        title: text(candidate.title),
-        contentText: text(candidate.contentText),
+        title: text(candidate.title, MAX_TITLE_LENGTH),
+        contentText: text(candidate.contentText, MAX_CONTENT_TEXT_LENGTH),
         createdAt: toIsoDate(candidate.createdAt),
-        type: text(cached.type),
-        reason: text(cached.reason),
+        type: text(cached.type, MAX_TYPE_LENGTH),
+        reason: text(cached.reason, MAX_REASON_LENGTH),
         scoreBand: scoreBand(cached),
       } satisfies RelatedNoteSummary;
     })

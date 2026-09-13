@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act } from 'react-dom/test-utils';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '../hooks/useNotes';
@@ -51,8 +52,30 @@ describe('RelatedNotesDrawer', () => {
 
     const target = await screen.findByRole('link', { name: '还没有加载的笔记' });
     expect(target).toHaveAttribute('href', '/notes?highlight=candidate-not-loaded');
+    expect(target).toHaveClass('min-h-11', 'min-w-11');
     expect(screen.getByText('都在讨论阅读计划。')).toBeInTheDocument();
     expect(screen.queryByText(/综合分|向量\(s1\)|模型\(s2\)/)).not.toBeInTheDocument();
+  });
+
+  it('never renders a late A response after the source changes to B', async () => {
+    let resolveA!: (value: any) => void;
+    let resolveB!: (value: any) => void;
+    vi.mocked(fetchRelatedNotes).mockImplementation((noteId) => new Promise((resolve) => {
+      if (noteId === 'note-1') resolveA = resolve;
+      else resolveB = resolve;
+    }));
+    const { rerender } = render(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={note} />);
+    rerender(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={{ ...note, _id: 'note-2', title: 'B' }} />);
+
+    await act(async () => { resolveA([{
+      id: 'a', title: 'A 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
+    }]); });
+    expect(screen.queryByText('A 的结果')).not.toBeInTheDocument();
+
+    await act(async () => { resolveB([{
+      id: 'b', title: 'B 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
+    }]); });
+    expect(await screen.findByText('B 的结果')).toBeInTheDocument();
   });
 
   it('exposes loading, error retry, and empty states without falling back to local cache entries', async () => {
