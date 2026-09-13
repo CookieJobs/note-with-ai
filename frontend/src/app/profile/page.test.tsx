@@ -1,8 +1,34 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './page';
 import './profileBackgroundTheme.selftest';
+
+const profileStyles = readFileSync('src/app/profile/profile.module.scss', 'utf8');
+const semanticTokens = readFileSync('src/styles/_variables.scss', 'utf8');
+
+const hexToken = (block: string, token: string) => {
+  const value = block.match(new RegExp(`${token}:\\s*(#[\\da-f]{6})`, 'i'))?.[1];
+  if (!value) throw new Error(`Missing ${token}`);
+  return value;
+};
+
+const rgb = (hex: string) => [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset + 1, offset + 3), 16));
+const contrast = (first: string, second: string) => {
+  const luminance = (hex: string) => rgb(hex).reduce((total, channel, index) => {
+    const normalized = channel / 255;
+    const linear = normalized <= .04045 ? normalized / 12.92 : ((normalized + .055) / 1.055) ** 2.4;
+    return total + [0.2126, 0.7152, 0.0722][index] * linear;
+  }, 0);
+  const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a);
+  return (lighter + .05) / (darker + .05);
+};
+
+const tokenBlock = (selector: ':root' | '.dark') => {
+  const start = semanticTokens.indexOf(`${selector} {`);
+  return semanticTokens.slice(start, semanticTokens.indexOf('\n}', start));
+};
 
 const {
   mockPush,
@@ -116,5 +142,32 @@ describe('ProfilePage', () => {
     expect(screen.getByText('基于 2 个主题和你的笔记内容整理。')).toBeInTheDocument();
     expect(screen.queryByText('92%')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: '查看笔记：旧笔记' })).toHaveAttribute('href', '/notes?highlight=note-9');
+  });
+
+  it('keeps atmosphere out of text-bearing surfaces and keeps profile text contrast-safe', () => {
+    const avatarRule = profileStyles.match(/\.avatar, \.avatarPreview \{([^}]*)\}/)?.[1] || '';
+    const heroRule = profileStyles.match(/\.profileHero \{([^}]*)\}/)?.[1] || '';
+    const themePreviewRule = profileStyles.match(/\.themePreview \{([^}]*)\}/)?.[1] || '';
+
+    expect(heroRule).toContain('background: var(--color-surface-raised)');
+    expect(heroRule).not.toContain('var(--profile-atmosphere');
+    expect(profileStyles).toMatch(/\.profileHero::before \{[^}]*var\(--profile-atmosphere-glow\)/);
+    expect(avatarRule).toContain('background: var(--color-action-primary)');
+    expect(avatarRule).toContain('color: var(--color-text-inverse)');
+    expect(avatarRule).not.toContain('background: var(--profile-atmosphere');
+    expect(themePreviewRule).toContain('background: var(--color-surface-raised)');
+    expect(themePreviewRule).not.toContain('var(--profile-atmosphere');
+    expect(profileStyles).toMatch(/\.themeAtmosphereSwatch \{[^}]*background: var\(--profile-atmosphere-soft\)/);
+    expect(profileStyles).not.toMatch(/color:\s*var\(--profile-atmosphere|:focus-visible\s*\{[^}]*var\(--profile-atmosphere/);
+
+    for (const block of [tokenBlock(':root'), tokenBlock('.dark')]) {
+      expect(contrast(hexToken(block, '--color-text-inverse'), hexToken(block, '--color-action-primary'))).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(hexToken(block, '--color-text-secondary'), hexToken(block, '--color-surface-raised'))).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('gives the named primary controls a 44px minimum target', () => {
+    expect(profileStyles).toMatch(/\.btnPrimary, \.emptyState button \{[^}]*min-height: 2\.75rem/);
+    expect(profileStyles).toMatch(/\.btnOutlineSm, \.btnGhostSm, \.btnCancel \{[^}]*min-height: 2\.25rem/);
   });
 });

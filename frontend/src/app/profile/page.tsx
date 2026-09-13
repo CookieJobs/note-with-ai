@@ -422,7 +422,7 @@ export default function ProfilePage() {
                   <section className={styles.profileDetail} aria-labelledby="biography-heading"><h3 id="biography-heading">个人简介</h3><p className={styles.biography}>{data.userProfile.summary}</p></section>
                 )}
                 {data?.userProfile?.theme?.themeName && (
-                  <section className={styles.themePreview} aria-labelledby="theme-preview-heading"><h3 id="theme-preview-heading">主题预览：{data.userProfile.theme.themeName}</h3><p className={styles.themeDisplay}>{data.userProfile.theme.reasoning}</p></section>
+                  <section className={styles.themePreview} aria-labelledby="theme-preview-heading"><span className={styles.themeAtmosphereSwatch} aria-hidden="true" /><h3 id="theme-preview-heading">主题预览：{data.userProfile.theme.themeName}</h3><p className={styles.themeDisplay}>{data.userProfile.theme.reasoning}</p></section>
                 )}
                 {!data?.userProfile?.interests?.length &&
                   !data?.userProfile?.expertise?.length &&
