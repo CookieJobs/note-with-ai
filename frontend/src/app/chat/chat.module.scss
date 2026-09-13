@@ -112,7 +112,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 0;
-  color: #111827;
+  color: var(--color-text-primary);
   margin: 0 0 12px;
 }
 
@@ -160,11 +160,11 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   width: var(--right-panel-width);
   flex-shrink: 0;
   z-index: 10;
-  border: 1px solid rgba(226, 232, 240, 0.3);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--color-surface-raised);
   backdrop-filter: blur(12px);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 24px color-mix(in srgb, var(--color-text-primary) 6%, transparent);
 }
 
 .relatedNotesFab {
@@ -177,13 +177,13 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   gap: 8px;
   height: 40px;
   padding: 0 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
-  color: #111827;
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--color-text-primary) 14%, transparent);
   backdrop-filter: blur(14px);
   cursor: pointer;
 
@@ -195,8 +195,8 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     height: 20px;
     padding: 0 6px;
     border-radius: 999px;
-    background: #111827;
-    color: #ffffff;
+    background: var(--color-action-primary);
+    color: var(--color-text-inverse);
     font-size: 11px;
     line-height: 1;
   }
@@ -206,7 +206,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   position: fixed;
   inset: 0;
   z-index: 70;
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--color-surface-overlay);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -218,8 +218,8 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   height: min(78vh, 680px);
   border-radius: 20px 20px 0 0;
   overflow: hidden;
-  background: #ffffff;
-  box-shadow: 0 -18px 60px rgba(15, 23, 42, 0.24);
+  background: var(--color-surface-raised);
+  box-shadow: 0 -18px 60px color-mix(in srgb, var(--color-text-primary) 24%, transparent);
 }
 
 .relatedNotesClose {
@@ -229,25 +229,31 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   z-index: 2;
   width: 34px;
   height: 34px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #374151;
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-text-primary) 8%, transparent);
 }
 
 .relatedNotesDrawerPanel {
   width: 100%;
 }
 
+.relatedNotesFab:focus-visible,
+.relatedNotesClose:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .confirmModal {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.42);
+  background: var(--color-surface-overlay);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -257,26 +263,26 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 }
 
 .confirmDialog {
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--color-surface-raised);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 12px;
   padding: 28px;
   max-width: 420px;
   width: min(90%, 420px);
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--color-text-primary) 18%, transparent);
   animation: slideIn 0.2s ease;
 
   h3 {
     margin: 0 0 14px;
     font-size: 20px;
     font-weight: 700;
-    color: #111827;
+    color: var(--color-text-primary);
   }
 
   p {
     margin: 0 0 24px;
-    color: #475569;
+    color: var(--color-text-secondary);
     font-size: 15px;
     line-height: 1.6;
   }
@@ -298,20 +304,20 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     transition: background-color 0.2s ease, transform 0.2s ease;
 
     &:first-child {
-      background: #f1f5f9;
-      color: #475569;
+      background: var(--color-action-secondary);
+      color: var(--color-text-secondary);
 
       &:hover {
-        background: #e2e8f0;
+        background: var(--color-action-secondary-hover);
       }
     }
 
     &:last-child {
-      background: #dc2626;
-      color: #ffffff;
+      background: var(--color-status-error);
+      color: var(--color-text-inverse);
 
       &:hover {
-        background: #b91c1c;
+        background: var(--color-action-danger);
         transform: translateY(-1px);
       }
     }

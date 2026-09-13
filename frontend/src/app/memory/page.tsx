@@ -8,6 +8,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, Dia
 import { confirmMemoryInsight, correctMemoryInsight, deleteMemoryInsight, generateMemoryInsights, getMemoryInsights, type MemoryInsight } from '../../services/memoryService';
 import styles from './memory.module.scss';
 import { recordProductEvent } from '../../services/productEventService';
+import { RelationshipCue } from '../../components/ui/relationship-cue';
 
 export default function MemoryPage() {
   const [insights, setInsights] = useState<MemoryInsight[]>([]);
@@ -92,7 +93,7 @@ export default function MemoryPage() {
           <Button variant="link" size="sm" className={styles.evidenceToggle} aria-expanded={expanded === insight.id} onClick={() => setExpanded(expanded === insight.id ? null : insight.id)}>{expanded === insight.id ? '收起依据' : '查看依据'}</Button>
         </div>
         {expanded === insight.id && <ul className={styles.evidence}>{insight.evidence.map((evidence) => <li key={evidence.noteId + evidence.noteRevision}>
-          <a href={'/notes?highlight=' + evidence.noteId} onClick={() => recordProductEvent('memory_evidence_opened', { memoryId: insight.id })}>查看原文</a><blockquote>{evidence.excerpt}</blockquote>
+          <RelationshipCue sourceLabel={insight.displayStatement} targetLabel="查看原文" kind="依据" explanation={evidence.excerpt} href={'/notes?highlight=' + evidence.noteId} onLinkClick={() => recordProductEvent('memory_evidence_opened', { memoryId: insight.id })} />
         </li>)}</ul>}
       </article>)}</section>}
     </section>

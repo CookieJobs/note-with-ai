@@ -7,6 +7,31 @@ const variables = readFileSync(new URL('./_variables.scss', import.meta.url), 'u
 const globals = readFileSync(new URL('./globals.scss', import.meta.url), 'utf8');
 const reducedMotionUrl = new URL('./reduced-motion.scss', import.meta.url);
 const reducedMotion = existsSync(reducedMotionUrl) ? readFileSync(reducedMotionUrl, 'utf8') : '';
+const coreRouteStyles = [
+  '../app/inspiration/inspiration.module.scss',
+  '../app/memory/memory.module.scss',
+  '../app/publish/publish.module.scss',
+  '../app/chat/chat.module.scss',
+  '../app/notes/styles/layout.module.scss',
+  '../app/notes/styles/note-card.module.scss',
+] as const;
+const rawHexAllowlist = [
+  {
+    path: '../app/notes/styles/layout.module.scss',
+    selector: 'radial-gradient',
+    purpose: 'the notes workspace atmosphere resolver output',
+  },
+  {
+    path: '../app/notes/styles/note-card.module.scss',
+    selector: 'radial-gradient',
+    purpose: 'editor atmosphere output',
+  },
+  {
+    path: '../app/notes/styles/note-card.module.scss',
+    selector: ':global(.hljs)',
+    purpose: 'temporary editor syntax output',
+  },
+] as const;
 const lightSemanticTokens = [
   '--color-text-primary',
   '--color-text-secondary',
@@ -77,6 +102,14 @@ function parseColor(value: string) {
   return [Number(rgba[1]), Number(rgba[2]), Number(rgba[3]), Number(rgba[4] ?? 1)] as const;
 }
 
+function hasAllowedRawHex(path: string, source: string, index: number) {
+  return rawHexAllowlist.some(
+    (allowance) =>
+      allowance.path === path &&
+      source.lastIndexOf(allowance.selector, index) > source.lastIndexOf('}', index),
+  );
+}
+
 function contrastRatio(first: readonly number[], second: readonly number[]) {
   const composite = (foreground: readonly number[], background: readonly number[]) =>
     foreground.slice(0, 3).map((channel, index) => channel * foreground[3] + background[index] * (1 - foreground[3]));
@@ -141,5 +174,16 @@ describe('style foundation contract', () => {
   it('honors reduced-motion preferences without unrestricted transitions', () => {
     expect(reducedMotion).toContain('@media (prefers-reduced-motion: reduce)');
     expect(`${variables}\n${globals}\n${reducedMotion}`).not.toMatch(/transition\s*:\s*all\b/);
+  });
+
+  it('keeps business route colors on semantic tokens', () => {
+    for (const path of coreRouteStyles) {
+      const source = readFileSync(new URL(path, import.meta.url), 'utf8');
+      const rawHexMatches = [...source.matchAll(/#[\da-f]{3,8}\b/gi)].filter(
+        (match) => !hasAllowedRawHex(path, source, match.index ?? 0),
+      );
+
+      expect(rawHexMatches, `${path} should not introduce a business-page hex literal`).toEqual([]);
+    }
   });
 });

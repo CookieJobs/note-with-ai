@@ -1,44 +1,8 @@
-.page { min-height: 100vh; background: #f7f8fc; color: #172033; }
-.content { width: min(100% - 2rem, 880px); margin: 0 auto; padding: 4.5rem 0 5rem; }
-.hero { display: flex; justify-content: space-between; gap: 2rem; align-items: flex-end; padding: 1.85rem 0 1.6rem; border-bottom: 1px solid #dfe4ee; }
-.heroCopy { max-width: 610px; }
-.kicker { display: inline-flex; align-items: center; gap: .42rem; color: #4b3aa8; font-size: .83rem; font-weight: 700; }
-.hero h1 { margin: .48rem 0 .45rem; font-size: 2.1rem; letter-spacing: -.035em; line-height: 1.08; }
-.hero p { max-width: 42rem; margin: 0; color: #5c677a; font-size: 1rem; line-height: 1.7; }
-.trustLine { display: flex; gap: .5rem; align-items: flex-start; margin-top: 1rem; color: #526078; font-size: .86rem; line-height: 1.55; }
-.trustLine svg { flex: 0 0 auto; margin-top: .08rem; color: #4f46a5; }
-.generateButton { align-self: flex-end; }
-.memoryPrimaryAction {
-  background: var(--color-action-primary);
-  border-color: var(--color-action-primary);
-  color: var(--color-text-inverse);
-
-  &:hover:not(:disabled) { background: var(--color-action-primary-hover); border-color: var(--color-action-primary-hover); }
-  &:focus-visible { box-shadow: var(--focus-ring); }
-  &:disabled { background: var(--color-action-primary-active); border-color: var(--color-action-primary-active); color: var(--color-text-inverse); opacity: .72; }
-  &[aria-busy='true'] { background: var(--color-action-primary-hover); border-color: var(--color-action-primary-hover); cursor: wait; }
-}
-.feedback, .feedbackError { margin: 1.15rem 0 0; padding: .78rem .9rem; border-radius: 10px; font-size: .92rem; line-height: 1.55; }
-.feedback { background: #eef3ff; color: #33427b; }
-.feedbackError { background: #fff1f2; color: #a13242; }
-.empty { display: flex; gap: 1rem; align-items: flex-start; margin-top: 1.35rem; padding: 1.35rem 1.4rem; border: 1px solid #e0e4ed; border-radius: 14px; background: #fff; }
-.emptyIcon { display: grid; flex: 0 0 auto; width: 42px; height: 42px; place-items: center; border-radius: 12px; background: #edebff; color: #4b3aa8; }
-.empty h2, .listHeader h2 { margin: .08rem 0 .3rem; font-size: 1rem; letter-spacing: -.01em; }
-.empty p { max-width: 38rem; margin: 0; color: #627087; font-size: .93rem; line-height: 1.6; }
-.insightList { margin-top: 1.7rem; }
-.listHeader { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: .7rem; }
-.listHeader span { color: #718096; font-size: .84rem; }
-.card { margin: .7rem 0; padding: 1.18rem 1.2rem; border: 1px solid #e0e4ed; border-radius: 14px; background: var(--color-surface-raised); }
-.cardHeader { display: flex; justify-content: space-between; gap: 1rem; }
-.cardHeader strong { display: block; font-size: 1.02rem; line-height: 1.5; }
-.cardHeader span { display: block; margin-top: .3rem; color: #68768d; font-size: .82rem; }
-.cardHeader svg { flex: 0 0 auto; color: #7569c6; }
-.actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: 1rem; }
-.evidenceToggle { margin-left: auto; }
-.evidence { margin: .9rem 0 0; padding: .9rem 1rem; list-style: none; border-radius: 10px; background: #f7f8fb; }
-.evidence li + li { margin-top: .8rem; }
-.evidence a { color: #443898; font-size: .85rem; font-weight: 700; text-decoration: none; }
-.evidence blockquote { margin: .35rem 0 0; color: #536176; font-size: .92rem; line-height: 1.65; }
-.dialogTextarea { display: block; width: 100%; min-height: 92px; padding: .65rem; border: 1px solid #cfd6e3; border-radius: 8px; color: #253044; font: inherit; line-height: 1.55; resize: vertical; }
-.dialogActions { display: flex; flex-wrap: wrap; gap: .5rem; }
-@media (max-width: 650px) { .content { width: min(100% - 1.25rem, 880px); padding-top: 2rem; } .hero { align-items: stretch; flex-direction: column; gap: 1.25rem; } .generateButton, .evidenceToggle { align-self: flex-start; margin-left: 0; } }
+.page { min-height: 100vh; background: var(--color-surface-page); color: var(--color-text-primary); }
+.content { width: min(100% - 2rem, 55rem); margin: 0 auto; padding: 4.5rem 0 5rem; }
+.hero { display: flex; justify-content: space-between; gap: 2rem; align-items: flex-end; padding: 1.85rem 0 1.6rem; border-bottom: 1px solid var(--color-border-subtle); }.heroCopy { max-width: 610px; }.kicker { display: inline-flex; align-items: center; gap: .42rem; color: var(--color-action-primary); font-size: .83rem; font-weight: 700; }.hero h1 { margin: .48rem 0 .45rem; font-size: 2.1rem; letter-spacing: -.035em; line-height: 1.08; }.hero p { max-width: 42rem; margin: 0; color: var(--color-text-secondary); font-size: 1rem; line-height: 1.7; }.trustLine { display: flex; gap: .5rem; align-items: flex-start; margin-top: 1rem; color: var(--color-text-secondary); font-size: .86rem; line-height: 1.55; }.trustLine svg { flex: 0 0 auto; margin-top: .08rem; color: var(--color-action-primary); }.generateButton { align-self: flex-end; }
+.memoryPrimaryAction { background: var(--color-action-primary); border-color: var(--color-action-primary); color: var(--color-text-inverse); &:hover:not(:disabled) { background: var(--color-action-primary-hover); border-color: var(--color-action-primary-hover); } &:focus-visible { box-shadow: var(--focus-ring); } &:disabled { background: var(--color-action-primary-active); border-color: var(--color-action-primary-active); color: var(--color-text-inverse); opacity: .72; } &[aria-busy='true'] { background: var(--color-action-primary-hover); border-color: var(--color-action-primary-hover); cursor: wait; } }
+.feedback, .feedbackError { margin: 1.15rem 0 0; padding: .78rem .9rem; border-radius: var(--radius-md); font-size: .92rem; line-height: 1.55; }.feedback { background: var(--color-status-info-surface); color: var(--color-status-info); }.feedbackError { background: var(--color-status-error-surface); color: var(--color-status-error); }
+.empty { display: flex; gap: 1rem; align-items: flex-start; margin-top: 1.35rem; padding: 1.35rem 1.4rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface-raised); }.emptyIcon { display: grid; flex: 0 0 auto; width: 42px; height: 42px; place-items: center; border-radius: var(--radius-md); background: var(--color-action-secondary); color: var(--color-action-primary); }.empty h2, .listHeader h2 { margin: .08rem 0 .3rem; font-size: 1rem; letter-spacing: -.01em; }.empty p { max-width: 38rem; margin: 0; color: var(--color-text-secondary); font-size: .93rem; line-height: 1.6; }.insightList { margin-top: 1.7rem; }.listHeader { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: .7rem; }.listHeader span { color: var(--color-text-tertiary); font-size: .84rem; }
+.card { margin: .7rem 0; padding: 1.18rem 1.2rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface-raised); }.cardHeader { display: flex; justify-content: space-between; gap: 1rem; }.cardHeader strong { display: block; font-size: 1.02rem; line-height: 1.5; }.cardHeader span { display: block; margin-top: .3rem; color: var(--color-text-tertiary); font-size: .82rem; }.cardHeader svg { flex: 0 0 auto; color: var(--color-action-primary); }.actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: 1rem; }.evidenceToggle { margin-left: auto; }.evidence { margin: .9rem 0 0; padding: .9rem 1rem; list-style: none; border-radius: var(--radius-md); background: var(--color-surface-sunken); }.evidence li + li { margin-top: .8rem; }.evidence a { color: var(--color-action-primary); font-size: .85rem; font-weight: 700; text-decoration: none; }.evidence a:focus-visible { outline: none; box-shadow: var(--focus-ring); }.evidence blockquote { margin: .35rem 0 0; color: var(--color-text-secondary); font-size: .92rem; line-height: 1.65; }.dialogTextarea { display: block; width: 100%; min-height: 92px; padding: .65rem; border: 1px solid var(--color-border-default); border-radius: var(--radius-sm); color: var(--color-text-primary); font: inherit; line-height: 1.55; resize: vertical; }.dialogTextarea:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--color-border-strong); }.dialogActions { display: flex; flex-wrap: wrap; gap: .5rem; }
+@media (max-width: 650px) { .content { width: min(100% - 1.25rem, 55rem); padding-top: 2rem; } .hero { align-items: stretch; flex-direction: column; gap: 1.25rem; } .generateButton, .evidenceToggle { align-self: flex-start; margin-left: 0; } }

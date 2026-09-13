@@ -209,11 +209,11 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
+  background: var(--color-status-error-surface);
+  color: var(--color-status-error);
   padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  border: 1px solid var(--color-status-error);
   margin-bottom: 24px;
   font-size: 14px;
   font-weight: 500;

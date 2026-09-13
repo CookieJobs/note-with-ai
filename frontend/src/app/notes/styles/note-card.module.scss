@@ -512,7 +512,7 @@
 .noteTitle {
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text-primary);
   line-height: 1.4;
   word-break: break-word;
   flex: 1;
@@ -538,7 +538,7 @@
   width: 160px;
   height: 22px;
   border-radius: 6px;
-  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%);
+  background: linear-gradient(90deg, var(--color-surface-sunken) 0%, var(--color-border-subtle) 50%, var(--color-surface-sunken) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -546,7 +546,7 @@
 .noteText {
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text-primary);
   line-height: 1.4;
   word-break: break-word;
   flex: 1;
@@ -564,7 +564,7 @@
 .noteTitleInput {
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text-primary);
   line-height: 1.4;
   word-break: break-word;
   flex: 1;
@@ -585,7 +585,7 @@
   }
 
   &::placeholder {
-    color: #9ca3af;
+    color: var(--color-text-tertiary);
     font-weight: 400;
   }
 }
@@ -770,7 +770,7 @@
   padding: 8px 10px;
   font-size: 14px;
   line-height: 1.6;
-  color: #1f2937;
+  color: var(--color-text-primary);
   font-family: inherit;
   box-sizing: border-box;
   background: white;
@@ -789,7 +789,7 @@
 
 .errorInline {
   font-size: 12px;
-  color: #dc2626;
+  color: var(--color-status-error);
 }
 
 .noteText {
@@ -804,7 +804,7 @@
 }
 
 .noteTextExpanded {
-  color: #374151;
+  color: var(--color-text-secondary);
 }
 
 .noteTextWrapper {
@@ -835,7 +835,7 @@
 }
 
 .expandPill:hover {
-  background: #f0f9ff;
+  background: var(--color-status-info-surface);
   border-color: rgba(23, 112, 232, 0.4);
   box-shadow: 0 3px 8px rgba(23, 112, 232, 0.1);
 }
@@ -856,7 +856,7 @@
 }
 
 .keywordErrorInline {
-  color: #b42318;
+  color: var(--color-status-error);
   font-size: 12px;
   white-space: normal;
 }
@@ -870,7 +870,7 @@
   width: 60px;
   height: 20px;
   border-radius: 12px;
-  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%);
+  background: linear-gradient(90deg, var(--color-surface-sunken) 0%, var(--color-border-subtle) 50%, var(--color-surface-sunken) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -888,7 +888,7 @@
   border: 2px solid rgb(23,112,232);
   border-radius: 8px;
   font-size: 14px;
-  color: #1f2937;
+  color: var(--color-text-primary);
   font-family: inherit;
   background: rgba(255, 255, 255, 0.92);
 }
@@ -1119,7 +1119,7 @@
 
 .keywordMore {
   background: rgba(107, 114, 128, 0.1);
-  color: #6b7280;
+  color: var(--color-text-secondary);
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 11px;
@@ -1146,7 +1146,7 @@
   border-radius: 6px;
   font-size: 11px;
   line-height: 1.6;
-  color: #1f2937;
+  color: var(--color-text-primary);
   font-family: inherit;
   background: rgba(255, 255, 255, 0.92);
   outline: none;
