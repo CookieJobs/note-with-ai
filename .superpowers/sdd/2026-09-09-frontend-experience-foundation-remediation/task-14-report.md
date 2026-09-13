@@ -19,6 +19,8 @@ The final sequential run passed frontend lint, typecheck, 38 Vitest files / 263 
 
 Task 14 received an explicit final-acceptance ruling to reopen only the Auth panel semantics and Note menu ARIA, and to reduce the binding bundle budget without weakening the parser. Cost: the smallest corrections touched two upstream components/tests plus Notes dynamic-import and draft-validation boundaries. Auth network payloads/redirects and Task 12/13 behavior remain covered by the full suite.
 
+Implementation commit: `7e49066d5a41bda0e90b2edb122e56352ea58663` (amended below only to record its final hash).
+
 ## Visual/audit limitation
 
 Auth was inspected in the production browser at 320×800 and 1440×900. Full authenticated long-list, three-theme Profile, dark-mode, 200% zoom, and VoiceOver checks remain manual-only because the local server lacked seeded authenticated fixtures and a screen-reader session. Impeccable's prescribed bootstrap was blocked by the missing `PRODUCT.md`; its code-level acceptance score is recorded in the verification artifact as 17/20, zero P0/P1.

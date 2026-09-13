@@ -70,4 +70,4 @@ The Impeccable skill bootstrap could not execute its repository audit because th
 ## Hashes
 
 - Task 14 start: `083cd8ec559e5a824f80fdb27068b878a83aa189`
-- Task 14 implementation: recorded in the focused acceptance commit.
+- Task 14 implementation: `7e49066d5a41bda0e90b2edb122e56352ea58663` (amended below only to record its final hash).
