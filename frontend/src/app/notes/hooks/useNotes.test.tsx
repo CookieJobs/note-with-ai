@@ -271,21 +271,26 @@ describe('useNotes stale list protection', () => {
 describe('useNotes historical write regressions over infinite pages', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('rejects malformed canonical and 409 envelopes without changing the cached page', async () => {
-    const cases = [
-      { ok: true, json: async () => ({ success: false, data: { note: canonicalNote } }) },
-      { ok: false, status: 409, json: async () => ({ code: 'NOTE_WRITE_CONFLICT', current: { note: { _id: 'note-1', revision: 5 } } }) },
-    ];
+  it('rejects an HTTP 200 write body that is not a successful canonical envelope', async () => {
     const { queryClient, wrapper } = makeHarness();
     queryClient.setQueryData<NotePages>(['notes'], pages([staleNote]));
     const { result } = renderHook(() => useNotes(null), { wrapper });
+    authFetch.mockResolvedValue({ ok: true, json: async () => ({ success: false, data: { note: canonicalNote } }) });
+    await expect(result.current.updateNote({ noteId: 'note-1', expectedRevision: 4, changes: { title: '新标题' } }))
+      .rejects.toThrow('笔记写入响应无效');
+    expect(cachedNotes(queryClient)).toEqual([staleNote]);
+  });
 
-    for (const response of cases) {
-      authFetch.mockResolvedValueOnce(response);
-      await expect(result.current.updateNote({ noteId: 'note-1', expectedRevision: 4, changes: { title: '新标题' } }))
-        .rejects.toThrow('笔记写入响应无效');
-      expect(cachedNotes(queryClient)).toEqual([staleNote]);
-    }
+  it('does not mutate a page when a 409 current snapshot is malformed', async () => {
+    authFetch.mockResolvedValue({ ok: false, status: 409, json: async () => ({
+      code: 'NOTE_WRITE_CONFLICT', current: { note: { _id: 'note-1', revision: 5 } },
+    }) });
+    const { queryClient, wrapper } = makeHarness();
+    queryClient.setQueryData<NotePages>(['notes'], pages([staleNote]));
+    const { result } = renderHook(() => useNotes(null), { wrapper });
+    await expect(result.current.updateNote({ noteId: 'note-1', expectedRevision: 4, changes: { title: '新标题' } }))
+      .rejects.toThrow('笔记写入响应无效');
+    expect(cachedNotes(queryClient)).toEqual([staleNote]);
   });
 
   it('rejects canonical enrichment revisions that do not exactly match the Note revision', async () => {
