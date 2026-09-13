@@ -2,12 +2,18 @@ import { act, fireEvent, render, screen, waitFor, cleanup } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import NotesPage from './page';
 
-const api = vi.hoisted(() => ({ createNote: vi.fn(), authFetch: vi.fn(), userId: 'alice', notes: [] as any[], search: '' }));
+const api = vi.hoisted(() => ({
+  createNote: vi.fn(), authFetch: vi.fn(), loadMore: vi.fn(), userId: 'alice', notes: [] as any[], search: '',
+  hasNextPage: false, isFetchingNextPage: false, isFetchNextPageError: false,
+}));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams(api.search) }));
 vi.mock('../../components/TopNavigation', () => ({ default: () => <nav>导航</nav> }));
 vi.mock('./hooks/useAuthGuard', () => ({ useAuthGuard: () => ({ id: api.userId, email: 'alice@example.com' }) }));
 vi.mock('../../utils/auth', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../utils/auth')>()), authFetch: api.authFetch }));
-vi.mock('./hooks/useNotes', () => ({ useNotes: () => ({ notes: api.notes, isLoading: false, createNote: api.createNote, deleteNote: vi.fn(), updateNote: vi.fn(), refreshRecommendCache: vi.fn() }) }));
+vi.mock('./hooks/useNotes', () => ({ useNotes: () => ({
+  notes: api.notes, isLoading: false, createNote: api.createNote, deleteNote: vi.fn(), updateNote: vi.fn(), refreshRecommendCache: vi.fn(),
+  hasNextPage: api.hasNextPage, isFetchingNextPage: api.isFetchingNextPage, isFetchNextPageError: api.isFetchNextPageError, loadMore: api.loadMore,
+}) }));
 vi.mock('./components/ModernNoteCard', () => ({ default: ({ note, isHighlighted }: any) => <article data-highlighted={isHighlighted}>{note.title}</article> }));
 vi.mock('./components/richTextEditorLoader', () => ({ preloadRichTextEditor: vi.fn(), loadRichTextEditor: vi.fn() }));
 // The editor is a separately tested input boundary; keep the page, compose shell and draft hook real.
@@ -23,7 +29,10 @@ async function writeDraft(text = '这是一条尚未保存的想法') {
 }
 
 describe('desktop quick capture', () => {
-  beforeEach(() => { localStorage.clear(); api.userId = 'alice'; api.notes = []; api.search = ''; api.authFetch.mockReset(); vi.spyOn(window, 'scrollTo').mockImplementation(() => {}); api.createNote.mockReset().mockResolvedValue(created); });
+  beforeEach(() => {
+    localStorage.clear(); api.userId = 'alice'; api.notes = []; api.search = ''; api.hasNextPage = false; api.isFetchingNextPage = false; api.isFetchNextPageError = false;
+    api.authFetch.mockReset(); api.loadMore.mockReset().mockResolvedValue(undefined); vi.spyOn(window, 'scrollTo').mockImplementation(() => {}); api.createNote.mockReset().mockResolvedValue(created);
+  });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it('keeps a closed draft available after remount', async () => {
@@ -110,5 +119,32 @@ describe('desktop quick capture', () => {
     expect(await screen.findByText('关系目标')).toBeInTheDocument();
     expect(screen.getByText('关系目标').closest('article')).toHaveAttribute('data-highlighted', 'true');
     expect(api.authFetch).toHaveBeenCalledWith('/api/notes/candidate-not-loaded', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  });
+
+  it('keeps cursor pagination user-controlled with explicit loading, retry, and end states', async () => {
+    api.notes = [{ _id: 'page-one-note', title: '第一页笔记', content: '', contentText: '', revision: 1, createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:00.000Z' }];
+    api.hasNextPage = true;
+    const page = render(<NotesPage />);
+
+    const loadMore = screen.getByRole('button', { name: '加载更多笔记' });
+    expect(loadMore).toHaveClass('min-h-11', 'min-w-11');
+    fireEvent.click(loadMore);
+    expect(api.loadMore).toHaveBeenCalledTimes(1);
+
+    api.isFetchingNextPage = true;
+    page.rerender(<NotesPage />);
+    expect(screen.getByRole('button', { name: '正在加载更多笔记…' })).toBeDisabled();
+
+    api.isFetchingNextPage = false;
+    api.isFetchNextPageError = true;
+    page.rerender(<NotesPage />);
+    expect(screen.getByRole('alert')).toHaveTextContent('加载更多笔记失败');
+    expect(screen.getByRole('button', { name: '加载更多笔记' })).toBeEnabled();
+
+    api.hasNextPage = false;
+    api.isFetchNextPageError = false;
+    page.rerender(<NotesPage />);
+    expect(screen.getByText('已加载全部笔记')).toHaveAttribute('aria-live', 'polite');
+    expect(screen.queryByRole('button', { name: '加载更多笔记' })).not.toBeInTheDocument();
   });
 });

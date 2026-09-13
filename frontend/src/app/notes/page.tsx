@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 import TopNavigation from '../../components/TopNavigation';
+import { Button } from '../../components/ui/button';
 import { authFetch, getUser, isAuthenticated } from '../../utils/auth';
 
 import DeleteNoteConfirmModal from './components/DeleteNoteConfirmModal';
@@ -65,6 +66,10 @@ function NotesContent() {
     createNote,
     updateNote,
     refreshRecommendCache,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    loadMore,
   } = useNotes(user, { onError: setError });
 
   // 新建笔记 Hook
@@ -348,6 +353,29 @@ function NotesContent() {
                       />
                     </motion.div>
                   ))}
+
+                  <div className="flex flex-col items-center gap-2 py-4">
+                    {hasNextPage ? (
+                      <>
+                        {isFetchNextPageError && (
+                          <p id="load-more-error" role="alert" className="text-sm [color:var(--color-status-error)]">
+                            加载更多笔记失败，请重试。
+                          </p>
+                        )}
+                        <Button
+                          type="button"
+                          className="min-h-11 min-w-11 px-4"
+                          disabled={isFetchingNextPage}
+                          aria-describedby={isFetchNextPageError ? 'load-more-error' : undefined}
+                          onClick={() => { void loadMore(); }}
+                        >
+                          {isFetchingNextPage ? '正在加载更多笔记…' : '加载更多笔记'}
+                        </Button>
+                      </>
+                    ) : (
+                      <p aria-live="polite" className="text-sm [color:var(--color-text-secondary)]">已加载全部笔记</p>
+                    )}
+                  </div>
                 </motion.div>
               </div>
 
