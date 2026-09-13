@@ -135,3 +135,48 @@ exit 0
 - Each named primary control is covered by the style contract and resolves to at least 44px; secondary actions were not broadly resized.
 - The allowlist now evaluates the enclosing rule selector, CSS property, and declaration value, so an unrelated declaration cannot inherit an allowance from a nearby gradient or hljs selector.
 - No remaining concerns found in this fix round.
+
+## Fix Round 2
+
+### Changes
+
+- Applied the shared `lg` Button size to Memory’s “保存修改” primary action, so all three named Memory primary actions are at least 44px tall.
+- Replaced prefix selector matching in the raw-hex atmosphere exceptions with exact selectors for the existing Notes workspace atmosphere rules. The syntax allowlist is also anchored to an exact hljs selector.
+- Added a second descendant-selector negative fixture for the Notes workspace overlay, alongside the existing layout-container fixture.
+
+### RED/GREEN evidence
+
+```text
+cd frontend && npm test -- src/styles/style-contract.test.ts
+FAIL 2 tests
+- “保存修改” lacked the required lg primary size
+- a .container descendant selector inherited the atmosphere exception
+
+cd frontend && npm test -- src/styles/style-contract.test.ts
+Test Files  1 passed (1)
+Tests  11 passed (11)
+
+cd frontend && npm test -- src/app/memory/page.test.tsx src/components/ui/relationship-cue.test.tsx
+Test Files  2 passed (2)
+Tests  7 passed (7)
+
+cd frontend && npm test
+Test Files  34 passed (34)
+Tests  218 passed (218)
+
+cd frontend && npm run lint
+exit 0
+
+cd frontend && npm run typecheck
+exit 0
+
+git diff --check
+exit 0
+```
+
+### Commit and self-review
+
+- Fix commit: `94af3c0 fix(ui): close route control and color allowlist gaps`.
+- The three named Memory primary actions now explicitly use the shared 44px `lg` size; compact secondary and destructive actions remain unchanged.
+- The allowance must now match a complete designated selector, `background` property, and gradient declaration. Descendants merely sharing `.container` or `.workspaceOverlayPanel` cannot inherit it.
+- No remaining concerns found in this fix round.
