@@ -67,6 +67,8 @@ function NotesContent() {
     refreshRecommendCache,
   } = useNotes(user, { onError: setError });
 
+  const selectedNote = selectedNoteId ? notes.find((note) => note._id === selectedNoteId) ?? null : null;
+
   // 新建笔记 Hook
   const {
     newContentText,
@@ -332,8 +334,7 @@ function NotesContent() {
               <RelatedNotesDrawer
                 isOpen={!!selectedNoteId}
                 onClose={() => setSelectedNoteId(null)}
-                selectedNoteId={selectedNoteId}
-                allNotes={notes}
+                selectedNote={selectedNote}
                 onRefreshRecommendCache={refreshRecommendCache}
               />
             </div>

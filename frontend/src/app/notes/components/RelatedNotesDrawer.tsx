@@ -1,70 +1,93 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Dialog, DialogClose, DialogTitle, DrawerContent } from '@/components/ui/dialog';
+import { RelationshipCue } from '@/components/ui/relationship-cue';
 import type { Note } from '../hooks/useNotes';
-import { getRecommendCacheState, hasCandidateS1 } from '../utils/recommendCache';
+import { fetchRelatedNotes, type RelatedNoteSummary } from '../services/relatedNotes';
+import { getRecommendCacheState } from '../utils/recommendCache';
 
 interface RelatedNotesDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedNoteId: string | null;
-  allNotes: Note[];
+  selectedNote: Note | null;
   onRefreshRecommendCache?: (noteId: string) => Promise<void>;
 }
 
-interface RelatedNoteItem {
-  id: string;
-  note: Note;
-  s1: number | null;
-  s2: number;
-  finalScore: number;
-  type: string;
-  reason: string;
+type RequestState = 'idle' | 'loading' | 'success' | 'error';
+type RefreshState = 'idle' | 'refreshing' | 'error';
+
+function relationshipStrengthLabel(scoreBand: RelatedNoteSummary['scoreBand']): string {
+  return scoreBand === 'supported' ? '关联线索较强' : '可能相关';
 }
 
-export default function RelatedNotesDrawer({ 
-  isOpen, 
-  onClose, 
-  selectedNoteId,
-  allNotes,
+export default function RelatedNotesDrawer({
+  isOpen,
+  onClose,
+  selectedNote,
   onRefreshRecommendCache,
 }: RelatedNotesDrawerProps) {
-  const router = useRouter();
-  const [refreshState, setRefreshState] = useState<'idle' | 'refreshing' | 'success' | 'error'>('idle');
+  const [relationships, setRelationships] = useState<RelatedNoteSummary[]>([]);
+  const [requestState, setRequestState] = useState<RequestState>('idle');
+  const [refreshState, setRefreshState] = useState<RefreshState>('idle');
+  const [reloadKey, setReloadKey] = useState(0);
   const lastAttemptKeyRef = useRef<string | null>(null);
+  const wasOpenRef = useRef(false);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const cacheState = useMemo(() => getRecommendCacheState(selectedNote), [selectedNote]);
+  const selectedNoteId = selectedNote?._id;
 
-  const currentNote = useMemo(
-    () => (selectedNoteId ? allNotes.find((n) => n._id === selectedNoteId) ?? null : null),
-    [selectedNoteId, allNotes]
-  );
-  const cacheState = useMemo(() => getRecommendCacheState(currentNote), [currentNote]);
+  if (isOpen && !wasOpenRef.current && typeof document !== 'undefined') {
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
+  wasOpenRef.current = isOpen;
+
+  useEffect(() => {
+    if (isOpen && !selectedNote) onClose();
+  }, [isOpen, onClose, selectedNote]);
 
   useEffect(() => {
     if (!isOpen) {
       setRefreshState('idle');
       lastAttemptKeyRef.current = null;
-      return;
     }
-    setRefreshState('idle');
-  }, [selectedNoteId, isOpen]);
+  }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !currentNote || !onRefreshRecommendCache || !cacheState.needsRefresh) return;
+    if (!isOpen || !selectedNoteId) {
+      setRelationships([]);
+      setRequestState('idle');
+      return;
+    }
 
-    // A refresh is scoped to the selected Note revision. List polling can
-    // replace the same-revision snapshot (and its timestamps/cache metadata),
-    // but that must not turn one failed attempt into a retry loop.
-    const attemptKey = `${currentNote._id}:${currentNote.revision}`;
+    const controller = new AbortController();
+    setRelationships([]);
+    setRequestState('loading');
+    void fetchRelatedNotes(selectedNoteId, controller.signal)
+      .then((nextRelationships) => {
+        if (controller.signal.aborted) return;
+        setRelationships(nextRelationships);
+        setRequestState('success');
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setRequestState('error');
+      });
 
+    return () => controller.abort();
+  }, [isOpen, reloadKey, selectedNoteId]);
+
+  useEffect(() => {
+    if (!isOpen || !selectedNote || !onRefreshRecommendCache || !cacheState.needsRefresh) return;
+    const attemptKey = `${selectedNote._id}:${selectedNote.revision}`;
     if (lastAttemptKeyRef.current === attemptKey) return;
-    lastAttemptKeyRef.current = attemptKey;
 
+    lastAttemptKeyRef.current = attemptKey;
     let cancelled = false;
     setRefreshState('refreshing');
-
-    void onRefreshRecommendCache(currentNote._id)
+    void onRefreshRecommendCache(selectedNote._id)
       .then(() => {
         if (cancelled) return;
-        setRefreshState('success');
+        setRefreshState('idle');
+        setReloadKey((value) => value + 1);
       })
       .catch(() => {
         if (cancelled) return;
@@ -74,165 +97,72 @@ export default function RelatedNotesDrawer({
     return () => {
       cancelled = true;
     };
-  }, [cacheState.needsRefresh, cacheState.status, currentNote, isOpen, onRefreshRecommendCache]);
+  }, [cacheState.needsRefresh, isOpen, onRefreshRecommendCache, selectedNote]);
 
-  // 直接利用本地缓存中的大模型打分进行关联推荐，无需发网络请求
-  const relatedNotes = useMemo(() => {
-    if (!currentNote || !currentNote.recommendCache?.byCandidateId) {
-      return [];
-    }
-
-    const byCandidateId = currentNote.recommendCache.byCandidateId;
-    
-    // 提取并过滤已经被删除的笔记
-    const candidates: RelatedNoteItem[] = Object.entries(byCandidateId)
-      .map(([id, data]: [string, any]) => {
-        const note = allNotes.find(n => String(n._id) === String(id));
-        const s1 = hasCandidateS1(data) ? Number(data.s1) : null;
-        const s2 = data.s2 || 0;
-        // 最终融合得分计算公式：0.3 * s1 + 0.7 * s2
-        const finalScore = 0.3 * (s1 ?? 0) + 0.7 * s2;
-
-        return {
-          id,
-          note: note as Note,
-          s1,
-          s2,
-          finalScore,
-          type: data.type || '',
-          reason: data.reason || ''
-        };
-      })
-      .filter(item => item.note != null);
-
-    // 按照最终融合得分降序排列，只展示大模型得分较高且不为“弱关联”的笔记，取前 5 篇
-    // 提高门槛：s2 必须大于等于 0.7 才能被视为强相关
-    const related = candidates
-      .filter(c => c.s2 >= 0.7 && c.type !== '弱关联')
-      .sort((a, b) => b.finalScore - a.finalScore)
-      .slice(0, 5);
-
-    return related;
-  }, [allNotes, currentNote]);
-
-  const showRefreshingMessage = refreshState === 'refreshing';
-  const showRefreshSuccess = refreshState === 'success' && cacheState.status !== 'current-empty';
-  const showRefreshError = refreshState === 'error';
-  const showLoadingState = relatedNotes.length === 0 && (showRefreshingMessage || cacheState.status === 'missing');
-  const showResolvedEmptyState = relatedNotes.length === 0 && !showLoadingState;
-
-  const formatMetric = (value: number | null) => (value == null ? '--' : value.toFixed(2));
+  const sourceLabel = selectedNote?.title || '当前笔记';
+  const showLoading = requestState === 'idle' || requestState === 'loading';
 
   return (
-    <>
-      {/* 遮罩层：点击外部关闭抽屉 */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 z-[1000] bg-black/10 backdrop-blur-[2px] transition-opacity" 
-          onClick={onClose}
-        />
-      )}
-      {/* 侧边栏抽屉本体 — 浮出卡片效果 */}
-      <div
-        className={`fixed top-3 right-3 bottom-3 w-[360px] md:w-[400px] bg-white/85 backdrop-blur-xl border border-gray-200/30 shadow-xl z-[1001] transform transition-transform duration-300 ease-in-out flex flex-col rounded-2xl overflow-hidden ${isOpen ? 'translate-x-0' : 'translate-x-[calc(100%+12px)]'}`}
+    <Dialog open={isOpen && !!selectedNote} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DrawerContent
+        aria-describedby={undefined}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusRef.current?.focus();
+        }}
+        className="w-[min(100%,25rem)] max-w-[calc(100%-1rem)] gap-0 overflow-hidden p-0"
       >
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">相关笔记</h2>
-          <button 
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors border-none bg-transparent outline-none"
-            aria-label="关闭"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        {(showRefreshingMessage || showRefreshSuccess || showRefreshError) && (
-          <div className={`mx-6 mt-4 rounded-xl px-4 py-3 text-sm ${
-            showRefreshError
-              ? 'bg-amber-50 text-amber-700'
-              : showRefreshSuccess
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'bg-blue-50 text-blue-700'
-          }`}>
-            {showRefreshError
-              ? '推荐刷新失败，请稍后重试'
-              : showRefreshSuccess
-                ? '相关推荐已更新'
-                : '正在刷新相关推荐...'}
-          </div>
-        )}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
-          {relatedNotes.length > 0 ? (
-            relatedNotes.map(item => (
-              <div 
-                key={item.id} 
-                className="p-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:shadow-sm hover:border-gray-200 transition-all cursor-pointer flex flex-col gap-2"
-                onClick={() => {
-                  onClose();
-                  router.push(`/notes?highlight=${item.id}`);
-                }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-medium text-gray-900 truncate flex-1">{item.note.title || '无标题'}</div>
-                  {item.type && (
-                    <span className="shrink-0 bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 text-[10px] font-medium border-none">
-                      {item.type}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 text-[10px] text-gray-400 font-mono bg-gray-100/50 p-1.5 rounded-lg border border-gray-100">
-                  <div className="flex flex-col">
-                    <span className="text-gray-500 font-semibold text-[11px]">{item.finalScore.toFixed(2)}</span>
-                    <span>综合分</span>
-                  </div>
-                  <div className="w-px h-6 bg-gray-200"></div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-500 font-semibold text-[11px]">{formatMetric(item.s1)}</span>
-                    <span>向量(s1)</span>
-                  </div>
-                  <div className="w-px h-6 bg-gray-200"></div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-500 font-semibold text-[11px]">{item.s2.toFixed(2)}</span>
-                    <span>模型(s2)</span>
-                  </div>
-                </div>
-                <div className="text-sm text-gray-600 line-clamp-3">
-                  {item.note.contentText || item.note.content || '暂无内容...'}
-                </div>
-                {item.reason && (
-                  <div className="mt-2 text-xs text-gray-400 bg-gray-100/50 p-2 rounded-lg leading-relaxed">
-                    💡 {item.reason}
-                  </div>
-                )}
-              </div>
-            ))
-          ) : showLoadingState ? (
-            <div className="flex flex-col items-center justify-center text-center mt-20 gap-3">
-              <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-gray-500" />
-              <div className="text-gray-600 font-medium">正在计算相关推荐</div>
-              <div className="text-xs text-gray-400 max-w-[220px]">
-                这条笔记的旧缓存正在刷新，稍后会显示最新的向量分数和相关结果
-              </div>
-            </div>
-          ) : showResolvedEmptyState ? (
-            <div className="flex flex-col items-center justify-center text-center mt-20 gap-3">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-300" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <circle cx="10" cy="13" r="2"></circle>
-                <line x1="11.4" y1="14.4" x2="15" y2="18"></line>
-              </svg>
-              <div className="text-gray-500 font-medium">暂无强相关的笔记内容</div>
-              <div className="text-xs text-gray-400 max-w-[200px]">
-                后台可能正在异步计算中，或者该笔记内容尚未达到强关联阈值
-              </div>
+        <header className="flex items-center justify-between border-b px-5 py-4 [border-color:var(--color-border-default)]">
+          <DialogTitle className="text-lg font-semibold">相关笔记</DialogTitle>
+          <DialogClose asChild>
+            <button type="button" className="min-h-11 min-w-11 rounded-[var(--radius-md)] [color:var(--color-text-secondary)] hover:[background:var(--color-surface-subtle)]" aria-label="关闭相关笔记">
+              <span aria-hidden="true">×</span>
+            </button>
+          </DialogClose>
+        </header>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
+          {refreshState === 'refreshing' ? (
+            <p role="status" className="m-0 text-sm [color:var(--color-text-secondary)]">正在更新相关笔记…</p>
+          ) : null}
+          {refreshState === 'error' ? (
+            <p role="status" className="m-0 text-sm [color:var(--color-status-warning)]">相关推荐更新失败，显示当前可用结果。</p>
+          ) : null}
+
+          {showLoading ? (
+            <div role="status" className="py-12 text-center text-sm [color:var(--color-text-secondary)]">正在加载相关笔记…</div>
+          ) : null}
+
+          {requestState === 'error' ? (
+            <div role="alert" className="grid gap-3 py-12 text-center">
+              <p className="m-0 text-sm [color:var(--color-text-secondary)]">无法加载相关笔记，请稍后重试。</p>
+              <button type="button" className="min-h-11 justify-self-center rounded-[var(--radius-md)] px-3 text-sm font-medium [background:var(--color-action-secondary)] [color:var(--color-text-primary)]" onClick={() => setReloadKey((value) => value + 1)}>重试</button>
             </div>
           ) : null}
+
+          {requestState === 'success' && relationships.length === 0 ? (
+            <div className="py-12 text-center">
+              <p className="m-0 text-sm font-medium [color:var(--color-text-secondary)]">暂无相关笔记</p>
+              <p className="mt-2 text-xs [color:var(--color-text-tertiary)]">这条笔记暂时没有可展示的关联结果。</p>
+            </div>
+          ) : null}
+
+          {relationships.map((relationship) => (
+            <article key={relationship.id} className="grid gap-3 rounded-[var(--radius-lg)] border p-4 [background:var(--color-surface-subtle)] [border-color:var(--color-border-default)]">
+              <RelationshipCue
+                sourceLabel={sourceLabel}
+                targetLabel={relationship.title || '无标题'}
+                href={`/notes?highlight=${encodeURIComponent(relationship.id)}`}
+                onLinkClick={onClose}
+                kind={relationship.type || undefined}
+                explanation={relationship.reason || undefined}
+              />
+              <p className="m-0 text-xs [color:var(--color-text-tertiary)]">{relationshipStrengthLabel(relationship.scoreBand)}</p>
+              {relationship.contentText ? <p className="m-0 line-clamp-3 text-sm [color:var(--color-text-secondary)]">{relationship.contentText}</p> : null}
+            </article>
+          ))}
         </div>
-      </div>
-    </>
+      </DrawerContent>
+    </Dialog>
   );
 }
