@@ -19,6 +19,9 @@ const coreRouteStyles = [
   '../app/notes/styles/layout.module.scss',
   '../app/notes/styles/note-card.module.scss',
 ] as const;
+const designatedSyntaxHighlightSelectors = new Set<string>([
+  // The scoped Notes styles currently define no syntax-highlight selectors.
+]);
 const rawHexAllowlist = [
   {
     path: '../app/notes/styles/layout.module.scss',
@@ -54,13 +57,6 @@ const rawHexAllowlist = [
     property: /^background$/,
     value: /(?:radial|linear)-gradient\(/,
     purpose: 'editor atmosphere output',
-  },
-  {
-    path: '../app/notes/styles/note-card.module.scss',
-    selector: /^:global\(\.hljs(?:[-\w]*)?\)$/,
-    property: /^color$/,
-    value: /#[\da-f]{3,8}\b/i,
-    purpose: 'temporary editor syntax output',
   },
 ] as const;
 const lightSemanticTokens = [
@@ -155,13 +151,21 @@ function declarationFor(source: string, index: number) {
 
 function hasAllowedRawHex(path: string, source: string, index: number) {
   const declaration = declarationFor(source, index);
+  const isDesignatedSyntaxHighlight =
+    path === '../app/notes/styles/note-card.module.scss' &&
+    designatedSyntaxHighlightSelectors.has(declaration.selector) &&
+    declaration.property === 'color' &&
+    /#[\da-f]{3,8}\b/i.test(declaration.value);
 
-  return rawHexAllowlist.some(
-    (allowance) =>
-      allowance.path === path &&
-      allowance.selector.test(declaration.selector) &&
-      allowance.property.test(declaration.property) &&
-      allowance.value.test(declaration.value),
+  return (
+    isDesignatedSyntaxHighlight ||
+    rawHexAllowlist.some(
+      (allowance) =>
+        allowance.path === path &&
+        allowance.selector.test(declaration.selector) &&
+        allowance.property.test(declaration.property) &&
+        allowance.value.test(declaration.value),
+    )
   );
 }
 
@@ -260,13 +264,11 @@ describe('style foundation contract', () => {
     expect(hasAllowedRawHex('../app/notes/styles/layout.module.scss', source, unrelatedColorIndex)).toBe(false);
   });
 
-  it('does not let a non-syntax declaration piggyback on an hljs selector', () => {
-    const source = ':global(.hljs) { color: #123456; border-color: #654321; }';
-    const syntaxColorIndex = source.indexOf('#123456');
-    const nonSyntaxColorIndex = source.indexOf('#654321');
+  it('rejects raw colors in non-designated syntax selectors', () => {
+    const source = ':global(.hljs) { color: #123456; } :global(.hljs-evil) { color: #654321; }';
 
-    expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, syntaxColorIndex)).toBe(true);
-    expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, nonSyntaxColorIndex)).toBe(false);
+    expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, source.indexOf('#123456'))).toBe(false);
+    expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, source.indexOf('#654321'))).toBe(false);
   });
 
   it('does not allow a descendant selector to inherit an atmosphere exception', () => {
