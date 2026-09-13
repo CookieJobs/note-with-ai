@@ -75,4 +75,13 @@ describe('fetchRelatedNotes', () => {
     vi.mocked(authFetch).mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { sourceRevision: 3, relationships: [exact] } }) } as Response);
     await expect(fetchRelatedNotes('source-1')).resolves.toEqual([exact]);
   });
+
+  it('rejects a shape-valid but calendar-invalid canonical timestamp', async () => {
+    vi.mocked(authFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { sourceRevision: 3, relationships: [{ ...relationship, createdAt: '2026-02-30T00:00:00.000Z' }] } }),
+    } as Response);
+
+    await expect(fetchRelatedNotes('source-1')).rejects.toThrow('相关笔记响应无效');
+  });
 });
