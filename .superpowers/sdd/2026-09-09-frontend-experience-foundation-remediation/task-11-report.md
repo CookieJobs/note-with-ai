@@ -70,3 +70,9 @@ The follow-up implementation is `f53f572` (`fix(notes): harden related note summ
 - The relationship target itself is the semantic primary link and carries `min-h-11 min-w-11`; no nested control was introduced.
 
 Round evidence: focused frontend tests passed 16 tests; full backend passed 168 tests plus typecheck/build; full frontend passed 35 files and 227 tests plus typecheck/lint/build; `git diff --check` passed.
+
+## Fix round 2/5
+
+The follow-up implementation is `413133f` (`fix(notes): key related request state`). The drawer now keeps note ID, status, relationships, and error in one request object and derives an immediate loading state whenever that object belongs to a different source. Regressions cover settled A success → B and settled A error → B as well as the prior late-pending A case. Client boundary tests independently reject title/content/type/reason overages and noncanonical ISO timestamps, and accept the exact 200/2000/80/500 limits.
+
+Round evidence: focused frontend tests passed 17 tests; full backend passed 168 tests plus typecheck/build; full frontend passed 35 files and 235 tests plus typecheck/lint/build; `git diff --check` passed.
