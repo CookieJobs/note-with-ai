@@ -8,7 +8,7 @@ Date: 2026-09-14
 | --- | --- |
 | `cd frontend && npm run lint` | PASS |
 | `cd frontend && npm run typecheck` | PASS |
-| `cd frontend && npm test` | PASS, 39 files and 278 tests |
+| `cd frontend && npm test` | PASS, 39 files and 281 tests |
 | `cd frontend && npm run build` | PASS |
 | `cd frontend && npm run test:a11y` | PASS, 3 core-state tests |
 | `cd frontend && npm run check:route-budgets` | PASS, `/notes` 231.0 kB and 45.1% reduction |
@@ -55,6 +55,8 @@ Automated, deterministic coverage supplies the remaining available matrix eviden
 
 Root's live production matrix on the authenticated 1000-note account at 320/390/768/1440px found and measured concrete sub-44px controls before fix round 4: the shared brand link (27px), Notes quick-compose opener and add-keyword controls (24px), Chat refresh (36px) and note-source action (18px), Inspiration action buttons/links (37px), and Profile edit/password/update/collapse controls (36px). The implementation raises those to the product's 44px target and also fixes analogous actionable compact controls found in the approved seven-route source scan: Auth tabs/password/footer actions, Memory edit/delete/evidence actions, Publish card/preview actions, TopNavigation account/menu actions, Chat drawer/delete actions, Notes rich-editor/bubble/URL/compose actions, and RelatedNoteCard expansion. Visual glyphs/text remain compact inside their larger physical target. The 18px Inspiration checkbox is intentionally unchanged because its associated `.consent` label now provides the actual 44px-plus hit target; decorative icons, skeletons, drag affordances, and status badges are not controls.
 
+Fix round 5 also corrects the keyword-chip semantics exposed by the larger controls: the prior `span[role=button]` contained a native delete button, whose absolute 44px area could overlap neighboring chips. A noninteractive normal-flow grid now contains distinct sibling edit/delete buttons. Both controls are 44px, the edit column wraps long labels, and the delete column reserves its own width. Focused DOM and keyboard tests reject nested interactive controls, prove edit/delete keyboard activation, preserve deletion stop-propagation, and reject an absolute delete layout.
+
 Root supplied the 1000-note live measurements above, but the post-fix 320/390/768/1440 rerun, 251-note account, browser-driven theme toggle, and VoiceOver session remain **pending root verification**. Consequently the full route-by-route matrix and three rendered Profile-atmosphere screenshots are still open manual P1 acceptance requirements, not waived automated failures. Automated gates did not report a P0/P1, but no final zero-P1 ruling can be made until the root verification matrix is completed.
 
 ## Impeccable acceptance review
@@ -81,6 +83,8 @@ The remediation was reopened to fix acceptance defects rather than waive them. T
 
 Fix round 4 explicitly chose 44px physical targets for the root-measured controls and their analogous in-scope counterparts, preserving compact visible glyphs/text rather than retaining undersized hit areas. This applies only to the approved Notes, Chat, Memory, Inspiration, Profile, Publish, and Auth matrix and their listed shared components; it excludes `/admin/**` and the separate public `/p/[slug]` route. The root-supplied live findings are implementation evidence, not completion of the required post-fix manual matrix.
 
+Fix round 5 accepts a small keyword-row density cost to eliminate an invalid nested interactive structure and overlapping touch area. The rejected alternative—preserving a clickable role-button wrapper around the native delete button or hiding an absolute 44px delete target over adjacent chips—would fail semantic and touch-target acceptance.
+
 ## Hashes
 
 - Task 14 start: `083cd8ec559e5a824f80fdb27068b878a83aa189`
@@ -89,3 +93,4 @@ Fix round 4 explicitly chose 44px physical targets for the root-measured control
 - Task 14 fix round 2 implementation: `8e4cf3dbe398132e464afd0be461d0fd4292b3cd`
 - Task 14 fix round 3 implementation: `ff4f32eba2bd41c63061e582379e7ee346229ff0`
 - Task 14 fix round 4 implementation: `1875798cfe769e3deb7ef40fafeee2ddc031862d`
+- Task 14 fix round 5 implementation: `2e9cb6f1be042c71df7914f56823efe83596223c`
