@@ -33,6 +33,11 @@ const note: Note = {
   updatedAt: '2026-08-19T00:00:00.000Z',
 };
 
+const noteWithKeywords: Note = {
+  ...note,
+  keywords: ['计划', '长关键词用于窄屏换行'],
+};
+
 describe('ModernNoteCard title conflict feedback', () => {
   it('keeps a title conflict visible through the native save mousedown-to-blur sequence and retries explicitly', async () => {
     const current: Note = {
@@ -226,5 +231,52 @@ describe('ModernNoteCard touch-safe actions', () => {
     title.focus();
     fireEvent.keyDown(title, { key: 'Enter' });
     expect(screen.getByPlaceholderText('添加标题...')).toHaveFocus();
+  });
+
+  it('uses separate semantic edit and delete buttons for each keyword without nested interactive controls', () => {
+    render(
+      <ModernNoteCard
+        note={noteWithKeywords}
+        onRequestDelete={vi.fn()}
+        updateNote={vi.fn().mockResolvedValue(noteWithKeywords)}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '编辑关键词：计划' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '删除关键词：计划' })).toBeInTheDocument();
+    expect(document.querySelector('[role="button"] button, button button')).toBeNull();
+  });
+
+  it('edits and deletes keywords from their native keyboard controls without bubbling deletion to the card', async () => {
+    const updateNote = vi.fn().mockResolvedValue(noteWithKeywords);
+    const cardClick = vi.fn();
+    render(
+      <div onClick={cardClick}>
+        <ModernNoteCard
+          note={noteWithKeywords}
+          onRequestDelete={vi.fn()}
+          updateNote={updateNote}
+        />
+      </div>,
+    );
+
+    const edit = screen.getByRole('button', { name: '编辑关键词：计划' });
+    fireEvent.keyDown(edit, { key: 'Enter' });
+    expect(screen.getByDisplayValue('计划')).toHaveFocus();
+    fireEvent.keyDown(screen.getByDisplayValue('计划'), { key: 'Escape' });
+
+    const remove = screen.getByRole('button', { name: '删除关键词：计划' });
+    fireEvent.keyDown(remove, { key: 'Enter' });
+    await waitFor(() => expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({
+      changes: { keywords: ['长关键词用于窄屏换行'] },
+    })));
+    expect(cardClick).not.toHaveBeenCalled();
+  });
+
+  it('keeps 44px keyword controls in normal-flow wrappers so adjacent chips cannot overlap', () => {
+    expect(noteCardStyles).toMatch(/\.keywordControl\s*\{[^}]*display:\s*grid[^}]*gap:\s*[^;}]+/);
+    expect(noteCardStyles).toMatch(/\.keywordEditBtn\s*\{[^}]*min-height:\s*44px/);
+    expect(noteCardStyles).toMatch(/\.keywordDeleteBtn\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/);
+    expect(noteCardStyles).not.toMatch(/\.keywordDeleteBtn\s*\{[^}]*position:\s*absolute/);
   });
 });

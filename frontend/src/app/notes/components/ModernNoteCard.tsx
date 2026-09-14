@@ -627,27 +627,42 @@ export default function ModernNoteCard({
                     }}
                   />
                 ) : (
-                  <span
-                    key={idx}
-                    className={`${cardStyles.keyword} !bg-gray-100 hover:!bg-gray-200 !text-gray-600 !rounded-full !text-xs !border-none !px-3 !py-1`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => beginKeywordEdit(idx, kw)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') beginKeywordEdit(idx, kw); }}
-                  >
-                    {kw}
+                  <div key={idx} className={cardStyles.keywordControl}>
                     <button
                       type="button"
-                      className={`${cardStyles.keywordDeleteBtn} !bg-white !text-gray-500 hover:!text-red-500 !border-gray-200`}
-                      aria-label="删除关键词"
+                      className={cardStyles.keywordEditBtn}
+                      aria-label={`编辑关键词：${kw}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteKeywordAt(idx);
+                        beginKeywordEdit(idx, kw);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter' && e.key !== ' ') return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        beginKeywordEdit(idx, kw);
+                      }}
+                    >
+                      {kw}
+                    </button>
+                    <button
+                      type="button"
+                      className={cardStyles.keywordDeleteBtn}
+                      aria-label={`删除关键词：${kw}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void deleteKeywordAt(idx);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter' && e.key !== ' ') return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void deleteKeywordAt(idx);
                       }}
                     >
                       ×
                     </button>
-                  </span>
+                  </div>
                 )
               ))
                   ) : null}

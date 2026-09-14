@@ -196,7 +196,7 @@
   box-shadow: none;
 }
 
-.workspaceOverlayPanel .keyword {
+.workspaceOverlayPanel .keywordEditBtn {
   background: var(--notes-card-tone-027);
   border-color: var(--notes-card-tone-030);
   color: var(--notes-card-tone-040);
@@ -992,7 +992,16 @@
     0 12px 34px var(--notes-card-tone-005);
 }
 
-.keyword {
+.keywordControl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: stretch;
+  gap: 6px;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.keywordEditBtn {
   background: var(--notes-card-tone-047);
   color: var(--notes-card-tone-002);
   padding: 6px 8px;
@@ -1003,9 +1012,14 @@
   border: 1px solid var(--notes-card-tone-052);
   transition: background-color 0.2s ease, border-color 0.2s ease;
   cursor: pointer;
-  position: relative;
-  display: inline-flex; /* 用 flex 做垂直居中，比依赖 line-height 更稳 */
+  display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
 
   &:hover {
     background: var(--notes-card-tone-050);
@@ -1014,11 +1028,12 @@
 }
 
 .keywordDeleteBtn {
-  position: absolute;
-  top: -14px;
-  right: -14px;
+  position: static;
   width: 44px;
   height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
   border-radius: 999px;
   border: 1px solid var(--notes-card-tone-053);
   background: white;
@@ -1031,15 +1046,10 @@
   cursor: pointer;
   box-shadow: 0 2px 6px var(--notes-card-tone-009);
 
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.95);
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
-.keyword:hover .keywordDeleteBtn {
-  opacity: 1;
-  pointer-events: auto;
+.keywordDeleteBtn:hover {
   transform: scale(1);
 }
 
