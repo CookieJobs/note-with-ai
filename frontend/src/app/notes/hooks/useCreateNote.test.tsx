@@ -120,6 +120,43 @@ describe('useCreateNote', () => {
     expect(localStorage.getItem('quick-capture-draft:alice')).toBe(raw);
   });
 
+  it.each([
+    ['a top-level text node', { type: 'doc', content: [{ type: 'text', text: '不能直接放在文档根部' }] }],
+    ['marks on a block node', { type: 'doc', content: [{ type: 'paragraph', marks: [{ type: 'bold' }], content: [] }] }],
+    ['a nested block inside an inline container', { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'heading', content: [] }] }] }],
+    ['an inline leaf with nested content', { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'hardBreak', content: [{ type: 'text', text: '不能嵌套' }] }] }] }],
+  ])('recovers plain text when the draft contains %s', (_caseName, json) => {
+    localStorage.setItem('quick-capture-draft:alice', JSON.stringify({ version: 1, text: '仍可恢复的文字', json }));
+
+    const { result } = renderHook(() => useCreateNote(vi.fn(), { userId: 'alice' }));
+
+    expect(result.current.newContentText).toBe('仍可恢复的文字');
+    expect(result.current.newContentJson).toBeNull();
+    expect(result.current.saveError).toContain('格式无法恢复');
+  });
+
+  it('recovers a document at supported block, inline, leaf, and mark boundaries', () => {
+    const json = {
+      type: 'doc',
+      content: [
+        {
+          type: 'blockquote',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: '带格式的正文', marks: [{ type: 'bold' }, { type: 'link', attrs: { href: 'https://example.com' } }] }, { type: 'hardBreak' }] }],
+        },
+        { type: 'codeBlock', content: [{ type: 'text', text: 'const answer = 42;' }] },
+        { type: 'image', attrs: { src: 'https://example.com/image.png', alt: '示例图片' } },
+        { type: 'horizontalRule' },
+        { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableHeader', content: [{ type: 'paragraph', content: [] }] }, { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: '单元格' }] }] }] }] },
+      ],
+    };
+    localStorage.setItem('quick-capture-draft:alice', JSON.stringify({ version: 1, text: '仍可恢复的文字', json }));
+
+    const { result } = renderHook(() => useCreateNote(vi.fn(), { userId: 'alice' }));
+
+    expect(result.current.newContentText).toBe('仍可恢复的文字');
+    expect(result.current.newContentJson).toEqual(json);
+  });
+
   it('retains a failed save across remount and clears the persisted draft only after a successful retry', async () => {
     const createNote = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(createdNote);
     const first = renderHook(() => useCreateNote(createNote, { userId: 'alice' }));

@@ -124,13 +124,13 @@ body {
 /* 全局选中背景（避免浏览器默认紫色） */
 ::selection,
 *::selection {
-  background: rgba(0, 122, 255, 0.3);
+  background: color-mix(in srgb, var(--color-action-primary) 30%, transparent);
   color: inherit;
 }
 
 ::-moz-selection,
 *::-moz-selection {
-  background: rgba(0, 122, 255, 0.3);
+  background: color-mix(in srgb, var(--color-action-primary) 30%, transparent);
   color: inherit;
 }
 

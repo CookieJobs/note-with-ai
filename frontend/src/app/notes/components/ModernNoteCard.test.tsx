@@ -220,7 +220,7 @@ describe('ModernNoteCard touch-safe actions', () => {
     const remove = screen.getByRole('menuitem', { name: '删除笔记' });
     await waitFor(() => expect(remove).toHaveFocus());
     fireEvent.keyDown(remove, { key: 'Enter' });
-    expect(onRequestDelete).toHaveBeenCalledWith('note-1');
+    expect(onRequestDelete).toHaveBeenCalledWith('note-1', expect.objectContaining({ current: trigger }));
 
     const title = screen.getByRole('button', { name: '编辑标题' });
     title.focus();

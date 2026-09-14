@@ -23,29 +23,86 @@ const emptySession = (userId: string | null): Session => ({
   localDraftState: 'empty', draftRestored: false, saveState: 'idle', savedNote: null, error: '',
 });
 
-const richTextNodes = new Set([
-  'doc', 'paragraph', 'text', 'hardBreak', 'heading', 'bulletList', 'orderedList', 'listItem',
-  'blockquote', 'codeBlock', 'taskList', 'taskItem', 'image', 'table', 'tableRow',
-  'tableHeader', 'tableCell', 'horizontalRule',
-]);
 const richTextMarks = new Set(['bold', 'italic', 'strike', 'code', 'link', 'highlight']);
 
-function isSafeRichTextNode(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const node = value as Record<string, unknown>;
-  if (typeof node.type !== 'string' || !richTextNodes.has(node.type)) return false;
-  if (node.type === 'text' && typeof node.text !== 'string') return false;
-  if (node.content !== undefined && (!Array.isArray(node.content) || !node.content.every(isSafeRichTextNode))) return false;
-  if (node.marks !== undefined && (!Array.isArray(node.marks) || !node.marks.every((mark) => (
+type RichTextNode = Record<string, unknown> & { type: string; content?: unknown[] };
+
+const blockNodeTypes = new Set([
+  'paragraph', 'heading', 'bulletList', 'orderedList', 'blockquote', 'codeBlock', 'taskList',
+  'image', 'table', 'horizontalRule',
+]);
+const inlineNodeTypes = new Set(['text', 'hardBreak']);
+const leafNodeTypes = new Set(['text', 'hardBreak', 'image', 'horizontalRule']);
+
+function hasOnlyChildren(value: RichTextNode, allowed: Set<string>, options: { min?: number; marks?: boolean } = {}) {
+  if (value.marks !== undefined && (!options.marks || !areSafeRichTextMarks(value.marks))) return false;
+  if (!Array.isArray(value.content)) return (options.min ?? 0) === 0 && value.content === undefined;
+  if (value.content.length < (options.min ?? 0)) return false;
+  return value.content.every((child) => isSafeRichTextNode(child, allowed, options.marks ?? false));
+}
+
+function areSafeRichTextMarks(value: unknown): boolean {
+  return Array.isArray(value) && value.every((mark) => (
     !!mark && typeof mark === 'object' && !Array.isArray(mark)
       && typeof (mark as Record<string, unknown>).type === 'string'
       && richTextMarks.has((mark as Record<string, string>).type)
-  )))) return false;
-  return true;
+  ));
+}
+
+// This mirrors the static content expressions configured by richTextPreset.ts.
+// Keeping it data-only avoids pulling Tiptap and its schema into the Notes entry chunk.
+function isSafeRichTextNode(value: unknown, allowedTypes: Set<string>, marksAllowed: boolean): value is RichTextNode {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const node = value as RichTextNode;
+  if (!allowedTypes.has(node.type)) return false;
+  if (leafNodeTypes.has(node.type) && node.content !== undefined) return false;
+  if (node.type === 'text') return typeof node.text === 'string' && (node.marks === undefined || (marksAllowed && areSafeRichTextMarks(node.marks)));
+  if (node.type === 'hardBreak') return node.marks === undefined || (marksAllowed && areSafeRichTextMarks(node.marks));
+  if (node.marks !== undefined) return false;
+
+  switch (node.type) {
+    case 'doc':
+      return Array.isArray(node.content);
+    case 'paragraph':
+    case 'heading':
+      return hasOnlyChildren(node, inlineNodeTypes, { marks: true });
+    case 'codeBlock':
+      return hasOnlyChildren(node, new Set(['text']), { marks: false });
+    case 'blockquote':
+      return hasOnlyChildren(node, blockNodeTypes, { min: 1 });
+    case 'bulletList':
+    case 'orderedList':
+      return hasOnlyChildren(node, new Set(['listItem']), { min: 1 });
+    case 'taskList':
+      return hasOnlyChildren(node, new Set(['taskItem']), { min: 1 });
+    case 'listItem':
+    case 'taskItem': {
+      if (!Array.isArray(node.content) || node.content.length < 1) return false;
+      const [first, ...rest] = node.content;
+      return isSafeRichTextNode(first, new Set(['paragraph']), false)
+        && rest.every((child) => isSafeRichTextNode(child, blockNodeTypes, false));
+    }
+    case 'table':
+      return hasOnlyChildren(node, new Set(['tableRow']), { min: 1 });
+    case 'tableRow':
+      return hasOnlyChildren(node, new Set(['tableCell', 'tableHeader']));
+    case 'tableCell':
+    case 'tableHeader':
+      return hasOnlyChildren(node, blockNodeTypes, { min: 1 });
+    case 'image':
+    case 'horizontalRule':
+      return true;
+    default:
+      return false;
+  }
 }
 
 function isSafeRichTextDocument(value: unknown): value is RichTextDocument {
-  return isSafeRichTextNode(value) && value.type === 'doc' && Array.isArray(value.content);
+  return isSafeRichTextNode(value, new Set(['doc']), false)
+    && value.type === 'doc'
+    && Array.isArray(value.content)
+    && value.content.length > 0
+    && value.content.every((child) => isSafeRichTextNode(child, blockNodeTypes, false));
 }
 
 function restoreDraft(userId: string | null): Session {

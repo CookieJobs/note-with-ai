@@ -137,6 +137,11 @@ describe('core rendered accessibility states', () => {
     await expectNoAxeViolations(document.body);
     fireEvent.keyDown(screen.getByRole('dialog', { name: '用你的话重新表述' }), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '删除这条记忆' }));
+    await screen.findByRole('dialog', { name: '删除这条记忆' });
+    await expectNoAxeViolations(document.body);
+    fireEvent.keyDown(screen.getByRole('dialog', { name: '删除这条记忆' }), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     memoryView.unmount();
 
     const chatView = render(<ChatHistoryPanel sessions={[{ id: 'session-1', title: '旅行计划', messages: [], createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z' }]} currentSessionId="session-1" isClient isOpen onClose={vi.fn()} onSessionSelect={vi.fn()} onNewSession={vi.fn()} onDeleteSession={vi.fn()} />);

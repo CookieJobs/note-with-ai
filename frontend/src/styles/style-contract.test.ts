@@ -11,54 +11,23 @@ const chatStyles = readFileSync(new URL('../app/chat/chat.module.scss', import.m
 const memoryPage = readFileSync(new URL('../app/memory/page.tsx', import.meta.url), 'utf8');
 const reducedMotionUrl = new URL('./reduced-motion.scss', import.meta.url);
 const reducedMotion = existsSync(reducedMotionUrl) ? readFileSync(reducedMotionUrl, 'utf8') : '';
-const coreRouteStyles = [
+const businessStylePaths = [
+  './globals.scss',
+  '../app/auth/auth.module.scss',
   '../app/inspiration/inspiration.module.scss',
   '../app/memory/memory.module.scss',
   '../app/publish/publish.module.scss',
   '../app/chat/chat.module.scss',
+  '../app/profile/profile.module.scss',
   '../app/notes/styles/layout.module.scss',
   '../app/notes/styles/note-card.module.scss',
+  '../app/notes/styles/floating-compose.module.scss',
+  '../app/notes/styles/rich-editor.module.scss',
+  '../components/TopNavigation.module.scss',
+  '../components/ChatMessage.module.scss',
+  '../components/RelatedNoteCard.module.scss',
 ] as const;
-const designatedSyntaxHighlightSelectors = new Set<string>([
-  // The scoped Notes styles currently define no syntax-highlight selectors.
-]);
-const rawHexAllowlist = [
-  {
-    path: '../app/notes/styles/layout.module.scss',
-    selector: /^\.container$/,
-    property: /^background$/,
-    value: /(?:radial|linear)-gradient\(/,
-    purpose: 'the notes workspace atmosphere resolver output',
-  },
-  {
-    path: '../app/notes/styles/note-card.module.scss',
-    selector: /^\.workspaceOverlayPanel \.noteCard\.noteCardDetail::before$/,
-    property: /^background$/,
-    value: /(?:radial|linear)-gradient\(/,
-    purpose: 'editor atmosphere output',
-  },
-  {
-    path: '../app/notes/styles/note-card.module.scss',
-    selector: /^\.workspaceOverlayPanel \.noteCard\.noteCardDetail::after$/,
-    property: /^background$/,
-    value: /(?:radial|linear)-gradient\(/,
-    purpose: 'editor atmosphere output',
-  },
-  {
-    path: '../app/notes/styles/note-card.module.scss',
-    selector: /^\.workspaceOverlayPanel \.noteCard\.noteCardDetail\.noteCardEditing \.noteTextWrapperEditing::before$/,
-    property: /^background$/,
-    value: /(?:radial|linear)-gradient\(/,
-    purpose: 'editor atmosphere output',
-  },
-  {
-    path: '../app/notes/styles/note-card.module.scss',
-    selector: /^\.workspaceOverlayPanel \.noteCard\.noteCardDetail\.noteCardEditing \.noteTextWrapperEditing::after$/,
-    property: /^background$/,
-    value: /(?:radial|linear)-gradient\(/,
-    purpose: 'editor atmosphere output',
-  },
-] as const;
+const rawColorLiteral = /#[\da-f]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/gi;
 const lightSemanticTokens = [
   '--color-text-primary',
   '--color-text-secondary',
@@ -129,46 +98,6 @@ function parseColor(value: string) {
   return [Number(rgba[1]), Number(rgba[2]), Number(rgba[3]), Number(rgba[4] ?? 1)] as const;
 }
 
-function declarationFor(source: string, index: number) {
-  const openBrace = source.lastIndexOf('{', index);
-  const declarationStart = Math.max(source.lastIndexOf(';', index), openBrace) + 1;
-  const nextSemicolon = source.indexOf(';', index);
-  const nextBrace = source.indexOf('}', index);
-  const declarationEnd = Math.min(
-    nextSemicolon === -1 ? source.length : nextSemicolon,
-    nextBrace === -1 ? source.length : nextBrace,
-  );
-  const declaration = source.slice(declarationStart, declarationEnd).trim();
-  const [property, ...valueParts] = declaration.split(':');
-  const selectorStart = Math.max(source.lastIndexOf('}', openBrace), source.lastIndexOf('{', openBrace - 1)) + 1;
-
-  return {
-    property: property?.trim() ?? '',
-    value: valueParts.join(':').trim(),
-    selector: source.slice(selectorStart, openBrace).trim(),
-  };
-}
-
-function hasAllowedRawHex(path: string, source: string, index: number) {
-  const declaration = declarationFor(source, index);
-  const isDesignatedSyntaxHighlight =
-    path === '../app/notes/styles/note-card.module.scss' &&
-    designatedSyntaxHighlightSelectors.has(declaration.selector) &&
-    declaration.property === 'color' &&
-    /#[\da-f]{3,8}\b/i.test(declaration.value);
-
-  return (
-    isDesignatedSyntaxHighlight ||
-    rawHexAllowlist.some(
-      (allowance) =>
-        allowance.path === path &&
-        allowance.selector.test(declaration.selector) &&
-        allowance.property.test(declaration.property) &&
-        allowance.value.test(declaration.value),
-    )
-  );
-}
-
 function contrastRatio(first: readonly number[], second: readonly number[]) {
   const composite = (foreground: readonly number[], background: readonly number[]) =>
     foreground.slice(0, 3).map((channel, index) => channel * foreground[3] + background[index] * (1 - foreground[3]));
@@ -230,19 +159,22 @@ describe('style foundation contract', () => {
     expect(globals).toContain('var(--focus-ring)');
   });
 
-  it('honors reduced-motion preferences without unrestricted transitions', () => {
+  it('honors reduced-motion preferences without unrestricted transitions in every business style', () => {
     expect(reducedMotion).toContain('@media (prefers-reduced-motion: reduce)');
-    expect(`${variables}\n${globals}\n${reducedMotion}`).not.toMatch(/transition\s*:\s*all\b/);
+    expect(reducedMotion).toContain('animation-duration: 0.01ms !important');
+    expect(reducedMotion).toContain('transition-duration: 0.01ms !important');
+    for (const path of businessStylePaths) {
+      const source = path === './globals.scss' ? globals : readFileSync(new URL(path, import.meta.url), 'utf8');
+      expect(source, `${path} must not use transition: all`).not.toMatch(/transition\s*:\s*all\b/);
+    }
   });
 
-  it('keeps business route colors on semantic tokens', () => {
-    for (const path of coreRouteStyles) {
-      const source = readFileSync(new URL(path, import.meta.url), 'utf8');
-      const rawHexMatches = [...source.matchAll(/#[\da-f]{3,8}\b/gi)].filter(
-        (match) => !hasAllowedRawHex(path, source, match.index ?? 0),
-      );
+  it('keeps business route and component colors on semantic or component tokens', () => {
+    for (const path of businessStylePaths) {
+      const source = path === './globals.scss' ? globals : readFileSync(new URL(path, import.meta.url), 'utf8');
+      const rawColorMatches = [...source.matchAll(rawColorLiteral)].map((match) => match[0]);
 
-      expect(rawHexMatches, `${path} should not introduce a business-page hex literal`).toEqual([]);
+      expect(rawColorMatches, `${path} should not introduce a raw business color literal`).toEqual([]);
     }
   });
 
@@ -255,31 +187,4 @@ describe('style foundation contract', () => {
     expect(chatStyles).toMatch(/\.relatedNotesFab\s*\{[^}]*height:\s*44px/);
   });
 
-  it('does not let a raw color piggyback on an allowed atmosphere declaration', () => {
-    const source = '.container { background: radial-gradient(circle, #123456, transparent); color: #654321; }';
-    const allowedGradientIndex = source.indexOf('#123456');
-    const unrelatedColorIndex = source.indexOf('#654321');
-
-    expect(hasAllowedRawHex('../app/notes/styles/layout.module.scss', source, allowedGradientIndex)).toBe(true);
-    expect(hasAllowedRawHex('../app/notes/styles/layout.module.scss', source, unrelatedColorIndex)).toBe(false);
-  });
-
-  it('rejects raw colors in non-designated syntax selectors', () => {
-    const source = ':global(.hljs) { color: #123456; } :global(.hljs-evil) { color: #654321; }';
-
-    expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, source.indexOf('#123456'))).toBe(false);
-    expect(hasAllowedRawHex('../app/notes/styles/note-card.module.scss', source, source.indexOf('#654321'))).toBe(false);
-  });
-
-  it('does not allow a descendant selector to inherit an atmosphere exception', () => {
-    const layoutSource = '.container .business-card { background: radial-gradient(circle, #123456, transparent); }';
-    const noteSource = '.workspaceOverlayPanel .business-card { background: radial-gradient(circle, #654321, transparent); }';
-
-    expect(
-      hasAllowedRawHex('../app/notes/styles/layout.module.scss', layoutSource, layoutSource.indexOf('#123456')),
-    ).toBe(false);
-    expect(
-      hasAllowedRawHex('../app/notes/styles/note-card.module.scss', noteSource, noteSource.indexOf('#654321')),
-    ).toBe(false);
-  });
 });

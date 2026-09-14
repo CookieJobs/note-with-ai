@@ -46,6 +46,7 @@ function NotesContent() {
   
   // 删除确认弹窗
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
+  const pendingDeleteOpenerRef = useRef<HTMLElement | null>(null);
   // 页面层统一维护当前活跃编辑壳层
   const [activeEditor, setActiveEditor] = useState<ActiveEditorState>({ type: 'none' });
   const prefersReducedMotion = useReducedMotion();
@@ -354,7 +355,8 @@ function NotesContent() {
                         >
                           <ModernNoteCard
                             note={note}
-                            onRequestDelete={(id) => {
+                            onRequestDelete={(id, openerRef) => {
+                              pendingDeleteOpenerRef.current = openerRef?.current ?? null;
                               setPendingDeleteNoteId(id);
                             }}
                             updateNote={updateNote}
@@ -398,6 +400,7 @@ function NotesContent() {
 
               <DeleteNoteConfirmModal
                 open={!!pendingDeleteNoteId}
+                openerRef={pendingDeleteOpenerRef}
                 onCancel={() => setPendingDeleteNoteId(null)}
                 onConfirm={async () => {
                   const id = pendingDeleteNoteId;

@@ -13,9 +13,9 @@
   --page-top-safe: 0px;
   /* 全局配色：暗色画布（更贴近你给的示例图风格） */
   background:
-    radial-gradient(1200px 700px at 25% 0%, rgba(18, 225, 255, 0.10) 0%, rgba(18, 225, 255, 0.00) 60%),
-    radial-gradient(900px 620px at 85% 20%, rgba(255, 105, 180, 0.07) 0%, rgba(255, 105, 180, 0.00) 55%),
-    linear-gradient(180deg, rgba(6, 10, 14, 1) 0%, rgba(7, 12, 16, 1) 100%);
+    radial-gradient(1200px 700px at 25% 0%, var(--notes-layout-tone-005) 0%, var(--notes-layout-tone-004) 60%),
+    radial-gradient(900px 620px at 85% 20%, var(--notes-layout-tone-018) 0%, var(--notes-layout-tone-017) 55%),
+    linear-gradient(180deg, var(--notes-layout-tone-019) 0%, var(--notes-layout-tone-020) 100%);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
   flex-direction: column;
 }
@@ -61,9 +61,9 @@
 }
 
 @keyframes historyPulse {
-  0% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
-  40% { box-shadow: 0 0 0 4px rgba(23,112,232,0.22); }
-  100% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
+  0% { box-shadow: 0 0 0 0 var(--notes-layout-tone-015); }
+  40% { box-shadow: 0 0 0 4px var(--notes-layout-tone-016); }
+  100% { box-shadow: 0 0 0 0 var(--notes-layout-tone-015); }
 }
 
 @keyframes wsRecommendIn {
@@ -285,10 +285,10 @@
     }
     
     &::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.1);
+      background: var(--notes-layout-tone-001);
       
       &:hover {
-        background: rgba(0, 0, 0, 0.2);
+        background: var(--notes-layout-tone-002);
       }
     }
   }
@@ -317,40 +317,40 @@
 @keyframes elegantDoublePulse {
   /* 0%：起始状态，无高亮 */
   0% {
-    box-shadow: 0 0 0 0 rgba(23, 112, 232, 0), 0 0 0 0 rgba(23, 112, 232, 0);
-    border-color: rgba(23, 112, 232, 0.1);
+    box-shadow: 0 0 0 0 var(--notes-layout-tone-014), 0 0 0 0 var(--notes-layout-tone-014);
+    border-color: var(--notes-layout-tone-009);
     background-color: transparent;
     transform: scale(1);
   }
   
   /* 20%：第一次脉冲波峰（明亮） */
   20% {
-    box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.4), 0 12px 32px rgba(23, 112, 232, 0.15);
-    border-color: rgba(23, 112, 232, 0.6) !important;
-    background-color: rgba(23, 112, 232, 0.04);
+    box-shadow: 0 0 0 3px var(--notes-layout-tone-012), 0 12px 32px var(--notes-layout-tone-010);
+    border-color: var(--notes-layout-tone-013) !important;
+    background-color: var(--notes-layout-tone-007);
     transform: scale(1.005);
   }
 
   /* 45%：第一次脉冲波谷（微弱暗去，不完全熄灭） */
   45% {
-    box-shadow: 0 0 0 1px rgba(23, 112, 232, 0.15), 0 4px 12px rgba(23, 112, 232, 0.05);
-    border-color: rgba(23, 112, 232, 0.2) !important;
-    background-color: rgba(23, 112, 232, 0.01);
+    box-shadow: 0 0 0 1px var(--notes-layout-tone-010), 0 4px 12px var(--notes-layout-tone-008);
+    border-color: var(--notes-layout-tone-011) !important;
+    background-color: var(--notes-layout-tone-006);
     transform: scale(1);
   }
 
   /* 70%：第二次脉冲波峰（明亮） */
   70% {
-    box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.4), 0 12px 32px rgba(23, 112, 232, 0.15);
-    border-color: rgba(23, 112, 232, 0.6) !important;
-    background-color: rgba(23, 112, 232, 0.04);
+    box-shadow: 0 0 0 3px var(--notes-layout-tone-012), 0 12px 32px var(--notes-layout-tone-010);
+    border-color: var(--notes-layout-tone-013) !important;
+    background-color: var(--notes-layout-tone-007);
     transform: scale(1.005);
   }
 
   /* 100%：平滑熄灭，回归日常态 */
   100% {
-    box-shadow: 0 0 0 0 rgba(23, 112, 232, 0), 0 0 0 0 rgba(23, 112, 232, 0);
-    border-color: rgba(15, 23, 42, 0.08) !important; /* 回归卡片默认边框色 */
+    box-shadow: 0 0 0 0 var(--notes-layout-tone-014), 0 0 0 0 var(--notes-layout-tone-014);
+    border-color: var(--notes-layout-tone-003) !important; /* 回归卡片默认边框色 */
     background-color: transparent;
     transform: scale(1);
   }

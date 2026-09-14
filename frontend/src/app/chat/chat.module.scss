@@ -60,7 +60,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   padding-right: 8px;
   scroll-behavior: smooth;
   scrollbar-width: thin;
-  scrollbar-color: rgba(15, 23, 42, 0.18) transparent;
+  scrollbar-color: color-mix(in srgb, var(--color-text-primary) 18%, transparent) transparent;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -71,11 +71,11 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgba(15, 23, 42, 0.16);
+    background: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
     border-radius: 999px;
 
     &:hover {
-      background: rgba(15, 23, 42, 0.28);
+      background: color-mix(in srgb, var(--color-text-primary) 28%, transparent);
     }
   }
 }
@@ -335,9 +335,9 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     transform: translateX(-100%);
     background: linear-gradient(
       90deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0.75) 50%,
-      rgba(255, 255, 255, 0) 100%
+      transparent 0%,
+      color-mix(in srgb, var(--color-surface-raised) 75%, transparent) 50%,
+      transparent 100%
     );
     animation: shimmer 2s infinite;
   }

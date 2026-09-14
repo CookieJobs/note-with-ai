@@ -9,7 +9,7 @@
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-xl);
-  box-shadow: 0 1px 8px rgb(23 32 51 / 8%);
+  box-shadow: 0 1px 8px color-mix(in srgb, var(--color-text-primary) 8%, transparent);
 }
 
 .container {
@@ -79,7 +79,7 @@
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
-  box-shadow: 0 1px 3px rgb(23 32 51 / 8%);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--color-text-primary) 8%, transparent);
   transform: translateX(calc(var(--nav-target, 0) * (100% + 4px)));
   transition: transform var(--motion-duration-default) var(--motion-easing-emphasized);
 }
@@ -122,7 +122,7 @@
   .nav:has(.navItem:nth-child(4):hover) { --nav-target: 2; }
 
   .nav:has(.navItem:hover) .navHoverPill {
-    box-shadow: 0 2px 6px rgb(23 32 51 / 10%);
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--color-text-primary) 10%, transparent);
   }
 }
 
@@ -179,7 +179,7 @@
   width: 256px;
   overflow: hidden;
   border-radius: var(--radius-lg);
-  box-shadow: 0 12px 40px rgb(23 32 51 / 16%);
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--color-text-primary) 16%, transparent);
 }
 
 .userMenuHeader {

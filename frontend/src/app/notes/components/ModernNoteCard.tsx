@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type RefObject } from 'react';
 import cardStyles from '../styles/note-card.module.scss';
 import editorStyles from '../styles/rich-editor.module.scss';
 import PlusIcon from '../../../components/icons/PlusIcon';
@@ -36,7 +36,7 @@ const RichTextViewer = dynamic(() => import('./RichTextViewer'), {
 
 interface NoteCardProps {
   note: Note;
-  onRequestDelete: (id: string) => void;
+  onRequestDelete: (id: string, openerRef?: RefObject<HTMLButtonElement | null>) => void;
   isHighlighted?: boolean;
   updateNote: (command: UpdateNoteCommand) => Promise<Note>;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
@@ -528,7 +528,7 @@ export default function ModernNoteCard({
             aiPreferenceSaving={aiPreferenceSaving}
             onPublish={onPublish ? () => onPublish(note._id) : undefined}
             onToggleAi={() => { void toggleAiParticipation(); }}
-            onRequestDelete={() => onRequestDelete(note._id)}
+            onRequestDelete={(openerRef) => onRequestDelete(note._id, openerRef)}
           />
         </div>
       </div>
