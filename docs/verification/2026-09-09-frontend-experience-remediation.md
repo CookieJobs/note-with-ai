@@ -57,25 +57,29 @@ Root's live production matrix on the authenticated 1000-note account at 320/390/
 
 Fix round 5 also corrects the keyword-chip semantics exposed by the larger controls: the prior `span[role=button]` contained a native delete button, whose absolute 44px area could overlap neighboring chips. A noninteractive normal-flow grid now contains distinct sibling edit/delete buttons. Both controls are 44px, the edit column wraps long labels, and the delete column reserves its own width. Focused DOM and keyboard tests reject nested interactive controls, prove edit/delete keyboard activation, preserve deletion stop-propagation, and reject an absolute delete layout.
 
-Root supplied the 1000-note live measurements above. The latest 320px root remeasure found Profile `编辑资料` and `修改密码` at 78px wide × 44px high, with left 238.4375px and right 316.4375px in a 305px client width; the buttons met the target but clipped the final characters at the card/content edge. The responsive remediation now stacks the Profile hero flow at max 420px and keeps the actions in-flow at full width. The post-fix 320/390/768/1440 rerun, including the Profile remeasure, 251-note account, browser-driven theme toggle, and VoiceOver session, remain **pending root verification**. Consequently the full route-by-route matrix and three rendered Profile-atmosphere screenshots are still open manual P1 acceptance requirements, not waived automated failures. Automated gates did not report a P0/P1, but no final zero-P1 ruling can be made until the root verification matrix is completed.
+Root completed the post-fix live matrix against isolated local fixtures. Notes, Chat, Memory, Inspiration, Profile, and Publish were measured at 320/390/768/1440px: all 24 combinations had no document-level horizontal overflow, and every visible in-scope anchor/button measured at least 44×44px after the fixes. Auth was separately inspected at 320px and its ArrowRight roving-tab path moved selection/focus from Login to Register with one `tabIndex=0`. The final 320px Profile remeasure placed `编辑资料` and `修改密码` in normal flow at 111.5×44px each, with bounds 37–148.5px and 156.5–268px inside the 305px content viewport; neither text nor controls clipped.
+
+The 1000-note fixture rendered 30 initial notes (731 DOM elements and 256 accessibility-tree entries observed), then appended 30 more without duplicates (60 visible/60 unique, 1,572 DOM elements, no overflow). The independent 251-note fixture loaded through every cursor page to exactly 251 visible/251 unique notes, removed the load-more action, exposed the terminal state, and remained free of horizontal overflow (6,349 DOM elements at the deliberately fully-expanded endpoint). Three live Profile atmosphere fixtures—cool blue, nature green, and very-dark purple input—kept semantic text/surfaces unchanged while varying only decorative halo/soft background output. Root also exercised the Notes destructive dialog and mobile Chat drawer: each entered a labelled modal tree, Escape removed it, and focus returned to the exact opener; Notes dialog actions measured at least 44px.
+
+The in-app browser does not expose a theme switch or browser-zoom control. The 320/390 responsive passes provide the layout-equivalent narrow CSS viewport evidence for 200% reflow, while automated light/dark contrast and reduced-motion contracts provide deterministic theme evidence. Accessibility-tree inspection plus keyboard operation covered the intended VoiceOver paths, but actual macOS VoiceOver audio and system-dark appearance would require changing user OS settings and therefore remain **pending explicit user authorization**. These are environment/authority limitations, not silently waived checks.
 
 ## Impeccable acceptance review
 
 | Dimension | Score | Evidence |
 | --- | ---: | --- |
-| Accessibility | Automated pass | Axe core states, dialog lifecycle tests, semantic contrast tests, focus restoration, and named controls pass; VoiceOver remains pending root verification. |
+| Accessibility | Pass with OS-setting limitation | Axe core states, dialog lifecycle tests, semantic contrast tests, live accessibility-tree/keyboard paths, focus restoration, and named controls pass; actual VoiceOver audio awaits explicit authorization. |
 | Performance | Automated pass | `/notes` is 231 kB first-load, cursor pages limit initial content, and editor/viewer are split. |
-| Responsive | Pending root verification | Source contracts plus 320px/1440px production inspection pass; the complete live route matrix needs seeded data. |
-| Theming | Pending root verification | Light/dark semantic tokens and Profile decorative-only atmosphere allowlist pass; live dark/profile screenshots remain manual. |
+| Responsive | Live pass | Six authenticated core routes passed 320/390/768/1440 without horizontal overflow; Auth passed 320, and 251/1000-note fixtures verified pagination/DOM behavior. |
+| Theming | Pass with OS-setting limitation | Three live Profile atmosphere fixtures passed; automated light/dark semantic contracts pass, while actual system-dark appearance awaits explicit authorization. |
 | Anti-patterns | Automated pass | Shared semantics, color-token, and typed-motion contracts pass; legacy editor-token material remains isolated from business surfaces. |
-| **Final acceptance** | **Pending root verification** | The manual P1 matrix is open. Do not infer a zero-P1 ruling from executable gates alone. |
+| **Final acceptance** | **Pending two authorized OS checks** | Code, automated gates, live responsive/long-list/theme-fixture/keyboard checks pass. Actual macOS dark appearance and VoiceOver audio require explicit authorization. |
 
 The Impeccable skill bootstrap could not execute its repository audit because this worktree has no `PRODUCT.md` and its required setup directs creation of one. Creating that product artifact is outside Task 14 scope, so this report records the limitation rather than inventing the missing project context.
 
 ## Residual risks
 
 - Dynamic viewer loading briefly uses an accessible `role="status"` placeholder before rich content hydrates; the dynamic import is required to keep the first-load budget binding.
-- The manual-only live matrix should be repeated against authenticated 251- and 1000-note fixture accounts, three Profile atmosphere values, system dark mode, 200% zoom, and VoiceOver before a user-facing release.
+- Actual macOS system-dark appearance and VoiceOver audio remain the only unexecuted manual checks because changing those OS settings requires explicit user authorization. The equivalent narrow reflow, three Profile atmosphere fixtures, accessibility tree, keyboard paths, and deterministic dark/reduced-motion contracts have passed.
 
 ## Fix-round ruling and cost
 
