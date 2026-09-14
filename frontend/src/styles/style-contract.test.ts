@@ -11,6 +11,17 @@ const chatStyles = readFileSync(new URL('../app/chat/chat.module.scss', import.m
 const memoryPage = readFileSync(new URL('../app/memory/page.tsx', import.meta.url), 'utf8');
 const reducedMotionUrl = new URL('./reduced-motion.scss', import.meta.url);
 const reducedMotion = existsSync(reducedMotionUrl) ? readFileSync(reducedMotionUrl, 'utf8') : '';
+const declaredCoreRouteMatrix = ['Notes', 'Chat', 'Memory', 'Inspiration', 'Profile', 'Publish', 'Auth'] as const;
+const directCoreRoutePageSources = {
+  Notes: ['../app/notes/page.tsx'],
+  Chat: ['../app/chat/page.tsx'],
+  Memory: ['../app/memory/page.tsx'],
+  Inspiration: ['../app/inspiration/page.tsx'],
+  Profile: ['../app/profile/page.tsx'],
+  Publish: ['../app/publish/page.tsx', '../app/publish/select/page.tsx', '../app/publish/[noteId]/page.tsx'],
+  Auth: ['../app/auth/page.tsx'],
+} as const satisfies Record<(typeof declaredCoreRouteMatrix)[number], readonly string[]>;
+const directCoreRoutePageSourcePaths = Object.values(directCoreRoutePageSources).flat();
 const coreProductStyleSourcePaths = [
   './globals.scss',
   '../app/auth/auth.module.scss',
@@ -26,9 +37,8 @@ const coreProductStyleSourcePaths = [
   '../components/TopNavigation.module.scss',
   '../components/ChatMessage.module.scss',
   '../components/RelatedNoteCard.module.scss',
-  '../app/notes/page.tsx',
+  ...directCoreRoutePageSourcePaths,
   '../app/notes/components/FloatingQuickCompose.tsx',
-  '../app/chat/page.tsx',
   '../components/ChatInputArea.tsx',
   '../components/CareAssistantPanel.tsx',
   '../components/ChatRelatedNotesPanel.tsx',
@@ -191,6 +201,14 @@ describe('style foundation contract', () => {
 
       expect(matches, `${path} should not introduce a raw business color literal`).toEqual([]);
     }
+  });
+
+  it('lists every direct page source in the declared seven-route matrix', () => {
+    expect(Object.keys(directCoreRoutePageSources)).toEqual(declaredCoreRouteMatrix);
+    expect(directCoreRoutePageSources.Publish).toEqual([
+      '../app/publish/page.tsx', '../app/publish/select/page.tsx', '../app/publish/[noteId]/page.tsx',
+    ]);
+    expect(coreProductStyleSourcePaths).toEqual(expect.arrayContaining(directCoreRoutePageSourcePaths));
   });
 
   it.each([
