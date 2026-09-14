@@ -87,7 +87,7 @@
 .richToolbar {
   display: flex;
   gap: 0; /* 按钮之间不留缝 */
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start; /* 靠左自然排列 */
   padding: 6px 0 8px;
@@ -105,8 +105,8 @@
 }
 
 .richToolbarBtn {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   padding: 0; /* 按钮内部不留 padding */
   margin: 0;  /* 按钮之间不留 margin */
   display: inline-flex;

@@ -186,6 +186,6 @@ describe('ProfilePage', () => {
 
   it('gives the named primary controls a 44px minimum target', () => {
     expect(profileStyles).toMatch(/\.btnPrimary, \.emptyState button \{[^}]*min-height: 2\.75rem/);
-    expect(profileStyles).toMatch(/\.btnOutlineSm, \.btnGhostSm, \.btnCancel \{[^}]*min-height: 2\.25rem/);
+    expect(profileStyles).toMatch(/\.btnOutlineSm, \.btnGhostSm, \.btnCancel \{[^}]*min-height: 2\.75rem/);
   });
 });

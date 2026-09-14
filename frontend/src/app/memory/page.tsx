@@ -65,7 +65,7 @@ export default function MemoryPage() {
           <Button variant="default" size="lg" className={`${styles.memoryPrimaryAction} gap-2`} onClick={() => { void confirmMemoryInsight(insight.id).then(load); }}><CheckCircle2 size={16} aria-hidden="true" />这是准确的</Button>
           <Dialog open={editing === insight.id} onOpenChange={(open) => { if (!open) setEditing(null); }}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2" onClick={() => { setEditing(insight.id); setCorrection(insight.displayStatement); }}><PencilLine size={16} aria-hidden="true" />修改</Button>
+              <Button variant="outline" size="lg" className="gap-2 px-3" onClick={() => { setEditing(insight.id); setCorrection(insight.displayStatement); }}><PencilLine size={16} aria-hidden="true" />修改</Button>
             </DialogTrigger>
             <DialogContent aria-modal="true">
               <DialogTitle>用你的话重新表述</DialogTitle>
@@ -73,24 +73,24 @@ export default function MemoryPage() {
               <textarea className={styles.dialogTextarea} aria-label="修改后的记忆" value={correction} onChange={(event) => setCorrection(event.target.value)} />
               <div className={styles.dialogActions}>
                 <Button variant="default" size="lg" className={styles.memoryPrimaryAction} onClick={() => { void correctMemoryInsight(insight.id, correction).then(() => { setEditing(null); load(); }); }}>保存修改</Button>
-                <DialogClose asChild><Button variant="outline">取消</Button></DialogClose>
+                <DialogClose asChild><Button variant="outline" size="lg" className="px-3">取消</Button></DialogClose>
               </div>
             </DialogContent>
           </Dialog>
           <Dialog open={deleting === insight.id} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
             <DialogTrigger asChild>
-              <Button variant="destructive" size="sm" className="gap-2" onClick={() => setDeleting(insight.id)}><Trash2 size={16} aria-hidden="true" />删除这条记忆</Button>
+              <Button variant="destructive" size="lg" className="gap-2 px-3" onClick={() => setDeleting(insight.id)}><Trash2 size={16} aria-hidden="true" />删除这条记忆</Button>
             </DialogTrigger>
             <DialogContent aria-modal="true">
               <DialogTitle>删除这条记忆</DialogTitle>
               <DialogDescription>删除后，它不会再用于对话或推荐。</DialogDescription>
               <div className={styles.dialogActions}>
-                <Button variant="destructive" onClick={() => { void deleteMemoryInsight(insight.id).then(() => { setDeleting(null); load(); }); }}>确认删除</Button>
-                <DialogClose asChild><Button variant="outline">取消</Button></DialogClose>
+                <Button variant="destructive" size="lg" className="px-3" onClick={() => { void deleteMemoryInsight(insight.id).then(() => { setDeleting(null); load(); }); }}>确认删除</Button>
+                <DialogClose asChild><Button variant="outline" size="lg" className="px-3">取消</Button></DialogClose>
               </div>
             </DialogContent>
           </Dialog>
-          <Button variant="link" size="sm" className={styles.evidenceToggle} aria-expanded={expanded === insight.id} onClick={() => setExpanded(expanded === insight.id ? null : insight.id)}>{expanded === insight.id ? '收起依据' : '查看依据'}</Button>
+          <Button variant="link" size="lg" className={`${styles.evidenceToggle} px-3`} aria-expanded={expanded === insight.id} onClick={() => setExpanded(expanded === insight.id ? null : insight.id)}>{expanded === insight.id ? '收起依据' : '查看依据'}</Button>
         </div>
         {expanded === insight.id && <ul className={styles.evidence}>{insight.evidence.map((evidence) => <li key={evidence.noteId + evidence.noteRevision}>
           <RelationshipCue sourceLabel={insight.displayStatement} targetLabel="查看原文" kind="依据" explanation={evidence.excerpt} href={'/notes?highlight=' + evidence.noteId} onLinkClick={() => recordProductEvent('memory_evidence_opened', { memoryId: insight.id })} />

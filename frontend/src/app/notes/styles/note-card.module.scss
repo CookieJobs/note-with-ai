@@ -915,6 +915,7 @@
 .noteEditActions { display: flex; align-items: center; gap: 12px; }
 
 .noteEditCancel {
+  min-height: 44px;
   padding: 6px 12px;
   border-radius: 10px;
   font-size: 12px;
@@ -940,6 +941,7 @@
 }
 
 .noteEditSave {
+  min-height: 44px;
   padding: 6px 14px;
   border-radius: 10px;
   font-size: 12px;
@@ -1013,10 +1015,10 @@
 
 .keywordDeleteBtn {
   position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
+  top: -14px;
+  right: -14px;
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   border: 1px solid var(--notes-card-tone-053);
   background: white;
@@ -1094,10 +1096,9 @@
 }
 
 .keywordAddBtn {
-  /* 让 + 更大但不撑高整行：用固定高度 + flex 居中 */
-  /* 与 .keyword 的视觉高度对齐：11px 字号 + 6px*2 padding + 1px*2 border ≈ 25px */
-  width: 25px;
-  height: 25px;
+  /* Keep the compact icon while giving the control a reliable touch target. */
+  width: 44px;
+  height: 44px;
   padding: 0;
   display: inline-flex;
   align-items: center;

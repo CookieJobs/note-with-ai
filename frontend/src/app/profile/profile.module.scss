@@ -14,7 +14,7 @@
 .userInfo h2 { margin: 0; font-size: 1rem; color: var(--color-text-primary); }
 .userInfo p { margin: .15rem 0 0; font-size: .8125rem; color: var(--color-text-secondary); }
 .profileActions, .sectionActions { display: flex; flex-wrap: wrap; gap: .5rem; }
-.btnOutlineSm, .btnGhostSm, .btnCancel { min-height: 2.25rem; border-radius: var(--radius-md); padding: .45rem .75rem; font: inherit; font-size: .8125rem; font-weight: 600; cursor: pointer; }
+.btnOutlineSm, .btnGhostSm, .btnCancel { min-height: 2.75rem; border-radius: var(--radius-md); padding: .45rem .75rem; font: inherit; font-size: .8125rem; font-weight: 600; cursor: pointer; }
 .btnPrimary, .emptyState button { min-height: 2.75rem; border-radius: var(--radius-md); padding: .55rem 1rem; font: inherit; font-size: .875rem; font-weight: 600; cursor: pointer; }
 .btnOutlineSm, .btnCancel { border: 1px solid var(--color-border-default); background: var(--color-surface-raised); color: var(--color-text-primary); }
 .btnGhostSm { border: 1px solid var(--color-border-subtle); background: var(--color-action-secondary); color: var(--color-action-primary); }
@@ -36,7 +36,7 @@
 .sectionGroupHeader, .feedHeader, .expertiseItem { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
 .sectionGroupTitle { margin: 0; font-size: 1rem; color: var(--color-text-primary); }
 .sectionGroupHint { margin: .4rem 0 1rem; font-size: .8125rem; line-height: 1.5; }
-.aiGroupToggle, .modalClose { display: inline-grid; min-width: 2.25rem; min-height: 2.25rem; place-items: center; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-text-primary); cursor: pointer; }
+.aiGroupToggle, .modalClose { display: inline-grid; min-width: 2.75rem; min-height: 2.75rem; place-items: center; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--color-text-primary); cursor: pointer; }
 .aiGroupToggle:hover, .modalClose:hover { background: var(--color-action-secondary-hover); }
 .aiGroupCollapseIcon { font-size: .75rem; }
 .closed { transform: rotate(-90deg); }

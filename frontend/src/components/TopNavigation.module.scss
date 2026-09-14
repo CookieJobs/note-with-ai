@@ -34,6 +34,9 @@
 }
 
 .logo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   overflow: hidden;
   color: var(--color-text-primary);
   font-size: 18px;
@@ -136,6 +139,7 @@
 .userInfo {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 6px;
   max-width: min(45vw, 240px);
   padding: 6px 10px;
@@ -214,6 +218,7 @@
 .logoutButton {
   display: flex;
   align-items: center;
+  min-height: 44px;
   gap: 10px;
   padding: 10px 14px;
   font-size: 14px;

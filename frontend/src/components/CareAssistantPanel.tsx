@@ -127,7 +127,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-full border border-gray-200/50 bg-white/80 text-gray-400 hover:text-gray-700 hover:border-gray-300/80 hover:bg-gray-50 transition-[color,background-color,border-color]"
+            className="h-11 w-11 rounded-full border border-gray-200/50 bg-white/80 text-gray-400 hover:text-gray-700 hover:border-gray-300/80 hover:bg-gray-50 transition-[color,background-color,border-color]"
             onClick={(e) => {
               e.stopPropagation();
               fetchIntro();
@@ -155,7 +155,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
             </p>
             {intro.noteTitle && intro.noteId && (
               <button
-                className="flex items-center gap-1 mt-0.5 text-[12px] text-gray-400 hover:text-gray-600 transition-colors self-start"
+                className="flex min-h-11 min-w-11 items-center gap-1 mt-0.5 text-[12px] text-gray-400 hover:text-gray-600 transition-colors self-start"
                 onClick={(e) => {
                   e.stopPropagation();
                   router.push(`/notes?highlight=${intro.noteId}`);

@@ -227,8 +227,8 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   top: 14px;
   right: 14px;
   z-index: 2;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--color-border-subtle);
   border-radius: 999px;
   background: var(--color-surface-raised);
@@ -294,6 +294,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   justify-content: flex-end;
 
   button {
+    min-height: 44px;
     min-width: 80px;
     padding: 10px 18px;
     border: none;

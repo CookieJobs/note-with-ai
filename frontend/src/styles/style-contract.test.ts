@@ -9,6 +9,14 @@ const inspirationStyles = readFileSync(new URL('../app/inspiration/inspiration.m
 const publishStyles = readFileSync(new URL('../app/publish/publish.module.scss', import.meta.url), 'utf8');
 const chatStyles = readFileSync(new URL('../app/chat/chat.module.scss', import.meta.url), 'utf8');
 const memoryPage = readFileSync(new URL('../app/memory/page.tsx', import.meta.url), 'utf8');
+const topNavigationStyles = readFileSync(new URL('../components/TopNavigation.module.scss', import.meta.url), 'utf8');
+const floatingComposeStyles = readFileSync(new URL('../app/notes/styles/floating-compose.module.scss', import.meta.url), 'utf8');
+const richEditorStyles = readFileSync(new URL('../app/notes/styles/rich-editor.module.scss', import.meta.url), 'utf8');
+const modernNoteCard = readFileSync(new URL('../app/notes/components/ModernNoteCard.tsx', import.meta.url), 'utf8');
+const richTextBubbleMenu = readFileSync(new URL('../app/notes/components/RichTextBubbleMenu.tsx', import.meta.url), 'utf8');
+const careAssistantPanel = readFileSync(new URL('../components/CareAssistantPanel.tsx', import.meta.url), 'utf8');
+const profileStyles = readFileSync(new URL('../app/profile/profile.module.scss', import.meta.url), 'utf8');
+const authStyles = readFileSync(new URL('../app/auth/auth.module.scss', import.meta.url), 'utf8');
 const reducedMotionUrl = new URL('./reduced-motion.scss', import.meta.url);
 const reducedMotion = existsSync(reducedMotionUrl) ? readFileSync(reducedMotionUrl, 'utf8') : '';
 const declaredCoreRouteMatrix = ['Notes', 'Chat', 'Memory', 'Inspiration', 'Profile', 'Publish', 'Auth'] as const;
@@ -227,6 +235,33 @@ describe('style foundation contract', () => {
     expect(memoryPage).toMatch(/<Button variant="default" size="lg"[^>]*>.*这是准确的/);
     expect(memoryPage).toMatch(/<Button variant="default" size="lg"[^>]*memoryPrimaryAction[^>]*>.*保存修改/);
     expect(chatStyles).toMatch(/\.relatedNotesFab\s*\{[^}]*height:\s*44px/);
+  });
+
+  it('keeps the live-matrix anchors and controls at the product 44px target', () => {
+    expect(topNavigationStyles).toMatch(/\.logo\s*\{[^}]*min-height:\s*44px/);
+    expect(floatingComposeStyles).toMatch(/\.floatingComposeBarInner\s*\{[^}]*min-height:\s*44px/);
+    expect(modernNoteCard).toContain('!w-11 !h-11');
+    expect(careAssistantPanel).toContain('h-11 w-11');
+    expect(careAssistantPanel).toContain('min-h-11 min-w-11');
+    expect(inspirationStyles).toMatch(/\.actions a, \.actions button\s*\{[^}]*min-height:\s*44px/);
+    expect(inspirationStyles).toMatch(/\.consent\s*\{[^}]*min-height:\s*44px/);
+    expect(profileStyles).toMatch(/\.btnOutlineSm, \.btnGhostSm, \.btnCancel\s*\{[^}]*min-height:\s*2\.75rem/);
+    expect(profileStyles).toMatch(/\.aiGroupToggle, \.modalClose\s*\{[^}]*min-width:\s*2\.75rem[^}]*min-height:\s*2\.75rem/);
+    expect(richEditorStyles).toMatch(/\.richToolbarBtn\s*\{[^}]*width:\s*44px[^}]*height:\s*44px/);
+    expect(richTextBubbleMenu).toContain('w-11 h-11');
+  });
+
+  it('keeps analogous compact controls in the approved route matrix at 44px', () => {
+    expect(authStyles).toMatch(/\.modeTab\s*\{[^}]*min-height:\s*44px/);
+    expect(authStyles).toMatch(/\.passwordToggle\s*\{[^}]*width:\s*44px[^}]*height:\s*44px/);
+    expect(authStyles).toMatch(/\.switchModeLink,\s*\.forgotPassword\s*\{[^}]*min-height:\s*44px/);
+    expect(publishStyles).toMatch(/\.card a, \.card button, \.preview button\s*\{[^}]*min-height:\s*44px/);
+    expect(memoryPage).toContain('variant="link" size="lg" className={`${styles.evidenceToggle} px-3`}');
+    expect(floatingComposeStyles).toMatch(/\.composeCancelBtn\s*\{[^}]*min-height:\s*44px/);
+    expect(floatingComposeStyles).toMatch(/\.composeSaveBtn\s*\{[^}]*min-height:\s*44px/);
+    expect(floatingComposeStyles).toMatch(/\.composeDiscardBtn\s*\{[^}]*min-height:\s*44px/);
+    expect(chatStyles).toMatch(/\.relatedNotesClose\s*\{[^}]*width:\s*44px[^}]*height:\s*44px/);
+    expect(chatStyles).toMatch(/\.confirmButtons\s*\{[\s\S]*?button\s*\{[^}]*min-height:\s*44px/);
   });
 
 });

@@ -677,7 +677,7 @@ export default function ModernNoteCard({
                   {activeKeywordIndex !== addingIndex && (
                     <button
                       type="button"
-                      className={`${cardStyles.keywordAddBtn} flex items-center justify-center !bg-transparent !border !border-dashed !border-gray-300 hover:!border-gray-400 !text-gray-400 hover:!text-gray-600 !rounded-full !w-6 !h-6`}
+                      className={`${cardStyles.keywordAddBtn} flex !w-11 !h-11 items-center justify-center !bg-transparent !border !border-dashed !border-gray-300 hover:!border-gray-400 !text-gray-400 hover:!text-gray-600 !rounded-full`}
                       onClick={(e) => {
                         e.stopPropagation();
                         beginKeywordEdit(addingIndex, '');
