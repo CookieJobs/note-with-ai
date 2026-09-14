@@ -189,4 +189,12 @@ describe('ProfilePage', () => {
     expect(profileStyles).toMatch(/\.btnOutlineSm, \.btnGhostSm, \.btnCancel \{[^}]*min-height: 2\.75rem/);
     expect(profileStyles).toMatch(/\.profileActions \.btnOutlineSm \{[^}]*min-width: 2\.75rem/);
   });
+
+  it('keeps Profile hero actions in-flow at narrow widths', () => {
+    const narrowRule = profileStyles.match(/@media \(max-width: 420px\) \{([\s\S]*?)\n@media/ )?.[1] || '';
+    expect(narrowRule).toContain('.profileHero { grid-template-columns: 1fr; }');
+    expect(narrowRule).toContain('.profileActions { width: 100%; }');
+    expect(narrowRule).toContain('.profileActions .btnOutlineSm { flex: 1 1 0; }');
+    expect(narrowRule).not.toMatch(/\.profileActions[^}]*position:\s*(absolute|fixed)/);
+  });
 });

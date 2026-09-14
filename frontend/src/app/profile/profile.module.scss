@@ -84,4 +84,5 @@
 .avatarPreviewRow { display: flex; align-items: center; gap: .75rem; }
 .avatarPreviewRow .input { flex: 1; }
 @media (max-width: 760px) { .container { padding: 5.25rem 1rem 1.25rem; } .profileHero { grid-template-columns: 1fr auto; } .heroTitle { grid-column: 1 / -1; } .columns { grid-template-columns: 1fr; } .statsBar { gap: .75rem; } }
+@media (max-width: 420px) { .profileHero { grid-template-columns: 1fr; } .profileHeader { min-width: 0; } .profileActions { width: 100%; } .profileActions .btnOutlineSm { flex: 1 1 0; } }
 @media (prefers-reduced-motion: reduce) { .loadingSpinner { animation: none; } }
