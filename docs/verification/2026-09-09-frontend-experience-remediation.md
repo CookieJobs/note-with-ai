@@ -8,7 +8,7 @@ Date: 2026-09-14
 | --- | --- |
 | `cd frontend && npm run lint` | PASS |
 | `cd frontend && npm run typecheck` | PASS |
-| `cd frontend && npm test` | PASS, 39 files and 275 tests |
+| `cd frontend && npm test` | PASS, 39 files and 276 tests |
 | `cd frontend && npm run build` | PASS |
 | `cd frontend && npm run test:a11y` | PASS, 3 core-state tests |
 | `cd frontend && npm run check:route-budgets` | PASS, `/notes` 231.0 kB and 45.1% reduction |
@@ -45,7 +45,7 @@ The style contract now rejects raw hexadecimal, RGB/RGBA, and HSL/HSLA colors in
 
 ### Machine-enforced color-source scope
 
-The source gate covers the seven Task 14 manual-matrix routes—Notes, Chat, Memory, Inspiration, Profile, Publish, and Auth—plus their listed shared route components (TopNavigation, ChatMessage, RelatedNoteCard, ChatInputArea, CareAssistantPanel, ChatRelatedNotesPanel, FloatingQuickCompose, and the Notes editor URL popover). It is intentionally not a repository-wide assertion. `/p/[slug]` is excluded because the approved Task 14 matrix and Task 9 core-route file list name `publish/**`, not the separate public-sharing snapshot route. `/admin/**` is outside this remediation scope and user-owned. `profileBackgroundTheme.ts` is excluded because it deliberately generates only the separately-tested decorative `--atmosphere-accent`, `--atmosphere-soft`, and `--atmosphere-glow` values. Editor plugins/configuration are also outside the TSX source scan; their persisted schema coverage is verified without a runtime Tiptap import.
+The source gate covers the seven Task 14 manual-matrix routes—Notes, Chat, Memory, Inspiration, Profile, Publish, and Auth—plus their listed shared route components (TopNavigation, ChatMessage, RelatedNoteCard, ChatInputArea, CareAssistantPanel, ChatRelatedNotesPanel, FloatingQuickCompose, and the Notes editor URL popover). A direct-page manifest is regression-checked to contain exactly those seven route names and explicitly includes all three Publish primary pages: `/publish`, `/publish/select`, and `/publish/[noteId]`. It is intentionally not a repository-wide assertion. `/p/[slug]` is excluded because the approved Task 14 matrix and Task 9 core-route file list name `publish/**`, not the separate public-sharing snapshot route. `/admin/**` is outside this remediation scope and user-owned. `profileBackgroundTheme.ts` is excluded because it deliberately generates only the separately-tested decorative `--atmosphere-accent`, `--atmosphere-soft`, and `--atmosphere-glow` values. Editor plugins/configuration are also outside the TSX source scan; their persisted schema coverage is verified without a runtime Tiptap import.
 
 ## Visual and manual matrix
 
@@ -83,3 +83,4 @@ The remediation was reopened to fix acceptance defects rather than waive them. T
 - Task 14 implementation: `7e49066d5a41bda0e90b2edb122e56352ea58663` (amended below only to record its final hash).
 - Task 14 fix round 1 implementation: `3d5cca17b2ffc35fd24a63b3029d6fe21d187324`
 - Task 14 fix round 2 implementation: `8e4cf3dbe398132e464afd0be461d0fd4292b3cd`
+- Task 14 fix round 3 implementation: `ff4f32eba2bd41c63061e582379e7ee346229ff0`

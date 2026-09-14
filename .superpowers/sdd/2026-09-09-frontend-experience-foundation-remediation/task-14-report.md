@@ -17,7 +17,7 @@ Added executable axe and route-budget gates, then used their RED evidence to cor
 
 ## Acceptance evidence
 
-The final sequential run passed frontend lint, typecheck, 39 Vitest files / 275 tests, production build, axe, route budget, backend typecheck, backend 168 tests, backend build, and `git diff --check`. Fix round 2 changes frontend only; the backend was not touched.
+The final sequential run passed frontend lint, typecheck, 39 Vitest files / 276 tests, production build, axe, route budget, backend typecheck, backend 168 tests, backend build, and `git diff --check`. Fix round 3 changes frontend only; the backend was not touched.
 
 ## Ruling and cost
 
@@ -25,7 +25,7 @@ Task 14 was reopened rather than waiving the generated acceptance defects. This 
 
 Cost: the validator duplicates the supported static grammar without a runtime Tiptap import; delete intent now carries a persistent opener ref from menu to card to page; and active Notes/Chat styles were migrated to component tokens with property-specific transitions. The rejected alternatives—adding Tiptap to the entry bundle, retaining a bespoke overlay, or broadly allowlisting raw colors—would violate the binding budget, accessibility, or style-contract requirements. Task 12/13 behavior remains covered by the full suite.
 
-The raw-color gate is deliberately not an absolute repository-wide claim. It scans SCSS plus direct TSX style sources for the seven Task 14 matrix routes (Notes, Chat, Memory, Inspiration, Profile, Publish, Auth) and their listed shared route components. It excludes `/p/[slug]`, which belongs to the separate public-sharing route rather than the Task 14 matrix or Task 9 core-route file list; `/admin/**`, which is both outside this frontend-remediation scope and user-owned; and the Profile atmosphere resolver's generated HSL values, which are separately constrained to the three decorative atmosphere variables. Dynamic editor configuration is schema-tested separately and has no runtime validator import.
+The raw-color gate is deliberately not an absolute repository-wide claim. It scans SCSS plus direct TSX style sources for the seven Task 14 matrix routes (Notes, Chat, Memory, Inspiration, Profile, Publish, Auth) and their listed shared route components. The direct-page manifest is regression-checked against those seven names and explicitly includes Publish's `/publish`, `/publish/select`, and `/publish/[noteId]` pages. It excludes `/p/[slug]`, which belongs to the separate public-sharing route rather than the Task 14 matrix or Task 9 core-route file list; `/admin/**`, which is both outside this frontend-remediation scope and user-owned; and the Profile atmosphere resolver's generated HSL values, which are separately constrained to the three decorative atmosphere variables. Dynamic editor configuration is schema-tested separately and has no runtime validator import.
 
 ## Visual/audit limitation
 
