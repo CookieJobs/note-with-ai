@@ -140,13 +140,13 @@ export default function ChatPage() {
           onMenuClick={() => setIsMobileSidebarOpen(true)}
           menuButtonRef={mobileSidebarTriggerRef}
         />
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flex: 1, color: '#888' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flex: 1, color: 'var(--color-text-tertiary)' }}>
           <div className="flex flex-col items-center gap-3">
             <div className="loading-spinner" style={{
               width: '24px',
               height: '24px',
-              border: '3px solid rgba(0,0,0,0.1)',
-              borderTopColor: '#333',
+              border: '3px solid var(--color-border-subtle)',
+              borderTopColor: 'var(--color-text-primary)',
               borderRadius: '50%',
               animation: 'spin 1s linear infinite'
             }} />

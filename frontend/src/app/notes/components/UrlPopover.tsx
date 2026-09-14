@@ -45,7 +45,7 @@ export function UrlPopover({ children, onSubmit, defaultValue = '', placeholder 
       
       {isOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm transition-all duration-100"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm transition-[opacity] duration-100"
           data-note-editor-inside="true"
         >
           <div 

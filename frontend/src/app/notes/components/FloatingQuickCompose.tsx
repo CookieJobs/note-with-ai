@@ -153,10 +153,10 @@ export default function FloatingQuickCompose({
           paddingRight: 24,
           paddingBottom: shellPhase === 'expanded' ? 20 : 14,
           paddingLeft: 24,
-          borderColor: shellExpanded ? 'rgba(0, 0, 0, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+          borderColor: shellExpanded ? 'var(--notes-compose-shell-border-expanded)' : 'var(--notes-compose-shell-border-collapsed)',
           boxShadow: shellExpanded
-              ? '0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.045)'
-              : '0 1px 3px rgba(0, 0, 0, 0.04), 0 3px 10px rgba(0, 0, 0, 0.035)',
+              ? 'var(--shadow-notes-compose-expanded)'
+              : 'var(--shadow-notes-compose-collapsed)',
         }}
         transition={{
           layout: shellLayoutTransition,

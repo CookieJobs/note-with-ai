@@ -289,7 +289,7 @@ function NotesContent() {
           {error && (
             <div className={styles.errorBanner}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 9v4m0 4h.01M10.29 3.86l-7.5 12.99A1 1 0 003.62 18h16.76a1 1 0 00-.86-1.5l-7.5-12.99a1 1 0 00-1.72 0z" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 9v4m0 4h.01M10.29 3.86l-7.5 12.99A1 1 0 003.62 18h16.76a1 1 0 00-.86-1.5l-7.5-12.99a1 1 0 00-1.72 0z" stroke="var(--color-action-danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               <span>{error}</span>
             </div>

@@ -11,7 +11,7 @@ const chatStyles = readFileSync(new URL('../app/chat/chat.module.scss', import.m
 const memoryPage = readFileSync(new URL('../app/memory/page.tsx', import.meta.url), 'utf8');
 const reducedMotionUrl = new URL('./reduced-motion.scss', import.meta.url);
 const reducedMotion = existsSync(reducedMotionUrl) ? readFileSync(reducedMotionUrl, 'utf8') : '';
-const businessStylePaths = [
+const coreProductStyleSourcePaths = [
   './globals.scss',
   '../app/auth/auth.module.scss',
   '../app/inspiration/inspiration.module.scss',
@@ -26,6 +26,14 @@ const businessStylePaths = [
   '../components/TopNavigation.module.scss',
   '../components/ChatMessage.module.scss',
   '../components/RelatedNoteCard.module.scss',
+  '../app/notes/page.tsx',
+  '../app/notes/components/FloatingQuickCompose.tsx',
+  '../app/chat/page.tsx',
+  '../components/ChatInputArea.tsx',
+  '../components/CareAssistantPanel.tsx',
+  '../components/ChatRelatedNotesPanel.tsx',
+  '../components/RelatedNoteCard.tsx',
+  '../app/notes/components/UrlPopover.tsx',
 ] as const;
 const rawColorLiteral = /#[\da-f]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/gi;
 const lightSemanticTokens = [
@@ -98,6 +106,14 @@ function parseColor(value: string) {
   return [Number(rgba[1]), Number(rgba[2]), Number(rgba[3]), Number(rgba[4] ?? 1)] as const;
 }
 
+function sourceFor(path: string) {
+  return path === './globals.scss' ? globals : readFileSync(new URL(path, import.meta.url), 'utf8');
+}
+
+function rawColorMatches(source: string) {
+  return [...source.matchAll(rawColorLiteral)].map((match) => match[0]);
+}
+
 function contrastRatio(first: readonly number[], second: readonly number[]) {
   const composite = (foreground: readonly number[], background: readonly number[]) =>
     foreground.slice(0, 3).map((channel, index) => channel * foreground[3] + background[index] * (1 - foreground[3]));
@@ -163,19 +179,27 @@ describe('style foundation contract', () => {
     expect(reducedMotion).toContain('@media (prefers-reduced-motion: reduce)');
     expect(reducedMotion).toContain('animation-duration: 0.01ms !important');
     expect(reducedMotion).toContain('transition-duration: 0.01ms !important');
-    for (const path of businessStylePaths) {
-      const source = path === './globals.scss' ? globals : readFileSync(new URL(path, import.meta.url), 'utf8');
+    for (const path of coreProductStyleSourcePaths) {
+      const source = sourceFor(path);
       expect(source, `${path} must not use transition: all`).not.toMatch(/transition\s*:\s*all\b/);
     }
   });
 
-  it('keeps business route and component colors on semantic or component tokens', () => {
-    for (const path of businessStylePaths) {
-      const source = path === './globals.scss' ? globals : readFileSync(new URL(path, import.meta.url), 'utf8');
-      const rawColorMatches = [...source.matchAll(rawColorLiteral)].map((match) => match[0]);
+  it('keeps the approved core-route SCSS and TSX sources on semantic or component tokens', () => {
+    for (const path of coreProductStyleSourcePaths) {
+      const matches = rawColorMatches(sourceFor(path));
 
-      expect(rawColorMatches, `${path} should not introduce a raw business color literal`).toEqual([]);
+      expect(matches, `${path} should not introduce a raw business color literal`).toEqual([]);
     }
+  });
+
+  it.each([
+    ['hex', '<span style={{ color: "#123abc" }} />', '#123abc'],
+    ['rgb', '<span style={{ color: "rgb(1, 2, 3)" }} />', 'rgb(1, 2, 3)'],
+    ['rgba', '<span style={{ color: "rgba(1, 2, 3, 0.4)" }} />', 'rgba(1, 2, 3, 0.4)'],
+    ['hsl', '<span style={{ color: "hsl(220 60% 50%)" }} />', 'hsl(220 60% 50%)'],
+  ])('detects a raw %s color literal in TSX source', (_kind, source, literal) => {
+    expect(rawColorMatches(source)).toEqual([literal]);
   });
 
   it('keeps named primary route controls at least 44px tall', () => {

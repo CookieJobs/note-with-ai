@@ -56,7 +56,7 @@ const sharedExtensions = [
       },
     },
     dropcursor: {
-      color: '#DBEAFE',
+      color: 'var(--color-action-primary)',
       width: 4,
     },
     gapcursor: false,

@@ -70,10 +70,10 @@ export const RelatedNoteCard: React.FC<RelatedNoteCardProps> = ({
   };
 
   const getSimilarityColor = (similarity: number) => {
-    if (similarity >= 0.9) return '#10b981'; // 绿色 - 高相关
-    if (similarity >= 0.8) return '#3b82f6'; // 蓝色 - 中高相关
-    if (similarity >= 0.7) return '#f59e0b'; // 橙色 - 中等相关
-    return '#6b7280'; // 灰色 - 低相关
+    if (similarity >= 0.9) return 'var(--color-status-success)';
+    if (similarity >= 0.8) return 'var(--color-status-info)';
+    if (similarity >= 0.7) return 'var(--color-status-warning)';
+    return 'var(--color-text-tertiary)';
   };
 
   const getSimilarityLabel = (similarity: number) => {

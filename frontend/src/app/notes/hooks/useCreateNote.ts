@@ -23,7 +23,12 @@ const emptySession = (userId: string | null): Session => ({
   localDraftState: 'empty', draftRestored: false, saveState: 'idle', savedNote: null, error: '',
 });
 
-const richTextMarks = new Set(['bold', 'italic', 'strike', 'code', 'link', 'highlight']);
+// Static schema coverage, cross-checked with richTextPreset.ts: StarterKit supplies
+// doc/paragraph/text/hardBreak/heading/lists/blockquote/codeBlock/horizontalRule and
+// bold/italic/strike/code/underline; the remaining names come from its explicit extensions.
+// Plugins and attributes (History, Markdown, Placeholder, TextAlign, dropcursor/gapcursor)
+// introduce no persisted node or mark names, so they are intentionally unsupported here.
+const richTextMarks = new Set(['bold', 'italic', 'strike', 'code', 'underline', 'link', 'highlight']);
 
 type RichTextNode = Record<string, unknown> & { type: string; content?: unknown[] };
 
@@ -56,7 +61,8 @@ function isSafeRichTextNode(value: unknown, allowedTypes: Set<string>, marksAllo
   const node = value as RichTextNode;
   if (!allowedTypes.has(node.type)) return false;
   if (leafNodeTypes.has(node.type) && node.content !== undefined) return false;
-  if (node.type === 'text') return typeof node.text === 'string' && (node.marks === undefined || (marksAllowed && areSafeRichTextMarks(node.marks)));
+  if (node.type === 'text') return typeof node.text === 'string' && node.text.length > 0
+    && (node.marks === undefined || (marksAllowed && areSafeRichTextMarks(node.marks)));
   if (node.type === 'hardBreak') return node.marks === undefined || (marksAllowed && areSafeRichTextMarks(node.marks));
   if (node.marks !== undefined) return false;
 

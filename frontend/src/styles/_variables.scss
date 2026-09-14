@@ -410,6 +410,16 @@
 }
 
 :root {
+  --notes-compose-shell-border-collapsed: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+  --notes-compose-shell-border-expanded: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  --shadow-notes-compose-collapsed: 0 1px 3px color-mix(in srgb, var(--color-text-primary) 4%, transparent), 0 3px 10px color-mix(in srgb, var(--color-text-primary) 3.5%, transparent);
+  --shadow-notes-compose-expanded: 0 1px 3px color-mix(in srgb, var(--color-text-primary) 4%, transparent), 0 6px 18px color-mix(in srgb, var(--color-text-primary) 4.5%, transparent);
+  --shadow-chat-input-action: 0 2px 8px color-mix(in srgb, var(--color-text-primary) 15%, transparent);
+  --shadow-chat-care-idle: 0 4px 24px color-mix(in srgb, var(--color-text-primary) 4%, transparent);
+  --shadow-chat-care-hover: 0 12px 40px color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  --shadow-chat-care-icon: 0 4px 16px color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  --shadow-chat-care-icon-hover: 0 6px 20px color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+  --shadow-chat-care-cta-hover: 0 2px 8px color-mix(in srgb, var(--color-text-primary) 6%, transparent);
   --notes-card-tone-001: rgb(23, 112, 232);
   --notes-card-tone-002: rgb(23,112,232);
   --notes-card-tone-003: rgba(0, 0, 0, 0.28);

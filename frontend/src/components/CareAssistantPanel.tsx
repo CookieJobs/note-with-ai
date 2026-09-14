@@ -82,7 +82,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
   // Skeleton
   if (loading || !intro) return (
     <div className="w-full max-w-[680px] mx-auto">
-      <div className="relative flex flex-col gap-4 p-5 rounded-3xl border border-gray-200/60 bg-gradient-to-b from-gray-50/80 via-white to-white shadow-[0_4px_24px_rgba(0,0,0,0.04)] cursor-wait select-none">
+      <div className="relative flex flex-col gap-4 p-5 rounded-3xl border border-gray-200/60 bg-gradient-to-b from-gray-50/80 via-white to-white shadow-[var(--shadow-chat-care-idle)] cursor-wait select-none">
         {/* Header row: icon + refresh */}
         <div className="flex items-start justify-between">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100/60 ring-1 ring-gray-200/40">
@@ -115,19 +115,19 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
   return (
     <div className="w-full max-w-[680px] mx-auto">
       <div
-        className="group relative flex flex-col gap-4 p-5 rounded-3xl border border-gray-200/60 bg-gradient-to-b from-gray-50/70 via-white to-white shadow-[0_4px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] hover:border-gray-300/70 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+        className="group relative flex flex-col gap-4 p-5 rounded-3xl border border-gray-200/60 bg-gradient-to-b from-gray-50/70 via-white to-white shadow-[var(--shadow-chat-care-idle)] hover:shadow-[var(--shadow-chat-care-hover)] hover:border-gray-300/70 hover:-translate-y-0.5 transition-[border-color,box-shadow,transform] duration-300 cursor-pointer"
         onClick={() => onSend(intro.aiOpening, intro)}
       >
         {/* Header: icon + refresh */}
         <div className="flex items-start justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 ring-1 ring-gray-300/40 shadow-[0_4px_16px_rgba(0,0,0,0.06)] group-hover:shadow-[0_6px_20px_rgba(0,0,0,0.1)] group-hover:scale-105 transition-all duration-300">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 ring-1 ring-gray-300/40 shadow-[var(--shadow-chat-care-icon)] group-hover:shadow-[var(--shadow-chat-care-icon-hover)] group-hover:scale-105 transition-[box-shadow,transform] duration-300">
             <Sparkles className="h-4 w-4 text-gray-600" />
           </div>
 
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-full border border-gray-200/50 bg-white/80 text-gray-400 hover:text-gray-700 hover:border-gray-300/80 hover:bg-gray-50 transition-all"
+            className="h-9 w-9 rounded-full border border-gray-200/50 bg-white/80 text-gray-400 hover:text-gray-700 hover:border-gray-300/80 hover:bg-gray-50 transition-[color,background-color,border-color]"
             onClick={(e) => {
               e.stopPropagation();
               fetchIntro();
@@ -171,10 +171,10 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
 
         {/* CTA: centered button */}
         <div className="flex justify-center">
-          <span className="inline-flex items-center gap-2 text-[13px] px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium border border-gray-200 group-hover:bg-gray-200 group-hover:border-gray-300 group-hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all">
+          <span className="inline-flex items-center gap-2 text-[13px] px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium border border-gray-200 group-hover:bg-gray-200 group-hover:border-gray-300 group-hover:shadow-[var(--shadow-chat-care-cta-hover)] transition-[background-color,border-color,box-shadow]">
             <Sparkles className="h-3.5 w-3.5" />
             点击开始对话
-            <ArrowRight className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+            <ArrowRight className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-[opacity,transform]" />
           </span>
         </div>
       </div>

@@ -86,7 +86,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             className={cn(
               "min-h-11 min-w-11 h-11 w-11 rounded-full shrink-0",
               input.trim()
-                ? "bg-foreground text-background shadow-[0_2px_8px_rgba(0,0,0,0.15)] hover:bg-foreground/90"
+                ? "bg-foreground text-background shadow-[var(--shadow-chat-input-action)] hover:bg-foreground/90"
                 : "bg-muted text-muted-foreground"
             )}
           >
