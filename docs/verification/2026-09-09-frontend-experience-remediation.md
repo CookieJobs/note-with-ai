@@ -8,7 +8,7 @@ Date: 2026-09-14
 | --- | --- |
 | `cd frontend && npm run lint` | PASS |
 | `cd frontend && npm run typecheck` | PASS |
-| `cd frontend && npm test` | PASS, 39 files and 276 tests |
+| `cd frontend && npm test` | PASS, 39 files and 278 tests |
 | `cd frontend && npm run build` | PASS |
 | `cd frontend && npm run test:a11y` | PASS, 3 core-state tests |
 | `cd frontend && npm run check:route-budgets` | PASS, `/notes` 231.0 kB and 45.1% reduction |
@@ -53,7 +53,9 @@ Browser inspection of the production build verified the Auth compact-card surfac
 
 Automated, deterministic coverage supplies the remaining available matrix evidence: semantic light/dark contrast and focus contracts, 44px target contracts, reduced-motion contracts, long Chinese Note title fixture, responsive navigation contract, Profile atmosphere resolver inputs (default, light, saturated, malformed, and very dark), and Profile's occurrence-level decorative-token allowlist.
 
-The local production server had no authenticated seeded 251-note or 1000-note account, no browser-driven theme toggle, and no VoiceOver session. Consequently those live checks, plus full route-by-route 320/390/768/1440 and three rendered Profile-atmosphere screenshots, remain **pending root verification**. This is an open manual P1 acceptance requirement, not a waived automated failure. Automated gates did not report a P0/P1, but no final zero-P1 ruling can be made until the root verification matrix is completed.
+Root's live production matrix on the authenticated 1000-note account at 320/390/768/1440px found and measured concrete sub-44px controls before fix round 4: the shared brand link (27px), Notes quick-compose opener and add-keyword controls (24px), Chat refresh (36px) and note-source action (18px), Inspiration action buttons/links (37px), and Profile edit/password/update/collapse controls (36px). The implementation raises those to the product's 44px target and also fixes analogous actionable compact controls found in the approved seven-route source scan: Auth tabs/password/footer actions, Memory edit/delete/evidence actions, Publish card/preview actions, TopNavigation account/menu actions, Chat drawer/delete actions, Notes rich-editor/bubble/URL/compose actions, and RelatedNoteCard expansion. Visual glyphs/text remain compact inside their larger physical target. The 18px Inspiration checkbox is intentionally unchanged because its associated `.consent` label now provides the actual 44px-plus hit target; decorative icons, skeletons, drag affordances, and status badges are not controls.
+
+Root supplied the 1000-note live measurements above, but the post-fix 320/390/768/1440 rerun, 251-note account, browser-driven theme toggle, and VoiceOver session remain **pending root verification**. Consequently the full route-by-route matrix and three rendered Profile-atmosphere screenshots are still open manual P1 acceptance requirements, not waived automated failures. Automated gates did not report a P0/P1, but no final zero-P1 ruling can be made until the root verification matrix is completed.
 
 ## Impeccable acceptance review
 
@@ -77,6 +79,8 @@ The Impeccable skill bootstrap could not execute its repository audit because th
 
 The remediation was reopened to fix acceptance defects rather than waive them. The cost is deliberate: a static validator mirrors the supported editor grammar without reintroducing Tiptap to `/notes`; delete intent carries an opener ref through the Notes menu/card/page boundary; and the enumerated core-route sources use component tokens instead of raw literal colors while naming transitioned properties. Reintroducing the runtime schema, retaining a custom destructive overlay, or broadly allowlisting violations would conflict with the bundle, accessibility, and style constraints.
 
+Fix round 4 explicitly chose 44px physical targets for the root-measured controls and their analogous in-scope counterparts, preserving compact visible glyphs/text rather than retaining undersized hit areas. This applies only to the approved Notes, Chat, Memory, Inspiration, Profile, Publish, and Auth matrix and their listed shared components; it excludes `/admin/**` and the separate public `/p/[slug]` route. The root-supplied live findings are implementation evidence, not completion of the required post-fix manual matrix.
+
 ## Hashes
 
 - Task 14 start: `083cd8ec559e5a824f80fdb27068b878a83aa189`
@@ -84,3 +88,4 @@ The remediation was reopened to fix acceptance defects rather than waive them. T
 - Task 14 fix round 1 implementation: `3d5cca17b2ffc35fd24a63b3029d6fe21d187324`
 - Task 14 fix round 2 implementation: `8e4cf3dbe398132e464afd0be461d0fd4292b3cd`
 - Task 14 fix round 3 implementation: `ff4f32eba2bd41c63061e582379e7ee346229ff0`
+- Task 14 fix round 4 implementation: `1875798cfe769e3deb7ef40fafeee2ddc031862d`
