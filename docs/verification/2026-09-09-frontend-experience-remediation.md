@@ -8,7 +8,7 @@ Date: 2026-09-14
 | --- | --- |
 | `cd frontend && npm run lint` | PASS |
 | `cd frontend && npm run typecheck` | PASS |
-| `cd frontend && npm test` | PASS, 39 files and 268 tests |
+| `cd frontend && npm test` | PASS, 39 files and 275 tests |
 | `cd frontend && npm run build` | PASS |
 | `cd frontend && npm run test:a11y` | PASS, 3 core-state tests |
 | `cd frontend && npm run check:route-budgets` | PASS, `/notes` 231.0 kB and 45.1% reduction |
@@ -28,7 +28,7 @@ The production build writes its route table to `frontend/.next-route-sizes.txt`.
 | Required First Load JS ceiling | 300 kB | 231 kB |
 | Reduction from 421 kB reference | not met | 45.1% |
 
-The entry bundle previously pulled the full Tiptap schema and read-only viewer into `/notes`. Draft recovery now validates the persisted document structurally at the route boundary, including supported ProseMirror content placement, leaves, and marks, while the editor and viewer retain their separate dynamic imports. Direct root text, block marks, invalid nested block/inline nodes, leaf content, and valid-boundary recovery are covered without importing Tiptap at runtime. Existing malformed-draft recovery, quick-capture, editor intent, pagination, polling, and conflict suites remain green.
+The entry bundle previously pulled the full Tiptap schema and read-only viewer into `/notes`. Draft recovery now validates the persisted document structurally at the route boundary, including supported ProseMirror content placement, leaves, and marks, while the editor and viewer retain their separate dynamic imports. Direct root text, block marks, invalid nested block/inline nodes, leaf content, empty text leaves, and valid-boundary recovery are covered without importing Tiptap at runtime. The exact mark whitelist includes StarterKit's `underline`; an underline draft restores without error. A source-backed contract names every persisted node/mark from StarterKit plus Link, Task, image, code-block, highlight, and table extensions. History, Markdown, Placeholder, TextAlign, and cursor plugins intentionally introduce no persisted node/mark names. Existing malformed-draft recovery, quick-capture, editor intent, pagination, polling, and conflict suites remain green.
 
 ## Accessibility gate and upstream corrections
 
@@ -41,7 +41,11 @@ The initial RED run identified two real defects:
 
 Focused regressions and the full axe suite passed after those corrections.
 
-The style contract now rejects raw hexadecimal, RGB/RGBA, and HSL/HSLA colors in active business route/component styles (there are no business-style exemptions), and rejects `transition: all`. The affected Notes and Chat modules consume semantic or component tokens; remaining animations/transitions have typed properties and reduced-motion coverage.
+The style contract now rejects raw hexadecimal, RGB/RGBA, and HSL/HSLA colors in the exact machine-enforced core route/component source list, including SCSS and direct TSX inline-style sources; negative tests prove TSX hex, RGB, RGBA, and HSL detection. It also rejects `transition: all` in that list. Notes page/compose and active Chat components consume semantic or component tokens; remaining animations/transitions have typed properties and reduced-motion coverage.
+
+### Machine-enforced color-source scope
+
+The source gate covers the seven Task 14 manual-matrix routes—Notes, Chat, Memory, Inspiration, Profile, Publish, and Auth—plus their listed shared route components (TopNavigation, ChatMessage, RelatedNoteCard, ChatInputArea, CareAssistantPanel, ChatRelatedNotesPanel, FloatingQuickCompose, and the Notes editor URL popover). It is intentionally not a repository-wide assertion. `/p/[slug]` is excluded because the approved Task 14 matrix and Task 9 core-route file list name `publish/**`, not the separate public-sharing snapshot route. `/admin/**` is outside this remediation scope and user-owned. `profileBackgroundTheme.ts` is excluded because it deliberately generates only the separately-tested decorative `--atmosphere-accent`, `--atmosphere-soft`, and `--atmosphere-glow` values. Editor plugins/configuration are also outside the TSX source scan; their persisted schema coverage is verified without a runtime Tiptap import.
 
 ## Visual and manual matrix
 
@@ -71,10 +75,11 @@ The Impeccable skill bootstrap could not execute its repository audit because th
 
 ## Fix-round ruling and cost
 
-The remediation was reopened to fix acceptance defects rather than waive them. The cost is deliberate: a static validator mirrors the supported editor grammar without reintroducing Tiptap to `/notes`; delete intent carries an opener ref through the Notes menu/card/page boundary; and active business styles use component tokens instead of raw literal colors while naming transitioned properties. Reintroducing the runtime schema, retaining a custom destructive overlay, or broadly allowlisting violations would conflict with the bundle, accessibility, and style constraints.
+The remediation was reopened to fix acceptance defects rather than waive them. The cost is deliberate: a static validator mirrors the supported editor grammar without reintroducing Tiptap to `/notes`; delete intent carries an opener ref through the Notes menu/card/page boundary; and the enumerated core-route sources use component tokens instead of raw literal colors while naming transitioned properties. Reintroducing the runtime schema, retaining a custom destructive overlay, or broadly allowlisting violations would conflict with the bundle, accessibility, and style constraints.
 
 ## Hashes
 
 - Task 14 start: `083cd8ec559e5a824f80fdb27068b878a83aa189`
 - Task 14 implementation: `7e49066d5a41bda0e90b2edb122e56352ea58663` (amended below only to record its final hash).
 - Task 14 fix round 1 implementation: `3d5cca17b2ffc35fd24a63b3029d6fe21d187324`
+- Task 14 fix round 2 implementation: `8e4cf3dbe398132e464afd0be461d0fd4292b3cd`
