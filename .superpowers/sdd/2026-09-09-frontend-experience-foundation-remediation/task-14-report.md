@@ -21,7 +21,7 @@ Added executable axe and route-budget gates, then used their RED evidence to cor
 
 ## Acceptance evidence
 
-The final root run passed frontend lint, typecheck, 40 Vitest files / 295 tests, production build, axe, route budget, and `git diff --check`; backend passed 169 tests, typecheck, and build. The `/notes` result remained 231.0 kB First Load JS, 45.1% below the reference.
+The final root run passed frontend lint, typecheck, 41 Vitest files / 302 tests, production build, axe, route budget, and `git diff --check`; backend passed 169 tests, typecheck, and build. The `/notes` result remained 231.0 kB First Load JS, 45.1% below the reference. Final composition reviews closed controlled slash-menu Dialog toggling and the server-revision mismatch loading state in `62fc3c0`, then gated the slash menu's capture listeners while its portalled Dialog owns pointer, Enter, Escape, and focus behavior in `37a28a3`. The original reviewer returned no findings after that final fix.
 
 ## Ruling and cost
 

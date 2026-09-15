@@ -8,7 +8,7 @@ Date: 2026-09-15
 | --- | --- |
 | `cd frontend && npm run lint` | PASS |
 | `cd frontend && npm run typecheck` | PASS |
-| `cd frontend && npm test` | PASS, 40 files and 295 tests |
+| `cd frontend && npm test` | PASS, 41 files and 302 tests |
 | `cd frontend && npm run build` | PASS |
 | `cd frontend && npm run test:a11y` | PASS, 3 core-state tests |
 | `cd frontend && npm run check:route-budgets` | PASS, `/notes` 231.0 kB and 45.1% reduction |
@@ -83,7 +83,7 @@ The Impeccable skill bootstrap could not execute its repository audit because th
 
 ## Final independent review closure
 
-Two independent final reviewers reopened release for seven concrete findings, all of which are now closed. System dark tokens are reachable; the Care Assistant primary action is a named button; the URL editor composes the shared Dialog; and the scoped palette gate now detects raw Tailwind color utilities. The Notes list consumes batched `aiIncluded` values instead of issuing one request per card, and an unknown fallback preference remains disabled rather than defaulting to participation. Related-note responses are keyed to `noteId:revision`, reject stale source revisions, and bound the pre-query candidate set to the best 20 stable-ranked entries before returning at most five privacy-safe summaries. Fresh root verification after these fixes produced the command results recorded above.
+Two independent final reviewers reopened release for seven concrete findings, all of which are now closed. System dark tokens are reachable; the Care Assistant primary action is a named button; the URL editor composes the shared Dialog; and the scoped palette gate now detects raw Tailwind color utilities. The Notes list consumes batched `aiIncluded` values instead of issuing one request per card, and an unknown fallback preference remains disabled rather than defaulting to participation. Related-note responses are keyed to `noteId:revision`, reject stale source revisions, and bound the pre-query candidate set to the best 20 stable-ranked entries before returning at most five privacy-safe summaries. A post-fix review then found composition/state edges: the controlled slash-menu image trigger could toggle itself closed, a server revision mismatch could leave the drawer loading forever, and the slash menu's capture listeners could intercept its portalled Dialog. Commits `62fc3c0` and `37a28a3` give the Dialog trigger sole pointer ownership, suspend menu capture listeners while the modal is open, preserve Enter/Escape/focus behavior, and turn revision drift into a retryable error without rendering stale data. The original reviewer returned no findings after the final fix. Fresh root verification after these fixes produced the command results recorded above.
 
 ## Fix-round ruling and cost
 
@@ -105,3 +105,5 @@ Fix round 5 accepts a small keyword-row density cost to eliminate an invalid nes
 - Final theme/accessibility closure: `e5b784df6da58af9ce053168ce34d33fa82eef13`
 - Final related-candidate bound: `646c7276248b0242a79cb5e0aaafc2cef451088b`
 - Final list-preference/revision closure: `dd830c663edebce352d3a274a641d177b2665c91`
+- Final controlled-dialog/revision-state closure: `62fc3c059ac1e2af4989be5f83bad61cbca6ab9f`
+- Final slash-menu portal closure: `37a28a38f328576fda136b2d54c004a171b1b1c2`
