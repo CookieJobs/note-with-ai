@@ -253,7 +253,7 @@
 
 @media (prefers-color-scheme: dark) {
   /* CSS-only system preference avoids a client-side theme flash. A manual .dark class below still wins. */
-  :where(:root:not(.light)) {
+  :root:not(.light) {
     --color-text-primary: #f5f7fb;
     --color-text-secondary: #c3cad8;
     --color-text-tertiary: #9da8bb;

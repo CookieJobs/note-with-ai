@@ -165,8 +165,9 @@ describe('style foundation contract', () => {
     darkSemanticTokens.forEach((token) => expect(tokenValue(darkTokens, token)).toBeTruthy());
   });
 
-  it('applies dark semantic tokens through the system preference without overriding a future manual theme class', () => {
-    expect(variables).toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*?:where\(:root:not\(\.light\)\)\s*\{/);
+  it('applies dark semantic tokens with enough specificity to override the light :root tokens', () => {
+    expect(variables).toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*?:root:not\(\.light\)\s*\{/);
+    expect(variables).not.toContain(':where(:root:not(.light))');
 
     const systemDarkStart = variables.indexOf('@media (prefers-color-scheme: dark)');
     const manualDarkStart = variables.indexOf('\n.dark {', systemDarkStart);
