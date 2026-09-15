@@ -110,6 +110,44 @@ describe('related note summaries', () => {
     assert.equal(summaries.length, 5);
   });
 
+  it('keeps the highest final scores from a large cache with a deterministic id tie-break', async () => {
+    const byCandidateId = Object.fromEntries([
+      ['candidate-z', { s1: 0.5, s2: 0.5, type: '同一主题', reason: 'z' }],
+      ['candidate-b', { s1: 0.5, s2: 0.5, type: '同一主题', reason: 'b' }],
+      ['candidate-a', { s1: 0.5, s2: 0.5, type: '同一主题', reason: 'a' }],
+      ...Array.from({ length: 10000 }, (_, index) => [
+        `low-${index}`,
+        { s1: 0.1, s2: 0.1, type: '弱关联', reason: 'low' },
+      ]),
+      ['candidate-high', { s1: 0.9, s2: 0.9, type: '同一主题', reason: 'high' }],
+    ]);
+    let candidateFilter: unknown;
+    mock.method(Note, 'findOne', () => ({ lean: async () => ({
+      revision: 2,
+      recommendCache: { sourceRevision: 2, byCandidateId },
+    }) }) as never);
+    mock.method(Note, 'find', (filter: unknown) => {
+      candidateFilter = filter;
+      return {
+        select() { return this; },
+        lean: async () => Array.from(
+          (filter as { _id: { $in: string[] } })._id.$in,
+          (id) => ({ _id: id, title: id, contentText: id, createdAt: new Date('2026-09-12T00:00:00.000Z') }),
+        ),
+      } as never;
+    });
+
+    const summaries = await getRelatedNoteSummaries({ userId: 'owner-1', noteId: 'source-1' });
+
+    const candidateIds = (candidateFilter as { _id: { $in: string[] } })._id.$in;
+    assert.equal(candidateIds.length, 20);
+    assert.deepEqual(candidateIds.slice(0, 5), ['candidate-high', 'candidate-a', 'candidate-b', 'candidate-z', 'low-0']);
+    assert.equal((candidateFilter as { userId: string }).userId, 'owner-1');
+    assert.deepEqual(summaries.map(({ id }) => id), ['candidate-high', 'candidate-a', 'candidate-b', 'candidate-z', 'low-0']);
+    assert.equal(summaries.length, 5);
+    assert.equal(JSON.stringify(summaries).includes('0.9'), false);
+  });
+
   it('returns no summaries from missing or stale recommendation cache', async () => {
     const candidateQueries: unknown[] = [];
     mock.method(Note, 'findOne', () => ({ lean: async () => ({
