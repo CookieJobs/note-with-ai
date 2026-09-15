@@ -1,6 +1,6 @@
 # Frontend experience remediation verification
 
-Date: 2026-09-14
+Date: 2026-09-15
 
 ## Automated gates
 
@@ -8,12 +8,12 @@ Date: 2026-09-14
 | --- | --- |
 | `cd frontend && npm run lint` | PASS |
 | `cd frontend && npm run typecheck` | PASS |
-| `cd frontend && npm test` | PASS, 39 files and 281 tests |
+| `cd frontend && npm test` | PASS, 40 files and 295 tests |
 | `cd frontend && npm run build` | PASS |
 | `cd frontend && npm run test:a11y` | PASS, 3 core-state tests |
 | `cd frontend && npm run check:route-budgets` | PASS, `/notes` 231.0 kB and 45.1% reduction |
 | `cd backend && npm run typecheck` | PASS |
-| `cd backend && npm test` | PASS, 168 tests |
+| `cd backend && npm test` | PASS, 169 tests |
 | `cd backend && npm run build` | PASS |
 | `git diff --check` | PASS |
 
@@ -23,7 +23,7 @@ The production build writes its route table to `frontend/.next-route-sizes.txt`.
 
 | Measurement | Before Task 14 | Final production build |
 | --- | ---: | ---: |
-| `/notes` route size | 308 kB | 69.6 kB |
+| `/notes` route size | 308 kB | 69.8 kB |
 | `/notes` First Load JS | 470 kB | 231 kB |
 | Required First Load JS ceiling | 300 kB | 231 kB |
 | Reduction from 421 kB reference | not met | 45.1% |
@@ -32,7 +32,7 @@ The entry bundle previously pulled the full Tiptap schema and read-only viewer i
 
 ## Accessibility gate and upstream corrections
 
-`axe-core` runs stable renders for TopNavigation, all Auth modes, both Memory edit and delete dialogs, the Notes delete dialog, the mobile Chat drawer, Profile feed, and Note-card actions. The Notes dialog test additionally verifies the shared modal lifecycle: labelled modal role, initial focus, focus trap, Escape/overlay close policy, focus return to the invoker, closed-DOM removal, and 44px actions. The suite also asserts Chat drawer focus restoration, which static axe rules cannot infer. It excludes color contrast because jsdom has no layout/canvas color compositor, route-landmark checks because components are rendered as isolated fixtures, and Floating UI's generated hidden focus guards.
+`axe-core` runs stable renders for TopNavigation, all Auth modes, both Memory edit and delete dialogs, the Notes delete dialog, the Notes URL dialog, the mobile Chat drawer, Profile feed, and Note-card actions. The Notes dialogs verify the shared modal lifecycle: labelled modal role, initial focus, focus trap, Escape/overlay close policy, focus return to the invoker, closed-DOM removal, and 44px actions. The suite also asserts Chat drawer focus restoration and a named keyboard-operable Care Assistant CTA, which static axe rules cannot infer. It excludes color contrast because jsdom has no layout/canvas color compositor, route-landmark checks because components are rendered as isolated fixtures, and Floating UI's generated hidden focus guards.
 
 The initial RED run identified two real defects:
 
@@ -41,7 +41,7 @@ The initial RED run identified two real defects:
 
 Focused regressions and the full axe suite passed after those corrections.
 
-The style contract now rejects raw hexadecimal, RGB/RGBA, and HSL/HSLA colors in the exact machine-enforced core route/component source list, including SCSS and direct TSX inline-style sources; negative tests prove TSX hex, RGB, RGBA, and HSL detection. It also rejects `transition: all` in that list. Notes page/compose and active Chat components consume semantic or component tokens; remaining animations/transitions have typed properties and reduced-motion coverage.
+The style contract now rejects raw hexadecimal, RGB/RGBA, and HSL/HSLA colors plus raw Tailwind palette utilities in the exact machine-enforced core route/component source list, including SCSS and direct TSX inline-style sources; negative tests prove literal and utility detection. It also rejects `transition: all` in that list. Notes page/compose and active Chat components consume semantic or component tokens; remaining animations/transitions have typed properties and reduced-motion coverage. System dark preference activates the semantic dark token set through CSS, while a later explicit `.dark` class remains a valid override path.
 
 ### Machine-enforced color-source scope
 
@@ -49,7 +49,7 @@ The source gate covers the seven Task 14 manual-matrix routes—Notes, Chat, Mem
 
 ## Visual and manual matrix
 
-Browser inspection of the production build verified the Auth compact-card surface at 320×800 and 1440×900: labels, mode tabs, inputs, password action, primary action, and footer links remained readable with no visible horizontal overflow. The 320px capture also exercised the required compact-card direction rather than Apple-specific visual values.
+Browser inspection of the production build verified the Auth compact-card surface at 320×800 and 1440×900: labels, mode tabs, inputs, password action, primary action, and footer links remained readable with no visible horizontal overflow. This retains the approved Apple-inspired compact-card direction without copying vendor assets, while Profile independently retains its user-derived decorative atmosphere; neither visual language leaks into the other's semantic surfaces.
 
 Automated, deterministic coverage supplies the remaining available matrix evidence: semantic light/dark contrast and focus contracts, 44px target contracts, reduced-motion contracts, long Chinese Note title fixture, responsive navigation contract, Profile atmosphere resolver inputs (default, light, saturated, malformed, and very dark), and Profile's occurrence-level decorative-token allowlist.
 
@@ -81,11 +81,15 @@ The Impeccable skill bootstrap could not execute its repository audit because th
 - Dynamic viewer loading briefly uses an accessible `role="status"` placeholder before rich content hydrates; the dynamic import is required to keep the first-load budget binding.
 - Actual macOS system-dark appearance and VoiceOver audio remain the only unexecuted manual checks because changing those OS settings requires explicit user authorization. The equivalent narrow reflow, three Profile atmosphere fixtures, accessibility tree, keyboard paths, and deterministic dark/reduced-motion contracts have passed.
 
+## Final independent review closure
+
+Two independent final reviewers reopened release for seven concrete findings, all of which are now closed. System dark tokens are reachable; the Care Assistant primary action is a named button; the URL editor composes the shared Dialog; and the scoped palette gate now detects raw Tailwind color utilities. The Notes list consumes batched `aiIncluded` values instead of issuing one request per card, and an unknown fallback preference remains disabled rather than defaulting to participation. Related-note responses are keyed to `noteId:revision`, reject stale source revisions, and bound the pre-query candidate set to the best 20 stable-ranked entries before returning at most five privacy-safe summaries. Fresh root verification after these fixes produced the command results recorded above.
+
 ## Fix-round ruling and cost
 
 The remediation was reopened to fix acceptance defects rather than waive them. The cost is deliberate: a static validator mirrors the supported editor grammar without reintroducing Tiptap to `/notes`; delete intent carries an opener ref through the Notes menu/card/page boundary; and the enumerated core-route sources use component tokens instead of raw literal colors while naming transitioned properties. Reintroducing the runtime schema, retaining a custom destructive overlay, or broadly allowlisting violations would conflict with the bundle, accessibility, and style constraints.
 
-Fix round 4 explicitly chose 44px physical targets for the root-measured controls and their analogous in-scope counterparts, preserving compact visible glyphs/text rather than retaining undersized hit areas. This applies only to the approved Notes, Chat, Memory, Inspiration, Profile, Publish, and Auth matrix and their listed shared components; it excludes `/admin/**` and the separate public `/p/[slug]` route. The root-supplied live findings are implementation evidence, not completion of the required post-fix manual matrix.
+Fix round 4 explicitly chose 44px physical targets for the root-measured controls and their analogous in-scope counterparts, preserving compact visible glyphs/text rather than retaining undersized hit areas. This applies only to the approved Notes, Chat, Memory, Inspiration, Profile, Publish, and Auth matrix and their listed shared components; it excludes `/admin/**` and the separate public `/p/[slug]` route. Those initial findings drove the fix; the separate post-fix matrix above supplies the completion evidence.
 
 Fix round 5 accepts a small keyword-row density cost to eliminate an invalid nested interactive structure and overlapping touch area. The rejected alternative—preserving a clickable role-button wrapper around the native delete button or hiding an absolute 44px delete target over adjacent chips—would fail semantic and touch-target acceptance.
 
@@ -98,3 +102,6 @@ Fix round 5 accepts a small keyword-row density cost to eliminate an invalid nes
 - Task 14 fix round 3 implementation: `ff4f32eba2bd41c63061e582379e7ee346229ff0`
 - Task 14 fix round 4 implementation: `1875798cfe769e3deb7ef40fafeee2ddc031862d`
 - Task 14 fix round 5 implementation: `2e9cb6f1be042c71df7914f56823efe83596223c`
+- Final theme/accessibility closure: `e5b784df6da58af9ce053168ce34d33fa82eef13`
+- Final related-candidate bound: `646c7276248b0242a79cb5e0aaafc2cef451088b`
+- Final list-preference/revision closure: `dd830c663edebce352d3a274a641d177b2665c91`
