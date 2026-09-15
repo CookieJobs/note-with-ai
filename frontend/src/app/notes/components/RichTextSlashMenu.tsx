@@ -151,7 +151,7 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
 
   // Keyboard navigation
   useEffect(() => {
-    if (!open) return;
+    if (!open || imagePopoverOpen) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -193,25 +193,26 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
 
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [open, selectedIndex, editor]);
+  }, [open, imagePopoverOpen, selectedIndex, editor]);
 
   // Click outside to close
   useEffect(() => {
-    if (!open) return;
+    // The image dialog is portalled outside the menu. While it is open, its
+    // shared Dialog lifecycle owns pointer and keyboard events so its trigger
+    // stays mounted for focus restoration.
+    if (!open || imagePopoverOpen) return;
 
     const onPointerDown = (e: PointerEvent) => {
       const t = e.target as Node | null;
       if (!t) return;
       if (menuRef.current?.contains(t)) return;
-      // Don't close if interacting with the image URL popover
-      if ((t as HTMLElement).closest?.('[data-radix-popper-content-wrapper]')) return;
       setOpen(false);
       setImagePopoverOpen(false);
     };
 
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [open]);
+  }, [open, imagePopoverOpen]);
 
   // Scroll selected item into view
   useEffect(() => {
