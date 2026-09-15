@@ -1,14 +1,17 @@
 import React, { useRef, useState } from 'react';
 import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
-interface UrlPopoverProps {
+interface UrlPopoverBaseProps {
   children: React.ReactNode;
   onSubmit: (url: string) => void;
   defaultValue?: string;
   placeholder?: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
 }
+
+type UrlPopoverProps = UrlPopoverBaseProps & (
+  | { open?: undefined; onOpenChange?: undefined }
+  | { open: boolean; onOpenChange: (open: boolean) => void }
+);
 
 export function UrlPopover({ children, onSubmit, defaultValue = '', placeholder = 'Enter URL...', open, onOpenChange }: UrlPopoverProps) {
   const [url, setUrl] = useState(defaultValue);

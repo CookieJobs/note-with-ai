@@ -279,7 +279,9 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
               onMouseDown={(e) => {
                 e.preventDefault();
                 if (isImage) {
-                  setImagePopoverOpen(true);
+                  // In controlled mode, DialogTrigger owns pointer activation through
+                  // onOpenChange. Setting it here makes the subsequent click toggle it closed.
+                  return;
                 } else {
                   setOpen(false);
                   cmd.action(editor);

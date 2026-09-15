@@ -65,7 +65,16 @@ export default function RelatedNotesDrawer({
     setRelationshipRequest({ sourceIdentity: selectedSourceIdentity, status: 'loading', relationships: [], error: null });
     void fetchRelatedNotes(selectedNoteId, controller.signal)
       .then((response) => {
-        if (controller.signal.aborted || response.sourceRevision !== selectedSourceRevision) return;
+        if (controller.signal.aborted) return;
+        if (response.sourceRevision !== selectedSourceRevision) {
+          setRelationshipRequest({
+            sourceIdentity: selectedSourceIdentity,
+            status: 'error',
+            relationships: [],
+            error: new Error('相关笔记响应版本不匹配'),
+          });
+          return;
+        }
         setRelationshipRequest({ sourceIdentity: selectedSourceIdentity, status: 'success', relationships: response.relationships, error: null });
       })
       .catch((error: unknown) => {

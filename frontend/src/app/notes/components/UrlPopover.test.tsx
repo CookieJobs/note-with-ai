@@ -1,5 +1,6 @@
 import axe from 'axe-core';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { UrlPopover } from './UrlPopover';
 
@@ -58,5 +59,27 @@ describe('UrlPopover editor boundary', () => {
     fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
 
     await waitFor(() => expect(confirm).toHaveFocus());
+  });
+
+  it('uses DialogTrigger as the sole pointer opener when its open state is controlled', async () => {
+    function ControlledUrlPopover() {
+      const [open, setOpen] = useState(false);
+      return (
+        <UrlPopover open={open} onOpenChange={setOpen} onSubmit={vi.fn()}>
+          <button type="button" onMouseDown={(event) => event.preventDefault()}>Add image</button>
+        </UrlPopover>
+      );
+    }
+
+    render(<ControlledUrlPopover />);
+    const trigger = screen.getByRole('button', { name: 'Add image' });
+    trigger.focus();
+    fireEvent.mouseDown(trigger);
+    fireEvent.click(trigger);
+
+    expect(await screen.findByRole('dialog', { name: 'Enter URL' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
   });
 });

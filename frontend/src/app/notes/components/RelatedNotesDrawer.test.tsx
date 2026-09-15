@@ -106,6 +106,21 @@ describe('RelatedNotesDrawer', () => {
     expect(screen.getByText('新 revision 的结果')).toBeInTheDocument();
   });
 
+  it('shows a recoverable error instead of loading forever when the server returns a different revision', async () => {
+    vi.mocked(fetchRelatedNotes).mockResolvedValue({
+      sourceRevision: 3,
+      relationships: [{
+        id: 'old-revision', title: '旧 revision 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
+      }],
+    });
+
+    render(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={note} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('无法加载相关笔记');
+    expect(screen.queryByText('旧 revision 的结果')).not.toBeInTheDocument();
+    expect(screen.queryByText('正在加载相关笔记')).not.toBeInTheDocument();
+  });
+
   it('renders B as loading immediately after settled A success', async () => {
     vi.mocked(fetchRelatedNotes).mockResolvedValueOnce(response([{
       id: 'a', title: 'A 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
