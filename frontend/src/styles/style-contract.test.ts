@@ -89,7 +89,7 @@ const darkSemanticTokens = lightSemanticTokens.filter(
   (token) => !token.startsWith('--radius-') && !token.startsWith('--motion-'),
 );
 
-function blockFor(selector: ':root' | '.dark') {
+function blockFor(selector: ':root' | ':root.dark') {
   const start = variables.indexOf(`${selector} {`);
   const end = variables.indexOf('\n}', start);
 
@@ -159,7 +159,7 @@ function contrastRatio(first: readonly number[], second: readonly number[]) {
 describe('style foundation contract', () => {
   it('defines light and dark semantic color, radius, focus, and motion tokens', () => {
     const lightTokens = blockFor(':root');
-    const darkTokens = blockFor('.dark');
+    const darkTokens = blockFor(':root.dark');
 
     lightSemanticTokens.forEach((token) => expect(tokenValue(lightTokens, token)).toBeTruthy());
     darkSemanticTokens.forEach((token) => expect(tokenValue(darkTokens, token)).toBeTruthy());
@@ -170,7 +170,7 @@ describe('style foundation contract', () => {
     expect(variables).not.toContain(':where(:root:not(.light))');
 
     const systemDarkStart = variables.indexOf('@media (prefers-color-scheme: dark)');
-    const manualDarkStart = variables.indexOf('\n.dark {', systemDarkStart);
+    const manualDarkStart = variables.indexOf('\n:root.dark {', systemDarkStart);
     const systemDarkBlock = variables.slice(systemDarkStart, manualDarkStart);
 
     expect(manualDarkStart).toBeGreaterThan(systemDarkStart);
