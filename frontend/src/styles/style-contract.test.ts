@@ -54,6 +54,7 @@ const coreProductStyleSourcePaths = [
   '../app/notes/components/UrlPopover.tsx',
 ] as const;
 const rawColorLiteral = /#[\da-f]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/gi;
+const rawPaletteUtility = /(?:^|[\s"'`])(?:(?:[a-z-]+):)*(?:bg|text|border|ring|from|via|to|fill|stroke|outline|decoration|caret|accent)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|black|white)(?:-\d{1,3})?(?:\/\d+)?\b/g;
 const lightSemanticTokens = [
   '--color-text-primary',
   '--color-text-secondary',
@@ -132,6 +133,10 @@ function rawColorMatches(source: string) {
   return [...source.matchAll(rawColorLiteral)].map((match) => match[0]);
 }
 
+function rawPaletteUtilityMatches(source: string) {
+  return [...source.matchAll(rawPaletteUtility)].map((match) => match[0].trim());
+}
+
 function contrastRatio(first: readonly number[], second: readonly number[]) {
   const composite = (foreground: readonly number[], background: readonly number[]) =>
     foreground.slice(0, 3).map((channel, index) => channel * foreground[3] + background[index] * (1 - foreground[3]));
@@ -158,6 +163,17 @@ describe('style foundation contract', () => {
 
     lightSemanticTokens.forEach((token) => expect(tokenValue(lightTokens, token)).toBeTruthy());
     darkSemanticTokens.forEach((token) => expect(tokenValue(darkTokens, token)).toBeTruthy());
+  });
+
+  it('applies dark semantic tokens through the system preference without overriding a future manual theme class', () => {
+    expect(variables).toMatch(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{[\s\S]*?:where\(:root:not\(\.light\)\)\s*\{/);
+
+    const systemDarkStart = variables.indexOf('@media (prefers-color-scheme: dark)');
+    const manualDarkStart = variables.indexOf('\n.dark {', systemDarkStart);
+    const systemDarkBlock = variables.slice(systemDarkStart, manualDarkStart);
+
+    expect(manualDarkStart).toBeGreaterThan(systemDarkStart);
+    darkSemanticTokens.forEach((token) => expect(tokenValue(systemDarkBlock, token)).toBeTruthy());
   });
 
   it('keeps the light focus indicator at 3:1 contrast against a raised surface', () => {
@@ -226,6 +242,19 @@ describe('style foundation contract', () => {
     ['hsl', '<span style={{ color: "hsl(220 60% 50%)" }} />', 'hsl(220 60% 50%)'],
   ])('detects a raw %s color literal in TSX source', (_kind, source, literal) => {
     expect(rawColorMatches(source)).toEqual([literal]);
+  });
+
+  it.each([
+    ['base palette', 'bg-slate-900/20', 'bg-slate-900/20'],
+    ['state palette', 'focus:ring-blue-500', 'focus:ring-blue-500'],
+    ['gradient palette', 'from-gray-50 via-white to-white', 'from-gray-50'],
+  ])('detects a raw %s Tailwind utility', (_kind, source, expected) => {
+    expect(rawPaletteUtilityMatches(source)).toContain(expected);
+  });
+
+  it('keeps CareAssistantPanel and UrlPopover on semantic or component palette tokens', () => {
+    expect(rawPaletteUtilityMatches(careAssistantPanel)).toEqual([]);
+    expect(rawPaletteUtilityMatches(sourceFor('../app/notes/components/UrlPopover.tsx'))).toEqual([]);
   });
 
   it('keeps named primary route controls at least 44px tall', () => {

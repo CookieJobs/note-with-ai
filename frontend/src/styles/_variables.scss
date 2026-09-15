@@ -251,6 +251,43 @@
   --notes-layout-tone-020: rgba(7, 12, 16, 1);
 }
 
+@media (prefers-color-scheme: dark) {
+  /* CSS-only system preference avoids a client-side theme flash. A manual .dark class below still wins. */
+  :where(:root:not(.light)) {
+    --color-text-primary: #f5f7fb;
+    --color-text-secondary: #c3cad8;
+    --color-text-tertiary: #9da8bb;
+    --color-text-inverse: #172033;
+
+    --color-surface-page: #101522;
+    --color-surface-raised: #191f2e;
+    --color-surface-sunken: #0c111c;
+    --color-surface-overlay: rgba(3, 7, 18, 0.72);
+
+    --color-border-subtle: #2b3446;
+    --color-border-default: #3d485e;
+    --color-border-strong: #71809b;
+
+    --color-action-primary: #aebfff;
+    --color-action-primary-hover: #c3ceff;
+    --color-action-primary-active: #d6dfff;
+    --color-action-secondary: #242d43;
+    --color-action-secondary-hover: #303b56;
+    --color-action-danger: #ffb4ab;
+
+    --color-status-success: #83d8a2;
+    --color-status-success-surface: #123d25;
+    --color-status-warning: #ffb95b;
+    --color-status-warning-surface: #493000;
+    --color-status-error: #ffb4ab;
+    --color-status-error-surface: #5e1717;
+    --color-status-info: #b4c6ff;
+    --color-status-info-surface: #1c366c;
+
+    --focus-ring: 0 0 0 3px rgba(174, 191, 255, 0.52);
+  }
+}
+
 .dark {
   --color-text-primary: #f5f7fb;
   --color-text-secondary: #c3cad8;
