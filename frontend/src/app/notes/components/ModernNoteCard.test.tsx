@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NoteWriteConflict, type Note } from '../hooks/useNotes';
 import ModernNoteCard from './ModernNoteCard';
 
@@ -138,6 +138,43 @@ describe('ModernNoteCard title conflict feedback', () => {
 });
 
 describe('ModernNoteCard touch-safe actions', () => {
+  beforeEach(() => {
+    memory.getPreference.mockReset().mockResolvedValue({ noteId: 'note-1', included: true });
+  });
+
+  it('does not make thirty preference requests when paged cards already know their AI participation', async () => {
+    memory.getPreference.mockClear();
+    const PagedCard = ModernNoteCard as React.ComponentType<React.ComponentProps<typeof ModernNoteCard> & { aiIncluded: boolean }>;
+
+    render(
+      <>
+        {Array.from({ length: 30 }, (_, index) => (
+          <PagedCard
+            key={index}
+            note={{ ...note, _id: `page-note-${index}` }}
+            aiIncluded={false}
+            onRequestDelete={vi.fn()}
+            updateNote={vi.fn()}
+          />
+        ))}
+      </>,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: '笔记操作' })[0]);
+    expect(await screen.findByRole('menuitem', { name: '恢复参与 AI' })).toBeInTheDocument();
+    expect(memory.getPreference).not.toHaveBeenCalled();
+  });
+
+  it('keeps the AI action unavailable while a legacy card preference is still loading', async () => {
+    memory.getPreference.mockImplementation(() => new Promise(() => {}));
+    render(<ModernNoteCard note={note} onRequestDelete={vi.fn()} updateNote={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '笔记操作' }));
+
+    expect(await screen.findByRole('menuitem', { name: '正在加载 AI 设置…' })).toBeDisabled();
+    expect(screen.queryByRole('menuitem', { name: '设为不参与 AI' })).not.toBeInTheDocument();
+  });
+
   it('loads the read-only rich text viewer outside the initial Notes entry chunk', () => {
     expect(noteCardSource).toContain("dynamic(() => import('./RichTextViewer')");
     expect(noteCardSource).not.toContain("import RichTextViewer from './RichTextViewer'");

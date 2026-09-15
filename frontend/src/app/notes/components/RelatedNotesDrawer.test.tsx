@@ -3,7 +3,7 @@ import { act } from 'react-dom/test-utils';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '../hooks/useNotes';
-import { fetchRelatedNotes } from '../services/relatedNotes';
+import { fetchRelatedNotes, type RelatedNoteSummary, type RelatedNotesResponse } from '../services/relatedNotes';
 import RelatedNotesDrawer from './RelatedNotesDrawer';
 
 vi.mock('../services/relatedNotes', () => ({ fetchRelatedNotes: vi.fn() }));
@@ -28,11 +28,15 @@ const note: Note = {
   updatedAt: '2026-08-19T00:00:00.000Z',
 };
 
+function response(relationships: RelatedNoteSummary[], sourceRevision = note.revision): RelatedNotesResponse {
+  return { sourceRevision, relationships };
+}
+
 describe('RelatedNotesDrawer', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('renders endpoint summaries that are absent from the loaded notes page as navigable relationships', async () => {
-    vi.mocked(fetchRelatedNotes).mockResolvedValue([{
+    vi.mocked(fetchRelatedNotes).mockResolvedValue(response([{
       id: 'candidate-not-loaded',
       title: '还没有加载的笔记',
       contentText: '这条笔记来自关系摘要接口。',
@@ -40,7 +44,7 @@ describe('RelatedNotesDrawer', () => {
       type: '同一主题',
       reason: '都在讨论阅读计划。',
       scoreBand: 'supported',
-    }]);
+    }]));
 
     render(
       <RelatedNotesDrawer
@@ -67,21 +71,45 @@ describe('RelatedNotesDrawer', () => {
     const { rerender } = render(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={note} />);
     rerender(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={{ ...note, _id: 'note-2', title: 'B' }} />);
 
-    await act(async () => { resolveA([{
+    await act(async () => { resolveA(response([{
       id: 'a', title: 'A 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
-    }]); });
+    }])); });
     expect(screen.queryByText('A 的结果')).not.toBeInTheDocument();
 
-    await act(async () => { resolveB([{
+    await act(async () => { resolveB(response([{
       id: 'b', title: 'B 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
-    }]); });
+    }], 4)); });
     expect(await screen.findByText('B 的结果')).toBeInTheDocument();
   });
 
+  it('does not let an older revision response overwrite a newer revision for the same source note', async () => {
+    let resolveOlder!: (value: RelatedNotesResponse) => void;
+    let resolveNewer!: (value: RelatedNotesResponse) => void;
+    vi.mocked(fetchRelatedNotes).mockImplementation((_noteId, _signal) => new Promise<RelatedNotesResponse>((resolve) => {
+      if (resolveOlder) resolveNewer = resolve;
+      else resolveOlder = resolve;
+    }));
+
+    const { rerender } = render(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={note} />);
+    rerender(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={{ ...note, revision: 5, enrichment: { sourceRevision: 5, status: 'ready' } }} />);
+
+    await waitFor(() => expect(fetchRelatedNotes).toHaveBeenCalledTimes(2));
+    await act(async () => { resolveNewer({ sourceRevision: 5, relationships: [{
+      id: 'newer', title: '新 revision 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
+    }] }); });
+    expect(await screen.findByText('新 revision 的结果')).toBeInTheDocument();
+
+    await act(async () => { resolveOlder({ sourceRevision: 4, relationships: [{
+      id: 'older', title: '旧 revision 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
+    }] }); });
+    expect(screen.queryByText('旧 revision 的结果')).not.toBeInTheDocument();
+    expect(screen.getByText('新 revision 的结果')).toBeInTheDocument();
+  });
+
   it('renders B as loading immediately after settled A success', async () => {
-    vi.mocked(fetchRelatedNotes).mockResolvedValueOnce([{
+    vi.mocked(fetchRelatedNotes).mockResolvedValueOnce(response([{
       id: 'a', title: 'A 的结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z', type: '', reason: '', scoreBand: 'possible',
-    }]).mockImplementationOnce(() => new Promise(() => {}));
+    }])).mockImplementationOnce(() => new Promise(() => {}));
     const { rerender } = render(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={note} />);
     await screen.findByText('A 的结果');
     rerender(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={{ ...note, _id: 'note-2', title: 'B' }} />);
@@ -108,7 +136,7 @@ describe('RelatedNotesDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     await waitFor(() => expect(fetchRelatedNotes).toHaveBeenCalledTimes(2));
 
-    vi.mocked(fetchRelatedNotes).mockResolvedValue([]);
+    vi.mocked(fetchRelatedNotes).mockResolvedValue(response([]));
     rerender(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNote={{ ...note, _id: 'note-2' }} />);
     expect(await screen.findByText('暂无相关笔记')).toBeInTheDocument();
   });
@@ -116,11 +144,11 @@ describe('RelatedNotesDrawer', () => {
   it('refreshes a stale source before requesting its summaries again', async () => {
     const refresh = vi.fn().mockResolvedValue(undefined);
     vi.mocked(fetchRelatedNotes)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([{
         id: 'candidate-1', title: '新结果', contentText: '', createdAt: '2026-09-12T00:00:00.000Z',
         type: '延伸思考', reason: '刷新后得到的关系。', scoreBand: 'possible',
-      }]);
+      }]));
 
     render(
       <RelatedNotesDrawer
@@ -141,7 +169,7 @@ describe('RelatedNotesDrawer', () => {
 
   it('does not retry a failed stale-cache refresh when only the source timestamp changes', async () => {
     const refresh = vi.fn().mockRejectedValue(new Error('stale'));
-    vi.mocked(fetchRelatedNotes).mockResolvedValue([]);
+    vi.mocked(fetchRelatedNotes).mockResolvedValue(response([]));
     const staleNote = {
       ...note,
       recommendCache: { sourceRevision: 3, byCandidateId: { 'candidate-1': { s2: 0.8 } } },
@@ -163,7 +191,7 @@ describe('RelatedNotesDrawer', () => {
   });
 
   it('uses a labelled modal drawer and restores focus after Escape closes it', async () => {
-    vi.mocked(fetchRelatedNotes).mockResolvedValue([]);
+    vi.mocked(fetchRelatedNotes).mockResolvedValue(response([]));
     function ControlledDrawer() {
       const [open, setOpen] = useState(false);
       return (

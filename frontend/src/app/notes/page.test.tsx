@@ -20,7 +20,7 @@ vi.mock('./hooks/useNotes', () => ({ useNotes: () => ({
   notes: api.notes, isLoading: false, createNote: api.createNote, deleteNote: vi.fn(), updateNote: vi.fn(), refreshRecommendCache: vi.fn(),
   hasNextPage: api.hasNextPage, isFetchingNextPage: api.isFetchingNextPage, isFetchNextPageError: api.isFetchNextPageError, loadMore: api.loadMore,
 }) }));
-vi.mock('./components/ModernNoteCard', () => ({ default: ({ note, isHighlighted }: any) => <article data-highlighted={isHighlighted}>{note.title}</article> }));
+vi.mock('./components/ModernNoteCard', () => ({ default: ({ note, isHighlighted, aiIncluded }: any) => <article data-highlighted={isHighlighted} data-ai-included={String(aiIncluded)}>{note.title}</article> }));
 vi.mock('./components/richTextEditorLoader', () => ({
   preloadRichTextEditor: editorPreload,
   preloadRichTextEditorFromIntent: editorPreload,
@@ -156,6 +156,26 @@ describe('desktop quick capture', () => {
     page.rerender(<NotesPage />);
     expect(screen.getByText('已加载全部笔记')).toHaveAttribute('aria-live', 'polite');
     expect(screen.queryByRole('button', { name: '加载更多笔记' })).not.toBeInTheDocument();
+  });
+
+  it('forwards every paged AI participation value to its matching card', async () => {
+    api.notes = Array.from({ length: 30 }, (_, index) => ({
+      _id: `page-note-${index}`,
+      title: `分页笔记 ${index}`,
+      content: '',
+      contentText: '',
+      revision: 1,
+      aiIncluded: index % 2 === 0,
+      createdAt: '2026-09-12T00:00:00.000Z',
+      updatedAt: '2026-09-12T00:00:00.000Z',
+    }));
+
+    render(<NotesPage />);
+
+    expect(await screen.findByText('分页笔记 29')).toBeInTheDocument();
+    expect(screen.getByText('分页笔记 0').closest('article')).toHaveAttribute('data-ai-included', 'true');
+    expect(screen.getByText('分页笔记 1').closest('article')).toHaveAttribute('data-ai-included', 'false');
+    expect(screen.getAllByText(/分页笔记/)).toHaveLength(30);
   });
 
   it('does not preload the editor merely because the notes page remains open', () => {

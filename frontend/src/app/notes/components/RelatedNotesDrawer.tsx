@@ -14,7 +14,7 @@ interface RelatedNotesDrawerProps {
 
 type RequestState = 'idle' | 'loading' | 'success' | 'error';
 type RefreshState = 'idle' | 'refreshing' | 'error';
-type RelationshipRequest = { noteId: string | null; status: RequestState; relationships: RelatedNoteSummary[]; error: Error | null };
+type RelationshipRequest = { sourceIdentity: string | null; status: RequestState; relationships: RelatedNoteSummary[]; error: Error | null };
 
 function relationshipStrengthLabel(scoreBand: RelatedNoteSummary['scoreBand']): string {
   return scoreBand === 'supported' ? '关联线索较强' : '可能相关';
@@ -26,7 +26,7 @@ export default function RelatedNotesDrawer({
   selectedNote,
   onRefreshRecommendCache,
 }: RelatedNotesDrawerProps) {
-  const [relationshipRequest, setRelationshipRequest] = useState<RelationshipRequest>({ noteId: null, status: 'idle', relationships: [], error: null });
+  const [relationshipRequest, setRelationshipRequest] = useState<RelationshipRequest>({ sourceIdentity: null, status: 'idle', relationships: [], error: null });
   const [refreshState, setRefreshState] = useState<RefreshState>('idle');
   const [reloadKey, setReloadKey] = useState(0);
   const lastAttemptKeyRef = useRef<string | null>(null);
@@ -34,6 +34,10 @@ export default function RelatedNotesDrawer({
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const cacheState = useMemo(() => getRecommendCacheState(selectedNote), [selectedNote]);
   const selectedNoteId = selectedNote?._id;
+  const selectedSourceRevision = selectedNote?.revision;
+  const selectedSourceIdentity = selectedNoteId && selectedSourceRevision !== undefined
+    ? `${selectedNoteId}:${selectedSourceRevision}`
+    : null;
 
   if (isOpen && !wasOpenRef.current && typeof document !== 'undefined') {
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -53,24 +57,24 @@ export default function RelatedNotesDrawer({
 
   useEffect(() => {
     if (!isOpen || !selectedNoteId) {
-      setRelationshipRequest({ noteId: null, status: 'idle', relationships: [], error: null });
+      setRelationshipRequest({ sourceIdentity: null, status: 'idle', relationships: [], error: null });
       return;
     }
 
     const controller = new AbortController();
-    setRelationshipRequest({ noteId: selectedNoteId, status: 'loading', relationships: [], error: null });
+    setRelationshipRequest({ sourceIdentity: selectedSourceIdentity, status: 'loading', relationships: [], error: null });
     void fetchRelatedNotes(selectedNoteId, controller.signal)
-      .then((nextRelationships) => {
-        if (controller.signal.aborted) return;
-        setRelationshipRequest({ noteId: selectedNoteId, status: 'success', relationships: nextRelationships, error: null });
+      .then((response) => {
+        if (controller.signal.aborted || response.sourceRevision !== selectedSourceRevision) return;
+        setRelationshipRequest({ sourceIdentity: selectedSourceIdentity, status: 'success', relationships: response.relationships, error: null });
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setRelationshipRequest({ noteId: selectedNoteId, status: 'error', relationships: [], error: error instanceof Error ? error : new Error('相关笔记请求失败') });
+        setRelationshipRequest({ sourceIdentity: selectedSourceIdentity, status: 'error', relationships: [], error: error instanceof Error ? error : new Error('相关笔记请求失败') });
       });
 
     return () => controller.abort();
-  }, [isOpen, reloadKey, selectedNoteId]);
+  }, [isOpen, reloadKey, selectedNoteId, selectedSourceIdentity, selectedSourceRevision]);
 
   useEffect(() => {
     if (!isOpen || !selectedNote || !onRefreshRecommendCache || !cacheState.needsRefresh) return;
@@ -97,9 +101,9 @@ export default function RelatedNotesDrawer({
   }, [cacheState.needsRefresh, isOpen, onRefreshRecommendCache, selectedNote]);
 
   const sourceLabel = selectedNote?.title || '当前笔记';
-  const activeRequest: RelationshipRequest = relationshipRequest.noteId === selectedNoteId
+  const activeRequest: RelationshipRequest = relationshipRequest.sourceIdentity === selectedSourceIdentity
     ? relationshipRequest
-    : { noteId: selectedNoteId ?? null, status: selectedNoteId ? 'loading' : 'idle', relationships: [], error: null };
+    : { sourceIdentity: selectedSourceIdentity, status: selectedSourceIdentity ? 'loading' : 'idle', relationships: [], error: null };
   const showLoading = activeRequest.status === 'idle' || activeRequest.status === 'loading';
   const relationships = activeRequest.relationships;
 

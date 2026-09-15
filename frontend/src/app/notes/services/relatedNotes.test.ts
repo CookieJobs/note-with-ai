@@ -25,7 +25,7 @@ describe('fetchRelatedNotes', () => {
       }),
     } as Response);
 
-    await expect(fetchRelatedNotes('source-1', signal)).resolves.toEqual([relationship]);
+    await expect(fetchRelatedNotes('source-1', signal)).resolves.toEqual({ sourceRevision: 3, relationships: [relationship] });
     expect(authFetch).toHaveBeenCalledWith('/api/recommend/notes/source-1', { signal });
   });
 
@@ -73,7 +73,7 @@ describe('fetchRelatedNotes', () => {
   it('accepts every exact public field limit with a canonical date', async () => {
     const exact = { ...relationship, title: 'a'.repeat(200), contentText: 'b'.repeat(2000), type: 'c'.repeat(80), reason: 'd'.repeat(500) };
     vi.mocked(authFetch).mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { sourceRevision: 3, relationships: [exact] } }) } as Response);
-    await expect(fetchRelatedNotes('source-1')).resolves.toEqual([exact]);
+    await expect(fetchRelatedNotes('source-1')).resolves.toEqual({ sourceRevision: 3, relationships: [exact] });
   });
 
   it('rejects a shape-valid but calendar-invalid canonical timestamp', async () => {

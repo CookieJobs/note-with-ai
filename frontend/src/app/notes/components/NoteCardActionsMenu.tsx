@@ -6,7 +6,7 @@ import styles from '../styles/note-card.module.scss';
 
 type NoteCardActionsMenuProps = {
   noteId: string;
-  aiIncluded: boolean;
+  aiIncluded: boolean | null;
   aiPreferenceSaving: boolean;
   onPublish?: () => void;
   onToggleAi: () => void;
@@ -33,10 +33,10 @@ export default function NoteCardActionsMenu({
           公开笔记
         </MenuItem>
         <MenuItem
-          disabled={aiPreferenceSaving}
+          disabled={aiPreferenceSaving || aiIncluded === null}
           onClick={onToggleAi}
         >
-          {aiPreferenceSaving ? '保存中' : aiIncluded ? '设为不参与 AI' : '恢复参与 AI'}
+          {aiPreferenceSaving ? '保存中' : aiIncluded === null ? '正在加载 AI 设置…' : aiIncluded ? '设为不参与 AI' : '恢复参与 AI'}
         </MenuItem>
         <MenuItem className={styles.noteActionsMenuDanger} onClick={() => onRequestDelete(triggerRef)}>
           删除笔记

@@ -36,6 +36,8 @@ const RichTextViewer = dynamic(() => import('./RichTextViewer'), {
 
 interface NoteCardProps {
   note: Note;
+  /** Supplied by the paginated notes endpoint to avoid one preference request per card. */
+  aiIncluded?: boolean;
   onRequestDelete: (id: string, openerRef?: RefObject<HTMLButtonElement | null>) => void;
   isHighlighted?: boolean;
   updateNote: (command: UpdateNoteCommand) => Promise<Note>;
@@ -81,6 +83,7 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 
 export default function ModernNoteCard({
   note,
+  aiIncluded: knownAiIncluded,
   onRequestDelete,
   isHighlighted,
   updateNote,
@@ -123,16 +126,22 @@ export default function ModernNoteCard({
 
   // 控制高亮动画的生命周期
   const [activeHighlight, setActiveHighlight] = useState(false);
-  const [aiIncluded, setAiIncluded] = useState(true);
+  const [aiIncluded, setAiIncluded] = useState<boolean | null>(knownAiIncluded ?? null);
   const [aiPreferenceSaving, setAiPreferenceSaving] = useState(false);
 
   useEffect(() => {
+    if (typeof knownAiIncluded === 'boolean') {
+      setAiIncluded(knownAiIncluded);
+      return;
+    }
+
     let active = true;
+    setAiIncluded(null);
     void getNoteAiPreference(note._id)
       .then((preference) => { if (active) setAiIncluded(preference.included); })
-      .catch(() => { if (active) setAiIncluded(true); });
+      .catch(() => { if (active) setAiIncluded(null); });
     return () => { active = false; };
-  }, [note._id]);
+  }, [knownAiIncluded, note._id]);
 
   useEffect(() => {
     if (isHighlighted) {
@@ -437,6 +446,7 @@ export default function ModernNoteCard({
   ].filter(Boolean).join(' ');
   const hasUnsavedDraft = !!draft?.dirty;
   const toggleAiParticipation = async () => {
+    if (aiIncluded === null) return;
     const next = !aiIncluded;
     setAiPreferenceSaving(true);
     try {

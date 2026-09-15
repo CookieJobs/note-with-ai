@@ -3,6 +3,18 @@ import type { INote } from '../../../types';
 
 export type Note = INote;
 
+export type NoteListItem = Note & {
+  aiIncluded: boolean;
+};
+
+export type NotePageResponse = {
+  notes: NoteListItem[];
+  pageInfo: {
+    hasNextPage: boolean;
+    nextCursor: string | null;
+  };
+};
+
 export type NotePage = {
   notes: Note[];
   pageInfo: {
@@ -24,10 +36,13 @@ function enrichmentProgress(note: Note): number {
 export function selectCanonicalSnapshot(cached: Note | undefined, incoming: Note): Note {
   if (!cached || cached._id !== incoming._id) return incoming;
   if (cached.revision > incoming.revision) return cached;
-  if (cached.revision < incoming.revision) return incoming;
+  const incomingWithKnownAiPreference = incoming.aiIncluded === undefined && cached.aiIncluded !== undefined
+    ? { ...incoming, aiIncluded: cached.aiIncluded }
+    : incoming;
+  if (cached.revision < incoming.revision) return incomingWithKnownAiPreference;
 
-  if (!cached.enrichment && incoming.enrichment) return incoming;
-  return enrichmentProgress(incoming) > enrichmentProgress(cached) ? incoming : cached;
+  if (!cached.enrichment && incomingWithKnownAiPreference.enrichment) return incomingWithKnownAiPreference;
+  return enrichmentProgress(incomingWithKnownAiPreference) > enrichmentProgress(cached) ? incomingWithKnownAiPreference : cached;
 }
 
 export function emptyNotePages(): NotePages {

@@ -10,6 +10,11 @@ export type RelatedNoteSummary = {
   scoreBand: 'possible' | 'supported';
 };
 
+export type RelatedNotesResponse = {
+  sourceRevision: number;
+  relationships: RelatedNoteSummary[];
+};
+
 const MAX_TITLE_LENGTH = 200;
 const MAX_CONTENT_TEXT_LENGTH = 2000;
 const MAX_TYPE_LENGTH = 80;
@@ -45,7 +50,7 @@ function isRelatedNoteSummary(value: unknown): value is RelatedNoteSummary {
     && (value.scoreBand === 'possible' || value.scoreBand === 'supported');
 }
 
-export async function fetchRelatedNotes(noteId: string, signal?: AbortSignal): Promise<RelatedNoteSummary[]> {
+export async function fetchRelatedNotes(noteId: string, signal?: AbortSignal): Promise<RelatedNotesResponse> {
   const response = await authFetch(`/api/recommend/notes/${encodeURIComponent(noteId)}`, { signal });
   if (!response.ok) {
     throw new Error(`请求失败: ${response.status}`);
@@ -58,5 +63,8 @@ export async function fetchRelatedNotes(noteId: string, signal?: AbortSignal): P
     throw new Error('相关笔记响应无效');
   }
 
-  return payload.data.relationships;
+  return {
+    sourceRevision: Number(payload.data.sourceRevision),
+    relationships: payload.data.relationships,
+  };
 }

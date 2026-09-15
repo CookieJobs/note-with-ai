@@ -12,7 +12,9 @@ import {
   removeNoteFromPages,
   selectCanonicalSnapshot,
   type Note,
+  type NoteListItem,
   type NotePage,
+  type NotePageResponse,
   type NotePages,
 } from './notePages';
 
@@ -63,6 +65,10 @@ type PendingObservation = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNoteListItem(value: unknown): value is NoteListItem {
+  return isRecord(value) && typeof value.aiIncluded === 'boolean';
 }
 
 function readCanonicalNoteWrite(payload: unknown, requireSuccess = false): Note {
@@ -164,7 +170,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
 
       if (
         isRecord(response) && response.success === true && isRecord(response.data) &&
-        Array.isArray(response.data.notes) && isRecord(response.data.pageInfo) &&
+        Array.isArray(response.data.notes) && response.data.notes.every(isNoteListItem) && isRecord(response.data.pageInfo) &&
         typeof response.data.pageInfo.hasNextPage === 'boolean' &&
         (typeof response.data.pageInfo.nextCursor === 'string' || response.data.pageInfo.nextCursor === null)
       ) {
@@ -176,9 +182,10 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
           // now-stale transport payload after the write has cancelled it.
           throw new CancelledError({ revert: true, silent: true });
         }
+        const pageResponse = response.data as unknown as NotePageResponse;
         return mergeFetchedPageWithTemporaryNotes({
-          notes: response.data.notes as Note[],
-          pageInfo: response.data.pageInfo as NotePage['pageInfo'],
+          notes: pageResponse.notes,
+          pageInfo: pageResponse.pageInfo,
         }, pageParam);
       }
       throw new Error('笔记列表响应无效');

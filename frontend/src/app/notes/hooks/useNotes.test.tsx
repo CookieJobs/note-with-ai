@@ -11,6 +11,7 @@ vi.mock('../../../utils/auth', () => ({ authFetch }));
 const staleNote: Note = {
   _id: 'note-1', title: '旧标题', content: '旧正文', contentText: '旧正文', contentJson: null,
   summary: '旧摘要', concepts: ['旧概念'], keywords: ['旧关键词'], recommendCache: null, revision: 4,
+  aiIncluded: true,
   enrichment: { sourceRevision: 4, status: 'pending' },
   createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
 };
@@ -76,6 +77,14 @@ describe('useNotes cursor pages', () => {
     await waitFor(() => expect(result.current.notes.map((note) => note._id)).toEqual(['note-1']));
     expect(authFetch).toHaveBeenCalledWith('/api/notes?limit=30&cursor=cursor-2', expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(result.current.hasNextPage).toBe(false);
+  });
+
+  it('retains each paged AI participation value from the list response', async () => {
+    authFetch.mockResolvedValueOnce(pageResponse([{ ...staleNote, aiIncluded: false }]));
+    const { wrapper } = makeHarness();
+    const { result } = renderHook(() => useNotes(user), { wrapper });
+
+    await waitFor(() => expect(result.current.notes[0]?.aiIncluded).toBe(false));
   });
 
   it('does not make a request when no next cursor exists', async () => {

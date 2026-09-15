@@ -355,6 +355,7 @@ function NotesContent() {
                         >
                           <ModernNoteCard
                             note={note}
+                            aiIncluded={note.aiIncluded}
                             onRequestDelete={(id, openerRef) => {
                               pendingDeleteOpenerRef.current = openerRef?.current ?? null;
                               setPendingDeleteNoteId(id);
