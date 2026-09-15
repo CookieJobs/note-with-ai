@@ -1,9 +1,12 @@
 'use client';
 
 import React from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Plus, Trash2, MessageSquarePlus } from 'lucide-react';
+
+import { useIsBreakpoint } from '@/hooks/use-is-breakpoint';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2, MessageSquare, MessageSquarePlus } from 'lucide-react';
+import { Dialog, DialogTitle, DrawerContent } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { IChat } from '../types';
 
@@ -16,121 +19,157 @@ interface ChatHistoryPanelProps {
   onSessionSelect: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (e: React.MouseEvent, sessionId: string) => void;
+  menuButtonRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
-const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
+interface HistoryListProps extends Pick<
+  ChatHistoryPanelProps,
+  'sessions' | 'currentSessionId' | 'isClient' | 'onSessionSelect' | 'onNewSession' | 'onDeleteSession'
+> {
+  onDismiss: () => void;
+}
+
+function HistoryList({
   sessions,
   currentSessionId,
   isClient,
-  isOpen,
-  onClose,
+  onDismiss,
   onSessionSelect,
   onNewSession,
   onDeleteSession,
-}) => {
-  // ... rest of the component
+}: HistoryListProps) {
+  const selectSession = (sessionId: string) => {
+    onSessionSelect(sessionId);
+    onDismiss();
+  };
+
+  const createSession = () => {
+    onNewSession();
+    onDismiss();
+  };
+
   return (
     <>
-      {/* Mobile Overlay */}
-      {isOpen && (
-        <div 
-          className="absolute inset-0 bg-black/20 z-20 md:hidden transition-opacity"
-          onClick={onClose}
-        />
-      )}
-      
-      <aside className={cn(
-        "flex flex-col bg-card/80 backdrop-blur-xl z-30 transition-transform duration-300 shrink-0 overflow-hidden",
-        "w-left-panel xl:w-left-panel-xl",
-        // 在移动端使用 absolute 悬浮在内容上方，在桌面端（md及以上）使用 relative 作为 flex 布局的一部分
-        "absolute md:relative inset-y-0 left-0",
-        // 移动端：全高覆盖层 + 右侧细线分隔
-        "border-r border-border/40 shadow-[2px_0_8px_rgba(0,0,0,0.05)]",
-        // 桌面端：浮出卡片效果
-        "md:border md:border-border/20 md:shadow-md md:rounded-2xl",
-        isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-      )}>
-      {/* Header Area */}
-      <div className="flex flex-col gap-4 px-4 py-4 shrink-0">
-        <Button 
-          onClick={() => {
-            onNewSession();
-            onClose();
-          }} 
+      <div className="flex flex-col gap-3 px-4 py-4 shrink-0">
+        <Button
+          type="button"
+          onClick={createSession}
           variant="ghost"
-          className="w-full justify-start gap-2 h-10 px-2 hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-all duration-200"
+          className="min-h-11 w-full justify-start gap-2 px-2 text-muted-foreground hover:text-foreground"
         >
-          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary">
-            <Plus className="h-4 w-4" />
-          </div>
+          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          </span>
           <span className="font-medium">开启新对话</span>
         </Button>
-        
-        <div className="px-1 text-xs font-medium text-muted-foreground/60 tracking-wider uppercase">
+        <p className="px-1 text-xs font-medium text-muted-foreground tracking-wider uppercase">
           你的聊天
-        </div>
+        </p>
       </div>
-      
-      {/* List Area */}
-      <ScrollArea className="flex-1 px-3 py-2">
-        <div className="space-y-1 pb-4">
+
+      <nav aria-label="聊天会话" className="flex-1 min-h-0">
+        <ScrollArea className="h-full px-3 py-2">
           {!isClient || sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center px-4 select-none">
               <div className="bg-muted/30 p-4 rounded-full mb-4 ring-1 ring-border/50">
-                <MessageSquarePlus className="h-6 w-6 text-muted-foreground/40" />
+                <MessageSquarePlus className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
               </div>
               <p className="text-sm font-medium text-muted-foreground mb-1.5">开启新话题</p>
-              <p className="text-xs text-muted-foreground/50 max-w-[180px] leading-relaxed">
+              <p className="text-xs text-muted-foreground max-w-[180px] leading-relaxed">
                 点击右上角的 &quot;+&quot; 按钮开始一个新的对话
               </p>
             </div>
           ) : (
-            sessions.map((session) => (
-              <div
-                key={session.id}
-                onClick={() => {
-                  onSessionSelect(session.id);
-                  onClose();
-                }}
-                className={cn(
-                  "group relative flex items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium rounded-md cursor-pointer transition-all duration-200 border border-transparent select-none text-muted-foreground hover:text-foreground",
-                  session.id === currentSessionId 
-                    ? "bg-primary/10" 
-                    : "hover:bg-muted/60"
-                )}
-              >
-                <span className="truncate flex-1 transition-colors">
-                  {session.title || "新对话"}
-                </span>
-                
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-200 focus:opacity-100",
-                    session.id === currentSessionId 
-                      ? "hover:bg-primary/20 hover:text-primary" 
-                      : "hover:bg-destructive/10 hover:text-destructive"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteSession(e, session.id);
-                  }}
-                  title="删除对话"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span className="sr-only">删除对话</span>
-                </Button>
-              </div>
-            ))
+            <ul className="space-y-1 pb-4" aria-label="聊天会话列表">
+              {sessions.map((session) => {
+                const title = session.title || '新对话';
+                const isCurrent = session.id === currentSessionId;
+
+                return (
+                  <li
+                    key={session.id}
+                    className={cn(
+                      'group flex items-center gap-1 rounded-md border border-transparent',
+                      isCurrent ? 'bg-primary/10' : 'hover:bg-muted/60',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectSession(session.id)}
+                      aria-current={isCurrent ? 'page' : undefined}
+                      className="min-h-11 flex-1 min-w-0 rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      <span className="block truncate">{title}</span>
+                    </button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`删除对话：${title}`}
+                      className={cn(
+                        'min-h-11 min-w-11 shrink-0 text-muted-foreground hover:text-destructive',
+                        isCurrent ? 'hover:bg-primary/20' : 'hover:bg-destructive/10',
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteSession(event, session.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
-        </div>
-      </ScrollArea>
-      
-      {/* Bottom Gradient/Fade (Optional aesthetic touch) */}
-      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background/80 to-transparent pointer-events-none" />
-    </aside>
+        </ScrollArea>
+      </nav>
     </>
+  );
+}
+
+const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = (props) => {
+  const isDesktop = useIsBreakpoint('min', 768);
+  const historyProps = {
+    sessions: props.sessions,
+    currentSessionId: props.currentSessionId,
+    isClient: props.isClient,
+    onSessionSelect: props.onSessionSelect,
+    onNewSession: props.onNewSession,
+    onDeleteSession: props.onDeleteSession,
+  };
+
+  if (isDesktop) {
+    return (
+      <aside
+        aria-label="聊天记录"
+        className="flex w-left-panel xl:w-left-panel-xl shrink-0 flex-col overflow-hidden rounded-2xl border border-border/20 bg-card/80 shadow-md backdrop-blur-xl"
+      >
+        <h2 className="px-4 pt-4 text-lg font-semibold text-foreground">聊天记录</h2>
+        <HistoryList {...historyProps} onDismiss={props.onClose} />
+      </aside>
+    );
+  }
+
+  return (
+    <Dialog
+      open={props.isOpen}
+      onOpenChange={(open) => {
+        if (!open) props.onClose();
+      }}
+    >
+      <DrawerContent
+        aria-describedby={undefined}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          props.menuButtonRef?.current?.focus();
+        }}
+        className="w-[min(100%,24rem)] max-w-[calc(100%-1rem)] gap-0 overflow-hidden p-0"
+      >
+        <DialogTitle className="px-4 pt-4 text-lg font-semibold">聊天记录</DialogTitle>
+        <HistoryList {...historyProps} onDismiss={props.onClose} />
+      </DrawerContent>
+    </Dialog>
   );
 };
 

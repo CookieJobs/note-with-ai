@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NotePages } from './notePages';
 import type { Note } from './useNotes';
 import { useNotes } from './useNotes';
 
@@ -20,6 +21,7 @@ const baseNote: Note = {
   keywords: [],
   recommendCache: null,
   revision: 4,
+  aiIncluded: true,
   enrichment: { sourceRevision: 4, status: 'pending' },
   createdAt: '2026-08-19T00:00:00.000Z',
   updatedAt: '2026-08-19T00:00:00.000Z',
@@ -35,8 +37,21 @@ function makeHarness() {
   return { queryClient, wrapper };
 }
 
-function listResponse(notes: Note[]) {
-  return { ok: true, json: async () => ({ success: true, data: { notes } }) };
+function pageResponse(notes: Note[]) {
+  return {
+    ok: true,
+    json: async () => ({
+      success: true,
+      data: { notes, pageInfo: { hasNextPage: false, nextCursor: null } },
+    }),
+  };
+}
+
+function pages(notes: Note[]): NotePages {
+  return {
+    pages: [{ notes, pageInfo: { hasNextPage: false, nextCursor: null } }],
+    pageParams: [undefined],
+  };
 }
 
 function setVisible(value: 'visible' | 'hidden') {
@@ -57,12 +72,12 @@ describe('useNotes pending enrichment polling', () => {
   });
 
   it('waits five seconds then coalesces all pending Notes into one list refetch', async () => {
-    authFetch.mockResolvedValue(listResponse([baseNote, { ...baseNote, _id: 'note-2' }]));
+    authFetch.mockResolvedValue(pageResponse([baseNote, { ...baseNote, _id: 'note-2' }]));
     const { queryClient, wrapper } = makeHarness();
     const { unmount } = renderHook(() => useNotes(null), { wrapper });
 
     act(() => {
-      queryClient.setQueryData<Note[]>(['notes'], [baseNote, { ...baseNote, _id: 'note-2' }]);
+      queryClient.setQueryData<NotePages>(['notes'], pages([baseNote, { ...baseNote, _id: 'note-2' }]));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -76,16 +91,16 @@ describe('useNotes pending enrichment polling', () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(authFetch).toHaveBeenCalledTimes(1);
-    expect(authFetch).toHaveBeenCalledWith('/api/notes', expect.objectContaining({ signal: expect.anything() }));
+    expect(authFetch).toHaveBeenCalledWith('/api/notes?limit=30', expect.objectContaining({ signal: expect.anything() }));
     unmount();
   });
 
   it('stops observing a pending revision when the list refetch returns a terminal status', async () => {
     const readyNote: Note = { ...baseNote, enrichment: { sourceRevision: 4, status: 'ready' } };
-    authFetch.mockResolvedValue(listResponse([readyNote]));
+    authFetch.mockResolvedValue(pageResponse([readyNote]));
     const { queryClient, wrapper } = makeHarness();
     const { unmount } = renderHook(() => useNotes(null), { wrapper });
-    act(() => queryClient.setQueryData<Note[]>(['notes'], [baseNote]));
+    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([baseNote])));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -98,11 +113,11 @@ describe('useNotes pending enrichment polling', () => {
   });
 
   it('does not spend polling attempts while hidden and resumes after visibility returns', async () => {
-    authFetch.mockResolvedValue(listResponse([baseNote]));
+    authFetch.mockResolvedValue(pageResponse([baseNote]));
     const { queryClient, wrapper } = makeHarness();
     const { unmount } = renderHook(() => useNotes(null), { wrapper });
     setVisible('hidden');
-    act(() => queryClient.setQueryData<Note[]>(['notes'], [baseNote]));
+    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([baseNote])));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
@@ -118,11 +133,11 @@ describe('useNotes pending enrichment polling', () => {
   });
 
   it('also pauses while unfocused and resumes the remaining work on focus', async () => {
-    authFetch.mockResolvedValue(listResponse([baseNote]));
+    authFetch.mockResolvedValue(pageResponse([baseNote]));
     const { queryClient, wrapper } = makeHarness();
     const { unmount } = renderHook(() => useNotes(null), { wrapper });
     vi.mocked(document.hasFocus).mockReturnValue(false);
-    act(() => queryClient.setQueryData<Note[]>(['notes'], [baseNote]));
+    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([baseNote])));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
@@ -139,18 +154,18 @@ describe('useNotes pending enrichment polling', () => {
 
   it('does not spend a new pending revision attempt before that revision has been observed for five seconds', async () => {
     const secondPending: Note = { ...baseNote, _id: 'note-2' };
-    authFetch.mockResolvedValue(listResponse([baseNote, secondPending]));
+    authFetch.mockResolvedValue(pageResponse([baseNote, secondPending]));
     const { queryClient, wrapper } = makeHarness();
     const { unmount } = renderHook(() => useNotes(null), { wrapper });
 
-    act(() => queryClient.setQueryData<Note[]>(['notes'], [baseNote]));
+    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([baseNote])));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
-    act(() => queryClient.setQueryData<Note[]>(['notes'], [baseNote, secondPending]));
+    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([baseNote, secondPending])));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -179,11 +194,11 @@ describe('useNotes pending enrichment polling', () => {
       enrichment: { sourceRevision: 5, status: 'pending' },
     };
     authFetch
-      .mockResolvedValueOnce(listResponse([advancedPending]))
-      .mockResolvedValue(listResponse([advancedPending]));
+      .mockResolvedValueOnce(pageResponse([advancedPending]))
+      .mockResolvedValue(pageResponse([advancedPending]));
     const { queryClient, wrapper } = makeHarness();
     const { unmount } = renderHook(() => useNotes(null), { wrapper });
-    act(() => queryClient.setQueryData<Note[]>(['notes'], [baseNote]));
+    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([baseNote])));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -196,10 +211,10 @@ describe('useNotes pending enrichment polling', () => {
   });
 
   it('caps a permanently pending revision at five list refetch attempts and clears work on unmount', async () => {
-    authFetch.mockResolvedValue(listResponse([baseNote]));
+    authFetch.mockResolvedValue(pageResponse([baseNote]));
     const { queryClient, wrapper } = makeHarness();
     const { unmount } = renderHook(() => useNotes(null), { wrapper });
-    act(() => queryClient.setQueryData<Note[]>(['notes'], [baseNote]));
+    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([baseNote])));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });

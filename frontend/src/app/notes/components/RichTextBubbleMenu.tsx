@@ -10,12 +10,12 @@ export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
 
   return (
     <BubbleMenu editor={editor} options={{ offset: 8 }} className="flex w-fit max-w-[90vw] overflow-hidden rounded-md border border-muted bg-background shadow-xl">
-      <div className="flex gap-1 px-2 py-1" data-note-editor-inside="true">
+      <div className="flex flex-wrap gap-1 px-2 py-1" data-note-editor-inside="true">
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => editor.chain().focus().toggleBold().run()}
-          className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+          className="flex items-center justify-center w-11 h-11 rounded hover:bg-muted cursor-pointer"
         >
           <Bold className="w-4 h-4" />
         </button>
@@ -23,7 +23,7 @@ export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => editor.chain().focus().toggleItalic().run()}
-          className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+          className="flex items-center justify-center w-11 h-11 rounded hover:bg-muted cursor-pointer"
         >
           <Italic className="w-4 h-4" />
         </button>
@@ -31,7 +31,7 @@ export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => editor.chain().focus().toggleStrike().run()}
-          className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+          className="flex items-center justify-center w-11 h-11 rounded hover:bg-muted cursor-pointer"
         >
           <Strikethrough className="w-4 h-4" />
         </button>
@@ -39,7 +39,7 @@ export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => editor.chain().focus().toggleCode().run()}
-          className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+          className="flex items-center justify-center w-11 h-11 rounded hover:bg-muted cursor-pointer"
         >
           <Code className="w-4 h-4" />
         </button>
@@ -58,7 +58,7 @@ export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+            className="flex items-center justify-center w-11 h-11 rounded hover:bg-muted cursor-pointer"
           >
             <LinkIcon className="w-4 h-4" />
           </button>
@@ -68,16 +68,16 @@ export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => editor.chain().focus().toggleHighlight().run()}
-          className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+          className="flex items-center justify-center w-11 h-11 rounded hover:bg-muted cursor-pointer"
         >
           <Highlighter className="w-4 h-4" />
         </button>
-        <div className="w-px h-8 bg-muted mx-1" />
+        <div className="w-px h-11 bg-muted mx-1" />
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => editor.chain().focus().setTextAlign('left').run()}
-          className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+          className="flex items-center justify-center w-11 h-11 rounded hover:bg-muted cursor-pointer"
         >
           <AlignLeft className="w-4 h-4" />
         </button>
@@ -85,7 +85,7 @@ export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => editor.chain().focus().setTextAlign('center').run()}
-          className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+          className="flex items-center justify-center w-11 h-11 rounded hover:bg-muted cursor-pointer"
         >
           <AlignCenter className="w-4 h-4" />
         </button>
@@ -93,7 +93,7 @@ export function RichTextBubbleMenu({ editor }: { editor: Editor | null }) {
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => editor.chain().focus().setTextAlign('right').run()}
-          className="flex items-center justify-center w-8 h-8 rounded hover:bg-muted cursor-pointer"
+          className="flex items-center justify-center w-11 h-11 rounded hover:bg-muted cursor-pointer"
         >
           <AlignRight className="w-4 h-4" />
         </button>

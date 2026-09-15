@@ -6,6 +6,7 @@ import TopNavigation from '../../components/TopNavigation';
 import { getInspirationJob, getInspirationSettings, getInspirations, requestInspiration, saveInspirationSettings, updateInspirationStatus } from '../../services/inspirationService';
 import styles from './inspiration.module.scss';
 import { recordProductEvent } from '../../services/productEventService';
+import { RelationshipCue } from '../../components/ui/relationship-cue';
 
 export default function InspirationPage() {
   const [items, setItems] = useState<any[]>([]);
@@ -57,7 +58,7 @@ export default function InspirationPage() {
     {message && <p className={styles.feedback} role="status">{message}</p>}
     <div className={styles.sectionHeading}><h2>为你保留的灵感</h2>{items.length > 0 && <span>{items.length} 条</span>}</div>
     {items.length === 0 ? <section className={styles.empty} aria-label="暂无灵感"><div><Bookmark size={22} aria-hidden="true" /></div><p>还没有保存下来的外部连接。准备好时，可以从上方请求第一条灵感。</p></section> : items.map((item) => <article key={item._id} className={styles.card}>
-      <div className={styles.cardHeader}><div><small>{item.source.publisher}</small><h3>{item.source.title}</h3></div><ArrowUpRight size={20} aria-hidden="true" /></div>
+      <div className={styles.cardHeader}><div><RelationshipCue sourceLabel={item.source.publisher} targetLabel={item.source.title} kind="来源" /><h3>{item.source.title}</h3></div><ArrowUpRight size={20} aria-hidden="true" /></div>
       <p className={styles.summary}>{item.summary}</p>
       <p className={styles.reason}><strong>推荐理由</strong>{item.whyThis}</p>
       <div className={styles.actions}><a href={item.source.canonicalUrl} target="_blank" rel="noreferrer" onClick={() => recordProductEvent('inspiration_source_opened', { inspirationId: item._id })}>查看来源<ExternalLink size={15} aria-hidden="true" /></a>

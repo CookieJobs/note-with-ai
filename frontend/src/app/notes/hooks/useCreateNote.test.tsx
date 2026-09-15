@@ -1,6 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { useCreateNote } from './useCreateNote';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const createHookSource = readFileSync(join(process.cwd(), 'src/app/notes/hooks/useCreateNote.ts'), 'utf8');
+const richTextPresetSource = readFileSync(join(process.cwd(), 'src/app/notes/components/tiptap/richTextPreset.ts'), 'utf8');
 
 const createdNote = {
   _id: 'note-1', content: '正文', contentText: '正文', contentJson: null, title: '正文',
@@ -97,6 +102,27 @@ describe('useCreateNote', () => {
     expect(localStorage.getItem('quick-capture-draft:alice')).toBe(raw);
   });
 
+  it('keeps draft recovery independent of the editor schema so the editor stays off the initial Notes route', () => {
+    expect(createHookSource).not.toMatch(/from ['"]@tiptap\/react['"]/);
+    expect(createHookSource).not.toContain('createRichTextExtensions');
+    expect(createHookSource).not.toContain('getSchema(');
+  });
+
+  it('records every configured schema node and mark in the static recovery contract', () => {
+    const nodeNames = [
+      'doc', 'paragraph', 'text', 'hardBreak', 'heading', 'bulletList', 'orderedList', 'listItem',
+      'blockquote', 'codeBlock', 'taskList', 'taskItem', 'image', 'table', 'tableRow',
+      'tableHeader', 'tableCell', 'horizontalRule',
+    ];
+    const markNames = ['bold', 'italic', 'strike', 'code', 'underline', 'link', 'highlight'];
+
+    for (const name of [...nodeNames, ...markNames]) expect(createHookSource).toContain(`'${name}'`);
+    for (const extension of ['StarterKit', 'Link', 'TaskList', 'TaskItem', 'ResizableImage', 'CodeBlockLowlight', 'Highlight', 'Table', 'TableRow', 'TableHeader', 'TableCell']) {
+      expect(richTextPresetSource).toContain(extension);
+    }
+    expect(richTextPresetSource).not.toMatch(/underline:\s*false/);
+  });
+
   it.each([
     { type: 'doc', content: [{ type: 'unknown' }] },
     { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '文字', marks: [{ type: 'unknown' }] }] }] },
@@ -108,6 +134,57 @@ describe('useCreateNote', () => {
     expect(result.current.newContentJson).toBeNull();
     expect(result.current.saveError).toContain('格式无法恢复');
     expect(localStorage.getItem('quick-capture-draft:alice')).toBe(raw);
+  });
+
+  it.each([
+    ['a top-level text node', { type: 'doc', content: [{ type: 'text', text: '不能直接放在文档根部' }] }],
+    ['marks on a block node', { type: 'doc', content: [{ type: 'paragraph', marks: [{ type: 'bold' }], content: [] }] }],
+    ['a nested block inside an inline container', { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'heading', content: [] }] }] }],
+    ['an inline leaf with nested content', { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'hardBreak', content: [{ type: 'text', text: '不能嵌套' }] }] }] }],
+    ['an empty text leaf', { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '' }] }] }],
+  ])('recovers plain text when the draft contains %s', (_caseName, json) => {
+    localStorage.setItem('quick-capture-draft:alice', JSON.stringify({ version: 1, text: '仍可恢复的文字', json }));
+
+    const { result } = renderHook(() => useCreateNote(vi.fn(), { userId: 'alice' }));
+
+    expect(result.current.newContentText).toBe('仍可恢复的文字');
+    expect(result.current.newContentJson).toBeNull();
+    expect(result.current.saveError).toContain('格式无法恢复');
+  });
+
+  it('recovers a document at supported block, inline, leaf, and mark boundaries', () => {
+    const json = {
+      type: 'doc',
+      content: [
+        {
+          type: 'blockquote',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: '带格式的正文', marks: [{ type: 'bold' }, { type: 'link', attrs: { href: 'https://example.com' } }] }, { type: 'hardBreak' }] }],
+        },
+        { type: 'codeBlock', content: [{ type: 'text', text: 'const answer = 42;' }] },
+        { type: 'image', attrs: { src: 'https://example.com/image.png', alt: '示例图片' } },
+        { type: 'horizontalRule' },
+        { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableHeader', content: [{ type: 'paragraph', content: [] }] }, { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: '单元格' }] }] }] }] },
+      ],
+    };
+    localStorage.setItem('quick-capture-draft:alice', JSON.stringify({ version: 1, text: '仍可恢复的文字', json }));
+
+    const { result } = renderHook(() => useCreateNote(vi.fn(), { userId: 'alice' }));
+
+    expect(result.current.newContentText).toBe('仍可恢复的文字');
+    expect(result.current.newContentJson).toEqual(json);
+  });
+
+  it('restores an underline mark configured by the editor without a recovery error', () => {
+    const json = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: '需要强调', marks: [{ type: 'underline' }] }] }],
+    };
+    localStorage.setItem('quick-capture-draft:alice', JSON.stringify({ version: 1, text: '需要强调', json }));
+
+    const { result } = renderHook(() => useCreateNote(vi.fn(), { userId: 'alice' }));
+
+    expect(result.current.newContentJson).toEqual(json);
+    expect(result.current.saveError).toBe('');
   });
 
   it('retains a failed save across remount and clears the persisted draft only after a successful retry', async () => {

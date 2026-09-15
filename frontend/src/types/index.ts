@@ -100,6 +100,9 @@ export interface INote {
   recommendCache?: IRecommendCache | null;
   keywords?: string[];
   revision: number;
+  // Present on list/detail responses. Kept optional so locally-created and legacy
+  // single-note callers can fall back to the preference endpoint.
+  aiIncluded?: boolean;
   enrichment?: INoteEnrichmentView;
   createdAt: string;
   updatedAt: string;

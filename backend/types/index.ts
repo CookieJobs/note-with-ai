@@ -74,6 +74,13 @@ export interface INote extends Document {
   updatedAt: Date;
 }
 
+export interface INoteAiPreference extends Document {
+  userId: Types.ObjectId;
+  noteId: Types.ObjectId;
+  included: boolean;
+  updatedAt: Date;
+}
+
 export interface IUserProfile extends Document {
   userId: Types.ObjectId;
   interests: { topic: string; score: number; lastUpdated: Date }[];

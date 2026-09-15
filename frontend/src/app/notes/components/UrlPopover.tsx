@@ -1,18 +1,22 @@
-import React, { useState } from 'react';
-import { Slot } from '@radix-ui/react-slot';
+import React, { useRef, useState } from 'react';
+import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
-interface UrlPopoverProps {
+interface UrlPopoverBaseProps {
   children: React.ReactNode;
   onSubmit: (url: string) => void;
   defaultValue?: string;
   placeholder?: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
 }
+
+type UrlPopoverProps = UrlPopoverBaseProps & (
+  | { open?: undefined; onOpenChange?: undefined }
+  | { open: boolean; onOpenChange: (open: boolean) => void }
+);
 
 export function UrlPopover({ children, onSubmit, defaultValue = '', placeholder = 'Enter URL...', open, onOpenChange }: UrlPopoverProps) {
   const [url, setUrl] = useState(defaultValue);
   const [internalOpen, setInternalOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const isControlled = open !== undefined;
   const isOpen = isControlled ? open : internalOpen;
@@ -34,54 +38,46 @@ export function UrlPopover({ children, onSubmit, defaultValue = '', placeholder 
   };
 
   return (
-    <>
-      {isControlled ? (
-        children
-      ) : (
-        <Slot onClick={() => handleOpenChange(true)}>
-          {children}
-        </Slot>
-      )}
-      
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/20 backdrop-blur-sm transition-all duration-100"
-          data-note-editor-inside="true"
-        >
-          <div 
-            className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 shadow-2xl animate-in fade-in zoom-in-95"
-            data-note-editor-inside="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="mb-3 text-sm font-semibold text-slate-900">Enter URL</h3>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent
+        className="z-[9999] max-w-sm gap-3 rounded-xl p-4 shadow-2xl"
+        data-note-editor-inside="true"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+      >
+        <DialogTitle className="text-sm font-semibold [color:var(--color-text-primary)]">Enter URL</DialogTitle>
             <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+              <label className="sr-only" htmlFor="url-popover-input">URL</label>
               <input
-                autoFocus
+                ref={inputRef}
+                id="url-popover-input"
                 type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder={placeholder}
-                className="flex h-10 w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="flex h-11 w-full rounded-md border px-3 py-2 text-sm shadow-sm transition-colors placeholder:[color:var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-action-primary)] [background:var(--color-surface-raised)] [border-color:var(--color-border-default)] [color:var(--color-text-primary)]"
               />
               <div className="flex justify-end gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => handleOpenChange(false)}
-                  className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  Cancel
-                </button>
+                <DialogClose asChild>
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-md px-3 py-1.5 text-sm font-medium transition-colors [color:var(--color-text-secondary)] hover:[background:var(--color-surface-sunken)]"
+                  >
+                    Cancel
+                  </button>
+                </DialogClose>
                 <button
                   type="submit"
-                  className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  className="min-h-11 rounded-md px-3 py-1.5 text-sm font-medium shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-action-primary)] focus:ring-offset-2 [background:var(--color-action-primary)] [color:var(--color-text-inverse)] hover:[background:var(--color-action-primary-hover)]"
                 >
                   Confirm
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }

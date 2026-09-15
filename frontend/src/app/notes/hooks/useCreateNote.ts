@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSchema, type JSONContent } from '@tiptap/react';
-import { createRichTextExtensions } from '../components/tiptap/richTextPreset';
 import type { CreateNoteCommand, Note } from './useNotes';
 
 type UseCreateNoteOptions = { userId?: string | null; onError?: (message: string) => void };
 export type CaptureSaveState = 'idle' | 'saving' | 'saved' | 'failed';
 export type LocalDraftState = 'empty' | 'saved' | 'unavailable';
-type Content = { text: string; json: JSONContent | null };
+type RichTextDocument = Record<string, unknown> & { type: string; content?: unknown[] };
+type Content = { text: string; json: RichTextDocument | null };
 type Session = Content & {
   userId: string | null;
   revision: number;
@@ -24,8 +23,94 @@ const emptySession = (userId: string | null): Session => ({
   localDraftState: 'empty', draftRestored: false, saveState: 'idle', savedNote: null, error: '',
 });
 
-// Reuse the viewer/editor schema instead of maintaining a second list of rich-text nodes.
-let draftSchema: ReturnType<typeof getSchema> | undefined;
+// Static schema coverage, cross-checked with richTextPreset.ts: StarterKit supplies
+// doc/paragraph/text/hardBreak/heading/lists/blockquote/codeBlock/horizontalRule and
+// bold/italic/strike/code/underline; the remaining names come from its explicit extensions.
+// Plugins and attributes (History, Markdown, Placeholder, TextAlign, dropcursor/gapcursor)
+// introduce no persisted node or mark names, so they are intentionally unsupported here.
+const richTextMarks = new Set(['bold', 'italic', 'strike', 'code', 'underline', 'link', 'highlight']);
+
+type RichTextNode = Record<string, unknown> & { type: string; content?: unknown[] };
+
+const blockNodeTypes = new Set([
+  'paragraph', 'heading', 'bulletList', 'orderedList', 'blockquote', 'codeBlock', 'taskList',
+  'image', 'table', 'horizontalRule',
+]);
+const inlineNodeTypes = new Set(['text', 'hardBreak']);
+const leafNodeTypes = new Set(['text', 'hardBreak', 'image', 'horizontalRule']);
+
+function hasOnlyChildren(value: RichTextNode, allowed: Set<string>, options: { min?: number; marks?: boolean } = {}) {
+  if (value.marks !== undefined && (!options.marks || !areSafeRichTextMarks(value.marks))) return false;
+  if (!Array.isArray(value.content)) return (options.min ?? 0) === 0 && value.content === undefined;
+  if (value.content.length < (options.min ?? 0)) return false;
+  return value.content.every((child) => isSafeRichTextNode(child, allowed, options.marks ?? false));
+}
+
+function areSafeRichTextMarks(value: unknown): boolean {
+  return Array.isArray(value) && value.every((mark) => (
+    !!mark && typeof mark === 'object' && !Array.isArray(mark)
+      && typeof (mark as Record<string, unknown>).type === 'string'
+      && richTextMarks.has((mark as Record<string, string>).type)
+  ));
+}
+
+// This mirrors the static content expressions configured by richTextPreset.ts.
+// Keeping it data-only avoids pulling Tiptap and its schema into the Notes entry chunk.
+function isSafeRichTextNode(value: unknown, allowedTypes: Set<string>, marksAllowed: boolean): value is RichTextNode {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const node = value as RichTextNode;
+  if (!allowedTypes.has(node.type)) return false;
+  if (leafNodeTypes.has(node.type) && node.content !== undefined) return false;
+  if (node.type === 'text') return typeof node.text === 'string' && node.text.length > 0
+    && (node.marks === undefined || (marksAllowed && areSafeRichTextMarks(node.marks)));
+  if (node.type === 'hardBreak') return node.marks === undefined || (marksAllowed && areSafeRichTextMarks(node.marks));
+  if (node.marks !== undefined) return false;
+
+  switch (node.type) {
+    case 'doc':
+      return Array.isArray(node.content);
+    case 'paragraph':
+    case 'heading':
+      return hasOnlyChildren(node, inlineNodeTypes, { marks: true });
+    case 'codeBlock':
+      return hasOnlyChildren(node, new Set(['text']), { marks: false });
+    case 'blockquote':
+      return hasOnlyChildren(node, blockNodeTypes, { min: 1 });
+    case 'bulletList':
+    case 'orderedList':
+      return hasOnlyChildren(node, new Set(['listItem']), { min: 1 });
+    case 'taskList':
+      return hasOnlyChildren(node, new Set(['taskItem']), { min: 1 });
+    case 'listItem':
+    case 'taskItem': {
+      if (!Array.isArray(node.content) || node.content.length < 1) return false;
+      const [first, ...rest] = node.content;
+      return isSafeRichTextNode(first, new Set(['paragraph']), false)
+        && rest.every((child) => isSafeRichTextNode(child, blockNodeTypes, false));
+    }
+    case 'table':
+      return hasOnlyChildren(node, new Set(['tableRow']), { min: 1 });
+    case 'tableRow':
+      return hasOnlyChildren(node, new Set(['tableCell', 'tableHeader']));
+    case 'tableCell':
+    case 'tableHeader':
+      return hasOnlyChildren(node, blockNodeTypes, { min: 1 });
+    case 'image':
+    case 'horizontalRule':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isSafeRichTextDocument(value: unknown): value is RichTextDocument {
+  return isSafeRichTextNode(value, new Set(['doc']), false)
+    && value.type === 'doc'
+    && Array.isArray(value.content)
+    && value.content.length > 0
+    && value.content.every((child) => isSafeRichTextNode(child, blockNodeTypes, false));
+}
+
 function restoreDraft(userId: string | null): Session {
   const session = emptySession(userId);
   if (!userId) return session;
@@ -41,9 +126,7 @@ function restoreDraft(userId: string | null): Session {
     let error = '';
     if (json !== null) {
       try {
-        if (json?.type !== 'doc') throw new Error('Invalid document');
-        draftSchema ??= getSchema(createRichTextExtensions());
-        draftSchema.nodeFromJSON(json).check();
+        if (!isSafeRichTextDocument(json)) throw new Error('Invalid document');
       } catch {
         json = null;
         error = '草稿格式无法恢复，已保留文字内容，请检查后保存。';
@@ -126,7 +209,7 @@ export function useCreateNote(
   const setNewContentText = useCallback((text: string) => {
     changeContent({ text, json: sessionRef.current.json });
   }, [changeContent]);
-  const setNewContentJson = useCallback((json: JSONContent | null) => {
+  const setNewContentJson = useCallback((json: RichTextDocument | null) => {
     changeContent({ text: sessionRef.current.text, json });
   }, [changeContent]);
 

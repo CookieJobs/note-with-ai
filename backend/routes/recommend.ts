@@ -9,10 +9,12 @@ import express, { Request, Response } from 'express';
 import { Note } from '../models/Note';
 import { searchArticlesByKeyword } from '../services/search';
 import type { RecommendationResult } from '../services/recommendService';
+import { getRelatedNoteSummaryResult } from '../services/relatedNoteSummaryService';
 import { runProductionNoteEnrichmentTask, type EnrichmentTaskStatus } from '../services/noteEnrichmentWorker';
 import { authenticateToken } from '../middleware/auth';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
+import { requireSingleRouteParam } from '../utils/requestParams';
 
 const router = express.Router();
 
@@ -50,6 +52,13 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   const articles = await searchArticlesByKeyword(topKeywords);
 
   return ResponseHandler.success(res, { keywords: topKeywords, articles });
+}));
+
+router.get('/notes/:noteId', authenticateToken, asyncHandler(async (req, res) => {
+  const user = await UserValidator.authenticateUser(req);
+  const noteId = requireSingleRouteParam(req.params.noteId, 'noteId');
+  const data = await getRelatedNoteSummaryResult({ userId: user._id.toString(), noteId });
+  ResponseHandler.success(res, data);
 }));
 
 /**

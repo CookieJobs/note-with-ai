@@ -13,9 +13,14 @@ export default function PublishNotePage() {
   const [note, setNote] = useState<any | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
-    void authFetch('/api/notes').then((response) => response.json()).then((payload) => {
-      const found = (payload.data?.notes || []).find((item: any) => String(item._id || item.id) === params.noteId);
-      if (!found) setError('笔记不存在或无权限。'); else setNote(found);
+    void authFetch(`/api/notes/${encodeURIComponent(params.noteId)}`).then(async (response) => {
+      const payload = await response.json();
+      if (!response.ok || !payload.success || !payload.data?.note) {
+        setError(response.status === 404 ? '笔记不存在或无权限。' : '暂时无法读取笔记。');
+        return;
+      }
+      setNote(payload.data.note);
+      setError('');
     }).catch(() => setError('暂时无法读取笔记。'));
   }, [params.noteId]);
   const publish = async () => {
@@ -31,4 +36,3 @@ export default function PublishNotePage() {
     {note && <article className={styles.preview}><h2>{note.title || '未命名笔记'}</h2><p>{note.contentText || note.content}</p><button onClick={() => { void publish(); }}>确认创建公开链接</button></article>}
   </section></main>;
 }
-

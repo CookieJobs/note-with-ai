@@ -49,7 +49,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   const containerClassName = cn(
     styles.inputContainer,
     centered && styles.inputContainerCentered,
-    "flex flex-col items-center justify-center transition-all duration-300"
+    "flex flex-col items-center justify-center motion-safe:transition-[margin,padding] motion-safe:duration-300"
   );
 
   return (
@@ -66,9 +66,10 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           <div className={styles.promptTitle}>您现在在想什么？</div>
         )}
 
-        <div className="relative w-full max-w-[800px] flex items-center gap-2 p-2 rounded-[30px] bg-background border border-border/60 shadow-[0_2px_6px_rgba(15,23,42,0.02),0_8px_24px_rgba(15,23,42,0.03)] ring-offset-background focus-within:border-border focus-within:shadow-[0_4px_12px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.06)] transition-all duration-200">
+        <div className={cn(styles.composer, "relative w-full max-w-[800px] flex items-center gap-2 p-2 rounded-[30px] bg-background border border-border/60 ring-offset-background")}>
           <Textarea
-            className="min-h-[24px] max-h-[200px] w-full resize-none border-0 bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none"
+            className="min-h-11 max-h-[200px] w-full resize-none border-0 bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none"
+            aria-label="输入消息"
             placeholder={loading ? "AI正在思考中..." : "输入您的问题..."}
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
@@ -81,10 +82,11 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             onClick={onSend}
             disabled={loading || !input.trim()}
             size="icon"
+            aria-label="发送消息"
             className={cn(
-              "h-9 w-9 rounded-full transition-all duration-200 shrink-0",
+              "min-h-11 min-w-11 h-11 w-11 rounded-full shrink-0",
               input.trim()
-                ? "bg-foreground text-background shadow-[0_2px_8px_rgba(0,0,0,0.15)] hover:bg-foreground/90"
+                ? "bg-foreground text-background shadow-[var(--shadow-chat-input-action)] hover:bg-foreground/90"
                 : "bg-muted text-muted-foreground"
             )}
           >

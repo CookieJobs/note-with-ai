@@ -1,7 +1,7 @@
 @keyframes historyPulse {
-  0% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
-  40% { box-shadow: 0 0 0 4px rgba(23,112,232,0.22); }
-  100% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
+  0% { box-shadow: 0 0 0 0 var(--notes-compose-tone-029); }
+  40% { box-shadow: 0 0 0 4px var(--notes-compose-tone-030); }
+  100% { box-shadow: 0 0 0 0 var(--notes-compose-tone-029); }
 }
 
 @keyframes wsRecommendIn {
@@ -39,12 +39,12 @@
 
 .floatingComposeEditor :global(.richEditorScroller):hover,
 .floatingComposeEditor :global(.ProseMirror):hover {
-  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+  scrollbar-color: var(--notes-compose-tone-015) transparent;
 }
 
 .floatingComposeEditor :global(.richEditorScroller):hover::-webkit-scrollbar-thumb,
 .floatingComposeEditor :global(.ProseMirror):hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
+  background: var(--notes-compose-tone-015);
 }
 
 @keyframes wsTipStrokeProgress {
@@ -131,7 +131,7 @@
       brightness(1.22)
       saturate(1.28)
       contrast(1.08)
-      drop-shadow(0 14px 22px rgba(18, 225, 255, 0.18));
+      drop-shadow(0 14px 22px var(--notes-compose-tone-018));
   }
   35% {
     opacity: 1;
@@ -143,14 +143,14 @@
     filter:
       brightness(1.34)
       saturate(1.32)
-      drop-shadow(0 18px 26px rgba(18, 225, 255, 0.22));
+      drop-shadow(0 18px 26px var(--notes-compose-tone-019));
   }
   78% {
     transform: translate3d(0, 2px, 0) scale(0.90);
     filter:
       brightness(1.08)
       saturate(1.08)
-      drop-shadow(0 10px 16px rgba(18, 225, 255, 0.10));
+      drop-shadow(0 10px 16px var(--notes-compose-tone-017));
   }
   100% {
     opacity: 1;
@@ -228,40 +228,40 @@
 @keyframes elegantDoublePulse {
   /* 0%：起始状态，无高亮 */
   0% {
-    box-shadow: 0 0 0 0 rgba(23, 112, 232, 0), 0 0 0 0 rgba(23, 112, 232, 0);
-    border-color: rgba(23, 112, 232, 0.1);
+    box-shadow: 0 0 0 0 var(--notes-compose-tone-028), 0 0 0 0 var(--notes-compose-tone-028);
+    border-color: var(--notes-compose-tone-023);
     background-color: transparent;
     transform: scale(1);
   }
   
   /* 20%：第一次脉冲波峰（明亮） */
   20% {
-    box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.4), 0 12px 32px rgba(23, 112, 232, 0.15);
-    border-color: rgba(23, 112, 232, 0.6) !important;
-    background-color: rgba(23, 112, 232, 0.04);
+    box-shadow: 0 0 0 3px var(--notes-compose-tone-026), 0 12px 32px var(--notes-compose-tone-024);
+    border-color: var(--notes-compose-tone-027) !important;
+    background-color: var(--notes-compose-tone-021);
     transform: scale(1.005);
   }
 
   /* 45%：第一次脉冲波谷（微弱暗去，不完全熄灭） */
   45% {
-    box-shadow: 0 0 0 1px rgba(23, 112, 232, 0.15), 0 4px 12px rgba(23, 112, 232, 0.05);
-    border-color: rgba(23, 112, 232, 0.2) !important;
-    background-color: rgba(23, 112, 232, 0.01);
+    box-shadow: 0 0 0 1px var(--notes-compose-tone-024), 0 4px 12px var(--notes-compose-tone-022);
+    border-color: var(--notes-compose-tone-025) !important;
+    background-color: var(--notes-compose-tone-020);
     transform: scale(1);
   }
 
   /* 70%：第二次脉冲波峰（明亮） */
   70% {
-    box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.4), 0 12px 32px rgba(23, 112, 232, 0.15);
-    border-color: rgba(23, 112, 232, 0.6) !important;
-    background-color: rgba(23, 112, 232, 0.04);
+    box-shadow: 0 0 0 3px var(--notes-compose-tone-026), 0 12px 32px var(--notes-compose-tone-024);
+    border-color: var(--notes-compose-tone-027) !important;
+    background-color: var(--notes-compose-tone-021);
     transform: scale(1.005);
   }
 
   /* 100%：平滑熄灭，回归日常态 */
   100% {
-    box-shadow: 0 0 0 0 rgba(23, 112, 232, 0), 0 0 0 0 rgba(23, 112, 232, 0);
-    border-color: rgba(15, 23, 42, 0.08) !important; /* 回归卡片默认边框色 */
+    box-shadow: 0 0 0 0 var(--notes-compose-tone-028), 0 0 0 0 var(--notes-compose-tone-028);
+    border-color: var(--notes-compose-tone-016) !important; /* 回归卡片默认边框色 */
     background-color: transparent;
     transform: scale(1);
   }
@@ -275,8 +275,8 @@
   max-width: 800px;
   margin: 0 auto 20px;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: var(--notes-compose-tone-012);
+  border: 1px solid var(--notes-compose-tone-013);
   transform-origin: top center;
   will-change: transform, opacity, border-radius, box-shadow;
   transition: background-color 160ms ease, border-color 160ms ease;
@@ -286,8 +286,8 @@
 
     &:hover {
       box-shadow:
-        0 1px 3px rgba(0, 0, 0, 0.04),
-        0 8px 24px rgba(0, 0, 0, 0.06);
+        0 1px 3px var(--notes-compose-tone-013),
+        0 8px 24px var(--notes-compose-tone-014);
     }
   }
 
@@ -299,13 +299,13 @@
 .floatingComposeBarText {
   font-size: 14px;
   font-weight: 400;
-  color: #4b5563;
+  color: var(--notes-compose-tone-004);
 }
 
 .floatingComposeBarInner {
   position: relative;
   width: 100%;
-  min-height: 24px;
+  min-height: 44px;
   padding: 0;
   display: flex;
   align-items: center;
@@ -332,8 +332,8 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #2563eb;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+  background: var(--notes-compose-tone-002);
+  box-shadow: 0 0 0 2px var(--notes-compose-tone-032);
   animation: draftBreath 6s ease-in-out infinite;
 }
 
@@ -345,7 +345,7 @@
 .floatingComposeHint {
   font-size: 11px;
   font-weight: 400;
-  color: #64748b;
+  color: var(--notes-compose-tone-005);
   display: inline-flex;
   align-items: center;
   height: 30px;
@@ -372,7 +372,7 @@
 
 .floatingComposeEditor .richEditorContent ::selection,
 .floatingComposeEditor :global(.ProseMirror) ::selection {
-  background: rgba(37, 99, 235, 0.15);
+  background: var(--notes-compose-tone-033);
   color: inherit;
 }
 
@@ -391,19 +391,20 @@
 }
 
 .composeCancelBtn {
+  min-height: 44px;
   padding: 6px 16px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  color: #6b7280;
+  background: var(--notes-compose-tone-012);
+  border: 1px solid var(--notes-compose-tone-009);
+  color: var(--notes-compose-tone-006);
   transition: background 120ms ease, border-color 120ms ease;
 
   &:hover {
-    background: #f9fafb;
-    border-color: #d1d5db;
+    background: var(--notes-compose-tone-010);
+    border-color: var(--notes-compose-tone-008);
   }
 
   &:disabled {
@@ -413,18 +414,19 @@
 }
 
 .composeSaveBtn {
+  min-height: 44px;
   padding: 6px 16px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  background: #2563eb;
+  background: var(--notes-compose-tone-002);
   border: none;
-  color: #fff;
+  color: var(--notes-compose-tone-012);
   transition: background 120ms ease, transform 120ms ease;
 
   &:hover {
-    background: #1d4ed8;
+    background: var(--notes-compose-tone-001);
   }
 
   &:active {
@@ -445,28 +447,29 @@
   gap: 8px;
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid rgba(243, 244, 246, 0.92);
+  border-top: 1px solid var(--notes-compose-tone-031);
   will-change: transform, opacity;
 }
 
 .floatingComposeHint { margin-right: auto; }
 
 .composeDiscardBtn {
+  min-height: 44px;
   border: none;
   background: transparent;
-  color: #b91c1c;
+  color: var(--notes-compose-tone-007);
   padding: 8px 10px;
   border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
 
-  &:hover { background: #fef2f2; }
+  &:hover { background: var(--notes-compose-tone-011); }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .discardConfirmation {
   padding-top: 12px;
-  color: #374151;
+  color: var(--notes-compose-tone-003);
   font-size: 13px;
 
   p { margin: 0 0 8px; }
@@ -475,14 +478,14 @@
 
 .captureStatus {
   margin: 8px 4px 0;
-  color: #4b5563;
+  color: var(--notes-compose-tone-004);
   font-size: 12px;
   line-height: 1.6;
 }
 
-.captureStatusError { color: #b91c1c; }
+.captureStatusError { color: var(--notes-compose-tone-007); }
 
 .floatingComposeShell button:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--notes-compose-tone-002);
   outline-offset: 3px;
 }

@@ -227,6 +227,48 @@ describe('recommend and performance route contracts', () => {
     });
   });
 
+  it('returns an owned relationship-summary envelope without numeric diagnostics', async () => {
+    const handler = findRouteHandler(recommendRouter as never, '/notes/:noteId');
+    const createdAt = new Date('2026-09-12T00:00:00.000Z');
+    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'owner-1' } }) as never);
+    mock.method(Note, 'findOne', () => ({ lean: async () => ({
+      _id: 'source-1', userId: 'owner-1', revision: 3,
+      recommendCache: {
+        sourceRevision: 3,
+        byCandidateId: {
+          'candidate-1': { s1: 0.9, s2: 0.8, type: '同一主题', reason: '讨论同一个项目' },
+        },
+      },
+    }) }) as never);
+    mock.method(Note, 'find', () => ({
+      select() { return this; },
+      lean: async () => [{ _id: 'candidate-1', title: '项目计划', contentText: '下一步安排', createdAt }],
+    }) as never);
+
+    const response = makeResponse();
+    const error = await invokeRoute(handler, { params: { noteId: 'source-1' } }, response);
+
+    assert.equal(error, undefined);
+    assert.deepEqual(response.body, {
+      success: true,
+      message: '操作成功',
+      data: {
+        sourceRevision: 3,
+        relationships: [{
+          id: 'candidate-1',
+          title: '项目计划',
+          contentText: '下一步安排',
+          createdAt: createdAt.toISOString(),
+          type: '同一主题',
+          reason: '讨论同一个项目',
+          scoreBand: 'supported',
+        }],
+      },
+    });
+    assert.equal(JSON.stringify(response.body).includes('s1'), false);
+    assert.equal(JSON.stringify(response.body).includes('s2'), false);
+  });
+
   it('rejects an ambiguous performance operation route parameter before looking up metrics', async () => {
     const handler = findRouteHandler(performanceRouter as never, '/stats/:operationName');
     const response = makeResponse();

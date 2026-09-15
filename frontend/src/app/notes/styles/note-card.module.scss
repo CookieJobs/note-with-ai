@@ -1,7 +1,7 @@
 @keyframes historyPulse {
-  0% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
-  40% { box-shadow: 0 0 0 4px rgba(23,112,232,0.22); }
-  100% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
+  0% { box-shadow: 0 0 0 0 var(--notes-card-tone-059); }
+  40% { box-shadow: 0 0 0 4px var(--notes-card-tone-061); }
+  100% { box-shadow: 0 0 0 0 var(--notes-card-tone-059); }
 }
 
 @keyframes wsRecommendIn {
@@ -44,13 +44,13 @@
 .noteCard.noteCardDetail .noteTextWrapper:hover,
 .noteCard.noteCardDetail .richEditorScroller:hover,
 .noteCardDetail .richEditorContent:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.55) transparent; /* Firefox */
+  scrollbar-color: var(--notes-card-tone-018) transparent; /* Firefox */
 }
 
 .noteCard.noteCardDetail .noteTextWrapper:hover::-webkit-scrollbar-thumb,
 .noteCard.noteCardDetail .richEditorScroller:hover::-webkit-scrollbar-thumb,
 .noteCardDetail .richEditorContent:hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
+  background: var(--notes-card-tone-018);
 }
 
 .noteCardDetail :global(.ProseMirror) {
@@ -72,11 +72,11 @@
 }
 
 .noteCardDetail :global(.ProseMirror):hover {
-  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+  scrollbar-color: var(--notes-card-tone-018) transparent;
 }
 
 .noteCardDetail :global(.ProseMirror):hover::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
+  background: var(--notes-card-tone-018);
 }
 
 @keyframes wsTipStrokeProgress {
@@ -103,35 +103,6 @@
   100% { opacity: 1; }
 }
 
-@keyframes wsShardFly {
-  0% {
-    opacity: 0;
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-    filter: saturate(0.80) brightness(0.98);
-  }
-  8% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1.01);
-    filter: saturate(0.92) brightness(1.08);
-  }
-  34% {
-    opacity: 1;
-    transform:
-      translate3d(calc(var(--dx, 0px) * 0.55), calc(var(--dy, 0px) * 0.55), 0)
-      rotate(calc(var(--rot, 0deg) * 0.72))
-      scale(0.98);
-    filter: saturate(0.98) brightness(1.12);
-  }
-  100% {
-    opacity: 0;
-    transform:
-      translate3d(calc(var(--dx, 0px) * 2.6), calc(var(--dy, 0px) * 2.6), 0)
-      rotate(calc(var(--rot, 0deg) * 2.2))
-      scale(0.78);
-    filter: saturate(0.88) brightness(1.06) blur(0.45px);
-  }
-}
-
 @keyframes wsDeleteFade {
   0% {
     opacity: 1;
@@ -155,60 +126,13 @@
   }
 }
 
-@keyframes wsCrowdPopIn {
-  0% {
-    opacity: 0;
-    transform: translate3d(0, 26px, 0) scale(0.26) rotate(-3.2deg);
-    filter:
-      brightness(1.22)
-      saturate(1.28)
-      contrast(1.08)
-      drop-shadow(0 14px 22px rgba(18, 225, 255, 0.18));
-  }
-  35% {
-    opacity: 1;
-    transform: translate3d(0, 6px, 0) scale(0.88) rotate(0.9deg);
-  }
-  62% {
-    opacity: 1;
-    transform: translate3d(0, -6px, 0) scale(1.32) rotate(0deg);
-    filter:
-      brightness(1.34)
-      saturate(1.32)
-      drop-shadow(0 18px 26px rgba(18, 225, 255, 0.22));
-  }
-  78% {
-    transform: translate3d(0, 2px, 0) scale(0.90);
-    filter:
-      brightness(1.08)
-      saturate(1.08)
-      drop-shadow(0 10px 16px rgba(18, 225, 255, 0.10));
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-    filter: none;
-  }
-}
-
-@keyframes wsWobbleBreath {
-   /* 各占 50%：0%~50% 晃一下，50%~100% 停一下 */
-   0%    { transform: translate3d(0, 0, 0) rotate(0deg); }
-   12.5% { transform: translate3d(0.55px, -0.30px, 0) rotate(1.1deg); }
-   25%   { transform: translate3d(-0.45px, 0.45px, 0) rotate(-0.95deg); }
-   37.5% { transform: translate3d(0.35px, 0.25px, 0) rotate(0.75deg); }
-   50%   { transform: translate3d(0, 0, 0) rotate(0deg); }
- 
-   100%  { transform: translate3d(0, 0, 0) rotate(0deg); }
- }
-
 .workspaceOverlayPanel .noteCard.noteCardDetail {
   /* 这里才是“高透玻璃卡片” */
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: var(--notes-card-tone-063);
+  border-color: var(--notes-card-tone-069);
   box-shadow:
-    0 26px 80px rgba(0, 0, 0, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    0 26px 80px var(--notes-card-tone-007),
+    inset 0 1px 0 var(--notes-card-tone-068);
 }
 
 .workspaceOverlayPanel .noteCard.noteCardDetail::before {
@@ -221,9 +145,9 @@
   -webkit-backdrop-filter: blur(30px) saturate(185%) contrast(112%);
   backdrop-filter: blur(30px) saturate(185%) contrast(112%);
   background:
-    radial-gradient(520px 380px at 18% 18%, rgba(18, 225, 255, 0.08), rgba(18, 225, 255, 0) 72%),
-    radial-gradient(460px 360px at 82% 32%, rgba(56, 228, 255, 0.05), rgba(56, 228, 255, 0) 74%),
-    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.00) 62%, rgba(255,255,255,0.01));
+    radial-gradient(520px 380px at 18% 18%, var(--notes-card-tone-026), var(--notes-card-tone-036) 72%),
+    radial-gradient(460px 360px at 82% 32%, var(--notes-card-tone-082), var(--notes-card-tone-085) 74%),
+    linear-gradient(180deg, var(--notes-card-tone-075), var(--notes-card-tone-072) 62%, var(--notes-card-tone-073));
   opacity: 0.12;
   mix-blend-mode: soft-light;
 }
@@ -233,55 +157,55 @@
   position: absolute;
   inset: -45%;
   pointer-events: none;
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.05), rgba(255,255,255,0) 62%);
+  background: radial-gradient(circle at 30% 20%, var(--notes-card-tone-077), var(--notes-card-tone-080) 62%);
   opacity: 0.03;
   mix-blend-mode: overlay;
 }
 
 .workspaceOverlayPanel .noteCard.noteCardDetail:focus-within {
-  border-color: rgba(18, 225, 255, 0.22);
+  border-color: var(--notes-card-tone-032);
   box-shadow:
-    0 18px 56px rgba(0, 0, 0, 0.38),
-    0 0 0 3px rgba(18, 225, 255, 0.12);
+    0 18px 56px var(--notes-card-tone-006),
+    0 0 0 3px var(--notes-card-tone-028);
 }
 
 .workspaceOverlayPanel .noteTitle,
 .workspaceOverlayPanel .noteText {
-  color: rgba(226, 232, 240, 0.88);
+  color: var(--notes-card-tone-041);
 }
 
 .workspaceOverlayPanel .noteDate {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(203, 213, 225, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: var(--notes-card-tone-064);
+  color: var(--notes-card-tone-037);
+  border: 1px solid var(--notes-card-tone-067);
 }
 
 .workspaceOverlayPanel .noteTitleInput {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(18, 225, 255, 0.26);
-  color: rgba(226, 232, 240, 0.88);
+  background: var(--notes-card-tone-065);
+  border: 1px solid var(--notes-card-tone-033);
+  color: var(--notes-card-tone-041);
 }
 
 .workspaceOverlayPanel .noteContentInput {
   /* 取消“第三层玻璃”：正文编辑区不要再单独做玻璃背景 */
   background: transparent;
   border: none;
-  color: rgba(226, 232, 240, 0.88);
+  color: var(--notes-card-tone-041);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   box-shadow: none;
 }
 
-.workspaceOverlayPanel .keyword {
-  background: rgba(18, 225, 255, 0.10);
-  border-color: rgba(18, 225, 255, 0.18);
-  color: rgba(226, 232, 240, 0.84);
+.workspaceOverlayPanel .keywordEditBtn {
+  background: var(--notes-card-tone-027);
+  border-color: var(--notes-card-tone-030);
+  color: var(--notes-card-tone-040);
 }
 
 .workspaceOverlayPanel .keywordAddBtn {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.10);
-  color: rgba(203, 213, 225, 0.78);
+  background: var(--notes-card-tone-064);
+  border-color: var(--notes-card-tone-067);
+  color: var(--notes-card-tone-037);
 }
 
 @keyframes spin {
@@ -304,8 +228,8 @@
 
 .noteCard.noteCardDetail:hover {
   transform: none;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
-  border-color: rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 28px var(--notes-card-tone-022), 0 3px 8px var(--notes-card-tone-020);
+  border-color: var(--notes-card-tone-021);
 }
 
 .noteCardDetail .noteContent {
@@ -338,16 +262,16 @@
   /* 左右留白恢复；顶部再收紧一点，让编辑器更靠上 */
   padding: 12px 16px 10px;
   border-radius: 18px;
-  border-color: rgba(15, 23, 42, 0.06);
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
+  border-color: var(--notes-card-tone-021);
+  background: var(--notes-card-tone-070);
+  box-shadow: 0 10px 28px var(--notes-card-tone-022), 0 3px 8px var(--notes-card-tone-020);
 }
 
 .noteCard.noteCardDetail:focus-within {
-  border-color: rgba(23, 112, 232, 0.16);
+  border-color: var(--notes-card-tone-051);
   box-shadow:
-    0 12px 34px rgba(15, 23, 42, 0.10),
-    0 0 0 3px rgba(23, 112, 232, 0.12);
+    0 12px 34px var(--notes-card-tone-023),
+    0 0 0 3px var(--notes-card-tone-049);
 }
 
 .noteCard.noteCardDetail .noteTextWrapper {
@@ -410,17 +334,16 @@
 }
 
 .noteCard {
-  /* 回到“白色卡片”基线：更干净、更克制 */
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-xl);
   padding: 20px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--color-border-subtle);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   box-shadow:
-    0 8px 24px rgba(15, 23, 42, 0.08),
-    0 3px 8px rgba(15, 23, 42, 0.04);
-  transition: all 0.3s ease;
+    0 8px 24px var(--notes-card-tone-022),
+    0 3px 8px var(--notes-card-tone-020);
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
   cursor: pointer;
   position: relative;
   overflow: hidden;
@@ -429,10 +352,10 @@
     transform: translateY(-2px);
     /* hover 时带一点点内描边高光 */
     box-shadow:
-      0 12px 36px rgba(15, 23, 42, 0.10),
-      0 4px 10px rgba(15, 23, 42, 0.06),
-      inset 0 0 0 1px rgba(23, 112, 232, 0.10);
-    border-color: rgba(23, 112, 232, 0.12);
+      0 12px 36px var(--notes-card-tone-023),
+      0 4px 10px var(--notes-card-tone-021),
+      inset 0 0 0 1px var(--notes-card-tone-048);
+    border-color: var(--color-border-default);
   }
 
   &:active {
@@ -440,81 +363,9 @@
   }
 }
 
-.relatedHandle {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 12px;
-  height: 48px;
-  background: rgba(23, 112, 232, 0.05); /* 极淡的蓝色 */
-  border: 1px solid rgba(23, 112, 232, 0.1);
-  border-right: none;
-  border-radius: 8px 0 0 8px; /* 左侧圆角，右侧贴边 */
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding-left: 2px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  z-index: 20;
-  overflow: hidden;
-  opacity: 0.6;
-}
-
-.relatedHandleIcon {
-  color: rgba(23, 112, 232, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  transition: all 0.2s ease;
-  transform: translateX(4px); /* 默认图标向右偏移隐藏部分 */
-  opacity: 0;
-}
-
-.noteCard:hover .relatedHandle {
-  width: 20px;
-  background: rgba(23, 112, 232, 0.08);
-  border-color: rgba(23, 112, 232, 0.15);
-  opacity: 0.9;
-}
-
-.noteCard:hover .relatedHandleIcon {
-  transform: translateX(2px);
-  opacity: 0.8;
-}
-
-.relatedHandle:hover {
-  width: 28px !important;
-  background: rgba(23, 112, 232, 0.15) !important;
-  border-color: rgba(23, 112, 232, 0.3) !important;
-  opacity: 1 !important;
-}
-
-.relatedHandle:hover .relatedHandleIcon {
-  transform: translateX(4px) !important;
-  color: rgba(23, 112, 232, 1) !important;
-  opacity: 1 !important;
-}
-
-.relatedHandle:active {
-  background: rgba(23, 112, 232, 0.2) !important;
-}
-
-.relatedHandleActive {
-  width: 20px;
-  background: rgba(23, 112, 232, 0.12);
-  border-color: rgba(23, 112, 232, 0.25);
-  opacity: 1;
-}
-
-.relatedHandleActive .relatedHandleIcon {
-  transform: translateX(2px);
-  opacity: 1;
-  color: rgba(23, 112, 232, 0.9);
+.noteCardSelected {
+  border-color: var(--color-action-primary);
+  box-shadow: 0 0 0 1px var(--color-action-primary);
 }
 
 .noteCard.noteCardDetail .noteEditBar {
@@ -523,7 +374,7 @@
   z-index: 20;
   padding-top: 10px;
   /* 轻微遮罩，避免内容贴到按钮后面 */
-  background: linear-gradient(to bottom, rgba(255,255,255,0.0), rgba(255,255,255,0.96) 45%, rgba(255,255,255,0.98));
+  background: linear-gradient(to bottom, var(--notes-card-tone-071), var(--notes-card-tone-078) 45%, var(--notes-card-tone-079));
   }
 
 .noteCardEditing {
@@ -539,9 +390,9 @@
   }
 
   box-shadow:
-    0 24px 70px rgba(15, 23, 42, 0.16),
-    0 0 0 1px rgba(23,112,232,0.14) inset;
-  border-color: rgba(23,112,232,0.22);
+    0 24px 70px var(--notes-card-tone-024),
+    0 0 0 1px var(--notes-card-tone-060) inset;
+  border-color: var(--notes-card-tone-061);
 
   // Belt-and-suspenders: prevent inner scroll on global classes / attribute selectors
   // (Module classes are handled by inline styles in ModernNoteCard.tsx)
@@ -557,33 +408,61 @@
 }
 
 .noteHeader {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
+  gap: 12px;
   margin-bottom: 12px;
+}
+
+.noteHeaderTitle {
+  min-width: 0;
+}
+
+.noteTitleEditor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .noteCard.noteCardDetail .noteHeader {
   margin-bottom: 6px;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid var(--notes-card-tone-021);
 }
 
 .noteTitle {
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text-primary);
   line-height: 1.4;
   word-break: break-word;
   flex: 1;
   margin: 0 12px 0 0;
 }
 
+.noteTitleButton {
+  min-height: 44px;
+  width: 100%;
+  justify-content: flex-start;
+  padding: 8px;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  word-break: break-word;
+}
+
 .titleSkeleton {
+  display: block;
   width: 160px;
   height: 22px;
   border-radius: 6px;
-  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%);
+  background: linear-gradient(90deg, var(--color-surface-sunken) 0%, var(--color-border-subtle) 50%, var(--color-surface-sunken) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -591,7 +470,7 @@
 .noteText {
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text-primary);
   line-height: 1.4;
   word-break: break-word;
   flex: 1;
@@ -599,37 +478,38 @@
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease;
 
   &:hover {
-    background: rgba(23, 112, 232, 0.05);
+    background: var(--notes-card-tone-046);
   }
 }
 
 .noteTitleInput {
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text-primary);
   line-height: 1.4;
   word-break: break-word;
   flex: 1;
   margin-right: 12px;
   padding: 4px 8px;                  /* 缩小内边距，避免过高 */
-  border: 2px solid rgb(23,112,232); /* 保留蓝色边框 */
+  border: 2px solid var(--notes-card-tone-002); /* 保留蓝色边框 */
   border-radius: 8px;
   outline: none;
   font-family: inherit;
   background: white;
-  transition: all 0.2s ease;
-  height: 32px;                      /* 固定高度，和文本保持一致 */
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  min-height: 44px;
+  height: 44px;
   box-sizing: border-box;            /* 让 padding 和 border 包含在 height 内 */
 
   &:focus {
-    box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.1);
+    box-shadow: 0 0 0 3px var(--notes-card-tone-047);
   }
 
   &::placeholder {
-    color: #9ca3af;
+    color: var(--color-text-tertiary);
     font-weight: 400;
   }
 }
@@ -638,19 +518,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   border: none;
-  background: rgba(23, 112, 232, 0.1); /* 浅蓝背景 */
-  color: rgb(23, 112, 232); /* 蓝色文字/图标 */
-  border-radius: 6px;
+  background: var(--notes-card-tone-047); /* 浅蓝背景 */
+  color: var(--notes-card-tone-001); /* 蓝色文字/图标 */
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s ease;
-  opacity: 0.7;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 
   &:hover {
-    background: rgba(23, 112, 232, 0.2);
-    opacity: 1;
+    background: var(--notes-card-tone-052);
     transform: scale(1.05);
   }
 
@@ -669,42 +547,43 @@
 
 .noteDate {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--color-text-secondary);
   font-weight: 500;
-  background: rgba(107, 114, 128, 0.1);
-  border-radius: 6px;
-  height: 28px;          /* 与输入框统一高度 */
-  line-height: 28px;     /* 让文字垂直居中 */
-  padding: 0 8px;        /* 只保留左右间距 */
+  min-height: 44px;
+  line-height: 1.4;
+  padding: 0 4px;
   box-sizing: border-box;
   display: inline-flex;  /* 确保文字在中线 */
   align-items: center;   /* 垂直居中对齐 */
 }
 
-.deleteButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  opacity: 0.7;
+.relatedAction,
+.noteActionsMenuTrigger {
+  min-width: 44px;
+  min-height: 44px;
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+}
 
-  &:hover {
-    background: rgba(239, 68, 68, 0.2);
-    opacity: 1;
-    transform: scale(1.05);
-  }
+.relatedAction {
+  padding-inline: 12px;
+}
 
-  svg {
-    width: 16px;
-    height: 16px;
-  }
+.relatedActionActive {
+  background: var(--color-action-secondary);
+  border-color: var(--color-action-primary);
+}
+
+.noteActionsMenuTrigger {
+  font-size: 14px;
+}
+
+.noteActionsMenuContent {
+  min-width: 11rem;
+}
+
+.noteActionsMenuDanger {
+  color: var(--color-action-danger);
 }
 
 .noteContent {
@@ -772,7 +651,7 @@
   white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(138, 200, 255, 0.92); /* 冷色 */
+  color: var(--notes-card-tone-017); /* 冷色 */
 }
 
 .draftSavedInline {
@@ -780,7 +659,7 @@
   white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(160, 216, 255, 0.86); /* 冷色 */
+  color: var(--notes-card-tone-025); /* 冷色 */
 }
 
 .keywordsWrap {
@@ -798,7 +677,7 @@
   bottom: 0;
   height: 60px;
   pointer-events: none;
-  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1) 80%);
+  background: linear-gradient(to bottom, var(--notes-card-tone-080), var(--notes-card-tone-081) 80%);
   z-index: 10;
   opacity: 0;
   transition: opacity 0.3s ease;
@@ -810,12 +689,12 @@
 
 .noteContentInput {
   width: 100%;
-  border: 2px solid rgb(23,112,232);
+  border: 2px solid var(--notes-card-tone-002);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 14px;
   line-height: 1.6;
-  color: #1f2937;
+  color: var(--color-text-primary);
   font-family: inherit;
   box-sizing: border-box;
   background: white;
@@ -834,7 +713,7 @@
 
 .errorInline {
   font-size: 12px;
-  color: #dc2626;
+  color: var(--color-status-error);
 }
 
 .noteText {
@@ -843,13 +722,13 @@
   white-space: pre-wrap;
   font-size: 14px;
   line-height: 1.6;
-  color: #4b5563;
+  color: var(--color-text-secondary);
   margin: 0;
   font-weight: 400;
 }
 
 .noteTextExpanded {
-  color: #374151;
+  color: var(--color-text-secondary);
 }
 
 .noteTextWrapper {
@@ -864,23 +743,25 @@
   bottom: 12px;
   padding: 4px 10px;
   background: white;
-  color: rgb(23,112,232);
-  border: 1px solid rgba(23, 112, 232, 0.2);
+  color: var(--notes-card-tone-002);
+  border: 1px solid var(--notes-card-tone-052);
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
   user-select: none;
-  transition: all 0.2s ease;
+  min-width: 44px;
+  min-height: 44px;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   z-index: 20;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 6px var(--notes-card-tone-008);
 }
 
 .expandPill:hover {
-  background: #f0f9ff;
-  border-color: rgba(23, 112, 232, 0.4);
-  box-shadow: 0 3px 8px rgba(23, 112, 232, 0.1);
+  background: var(--color-status-info-surface);
+  border-color: var(--notes-card-tone-055);
+  box-shadow: 0 3px 8px var(--notes-card-tone-047);
 }
 
 .noteKeywords {
@@ -899,7 +780,7 @@
 }
 
 .keywordErrorInline {
-  color: #b42318;
+  color: var(--color-status-error);
   font-size: 12px;
   white-space: normal;
 }
@@ -913,7 +794,7 @@
   width: 60px;
   height: 20px;
   border-radius: 12px;
-  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 50%, #f3f4f6 100%);
+  background: linear-gradient(90deg, var(--color-surface-sunken) 0%, var(--color-border-subtle) 50%, var(--color-surface-sunken) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -928,37 +809,37 @@
 .keywordsInput {
   flex: 1;
   padding: 6px 10px;
-  border: 2px solid rgb(23,112,232);
+  border: 2px solid var(--notes-card-tone-002);
   border-radius: 8px;
   font-size: 14px;
-  color: #1f2937;
+  color: var(--color-text-primary);
   font-family: inherit;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--notes-card-tone-070);
 }
 
 .workspaceOverlayPanel .keywordsInput {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(226, 232, 240, 0.88);
+  background: var(--notes-card-tone-064);
+  border: 1px solid var(--notes-card-tone-069);
+  color: var(--notes-card-tone-041);
   -webkit-backdrop-filter: blur(12px) saturate(170%);
   backdrop-filter: blur(12px) saturate(170%);
 }
 
 .workspaceOverlayPanel .keywordsInput::placeholder {
-  color: rgba(148, 163, 184, 0.72);
+  color: var(--notes-card-tone-019);
 }
 
 .workspaceOverlayPanel .keywordsInput:focus {
   outline: none;
-  border-color: rgba(18, 225, 255, 0.32);
-  box-shadow: 0 0 0 2px rgba(18, 225, 255, 0.10);
+  border-color: var(--notes-card-tone-035);
+  box-shadow: 0 0 0 2px var(--notes-card-tone-027);
 }
 
 .keywordsSave {
   padding: 6px 12px;
-  background: rgba(23, 112, 232, 0.1);
-  color: rgb(23,112,232);
-  border: 1px solid rgba(23, 112, 232, 0.2);
+  background: var(--notes-card-tone-047);
+  color: var(--notes-card-tone-002);
+  border: 1px solid var(--notes-card-tone-052);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
@@ -968,7 +849,7 @@
 .keywordsEdit {
   margin-left: 8px;
   background: transparent;
-  color: rgb(23,112,232);
+  color: var(--notes-card-tone-002);
   border: none;
   font-size: 12px;
   cursor: pointer;
@@ -993,11 +874,11 @@
 .workspaceOverlayPanel .noteCard.noteCardDetail.noteCardEditing .noteTextWrapperEditing {
   position: relative;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--notes-card-tone-067);
+  background: var(--notes-card-tone-062);
   /* 移除这里的 backdrop-filter 避免创建 containing block 导致 fixed drag-handle 错位 */
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    inset 0 1px 0 var(--notes-card-tone-064);
   z-index: 1;
 }
 
@@ -1013,9 +894,9 @@
   backdrop-filter: blur(18px) saturate(170%) contrast(110%);
   /* 与主题色一致的冷色调晕染：很弱，只做“液态”氛围 */
   background:
-    radial-gradient(520px 260px at 18% 12%, rgba(18, 225, 255, 0.10), rgba(18, 225, 255, 0) 70%),
-    radial-gradient(420px 260px at 86% 28%, rgba(56, 228, 255, 0.06), rgba(56, 228, 255, 0) 72%),
-    linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.00) 55%, rgba(255,255,255,0.01));
+    radial-gradient(520px 260px at 18% 12%, var(--notes-card-tone-027), var(--notes-card-tone-036) 70%),
+    radial-gradient(420px 260px at 86% 28%, var(--notes-card-tone-083), var(--notes-card-tone-085) 72%),
+    linear-gradient(180deg, var(--notes-card-tone-074), var(--notes-card-tone-072) 55%, var(--notes-card-tone-073));
   opacity: 1; /* 注意：原先是 0.12，但因为现在包含了 backdrop-filter，所以不能设为 0.12 否则 blur 也会透明！ */
   /* 我们需要把 background 拆分或者调整 */
 }
@@ -1026,7 +907,7 @@
   inset: -45%;
   pointer-events: none;
   /* 静态、极弱的高光（不要“白亮一层”） */
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.045), rgba(255,255,255,0) 62%);
+  background: radial-gradient(circle at 30% 20%, var(--notes-card-tone-076), var(--notes-card-tone-080) 62%);
   opacity: 0.03;
   mix-blend-mode: overlay;
 }
@@ -1034,23 +915,24 @@
 .noteEditActions { display: flex; align-items: center; gap: 12px; }
 
 .noteEditCancel {
+  min-height: 44px;
   padding: 6px 12px;
   border-radius: 10px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(226, 232, 240, 0.82);
+  background: var(--notes-card-tone-064);
+  border: 1px solid var(--notes-card-tone-069);
+  color: var(--notes-card-tone-039);
   -webkit-backdrop-filter: blur(10px) saturate(160%);
   backdrop-filter: blur(10px) saturate(160%);
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
 .noteEditCancel:hover {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(56, 228, 255, 0.22);
-  color: rgba(226, 232, 240, 0.90);
+  background: var(--notes-card-tone-066);
+  border-color: var(--notes-card-tone-084);
+  color: var(--notes-card-tone-042);
 }
 
 .noteEditCancel:disabled {
@@ -1059,28 +941,29 @@
 }
 
 .noteEditSave {
+  min-height: 44px;
   padding: 6px 14px;
   border-radius: 10px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  border: 1px solid rgba(18, 225, 255, 0.22);
-  color: rgba(226, 232, 240, 0.92);
+  border: 1px solid var(--notes-card-tone-032);
+  color: var(--notes-card-tone-043);
   background:
-    linear-gradient(180deg, rgba(18, 225, 255, 0.20), rgba(18, 225, 255, 0.12));
+    linear-gradient(180deg, var(--notes-card-tone-031), var(--notes-card-tone-028));
   -webkit-backdrop-filter: blur(10px) saturate(170%);
   backdrop-filter: blur(10px) saturate(170%);
   box-shadow:
-    0 10px 26px rgba(0, 0, 0, 0.28);
+    0 10px 26px var(--notes-card-tone-003);
   transition: filter 140ms ease, transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 
 .noteEditSave:hover {
-  border-color: rgba(18, 225, 255, 0.30);
+  border-color: var(--notes-card-tone-034);
   background:
-    linear-gradient(180deg, rgba(18, 225, 255, 0.26), rgba(18, 225, 255, 0.16));
+    linear-gradient(180deg, var(--notes-card-tone-033), var(--notes-card-tone-029));
   box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.32);
+    0 14px 34px var(--notes-card-tone-004);
   transform: translateY(-1px);
 }
 
@@ -1091,91 +974,101 @@
 }
 
 .workspaceOverlayPanel .noteEditCancel {
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: rgba(203, 213, 225, 0.80);
+  background: var(--notes-card-tone-063);
+  border-color: var(--notes-card-tone-068);
+  color: var(--notes-card-tone-038);
 }
 
 .workspaceOverlayPanel .noteEditCancel:hover {
-  border-color: rgba(18, 225, 255, 0.26);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--notes-card-tone-033);
+  background: var(--notes-card-tone-064);
 }
 
 .workspaceOverlayPanel .noteEditSave {
-  border-color: rgba(18, 225, 255, 0.26);
+  border-color: var(--notes-card-tone-033);
   background:
-    linear-gradient(180deg, rgba(18, 225, 255, 0.22), rgba(18, 225, 255, 0.12));
+    linear-gradient(180deg, var(--notes-card-tone-032), var(--notes-card-tone-028));
   box-shadow:
-    0 12px 34px rgba(0, 0, 0, 0.34);
+    0 12px 34px var(--notes-card-tone-005);
 }
 
-.keyword {
-  background: rgba(23, 112, 232, 0.1);
-  color: rgb(23,112,232);
+.keywordControl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: stretch;
+  gap: 6px;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.keywordEditBtn {
+  background: var(--notes-card-tone-047);
+  color: var(--notes-card-tone-002);
   padding: 6px 8px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
   line-height: 1; /* 避免字体基线导致“视觉偏下” */
-  border: 1px solid rgba(23, 112, 232, 0.2);
-  transition: all 0.2s ease;
+  border: 1px solid var(--notes-card-tone-052);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   cursor: pointer;
-  position: relative;
-  display: inline-flex; /* 用 flex 做垂直居中，比依赖 line-height 更稳 */
+  display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
 
   &:hover {
-    background: rgba(23, 112, 232, 0.15);
-    border-color: rgba(23, 112, 232, 0.3);
+    background: var(--notes-card-tone-050);
+    border-color: var(--notes-card-tone-054);
   }
 }
 
 .keywordDeleteBtn {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
+  position: static;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
   border-radius: 999px;
-  border: 1px solid rgba(23, 112, 232, 0.25);
+  border: 1px solid var(--notes-card-tone-053);
   background: white;
-  color: rgba(23, 112, 232, 0.9);
+  color: var(--notes-card-tone-057);
   font-size: 12px;
   line-height: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 6px var(--notes-card-tone-009);
 
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.95);
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
-.keyword:hover .keywordDeleteBtn {
-  opacity: 1;
-  pointer-events: auto;
+.keywordDeleteBtn:hover {
   transform: scale(1);
 }
 
 .keywordMore {
-  background: rgba(107, 114, 128, 0.1);
-  color: #6b7280;
+  background: var(--notes-card-tone-012);
+  color: var(--color-text-secondary);
   padding: 4px 8px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
-  border: 1px solid rgba(107, 114, 128, 0.2);
+  border: 1px solid var(--notes-card-tone-013);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
   user-select: none;
   
   &:hover {
-    background: rgba(23, 112, 232, 0.1);
-    color: rgb(23, 112, 232);
-    border-color: rgba(23, 112, 232, 0.3);
+    background: var(--notes-card-tone-047);
+    color: var(--notes-card-tone-001);
+    border-color: var(--notes-card-tone-054);
   }
   
   &:active {
@@ -1185,38 +1078,37 @@
 
 .keywordEditInput {
   padding: 3px 7px;
-  border: 1px solid rgb(23,112,232);
+  border: 1px solid var(--notes-card-tone-002);
   border-radius: 6px;
   font-size: 11px;
   line-height: 1.6;
-  color: #1f2937;
+  color: var(--color-text-primary);
   font-family: inherit;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--notes-card-tone-070);
   outline: none;
 }
 
 .workspaceOverlayPanel .keywordEditInput {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: rgba(226, 232, 240, 0.88);
+  background: var(--notes-card-tone-064);
+  border-color: var(--notes-card-tone-069);
+  color: var(--notes-card-tone-041);
   -webkit-backdrop-filter: blur(12px) saturate(170%);
   backdrop-filter: blur(12px) saturate(170%);
 }
 
 .workspaceOverlayPanel .keywordEditInput::placeholder {
-  color: rgba(148, 163, 184, 0.72);
+  color: var(--notes-card-tone-019);
 }
 
 .workspaceOverlayPanel .keywordEditInput:focus {
-  border-color: rgba(18, 225, 255, 0.32);
-  box-shadow: 0 0 0 2px rgba(18, 225, 255, 0.10);
+  border-color: var(--notes-card-tone-035);
+  box-shadow: 0 0 0 2px var(--notes-card-tone-027);
 }
 
 .keywordAddBtn {
-  /* 让 + 更大但不撑高整行：用固定高度 + flex 居中 */
-  /* 与 .keyword 的视觉高度对齐：11px 字号 + 6px*2 padding + 1px*2 border ≈ 25px */
-  width: 25px;
-  height: 25px;
+  /* Keep the compact icon while giving the control a reliable touch target. */
+  width: 44px;
+  height: 44px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -1224,10 +1116,10 @@
   box-sizing: border-box;
 
   /* 常态也有“很浅”的边框与底色，避免按钮看起来像消失了 */
-  border: 1px dashed rgba(107, 114, 128, 0.28);
+  border: 1px dashed var(--notes-card-tone-014);
   border-radius: 6px;
-  background: rgba(107, 114, 128, 0.04);
-  color: rgba(107, 114, 128, 0.75);
+  background: var(--notes-card-tone-010);
+  color: var(--notes-card-tone-016);
   font-size: 16px;
   font-weight: 500;
   line-height: 1;
@@ -1236,9 +1128,9 @@
 }
 
 .keywordAddBtn:hover {
-  background: rgba(107, 114, 128, 0.08);
-  border-color: rgba(107, 114, 128, 0.65);
-  color: rgba(75, 85, 99, 0.95);
+  background: var(--notes-card-tone-011);
+  border-color: var(--notes-card-tone-015);
+  color: var(--notes-card-tone-086);
 }
 
 .keywordAddIcon {
@@ -1250,6 +1142,59 @@
 
 .keywordAddBtn:active {
   transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .noteCard,
+  .noteCard *,
+  .noteCard *::before,
+  .noteCard *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto;
+  }
+
+  .noteCard:hover,
+  .noteCard:active,
+  .noteCard *:hover,
+  .noteCard *:active {
+    transform: none !important;
+  }
+}
+
+@media (max-width: 649px) {
+  .noteCard {
+    padding: 16px;
+  }
+
+  .noteHeader {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .noteHeaderTitle,
+  .noteTitleButton,
+  .noteTitleEditor {
+    width: 100%;
+  }
+
+  .noteActions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .noteDate {
+    flex: 1 1 100%;
+    padding-inline: 8px;
+  }
+
+  .relatedAction,
+  .noteActionsMenuTrigger,
+  .noteEditTitleConfirm {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 @keyframes slideDown {
@@ -1296,40 +1241,40 @@
 @keyframes elegantDoublePulse {
   /* 0%：起始状态，无高亮 */
   0% {
-    box-shadow: 0 0 0 0 rgba(23, 112, 232, 0), 0 0 0 0 rgba(23, 112, 232, 0);
-    border-color: rgba(23, 112, 232, 0.1);
+    box-shadow: 0 0 0 0 var(--notes-card-tone-058), 0 0 0 0 var(--notes-card-tone-058);
+    border-color: var(--notes-card-tone-047);
     background-color: transparent;
     transform: scale(1);
   }
   
   /* 20%：第一次脉冲波峰（明亮） */
   20% {
-    box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.4), 0 12px 32px rgba(23, 112, 232, 0.15);
-    border-color: rgba(23, 112, 232, 0.6) !important;
-    background-color: rgba(23, 112, 232, 0.04);
+    box-shadow: 0 0 0 3px var(--notes-card-tone-055), 0 12px 32px var(--notes-card-tone-050);
+    border-color: var(--notes-card-tone-056) !important;
+    background-color: var(--notes-card-tone-045);
     transform: scale(1.005);
   }
 
   /* 45%：第一次脉冲波谷（微弱暗去，不完全熄灭） */
   45% {
-    box-shadow: 0 0 0 1px rgba(23, 112, 232, 0.15), 0 4px 12px rgba(23, 112, 232, 0.05);
-    border-color: rgba(23, 112, 232, 0.2) !important;
-    background-color: rgba(23, 112, 232, 0.01);
+    box-shadow: 0 0 0 1px var(--notes-card-tone-050), 0 4px 12px var(--notes-card-tone-046);
+    border-color: var(--notes-card-tone-052) !important;
+    background-color: var(--notes-card-tone-044);
     transform: scale(1);
   }
 
   /* 70%：第二次脉冲波峰（明亮） */
   70% {
-    box-shadow: 0 0 0 3px rgba(23, 112, 232, 0.4), 0 12px 32px rgba(23, 112, 232, 0.15);
-    border-color: rgba(23, 112, 232, 0.6) !important;
-    background-color: rgba(23, 112, 232, 0.04);
+    box-shadow: 0 0 0 3px var(--notes-card-tone-055), 0 12px 32px var(--notes-card-tone-050);
+    border-color: var(--notes-card-tone-056) !important;
+    background-color: var(--notes-card-tone-045);
     transform: scale(1.005);
   }
 
   /* 100%：平滑熄灭，回归日常态 */
   100% {
-    box-shadow: 0 0 0 0 rgba(23, 112, 232, 0), 0 0 0 0 rgba(23, 112, 232, 0);
-    border-color: rgba(15, 23, 42, 0.08) !important; /* 回归卡片默认边框色 */
+    box-shadow: 0 0 0 0 var(--notes-card-tone-058), 0 0 0 0 var(--notes-card-tone-058);
+    border-color: var(--notes-card-tone-022) !important; /* 回归卡片默认边框色 */
     background-color: transparent;
     transform: scale(1);
   }
