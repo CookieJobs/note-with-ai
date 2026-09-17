@@ -39,10 +39,6 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
-    lastActiveAt: {
-      type: Date,
-      default: null
-    },
     isVerified: {
       type: Boolean,
       default: false
@@ -75,9 +71,6 @@ UserSchema.methods.toJSON = function() {
   delete userObject.password;
   return userObject;
 };
-
-UserSchema.index({ createdAt: 1 });
-UserSchema.index({ lastActiveAt: 1 });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 export default User;

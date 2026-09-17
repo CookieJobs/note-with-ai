@@ -16,7 +16,7 @@ type EnrichmentWorkerNote = {
 };
 
 type WorkerDependencies = {
-  summarizeMeta: (contentText: string, userId?: string) => Promise<{
+  summarizeMeta: (contentText: string) => Promise<{
     summary: string;
     concepts: string[];
     title?: string;
@@ -41,10 +41,10 @@ function noteText(note: EnrichmentWorkerNote): string {
 
 function createProductionWorker(options: ProductionTaskOptions = {}): NoteEnrichmentWorker {
   return new NoteEnrichmentWorker({
-    summarizeMeta: async (contentText, userId) => {
+    summarizeMeta: async (contentText) => {
       const [meta, concepts] = await Promise.all([
-        summarizeNoteMeta(contentText, userId),
-        expandNoteConcepts(contentText, userId),
+        summarizeNoteMeta(contentText),
+        expandNoteConcepts(contentText),
       ]);
       if (!meta) return null;
       return {
@@ -108,7 +108,7 @@ export class NoteEnrichmentWorker {
 
     try {
       if (task.artifact === 'meta') {
-        const meta = await this.dependencies.summarizeMeta(noteText(note), String(note.userId));
+        const meta = await this.dependencies.summarizeMeta(noteText(note));
         if (!meta) throw new Error('meta generation returned no result');
         const values: Record<string, unknown> = { summary: meta.summary, concepts: meta.concepts };
         if (note.titleOrigin === 'default' && typeof meta.title === 'string') {

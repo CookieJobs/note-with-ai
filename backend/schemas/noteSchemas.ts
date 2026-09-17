@@ -100,10 +100,3 @@ export const noteIdParamSchema = z.object({
     id: z.string().min(1, '缺少笔记ID'),
   }),
 });
-
-export const noteListSchema = z.object({
-  query: z.object({
-    limit: z.coerce.number().int().min(1).max(50).optional(),
-    cursor: z.string().min(1).max(512).optional(),
-  }).strict(),
-});

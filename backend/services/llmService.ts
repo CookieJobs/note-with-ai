@@ -9,11 +9,19 @@ import { DeepSeekApiClient } from '../utils/apiClient';
 import { config } from '../config';
 import { ErrorHandler } from '../utils/errorHandler';
 import { logger } from '../utils/logger';
-import { AiUsageService, type AiTelemetryContext } from './aiUsageService';
 
 let deepSeekClient: DeepSeekApiClient | null = null;
 
 type JsonObject = Record<string, unknown>;
+
+function getDebugPreview(text: string, limit = 200): string {
+  return String(text || '').replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function debugLog(label: string, text: string): void {
+  if (config.NODE_ENV === 'production') return;
+  logger.info(`${label}:`, getDebugPreview(text));
+}
 
 export function getDeepSeekClient(): DeepSeekApiClient {
   if (deepSeekClient) {
@@ -31,36 +39,30 @@ export function getDeepSeekClient(): DeepSeekApiClient {
 /**
  * 与 DeepSeek 聊天模型对话
  */
-export async function chatWithDeepSeek(
-  messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
-  telemetry: AiTelemetryContext = AiUsageService.newContext('chat'),
-): Promise<string> {
+export async function chatWithDeepSeek(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<string> {
   const client = getDeepSeekClient();
   return await client.chatCompletion(messages, {
     temperature: 0.7,
     max_tokens: 1024
-  }, telemetry);
+  });
 }
 
 /**
  * 与 DeepSeek 聊天模型流式对话
  */
-export async function chatWithDeepSeekStream(
-  messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
-  telemetry: AiTelemetryContext = AiUsageService.newContext('chat'),
-): Promise<AsyncIterable<string>> {
+export async function chatWithDeepSeekStream(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<AsyncIterable<string>> {
   const client = getDeepSeekClient();
   return client.chatCompletionStream(messages, {
     temperature: 0.7,
     max_tokens: 1024
-  }, telemetry);
+  });
 }
 
 
 /**
  * 为聊天对话生成标题
  */
-export async function summarizeChatTitle(content: string, userId?: string): Promise<string> {
+export async function summarizeChatTitle(content: string): Promise<string> {
   try {
     const messages = [
       {
@@ -77,9 +79,9 @@ export async function summarizeChatTitle(content: string, userId?: string): Prom
     return await client.chatCompletion(messages, {
       max_tokens: 50,
       temperature: 0.1
-    }, AiUsageService.newContext('chat_title', userId));
+    });
   } catch (error: unknown) {
-    logger.error('summarize chat title failed', { errorCode: 'AI_PROVIDER_FAILED' });
+    logger.error('❌ summarizeChatTitle 解析失败：', (error as Error).message || error);
     return '未命名对话';
   }
 }
@@ -111,6 +113,7 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
         temperature: 0.1,
         response_format: { type: 'json_object' }
       });
+      debugLog('🧠 AI原始返回', text);
   
       const parsed = JSON.parse(text);
       return {
@@ -118,7 +121,7 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
         keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 5) : [],
       };
     } catch (error: unknown) {
-      logger.error('summarize note failed', { errorCode: 'AI_PROVIDER_FAILED' });
+      logger.error('❌ summarizeNote 解析失败：', (error as Error).message || error);
       return null;
     }
   }
@@ -128,8 +131,7 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
  * - summary 用于联想/重排输入，建议 1-2 句、<=120字
  */
 export async function summarizeNoteMeta(
-  content: string,
-  userId?: string,
+  content: string
 ): Promise<{ title: string; keywords: string[]; summary: string } | null> {
   try {
     const messages = [
@@ -151,7 +153,8 @@ export async function summarizeNoteMeta(
       max_tokens: 600,
       temperature: 0.1,
       response_format: { type: 'json_object' },
-    }, AiUsageService.newContext('note_meta', userId));
+    });
+    debugLog('🧠 AI原始返回(meta)', text);
     const parsed = JSON.parse(text);
     const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
     return {
@@ -160,7 +163,7 @@ export async function summarizeNoteMeta(
       summary,
     };
   } catch (error: unknown) {
-    logger.error('summarize note metadata failed', { errorCode: 'AI_PROVIDER_FAILED' });
+    logger.error('❌ summarizeNoteMeta 解析失败：', (error as Error).message || error);
     return null;
   }
 }
@@ -191,7 +194,7 @@ export async function summarizeNoteSummary(content: string): Promise<string> {
     });
     return String(text || '').trim();
   } catch (error: unknown) {
-    logger.error('summarize note summary failed', { errorCode: 'AI_PROVIDER_FAILED' });
+    logger.error('❌ summarizeNoteSummary 调用失败：', (error as Error).message || error);
     return '';
   }
 }
@@ -199,7 +202,7 @@ export async function summarizeNoteSummary(content: string): Promise<string> {
 /**
  * 为“语义联想”做概念扩展：输出 8-12 个概念/主题词（不是 n-gram）
  */
-export async function expandNoteConcepts(content: string, userId?: string): Promise<string[]> {
+export async function expandNoteConcepts(content: string): Promise<string[]> {
   try {
     const messages = [
       {
@@ -218,7 +221,7 @@ export async function expandNoteConcepts(content: string, userId?: string): Prom
       max_tokens: 300,
       temperature: 0.2,
       response_format: { type: 'json_object' },
-    }, AiUsageService.newContext('note_concepts', userId));
+    });
     // 兼容：有些模型会返回 { concepts: [...] } 或直接返回数组
     let arr: unknown = null;
     try {
@@ -233,7 +236,7 @@ export async function expandNoteConcepts(content: string, userId?: string): Prom
         : [];
     return concepts.filter((x: unknown) => typeof x === 'string' && x.trim()).map((s: unknown) => (s as string).trim()).slice(0, 12);
   } catch (error: unknown) {
-    logger.error('expand note concepts failed', { errorCode: 'AI_PROVIDER_FAILED' });
+    logger.error('❌ expandNoteConcepts 调用失败：', (error as Error).message || error);
     return [];
   }
 }
@@ -246,7 +249,7 @@ export async function expandNoteConcepts(content: string, userId?: string): Prom
 export async function rerankRecommendedNotes(params: {
   current: { id: string; title: string; summary: string; content: string };
   candidates: Array<{ id: string; title: string; summary: string; excerpt: string }>;
-}, userId?: string): Promise<Array<{ id: string; s2: number; type: string; reason: string }>> {
+}): Promise<Array<{ id: string; s2: number; type: string; reason: string }>> {
   const { current, candidates } = params;
   try {
     const payload = {
@@ -280,7 +283,7 @@ export async function rerankRecommendedNotes(params: {
       max_tokens: 900,
       temperature: 0.2,
       response_format: { type: 'json_object' },
-    }, AiUsageService.newContext('rerank', userId));
+    });
     const parsed = JSON.parse(text) as JsonObject;
     const results = Array.isArray(parsed.results) ? parsed.results : [];
     return results
@@ -300,7 +303,7 @@ export async function rerankRecommendedNotes(params: {
       }))
       .filter((r: { id: string }) => r.id);
   } catch (error: unknown) {
-    logger.error('rerank recommended notes failed', { errorCode: 'AI_PROVIDER_FAILED' });
+    logger.error('❌ rerankRecommendedNotes 解析失败：', (error as Error).message || error);
     return [];
   }
 }
@@ -356,7 +359,7 @@ export async function checkOrUpdateSummaryConcepts(params: {
       : [];
     return { is_ok: false, summary, concepts };
   } catch (error: unknown) {
-    logger.error('check note summary and concepts failed', { errorCode: 'AI_PROVIDER_FAILED' });
+    logger.error('❌ checkOrUpdateSummaryConcepts 解析失败：', (error as Error).message || error);
     return { is_ok: true, summary: '', concepts: [] }; // 失败时不更新，避免影响保存
   }
 }
@@ -389,6 +392,7 @@ export async function extractSearchKeywords(content: string): Promise<string[]> 
       temperature: 0.1,
       response_format: { type: 'json_object' }
     });
+    logger.info('🔍 关键词提取结果:', text);
     
     // 尝试解析 JSON
     let keywords: string[] = [];
@@ -407,7 +411,7 @@ export async function extractSearchKeywords(content: string): Promise<string[]> 
 
     return keywords.slice(0, 4); // 最多返回4个关键词
   } catch (error: unknown) {
-    logger.error('extract search keywords failed', { errorCode: 'AI_PROVIDER_FAILED' });
+    logger.error('❌ extractSearchKeywords 调用失败:', (error as Error).message || error);
     // 备用方案
     return extractKeywordsFromContent(content);
   }

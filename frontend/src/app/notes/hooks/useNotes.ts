@@ -1,24 +1,11 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { CancelledError, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { authFetch } from '../../../utils/auth';
 import { generateUUID } from '../../../utils/uuid';
-import type { IUserProfile } from '../../../types';
+import type { INote, IUserProfile } from '../../../types';
 import { buildRecommendCacheFromResponse } from '../utils/recommendCache';
-import {
-  emptyNotePages,
-  flattenNotePages,
-  mapNotesInPages,
-  prependNoteToPages,
-  removeNoteFromPages,
-  selectCanonicalSnapshot,
-  type Note,
-  type NoteListItem,
-  type NotePage,
-  type NotePageResponse,
-  type NotePages,
-} from './notePages';
 
-export type { Note } from './notePages';
+export type Note = INote;
 
 export type NoteBodyInput =
   | { kind: 'rich-text'; document: Record<string, unknown>; fallbackMarkdown?: string }
@@ -67,10 +54,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isNoteListItem(value: unknown): value is NoteListItem {
-  return isRecord(value) && typeof value.aiIncluded === 'boolean';
-}
-
 function readCanonicalNoteWrite(payload: unknown, requireSuccess = false): Note {
   if (requireSuccess && (!isRecord(payload) || payload.success !== true)) {
     throw new Error('笔记写入响应无效');
@@ -104,6 +87,38 @@ function readCanonicalNoteWrite(payload: unknown, requireSuccess = false): Note 
   } as Note;
 }
 
+function replaceCachedNote(notes: Note[] | undefined, canonical: Note): Note[] {
+  return (notes ?? []).map((note) => note._id === canonical._id ? canonical : note);
+}
+
+function enrichmentProgress(note: Note): number {
+  switch (note.enrichment?.status) {
+    case 'ready': return 2;
+    case 'degraded': return 1;
+    default: return 0;
+  }
+}
+
+function selectCanonicalSnapshot(cached: Note | undefined, incoming: Note): Note {
+  if (!cached || cached._id !== incoming._id) return incoming;
+  if (cached.revision > incoming.revision) return cached;
+  if (cached.revision < incoming.revision) return incoming;
+
+  // Older list DTOs can omit enrichment. A validated canonical response is the
+  // narrow compatibility case where an equal revision may still fill it in.
+  if (!cached.enrichment && incoming.enrichment) return incoming;
+
+  // A matching revision has immutable primary content. Keep the complete snapshot
+  // that has observed strictly more enrichment progress rather than mixing fields.
+  return enrichmentProgress(incoming) > enrichmentProgress(cached) ? incoming : cached;
+}
+
+function replaceTemporaryNote(notes: Note[] | undefined, temporaryId: string, canonical: Note): Note[] {
+  const current = notes ?? [];
+  const withoutReplacement = current.filter((note) => note._id !== temporaryId && note._id !== canonical._id);
+  return [canonical, ...withoutReplacement];
+}
+
 type UseNotesOptions = {
   onError?: (message: string) => void;
 };
@@ -117,85 +132,49 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
   const listGenerationRef = useRef(0);
   const temporaryNoteIdsRef = useRef(new Set<string>());
 
-  const mergeFetchedPageWithTemporaryNotes = useCallback((fetched: NotePage, pageParam: string | undefined): NotePage => {
-    const fetchedNotes = fetched.notes.filter((note) => !temporaryNoteIdsRef.current.has(note._id));
-    if (pageParam !== undefined) return { ...fetched, notes: fetchedNotes };
-
-    const cached = queryClient.getQueryData<NotePages>(NOTES_QUERY_KEY);
-    const temporaryNotes = flattenNotePages(cached).filter((note) => temporaryNoteIdsRef.current.has(note._id));
-    const seenIds = new Set(temporaryNotes.map((note) => note._id));
-    return {
-      ...fetched,
-      notes: [...temporaryNotes, ...fetchedNotes.filter((note) => !seenIds.has(note._id))],
-    };
+  const mergeFetchedNotesWithTemporaryNotes = useCallback((fetched: Note[]): Note[] => {
+    const cached = queryClient.getQueryData<Note[]>(NOTES_QUERY_KEY) ?? [];
+    const temporaryNotes = cached.filter((note) => temporaryNoteIdsRef.current.has(note._id));
+    const fetchedWithoutTemporaryNotes = fetched.filter((note) => !temporaryNoteIdsRef.current.has(note._id));
+    return [...temporaryNotes, ...fetchedWithoutTemporaryNotes];
   }, [queryClient]);
 
-  const commitNotesWrite = useCallback((updater: (cached: NotePages) => NotePages) => {
+  const commitNotesWrite = useCallback((updater: (cached: Note[] | undefined) => Note[]) => {
     // A GET begun before this write may still resolve even when the browser ignores abort.
     // Its captured generation makes it return this canonical cache instead of stale list data.
     listGenerationRef.current += 1;
-    queryClient.setQueryData<NotePages>(NOTES_QUERY_KEY, (cached) => updater(cached ?? emptyNotePages()));
+    queryClient.setQueryData<Note[]>(NOTES_QUERY_KEY, updater);
     void queryClient.cancelQueries({ queryKey: NOTES_QUERY_KEY, exact: true });
   }, [queryClient]);
 
   const commitCanonicalNote = useCallback((incoming: Note): Note => {
     let selected = incoming;
     commitNotesWrite((cached) => {
-      selected = selectCanonicalSnapshot(flattenNotePages(cached).find((note) => note._id === incoming._id), incoming);
-      return mapNotesInPages(cached, (note) => note._id === incoming._id ? selected : note);
+      selected = selectCanonicalSnapshot(cached?.find((note) => note._id === incoming._id), incoming);
+      return replaceCachedNote(cached, selected);
     });
     return selected;
   }, [commitNotesWrite]);
 
-  const {
-    data,
-    isLoading,
-    error,
-    refetch,
-    fetchNextPage,
-    hasNextPage = false,
-    isFetchingNextPage,
-    isFetchNextPageError,
-  } = useInfiniteQuery({
+  const { data: notes = [], isLoading, error, refetch } = useQuery({
     queryKey: NOTES_QUERY_KEY,
-    initialPageParam: undefined as string | undefined,
-    queryFn: async ({ signal, pageParam }) => {
+    queryFn: async ({ signal }) => {
       const requestGeneration = listGenerationRef.current;
-      const url = pageParam === undefined
-        ? '/api/notes?limit=30'
-        : `/api/notes?limit=30&cursor=${encodeURIComponent(pageParam)}`;
-      const res = await authFetch(url, { signal });
+      const res = await authFetch('/api/notes', { signal });
       if (!res.ok) throw new Error(`请求失败: ${res.status}`);
       const response = await res.json();
 
-      if (
-        isRecord(response) && response.success === true && isRecord(response.data) &&
-        Array.isArray(response.data.notes) && response.data.notes.every(isNoteListItem) && isRecord(response.data.pageInfo) &&
-        typeof response.data.pageInfo.hasNextPage === 'boolean' &&
-        (typeof response.data.pageInfo.nextCursor === 'string' || response.data.pageInfo.nextCursor === null)
-      ) {
+      if (response.success && response.data && Array.isArray(response.data.notes)) {
         if (requestGeneration !== listGenerationRef.current) {
-          const cached = queryClient.getQueryData<NotePages>(NOTES_QUERY_KEY);
-          const pageIndex = cached?.pageParams.findIndex((cachedPageParam) => cachedPageParam === pageParam) ?? -1;
-          if (pageIndex >= 0 && cached) return cached.pages[pageIndex];
-          // A next-page request that began before a write must not append its
-          // now-stale transport payload after the write has cancelled it.
-          throw new CancelledError({ revert: true, silent: true });
+          return mergeFetchedNotesWithTemporaryNotes(queryClient.getQueryData<Note[]>(NOTES_QUERY_KEY) ?? []);
         }
-        const pageResponse = response.data as unknown as NotePageResponse;
-        return mergeFetchedPageWithTemporaryNotes({
-          notes: pageResponse.notes,
-          pageInfo: pageResponse.pageInfo,
-        }, pageParam);
+        return mergeFetchedNotesWithTemporaryNotes(response.data.notes as Note[]);
       }
-      throw new Error('笔记列表响应无效');
+      console.warn('⚠️ /api/notes 返回格式错误:', response);
+      return [];
     },
-    getNextPageParam: (lastPage) => (
-      lastPage.pageInfo.hasNextPage ? lastPage.pageInfo.nextCursor ?? undefined : undefined
-    ),
     enabled: !!user,
   });
-  const notes = flattenNotePages(data);
 
   useEffect(() => {
     if (error) {
@@ -280,7 +259,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
 
       try {
         const result = await refetch();
-        if (result.data) reconcilePendingNotes(flattenNotePages(result.data));
+        if (Array.isArray(result.data)) reconcilePendingNotes(result.data);
       } finally {
         if (isMountedRef.current) schedulePoll();
       }
@@ -330,7 +309,8 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     },
     onSuccess: (deletedId) => {
       commitNotesWrite((old) => {
-        return removeNoteFromPages(old, deletedId);
+        if (!old) return [];
+        return old.filter((n) => n._id !== deletedId);
       });
     },
     onError: (err) => {
@@ -387,7 +367,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
       updatedAt: now,
     };
     temporaryNoteIdsRef.current.add(temporaryId);
-    commitNotesWrite((pages) => prependNoteToPages(pages, temporary));
+    commitNotesWrite((notes = []) => [temporary, ...notes]);
 
     try {
       const response = await authFetch('/api/notes', {
@@ -406,20 +386,20 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
       const canonical = readCanonicalNoteWrite(payload, true);
       let selected = canonical;
       temporaryNoteIdsRef.current.delete(temporaryId);
-      commitNotesWrite((pages) => {
-        selected = selectCanonicalSnapshot(flattenNotePages(pages).find((note) => note._id === canonical._id), canonical);
-        return prependNoteToPages(removeNoteFromPages(pages, temporaryId), selected);
+      commitNotesWrite((notes) => {
+        selected = selectCanonicalSnapshot(notes?.find((note) => note._id === canonical._id), canonical);
+        return replaceTemporaryNote(notes, temporaryId, selected);
       });
       return selected;
     } catch (error) {
       temporaryNoteIdsRef.current.delete(temporaryId);
-      commitNotesWrite((pages) => removeNoteFromPages(pages, temporaryId));
+      commitNotesWrite((notes = []) => notes.filter((note) => note._id !== temporaryId));
       throw error;
     }
   }, [commitNotesWrite]);
 
   const refreshRecommendCache = useCallback(async (noteId: string): Promise<void> => {
-    const source = flattenNotePages(queryClient.getQueryData<NotePages>(NOTES_QUERY_KEY)).find((note) => note._id === noteId);
+    const source = queryClient.getQueryData<Note[]>(NOTES_QUERY_KEY)?.find((note) => note._id === noteId);
     if (!source) throw new Error('笔记不存在，无法刷新相关推荐');
 
     const response = await authFetch('/api/recommend/semantic-notes', {
@@ -442,7 +422,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
       updatedAt: source.updatedAt,
       revision: source.revision,
     }, payload);
-    commitNotesWrite((pages) => mapNotesInPages(pages, (note) => (
+    commitNotesWrite((notes = []) => notes.map((note) => (
       note._id === noteId && note.revision === source.revision
         ? { ...note, recommendCache }
         : note
@@ -457,12 +437,5 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     updateNote,
     refreshRecommendCache,
     refetchNotes: refetch,
-    hasNextPage,
-    isFetchingNextPage,
-    isFetchNextPageError,
-    loadMore: useCallback(async () => {
-      if (!hasNextPage || isFetchingNextPage) return;
-      await fetchNextPage();
-    }, [fetchNextPage, hasNextPage, isFetchingNextPage]),
   };
 }

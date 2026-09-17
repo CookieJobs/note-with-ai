@@ -9,12 +9,10 @@ import express, { Request, Response } from 'express';
 import { Note } from '../models/Note';
 import { searchArticlesByKeyword } from '../services/search';
 import type { RecommendationResult } from '../services/recommendService';
-import { getRelatedNoteSummaryResult } from '../services/relatedNoteSummaryService';
 import { runProductionNoteEnrichmentTask, type EnrichmentTaskStatus } from '../services/noteEnrichmentWorker';
 import { authenticateToken } from '../middleware/auth';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
-import { requireSingleRouteParam } from '../utils/requestParams';
 
 const router = express.Router();
 
@@ -54,13 +52,6 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   return ResponseHandler.success(res, { keywords: topKeywords, articles });
 }));
 
-router.get('/notes/:noteId', authenticateToken, asyncHandler(async (req, res) => {
-  const user = await UserValidator.authenticateUser(req);
-  const noteId = requireSingleRouteParam(req.params.noteId, 'noteId');
-  const data = await getRelatedNoteSummaryResult({ userId: user._id.toString(), noteId });
-  ResponseHandler.success(res, data);
-}));
-
 /**
  * 语义联想笔记（方案B：多路召回→去重→仅Top10进LLM→阈值输出）
  * POST /api/recommend/semantic-notes
@@ -86,54 +77,23 @@ router.post('/semantic-notes', authenticateToken, asyncHandler(async (req: Reque
 
   await ResourceValidator.validateOwnership(Note, noteId, user._id.toString(), '笔记');
 
-  const userId = user._id.toString();
-  // Use a lean projection here: hydrated Mongoose documents apply the schema
-  // default (`revision: 1`) even when the persisted field is absent.
-  const source = await Note.findOne({ _id: noteId, userId }).select('revision').lean();
+  const source = await Note.findOne({ _id: noteId, userId: user._id }).select('revision');
   if (!source) {
     throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
   }
-  const hasCanonicalRevision = typeof source.revision === 'number' && source.revision > 0;
-  let sourceRevision = hasCanonicalRevision ? source.revision : 1;
-  if (source.revision === undefined) {
-    // Legacy Mongo notes predate the revision field. Normalize only the
-    // missing-field case before entering the revision-CAS enrichment path;
-    // otherwise the worker's `{ revision: 1 }` lookup cannot see the note.
-    await Note.updateOne(
-      { _id: noteId, userId, revision: { $exists: false } },
-      { $set: { revision: 1 } },
-      { timestamps: false },
-    );
-  }
+  const sourceRevision = typeof source.revision === 'number' && source.revision > 0 ? source.revision : 1;
   let result: RecommendationResult | undefined;
-  let status: EnrichmentTaskStatus = 'stale';
-
-  // Recommendation generation can span multiple external calls. If a user
-  // write advances the revision while it is running, retry once against the
-  // newly-read canonical revision; every attempt still uses the worker's
-  // revision/user CAS guard and stale results are never written through.
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    result = undefined;
-    status = await runProductionNoteEnrichmentTask({
-      noteId,
-      userId,
-      sourceRevision,
-      artifact: 'recommendations',
-    }, {
-      onRecommendationResult: (completed) => {
-        result = completed;
-      },
-      recommendationOptions: { recallK, finalK, s1Threshold, hardThreshold },
-    });
-
-    if (status !== 'stale' || attempt === 1) break;
-
-    const latest = await Note.findOne({ _id: noteId, userId }).select('revision').lean();
-    if (!latest) break;
-    const latestRevision = typeof latest.revision === 'number' && latest.revision > 0 ? latest.revision : 1;
-    if (latestRevision === sourceRevision) break;
-    sourceRevision = latestRevision;
-  }
+  const status = await runProductionNoteEnrichmentTask({
+    noteId,
+    userId: user._id.toString(),
+    sourceRevision,
+    artifact: 'recommendations',
+  }, {
+    onRecommendationResult: (completed) => {
+      result = completed;
+    },
+    recommendationOptions: { recallK, finalK, s1Threshold, hardThreshold },
+  });
 
   result = getRecommendationTaskResult(status, result);
 

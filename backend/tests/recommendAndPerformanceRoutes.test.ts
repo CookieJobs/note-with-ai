@@ -4,7 +4,6 @@ import type { NextFunction } from 'express';
 import performanceRouter from '../routes/performance';
 import recommendRouter, { getRecommendationTaskResult } from '../routes/recommend';
 import { Note } from '../models/Note';
-import NoteAiPreference from '../models/NoteAiPreference';
 import { globalErrorHandler } from '../utils/errorHandler';
 import { ResourceValidator, UserValidator } from '../utils/userValidation';
 
@@ -62,10 +61,7 @@ describe('recommend and performance route contracts', () => {
     mock.method(Note, 'findOne', (filter: unknown) => {
       filters.push(filter);
       if (filters.length === 1) {
-        return { select: () => ({ lean: async () => ({ revision: 7 }) }) } as never;
-      }
-      if (filters.length === 3) {
-        return { select: () => ({ lean: async () => null }) } as never;
+        return { select: async () => ({ revision: 7 }) } as never;
       }
       return null as never;
     });
@@ -75,9 +71,8 @@ describe('recommend and performance route contracts', () => {
 
     assert.ok(error);
     globalErrorHandler(error as never, { method: 'POST', path: '/semantic-notes' } as never, response as never, (() => undefined) as NextFunction);
-    assert.equal(filters.length, 3);
+    assert.equal(filters.length, 2);
     assert.deepEqual(filters[1], { _id: 'note-1', userId: 'user-1', revision: 7 });
-    assert.deepEqual(filters[2], { _id: 'note-1', userId: 'user-1' });
     assert.equal(response.statusCode, 502);
     assert.deepEqual(response.body, {
       success: false,
@@ -91,7 +86,7 @@ describe('recommend and performance route contracts', () => {
     const handler = findRouteHandler(recommendRouter as never, '/semantic-notes');
     mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
     mock.method(ResourceValidator, 'validateOwnership', async () => ({ userId: { toString: () => 'user-1' } }) as never);
-    mock.method(Note, 'findOne', () => ({ select: () => ({ lean: async () => null }) }) as never);
+    mock.method(Note, 'findOne', () => ({ select: async () => null }) as never);
 
     const response = makeResponse();
     const error = await invokeRoute(handler, { body: { noteId: 'note-1' } }, response);
@@ -105,102 +100,6 @@ describe('recommend and performance route contracts', () => {
       message: '笔记不存在或无权限',
       type: 'NOT_FOUND_ERROR',
     });
-  });
-
-  it('backfills a missing revision before running recommendation enrichment', async () => {
-    const handler = findRouteHandler(recommendRouter as never, '/semantic-notes');
-    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
-    mock.method(ResourceValidator, 'validateOwnership', async () => ({ userId: { toString: () => 'user-1' } }) as never);
-    let legacyBackfilled = false;
-    let initialRead = true;
-    let usedLeanRead = false;
-    const hydratedLegacy = Note.hydrate({
-      _id: 'note-1', userId: 'user-1', content: '正文', contentText: '正文', title: '标题',
-      summary: '', concepts: [], updatedAt: new Date('2026-09-03T00:00:00.000Z'),
-    });
-    const source = {
-      _id: 'note-1', userId: 'user-1', content: '正文', contentText: '正文', title: '标题',
-      summary: '', concepts: [], revision: undefined, updatedAt: new Date('2026-09-03T00:00:00.000Z'),
-    };
-    assert.equal(hydratedLegacy.revision, 1, 'Mongoose hydration applies the schema default to legacy documents');
-    mock.method(Note, 'findOne', (filter: Record<string, unknown>) => {
-      if (filter.revision === 1) return legacyBackfilled ? { ...source, revision: 1 } : null as never;
-      if (initialRead) {
-        initialRead = false;
-        return {
-          select: () => ({
-            lean: async () => {
-              usedLeanRead = true;
-              return source;
-            },
-            then: (resolve: (value: typeof hydratedLegacy) => unknown) => resolve(hydratedLegacy),
-          }),
-        } as never;
-      }
-      return source as never;
-    });
-    mock.method(Note, 'find', () => ({
-      select() { return this; },
-      lean: async () => [],
-    }) as never);
-    mock.method(NoteAiPreference, 'find', () => ({ select: () => ({ lean: async () => [] }) }) as never);
-    const backfills: unknown[] = [];
-    mock.method(Note, 'updateOne', async (...args: unknown[]) => {
-      backfills.push(args);
-      legacyBackfilled = true;
-      return { matchedCount: 1 } as never;
-    });
-
-    const response = makeResponse();
-    const error = await invokeRoute(handler, { body: { noteId: 'note-1' } }, response);
-
-    assert.equal(error, undefined);
-    assert.equal(response.statusCode, 200);
-    assert.equal(usedLeanRead, true);
-    assert.deepEqual(backfills[0], [
-      { _id: 'note-1', userId: 'user-1', revision: { $exists: false } },
-      { $set: { revision: 1 } },
-      { timestamps: false },
-    ]);
-  });
-
-  it('retries once on a recoverable revision drift instead of returning a 5xx', async () => {
-    const handler = findRouteHandler(recommendRouter as never, '/semantic-notes');
-    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
-    mock.method(ResourceValidator, 'validateOwnership', async () => ({ userId: { toString: () => 'user-1' } }) as never);
-    const sourceReads: unknown[] = [];
-    const currentNote = {
-      _id: 'note-1', userId: 'user-1', revision: 8,
-      content: '', contentText: '', title: '', summary: '', concepts: [],
-      recommendCache: null, updatedAt: new Date('2026-09-03T00:00:00.000Z'),
-    };
-    mock.method(Note, 'findOne', (filter: Record<string, unknown>) => {
-      sourceReads.push(filter);
-      if (filter.revision === 7) return null as never;
-      if (filter.revision === 8) return currentNote as never;
-      const revision = sourceReads.length === 1 ? 7 : 8;
-      return {
-        ...currentNote,
-        revision,
-        select: () => ({ lean: async () => ({ revision }) }),
-      } as never;
-    });
-    mock.method(Note, 'updateOne', async () => ({ matchedCount: 1 }) as never);
-    mock.method(NoteAiPreference, 'find', () => ({ select: () => ({ lean: async () => [] }) }) as never);
-
-    const response = makeResponse();
-    const error = await invokeRoute(handler, { body: { noteId: 'note-1' } }, response);
-
-    assert.equal(error, undefined);
-    assert.equal(response.statusCode, 200);
-    assert.equal((response.body as { success: boolean }).success, true);
-    assert.deepEqual(sourceReads, [
-      { _id: 'note-1', userId: 'user-1' },
-      { _id: 'note-1', userId: 'user-1', revision: 7 },
-      { _id: 'note-1', userId: 'user-1' },
-      { _id: 'note-1', userId: 'user-1', revision: 8 },
-      { _id: 'note-1', userId: 'user-1' },
-    ]);
   });
 
   it('maps a stale worker status to a retryable error even after a stale callback result', () => {
@@ -225,48 +124,6 @@ describe('recommend and performance route contracts', () => {
       message: '笔记已被更新，请重试',
       type: 'EXTERNAL_API_ERROR',
     });
-  });
-
-  it('returns an owned relationship-summary envelope without numeric diagnostics', async () => {
-    const handler = findRouteHandler(recommendRouter as never, '/notes/:noteId');
-    const createdAt = new Date('2026-09-12T00:00:00.000Z');
-    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'owner-1' } }) as never);
-    mock.method(Note, 'findOne', () => ({ lean: async () => ({
-      _id: 'source-1', userId: 'owner-1', revision: 3,
-      recommendCache: {
-        sourceRevision: 3,
-        byCandidateId: {
-          'candidate-1': { s1: 0.9, s2: 0.8, type: '同一主题', reason: '讨论同一个项目' },
-        },
-      },
-    }) }) as never);
-    mock.method(Note, 'find', () => ({
-      select() { return this; },
-      lean: async () => [{ _id: 'candidate-1', title: '项目计划', contentText: '下一步安排', createdAt }],
-    }) as never);
-
-    const response = makeResponse();
-    const error = await invokeRoute(handler, { params: { noteId: 'source-1' } }, response);
-
-    assert.equal(error, undefined);
-    assert.deepEqual(response.body, {
-      success: true,
-      message: '操作成功',
-      data: {
-        sourceRevision: 3,
-        relationships: [{
-          id: 'candidate-1',
-          title: '项目计划',
-          contentText: '下一步安排',
-          createdAt: createdAt.toISOString(),
-          type: '同一主题',
-          reason: '讨论同一个项目',
-          scoreBand: 'supported',
-        }],
-      },
-    });
-    assert.equal(JSON.stringify(response.body).includes('s1'), false);
-    assert.equal(JSON.stringify(response.body).includes('s2'), false);
   });
 
   it('rejects an ambiguous performance operation route parameter before looking up metrics', async () => {

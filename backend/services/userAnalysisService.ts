@@ -1,5 +1,4 @@
 import { Note } from '../models/Note';
-import NoteAiPreference from '../models/NoteAiPreference';
 import UserProfile from '../models/UserProfile';
 import { DeepSeekApiClient } from '../utils/apiClient';
 import { getDeepSeekClient } from './llmService';
@@ -60,12 +59,7 @@ export class UserAnalysisService {
 
       // 1. Fetch recent data (e.g., last 20 notes)
       // TODO: Also fetch recent chat history
-      const excludedPreferences = await NoteAiPreference.find({ userId, included: false }).select('noteId').lean();
-      const excludedNoteIds = excludedPreferences.map((preference: any) => preference.noteId);
-      const notes = await Note.find({
-        userId,
-        ...(excludedNoteIds.length > 0 ? { _id: { $nin: excludedNoteIds } } : {}),
-      }).sort({ createdAt: -1 }).limit(20);
+      const notes = await Note.find({ userId }).sort({ createdAt: -1 }).limit(20);
       
       if (notes.length < 5) {
         logger.info(`Not enough data to analyze for user: ${userId}`);

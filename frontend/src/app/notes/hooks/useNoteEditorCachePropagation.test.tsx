@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRecommendCacheState } from '../utils/recommendCache';
-import { flattenNotePages, type NotePages } from './notePages';
 import { useNoteEditor } from './useNoteEditor';
 import type { Note } from './useNotes';
 import { useNotes } from './useNotes';
@@ -63,17 +62,6 @@ function canonicalResponse(note: Note) {
   };
 }
 
-function pages(notes: Note[]): NotePages {
-  return {
-    pages: [{ notes, pageInfo: { hasNextPage: false, nextCursor: null } }],
-    pageParams: [undefined],
-  };
-}
-
-function cachedNotes(queryClient: QueryClient) {
-  return flattenNotePages(queryClient.getQueryData<NotePages>(['notes']));
-}
-
 describe('canonical recommendCache propagation after a Note PATCH', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -90,14 +78,14 @@ describe('canonical recommendCache propagation after a Note PATCH', () => {
     const { queryClient, wrapper } = makeHarness();
     const { result } = renderHook(useEditorWithNotesStore, { wrapper });
 
-    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([initialNote])));
+    act(() => queryClient.setQueryData<Note[]>(['notes'], [initialNote]));
     act(() => result.current.editor.enterContentEdit());
     act(() => result.current.editor.onEditorChange({ json: canonicalNote.contentJson!, text: '正文' }));
     await act(async () => {
       await result.current.editor.handleSaveContent();
     });
 
-    const stored = cachedNotes(queryClient)[0];
+    const stored = queryClient.getQueryData<Note[]>(['notes'])?.[0];
     expect(stored).toEqual(canonicalNote);
     expect(getRecommendCacheState(stored).needsRefresh).toBe(false);
   });
@@ -115,14 +103,14 @@ describe('canonical recommendCache propagation after a Note PATCH', () => {
     const { queryClient, wrapper } = makeHarness();
     const { result } = renderHook(useEditorWithNotesStore, { wrapper });
 
-    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([initialNote])));
+    act(() => queryClient.setQueryData<Note[]>(['notes'], [initialNote]));
     act(() => result.current.editor.beginKeywordEdit(0, '旧关键词'));
     act(() => result.current.editor.setTagEditValue('新关键词'));
     await act(async () => {
       await result.current.editor.commitKeywordAt(0);
     });
 
-    const stored = cachedNotes(queryClient)[0];
+    const stored = queryClient.getQueryData<Note[]>(['notes'])?.[0];
     expect(stored).toEqual(canonicalNote);
     expect(getRecommendCacheState(stored).needsRefresh).toBe(false);
   });
@@ -139,7 +127,7 @@ describe('canonical recommendCache propagation after a Note PATCH', () => {
     const { queryClient, wrapper } = makeHarness();
     const { result } = renderHook(useEditorWithNotesStore, { wrapper });
 
-    act(() => queryClient.setQueryData<NotePages>(['notes'], pages([initialNote])));
+    act(() => queryClient.setQueryData<Note[]>(['notes'], [initialNote]));
     act(() => {
       result.current.editor.beginTitleEdit();
       result.current.editor.dispatch({ type: 'CHANGE_TITLE', value: '新标题' });
@@ -148,6 +136,6 @@ describe('canonical recommendCache propagation after a Note PATCH', () => {
       await result.current.editor.handleSaveTitle();
     });
 
-    expect(cachedNotes(queryClient)[0].recommendCache).toBeNull();
+    expect(queryClient.getQueryData<Note[]>(['notes'])?.[0].recommendCache).toBeNull();
   });
 });

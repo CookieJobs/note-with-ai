@@ -21,16 +21,16 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 
 /* 用户消息样式 - 卡片形式，右对齐 */
 .userMessage {
-  background: linear-gradient(135deg, var(--chat-message-tone-016), var(--chat-message-tone-014));
-  color: var(--chat-message-tone-002);
+  background: linear-gradient(135deg, #e0f2fe, #bbdefb);
+  color: #1565c0;
   padding: 12px 16px;
   border-radius: 18px 18px 18px 18px;
   max-width: 70%;
   font-size: 15px;
   line-height: 1.6;
   word-wrap: break-word;
-  border: 1px solid var(--chat-message-tone-031);
-  box-shadow: 0 2px 8px var(--chat-message-tone-030);
+  border: 1px solid rgba(33, 150, 243, 0.2);
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.1);
   font-weight: 500;
   position: relative;
   
@@ -41,7 +41,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, var(--chat-message-tone-027), transparent);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent);
     border-radius: inherit;
     pointer-events: none;
   }
@@ -49,7 +49,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 
 /* AI消息样式 - 直接渲染，左对齐，无卡片 */
 .assistantMessage {
-  color: var(--chat-message-tone-005);
+  color: #2d3748;
   font-size: 15px;
   line-height: 1.7;
   word-wrap: break-word;
@@ -70,7 +70,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   h1, h2, h3, h4, h5, h6 {
     margin: 16px 0 8px 0;
     font-weight: 600;
-    color: var(--chat-message-tone-003);
+    color: #1a202c;
     
     &:first-child {
       margin-top: 0;
@@ -87,26 +87,26 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   }
   
   blockquote {
-    border-left: 3px solid var(--chat-message-tone-017);
+    border-left: 3px solid #e2e8f0;
     padding-left: 16px;
     margin: 12px 0;
-    color: var(--chat-message-tone-009);
+    color: #4a5568;
     font-style: italic;
   }
   
   code {
-    background: var(--chat-message-tone-020);
-    border: 1px solid var(--chat-message-tone-017);
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 4px;
     padding: 2px 6px;
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 13px;
-    color: var(--chat-message-tone-015);
+    color: #d63384;
   }
   
   pre {
-    background: var(--chat-message-tone-021);
-    border: 1px solid var(--chat-message-tone-018);
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
     border-radius: 8px;
     padding: 16px;
     margin: 12px 0;
@@ -116,7 +116,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
       background: none;
       border: none;
       padding: 0;
-      color: var(--chat-message-tone-008);
+      color: #495057;
     }
   }
 }
@@ -157,7 +157,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 /* 消息时间戳样式 */
 .messageTime {
   font-size: 12px;
-  color: var(--chat-message-tone-013);
+  color: #a0aec0;
   text-align: center;
   margin: 8px 0;
   font-weight: 500;
@@ -177,22 +177,22 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
     border-radius: 50%;
     
     &.sending {
-      background: var(--chat-message-tone-022);
+      background: #fbbf24;
       animation: pulse 1.5s infinite;
     }
     
     &.sent {
-      background: var(--chat-message-tone-001);
+      background: #10b981;
     }
     
     &.error {
-      background: var(--chat-message-tone-019);
+      background: #ef4444;
     }
   }
   
   .statusText {
     font-size: 11px;
-    color: var(--chat-message-tone-028);
+    color: rgba(255, 255, 255, 0.7);
     font-weight: 500;
   }
 }
@@ -209,8 +209,8 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 /* 搜索中提示样式 */
 .searchingNotesContainer {
   margin-top: 12px;
-  background: var(--chat-message-tone-032);
-  border: 1px solid var(--chat-message-tone-034);
+  background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 12px;
   padding: 12px 16px;
   max-width: 75%;
@@ -230,7 +230,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   span {
     width: 6px;
     height: 6px;
-    background: var(--chat-message-tone-006);
+    background: #3b82f6;
     border-radius: 50%;
     animation: loadingPulse 1.4s infinite ease-in-out;
     
@@ -250,7 +250,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 
 .searchingText {
   font-size: 13px;
-  color: var(--chat-message-tone-006);
+  color: #3b82f6;
   font-weight: 500;
 }
 
@@ -268,9 +268,9 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 /* 相关笔记样式 */
 .relatedNotesContainer {
   margin-top: 16px;
-  background: var(--chat-message-tone-026);
+  background: rgba(248, 250, 252, 0.8);
   backdrop-filter: blur(10px);
-  border: 1px solid var(--chat-message-tone-025);
+  border: 1px solid rgba(226, 232, 240, 0.5);
   border-radius: 16px;
   padding: 16px;
   max-width: 75%;
@@ -280,7 +280,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 .relatedNotesHeader {
   font-size: 14px;
   font-weight: 600;
-  color: var(--chat-message-tone-007);
+  color: #475569;
   margin-bottom: 12px;
   display: flex;
   align-items: center;
@@ -290,7 +290,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
     content: '';
     width: 3px;
     height: 16px;
-    background: linear-gradient(135deg, var(--chat-message-tone-006), var(--chat-message-tone-011));
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
     border-radius: 2px;
   }
 }
@@ -302,11 +302,11 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 }
 
 .relatedNoteItem {
-  background: var(--chat-message-tone-028);
-  border: 1px solid var(--chat-message-tone-024);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(226, 232, 240, 0.3);
   border-radius: 12px;
   padding: 14px;
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition: all 0.2s ease;
   cursor: pointer;
   /* 使整卡区域为块级并移除默认链接样式 */
   display: block;
@@ -314,10 +314,10 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   color: inherit;
   
   &:hover {
-    background: var(--chat-message-tone-029);
-    border-color: var(--chat-message-tone-035);
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(59, 130, 246, 0.3);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px var(--chat-message-tone-023);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     text-decoration: none; /* 悬停时也不显示下划线 */
   }
   
@@ -341,7 +341,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 .noteTitle {
   font-size: 14px;
   font-weight: 600;
-  color: var(--chat-message-tone-004);
+  color: #1e293b;
   flex: 1;
   margin-right: 12px;
 }
@@ -349,8 +349,8 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 .noteSimilarity {
   font-size: 12px;
   font-weight: 500;
-  color: var(--chat-message-tone-006);
-  background: var(--chat-message-tone-033);
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
   padding: 2px 8px;
   border-radius: 12px;
   white-space: nowrap;
@@ -359,7 +359,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 .noteContent {
   font-size: 13px;
   line-height: 1.5;
-  color: var(--chat-message-tone-010);
+  color: #64748b;
   margin-bottom: 8px;
   word-wrap: break-word;
 }
@@ -371,7 +371,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 
 .noteDate {
   font-size: 11px;
-  color: var(--chat-message-tone-012);
+  color: #94a3b8;
   font-weight: 500;
 }
 
@@ -434,7 +434,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   display: inline-block;
   width: 10px;
   height: 10px;
-  background-color: var(--chat-message-tone-003); /* 黑色圆点 */
+  background-color: #1a202c; /* 黑色圆点 */
   border-radius: 50%;
   margin-left: 4px;
   vertical-align: -1px;
@@ -447,20 +447,5 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   }
   50% {
     opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .messageWrapper,
-  .searchingNotesContainer,
-  .relatedNotesContainer,
-  .messageStatus .statusIcon.sending,
-  .loadingDots span,
-  .blinkingCursor {
-    animation: none;
-  }
-
-  .relatedNoteItem {
-    transition: none;
   }
 }

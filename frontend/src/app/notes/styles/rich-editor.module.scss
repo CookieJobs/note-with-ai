@@ -1,7 +1,7 @@
 @keyframes historyPulse {
-  0% { box-shadow: 0 0 0 0 var(--notes-editor-tone-018); }
-  40% { box-shadow: 0 0 0 4px var(--notes-editor-tone-022); }
-  100% { box-shadow: 0 0 0 0 var(--notes-editor-tone-018); }
+  0% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
+  40% { box-shadow: 0 0 0 4px rgba(23,112,232,0.22); }
+  100% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
 }
 
 .floatingComposeEditor :global(.richEditorScroller),
@@ -28,12 +28,12 @@
 
 .floatingComposeEditor :global(.richEditorScroller):hover,
 .floatingComposeEditor :global(.ProseMirror):hover {
-  scrollbar-color: var(--notes-editor-tone-009) transparent;
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
 }
 
 .floatingComposeEditor :global(.richEditorScroller):hover::-webkit-scrollbar-thumb,
 .floatingComposeEditor :global(.ProseMirror):hover::-webkit-scrollbar-thumb {
-  background: var(--notes-editor-tone-009);
+  background: rgba(148, 163, 184, 0.55);
 }
 
 .composeAreaCollapsed .richToolbar {
@@ -87,11 +87,11 @@
 .richToolbar {
   display: flex;
   gap: 0; /* 按钮之间不留缝 */
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start; /* 靠左自然排列 */
   padding: 6px 0 8px;
-  border-bottom: 1px solid var(--notes-editor-tone-010); /* 浅色分割线（按钮在上，线在下） */
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08); /* 浅色分割线（按钮在上，线在下） */
 }
 
 .richToolbarSpacer {
@@ -105,8 +105,8 @@
 }
 
 .richToolbarBtn {
-  width: 44px;
-  height: 44px;
+  width: 28px;
+  height: 28px;
   padding: 0; /* 按钮内部不留 padding */
   margin: 0;  /* 按钮之间不留 margin */
   display: inline-flex;
@@ -114,24 +114,24 @@
   justify-content: center;
   border: none; /* 无边框 */
   background: transparent; /* 默认无底色 */
-  color: var(--notes-editor-tone-012);
+  color: rgba(15, 23, 42, 0.78);
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
 
   &:hover:not(:disabled) {
-    background: var(--notes-editor-tone-010); /* hover 深色底 */
-    color: var(--notes-editor-tone-013);
+    background: rgba(15, 23, 42, 0.08); /* hover 深色底 */
+    color: rgba(15, 23, 42, 0.9);
   }
 
   &:active:not(:disabled) {
-    background: var(--notes-editor-tone-011);
+    background: rgba(15, 23, 42, 0.12);
     transform: scale(0.98);
   }
 
   &:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px var(--notes-editor-tone-017);
+    box-shadow: 0 0 0 2px rgba(23, 112, 232, 0.25);
   }
 
   &:disabled {
@@ -146,8 +146,8 @@
 }
 
 .richToolbarBtnActive {
-  color: var(--notes-editor-tone-003);
-  background: var(--notes-editor-tone-016);
+  color: rgb(23,112,232);
+  background: rgba(23, 112, 232, 0.14);
 }
 
 .richEditorContent {
@@ -189,7 +189,7 @@
   position: fixed;
   opacity: 1;
   transition: opacity ease-in 0.2s, background-color 0.2s;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' style='fill: var(--notes-editor-tone-006)'%3E%3Cpath d='M3,2 C2.4477,2 2,1.5523 2,1 C2,0.4477 2.4477,0 3,0 C3.5523,0 4,0.4477 4,1 C4,1.5523 3.5523,2 3,2 Z M3,6 C2.4477,6 2,5.5523 2,5 C2,4.4477 2.4477,4 3,4 C3.5523,4 4,4.4477 4,5 C4,5.5523 3.5523,6 3,6 Z M3,10 C2.4477,10 2,9.5523 2,9 C2,8.4477 2.4477,8 3,8 C3.5523,8 4,8.4477 4,9 C4,9.5523 3.5523,10 3,10 Z M7,2 C6.4477,2 6,1.5523 6,1 C6,0.4477 6.4477,0 7,0 C7.5523,0 8,0.4477 8,1 C8,1.5523 7.5523,2 7,2 Z M7,6 C6.4477,6 6,5.5523 6,5 C6,4.4477 6.4477,4 7,4 C7.5523,4 8,4.4477 8,5 C8,5.5523 7.5523,6 7,6 Z M7,10 C6.4477,10 6,9.5523 6,9 C6,8.4477 6.4477,8 7,8 C7.5523,8 8,8.4477 8,9 C8,9.5523 7.5523,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' style='fill: rgba(0, 0, 0, 0.4)'%3E%3Cpath d='M3,2 C2.4477,2 2,1.5523 2,1 C2,0.4477 2.4477,0 3,0 C3.5523,0 4,0.4477 4,1 C4,1.5523 3.5523,2 3,2 Z M3,6 C2.4477,6 2,5.5523 2,5 C2,4.4477 2.4477,4 3,4 C3.5523,4 4,4.4477 4,5 C4,5.5523 3.5523,6 3,6 Z M3,10 C2.4477,10 2,9.5523 2,9 C2,8.4477 2.4477,8 3,8 C3.5523,8 4,8.4477 4,9 C4,9.5523 3.5523,10 3,10 Z M7,2 C6.4477,2 6,1.5523 6,1 C6,0.4477 6.4477,0 7,0 C7.5523,0 8,0.4477 8,1 C8,1.5523 7.5523,2 7,2 Z M7,6 C6.4477,6 6,5.5523 6,5 C6,4.4477 6.4477,4 7,4 C7.5523,4 8,4.4477 8,5 C8,5.5523 7.5523,6 7,6 Z M7,10 C6.4477,10 6,9.5523 6,9 C6,8.4477 6.4477,8 7,8 C7.5523,8 8,8.4477 8,9 C8,9.5523 7.5523,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E");
   background-size: 10px 10px;
   background-repeat: no-repeat;
   background-position: center;
@@ -197,11 +197,11 @@
 }
 
 .richEditor :global(.drag-handle:hover) {
-  background-color: var(--notes-editor-tone-004);
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .richEditor :global(.drag-handle:active) {
-  background-color: var(--notes-editor-tone-005);
+  background-color: rgba(0, 0, 0, 0.1);
   cursor: grabbing;
 }
 
@@ -240,7 +240,7 @@
 
 .richEditor :global(.ProseMirror table td),
 .richEditor :global(.ProseMirror table th) {
-  border: 1px solid var(--notes-editor-tone-005);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   box-sizing: border-box;
   min-width: 1em;
   padding: 6px 8px;
@@ -249,7 +249,7 @@
 }
 
 .richEditor :global(.ProseMirror table th) {
-  background-color: var(--notes-editor-tone-004);
+  background-color: rgba(0, 0, 0, 0.05);
   font-weight: bold;
   text-align: left;
 }
@@ -293,10 +293,10 @@
 .richEditorContent :global(blockquote) {
   margin: 0;
   padding: 2px 8px 2px 10px;
-  border-left: 3px solid var(--notes-editor-tone-014);
-  background: var(--notes-editor-tone-024);
+  border-left: 3px solid rgba(18, 225, 255, 0.48);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 0;
-  color: var(--notes-editor-tone-015);
+  color: rgba(226, 232, 240, 0.86);
 }
 
 .richEditorContent :global(blockquote p) {
@@ -308,7 +308,7 @@
   float: left;
   height: 0;
   pointer-events: none;
-  color: var(--notes-editor-tone-001);
+  color: #9ca3af;
 }
 
 .richViewerContent {
@@ -409,10 +409,10 @@
 .richViewerContent :global(blockquote) {
   margin: 0;
   padding: 2px 8px 2px 10px;
-  border-left: 3px solid var(--notes-editor-tone-014);
-  background: var(--notes-editor-tone-024);
+  border-left: 3px solid rgba(18, 225, 255, 0.48);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 0;
-  color: var(--notes-editor-tone-015);
+  color: rgba(226, 232, 240, 0.86);
 }
 
 .richViewerContent :global(blockquote p) {
@@ -471,15 +471,15 @@
 
 @keyframes notePulse {
   0% {
-    box-shadow: 0 0 0 0 var(--notes-editor-tone-018), 0 0 0 var(--notes-editor-tone-008);
-    background-color: var(--notes-editor-tone-019);
+    box-shadow: 0 0 0 0 rgba(23,112,232,0.0), 0 0 0 rgba(0,0,0,0);
+    background-color: rgba(23,112,232,0.05);
   }
   40% {
-    box-shadow: 0 0 0 4px var(--notes-editor-tone-023), 0 8px 20px var(--notes-editor-tone-021);
-    background-color: var(--notes-editor-tone-020);
+    box-shadow: 0 0 0 4px rgba(23,112,232,0.25), 0 8px 20px rgba(23,112,232,0.2);
+    background-color: rgba(23,112,232,0.08);
   }
   100% {
-    box-shadow: 0 0 0 2px var(--notes-editor-tone-023), 0 4px 12px var(--notes-editor-tone-007);
+    box-shadow: 0 0 0 2px rgba(23,112,232,0.25), 0 4px 12px rgba(0,0,0,0.06);
     background-color: transparent;
   }
 }
@@ -503,20 +503,20 @@
 .floatingComposeEditor :global(.ProseMirror),
 .richEditorContent,
 .richEditor :global(.ProseMirror) {
-  caret-color: var(--notes-editor-tone-002);
+  caret-color: rgb(23, 112, 232);
 }
 
 .floatingComposeEditor .richEditorContent ::selection,
 .floatingComposeEditor :global(.ProseMirror) ::selection,
 .richEditorContent ::selection,
 .richEditor :global(.ProseMirror) ::selection {
-  background: var(--notes-editor-tone-017);
+  background: rgba(23, 112, 232, 0.25);
   color: inherit;
 }
 
 .floatingComposeEditor .richToolbar {
   padding: 0 0 1px;
-  border-bottom-color: var(--notes-editor-tone-024);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
   margin-bottom: 10px;
   position: relative;
   z-index: 1;

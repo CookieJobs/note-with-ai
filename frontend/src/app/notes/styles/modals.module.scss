@@ -1,65 +1,3 @@
-.container {
-  display: flex;
-  /* 用 dvh：顶部栏高度变化时剩余空间自然分配给历史栏/工作区 */
-  height: 100dvh;
-  min-height: 100vh;
-  overflow: hidden;
-  user-select: none;
-  /* 统一间距系统（全局）：与底部悬浮快速记录对齐 */
-  --page-pad-x: 18px; /* 左右贴边距离（与 floatingCompose bottom=18 呼应） */
-  --page-gap-y: 10px; /* 内容区与顶部标题/模块之间的间距（整体收紧） */
-  --page-bottom-safe: 76px; /* 底部安全区：避免被悬浮条遮挡，但不留太多空白 */
-  /* 顶部不再写死 safe：TopNavigation 改为 sticky 占位，下面内容自然顶上 */
-  --page-top-safe: 0px;
-  /* 全局配色：暗色画布（更贴近你给的示例图风格） */
-  background:
-    radial-gradient(1200px 700px at 25% 0%, rgba(18, 225, 255, 0.10) 0%, rgba(18, 225, 255, 0.00) 60%),
-    radial-gradient(900px 620px at 85% 20%, rgba(255, 105, 180, 0.07) 0%, rgba(255, 105, 180, 0.00) 55%),
-    linear-gradient(180deg, rgba(6, 10, 14, 1) 0%, rgba(7, 12, 16, 1) 100%);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-  flex-direction: column;
-}
-
-.containerOverflowVisible {
-  overflow: visible;
-}
-
-.mainContent {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  /* 不再强制居中 max-width：让双栏真正贴边（只保留 page padding） */
-  max-width: none;
-  margin: 0;
-  /* 顶部只保留很小的呼吸（相对变量），剩余高度全部归历史栏/工作区 */
-  padding: var(--page-gap-y) var(--page-pad-x) var(--page-bottom-safe) var(--page-pad-x);
-  position: relative;
-  width: 100%; /* 确保占满可用宽度 */
-  box-sizing: border-box; /* 包含padding在宽度内 */
-  overflow: hidden;
-  min-height: 0; /* 确保flex子元素可以收缩 */
-}
-
-.mainContentCollapsed {
-  padding-left: 6px;
-}
-
-.mainContentOverflowVisible {
-  overflow: visible;
-}
-
-.contentWrapper {
-  /* 工作台布局需要更宽的“画布”，避免所有内容挤在屏幕中心 */
-  max-width: none;
-  margin: 0;
-  width: 100%;
-  min-width: 0; /* 确保在flex容器中正确收缩 */
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0; /* 确保flex子元素可以收缩 */
-}
-
 @keyframes historyPulse {
   0% { box-shadow: 0 0 0 0 rgba(23,112,232,0.0); }
   40% { box-shadow: 0 0 0 4px rgba(23,112,232,0.22); }
@@ -200,26 +138,121 @@
    100%  { transform: translate3d(0, 0, 0) rotate(0deg); }
  }
 
+.cancelButton {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #6b7280;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+  }
+}
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
-.errorBanner {
+.confirmDialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.confirmDialogContent {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+  text-align: center;
+}
+
+.confirmIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
   background: rgba(239, 68, 68, 0.1);
   color: #dc2626;
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+
+.confirmTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 12px 0;
+}
+
+.confirmMessage {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+  margin: 0 0 24px 0;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.cancelButton {
+  padding: 10px 20px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #6b7280;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
 
-  svg {
-    flex-shrink: 0;
+  &:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+  }
+}
+
+.confirmButton {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+
+  &:hover {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
   }
 }
 
@@ -255,139 +288,6 @@
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-@media (max-width: 768px) {
-  .container {
-    flex-direction: column;
-    margin-left: 0;
-    padding-top: 60px; /* 为移动端菜单按钮留出空间 */
-  }
-
-  .mainContent {
-    /* 移动端统一间距收紧一点 */
-    --page-pad-x: 16px;
-    --page-bottom-safe: 72px;
-    --page-top-safe: 88px;
-    padding: var(--page-top-safe) var(--page-pad-x) var(--page-bottom-safe) var(--page-pad-x);
-  }
-  
-  .notesScrollContainer {
-    padding-right: 8px; /* 为滚动条预留空间 */
-    margin-right: -8px; /* 抵消 padding，保持整体宽度不变 */
-    
-    /* 移动端滚动条样式调整 */
-    &::-webkit-scrollbar {
-      width: 4px;
-    }
-  }
-
-  .contentWrapper {
-    max-width: none; /* 移动端移除最大宽度限制 */
-    width: 100%;
-  }
-
-  .splitLayout {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .topBar {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
-    /* 高度缩减 25% */
-    margin: 0 -16px 18px;
-    padding: 12px;
-  }
-
-  .titleSection {
-    flex-direction: column;
-    gap: 8px;
-    align-items: flex-start;
-  }
-
-  .pageTitle {
-    font-size: 28px;
-  }
-
-  .userSection {
-    align-self: flex-end;
-  }
-
-  .composeArea {
-    padding: 20px;
-    margin-bottom: 24px;
-    max-width: none;
-    margin-left: 0;
-    margin-right: 0;
-  }
-
-  .composeActions {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
-
-  .composeButtons {
-    justify-content: flex-end;
-  }
-
-  .historyPane {
-    max-height: 42vh; /* 移动端：左侧列表变成上方可滚动区域 */
-  }
-}
-
-@media (max-width: 480px) {
-  .mainContent {
-    --page-pad-x: 12px;
-    --page-bottom-safe: 68px;
-    --page-top-safe: 84px;
-    padding: var(--page-top-safe) var(--page-pad-x) var(--page-bottom-safe) var(--page-pad-x);
-  }
-
-  .contentWrapper {
-    max-width: none; /* 小屏幕移除最大宽度限制 */
-    width: 100%;
-  }
-  
-  .notesScrollContainer {
-    padding-right: 6px; /* 为滚动条预留空间 */
-    margin-right: -6px; /* 抵消 padding，保持整体宽度不变 */
-    
-    /* 小屏幕滚动条样式 */
-    &::-webkit-scrollbar {
-      width: 3px;
-    }
-    
-    &::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.1);
-      
-      &:hover {
-        background: rgba(0, 0, 0, 0.2);
-      }
-    }
-  }
-
-  .topBar {
-    /* 高度缩减 25% */
-    margin: 0 -12px 15px;
-    padding: 9px;
-  }
-
-  .pageTitle {
-    font-size: 24px;
-  }
-
-  .composeArea {
-    padding: 16px;
-  }
-
-  .composeInput {
-    font-size: 16px; /* 防止 iOS 缩放 */
-    width: 100%;
-    min-width: 0; /* 确保在小屏幕上正确显示 */
-  }
 }
 
 @keyframes elegantDoublePulse {
@@ -430,40 +330,6 @@
     background-color: transparent;
     transform: scale(1);
   }
-}
-
-.feedLayout {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  position: relative;
-}
-
-.feedContainer {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-bottom: 80px;
-}
-
-.feedComposeAnchor {
-  width: 100%;
-  max-width: 800px;
-  padding: 20px 20px 0;
-}
-
-.feedList {
-  width: 100%;
-  max-width: 800px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 20px;
 }
 
 @keyframes floatingComposeBounce {

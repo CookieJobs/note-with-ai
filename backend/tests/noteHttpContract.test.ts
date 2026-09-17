@@ -6,7 +6,6 @@ import { noteService } from '../services/noteService';
 import { NoteWriteError, type CreateNoteInput, type UpdateNoteInput } from '../services/NoteUpdateOrchestrator';
 import { UserValidator } from '../utils/userValidation';
 import { globalErrorHandler } from '../utils/errorHandler';
-import { AppError } from '../utils/errorHandler';
 
 type CapturedResponse = {
   statusCode: number;
@@ -153,49 +152,5 @@ describe('Note HTTP contract', () => {
       code: 'NOTE_WRITE_CONFLICT',
       current: canonicalResult,
     });
-  });
-
-  it('returns a paginated note envelope with default query options', async () => {
-    const page = {
-      notes: [{ ...canonicalResult.note, enrichment: canonicalResult.enrichment, aiIncluded: true }],
-      pageInfo: { hasNextPage: true, nextCursor: 'cursor-2' },
-    };
-    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
-    mock.method(noteService, 'getNotesPage', async (userId: string, options: { limit?: number; cursor?: string }) => {
-      assert.equal(userId, 'user-1');
-      assert.deepEqual(options, {});
-      return page as never;
-    });
-    const response = makeResponse();
-
-    await noteController.getNotes({ query: {} } as never, response as never, () => undefined);
-
-    assert.deepEqual(response.body, { success: true, message: '获取笔记成功', data: page });
-  });
-
-  it('rejects a malformed pagination cursor as a 400 response', async () => {
-    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
-    mock.method(noteService, 'getNotes', async () => [] as never);
-    const response = makeResponse();
-
-    await assert.rejects(
-      () => noteController.getNotes({ query: { cursor: 'bad-cursor' } } as never, response as never, () => undefined),
-      (error: unknown) => error instanceof AppError && error.statusCode === 400,
-    );
-  });
-
-  it('returns only the owned note through GET /api/notes/:id', async () => {
-    const owned = { ...canonicalResult.note, enrichment: canonicalResult.enrichment, aiIncluded: true };
-    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'owner-1' } }) as never);
-    mock.method(noteService, 'getNote', async (userId: string, noteId: string) => {
-      assert.equal(userId, 'owner-1');
-      assert.equal(noteId, 'note-1');
-      return owned as never;
-    });
-    const response = makeResponse();
-
-    await noteController.getNote({ params: { id: 'note-1' } } as never, response as never, () => undefined);
-
-    assert.deepEqual(response.body, { success: true, message: '获取笔记成功', data: { note: owned } });
   });
 });

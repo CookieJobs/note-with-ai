@@ -151,7 +151,7 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
 
   // Keyboard navigation
   useEffect(() => {
-    if (!open || imagePopoverOpen) return;
+    if (!open) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -193,26 +193,25 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
 
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [open, imagePopoverOpen, selectedIndex, editor]);
+  }, [open, selectedIndex, editor]);
 
   // Click outside to close
   useEffect(() => {
-    // The image dialog is portalled outside the menu. While it is open, its
-    // shared Dialog lifecycle owns pointer and keyboard events so its trigger
-    // stays mounted for focus restoration.
-    if (!open || imagePopoverOpen) return;
+    if (!open) return;
 
     const onPointerDown = (e: PointerEvent) => {
       const t = e.target as Node | null;
       if (!t) return;
       if (menuRef.current?.contains(t)) return;
+      // Don't close if interacting with the image URL popover
+      if ((t as HTMLElement).closest?.('[data-radix-popper-content-wrapper]')) return;
       setOpen(false);
       setImagePopoverOpen(false);
     };
 
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [open, imagePopoverOpen]);
+  }, [open]);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -280,9 +279,7 @@ export function RichTextSlashMenu({ editor }: { editor: Editor | null }) {
               onMouseDown={(e) => {
                 e.preventDefault();
                 if (isImage) {
-                  // In controlled mode, DialogTrigger owns pointer activation through
-                  // onOpenChange. Setting it here makes the subsequent click toggle it closed.
-                  return;
+                  setImagePopoverOpen(true);
                 } else {
                   setOpen(false);
                   cmd.action(editor);

@@ -1,22 +1,21 @@
 'use client';
 
-import { useEffect, useState, Suspense, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useState, Suspense, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 import TopNavigation from '../../components/TopNavigation';
-import { Button } from '../../components/ui/button';
-import { authFetch, getUser, isAuthenticated } from '../../utils/auth';
+import { getUser, isAuthenticated } from '../../utils/auth';
 
 import DeleteNoteConfirmModal from './components/DeleteNoteConfirmModal';
 import ModernNoteCard from './components/ModernNoteCard';
 import FloatingQuickCompose from './components/FloatingQuickCompose';
 import RelatedNotesDrawer from './components/RelatedNotesDrawer';
 import NoteCounter from './components/NoteCounter';
-import { preloadRichTextEditorFromIntent } from './components/richTextEditorLoader';
+import { preloadRichTextEditor } from './components/richTextEditorLoader';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
-import { useNotes, type Note } from './hooks/useNotes';
+import { useNotes } from './hooks/useNotes';
 import { NOTE_EDITOR_INSIDE_SELECTOR } from './utils/editorInside';
 import layoutStyles from './styles/layout.module.scss';
 import cardStyles from './styles/note-card.module.scss';
@@ -33,8 +32,6 @@ type ActiveEditorState =
   | { type: 'compose' }
   | { type: 'note'; noteId: string };
 
-const INITIAL_NOTE_ENTRANCE_LIMIT = 8;
-
 // 是 Next.js App Router 的一个“路由段配置”，用来告诉 Next.js：
 // 这个页面要强制走动态渲染（不要被静态生成/缓存成固定 HTML）
 export const dynamic = 'force-dynamic';
@@ -46,17 +43,8 @@ function NotesContent() {
   
   // 删除确认弹窗
   const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
-  const pendingDeleteOpenerRef = useRef<HTMLElement | null>(null);
   // 页面层统一维护当前活跃编辑壳层
   const [activeEditor, setActiveEditor] = useState<ActiveEditorState>({ type: 'none' });
-  const prefersReducedMotion = useReducedMotion();
-  const hasPreloadedEditor = useRef(false);
-
-  const preloadEditorFromIntent = useCallback(() => {
-    if (hasPreloadedEditor.current) return;
-    hasPreloadedEditor.current = true;
-    void preloadRichTextEditorFromIntent();
-  }, []);
 
   // 鉴权守卫
   const user = useAuthGuard({
@@ -77,38 +65,17 @@ function NotesContent() {
     createNote,
     updateNote,
     refreshRecommendCache,
-    hasNextPage,
-    isFetchingNextPage,
-    isFetchNextPageError,
-    loadMore,
   } = useNotes(user, { onError: setError });
 
   // 新建笔记 Hook
   const {
     newContentText,
+    setNewContentText,
     newContentJson,
-    changeContent,
-    discardDraft,
+    setNewContentJson,
     loading: createLoading,
-    saveState,
-    localDraftState,
-    draftRestored,
-    savedNote,
-    saveError,
     handleSubmit,
-  } = useCreateNote(createNote, { userId: user?.id });
-
-  const latestSavedNote = notes.find(note => note._id === savedNote?._id) ?? savedNote;
-  const localDraftMessage = localDraftState === 'unavailable'
-    ? '无法读取或保留本机草稿，离开前请保存到云端。'
-    : newContentText.trim() ? '草稿已保留在本机，尚未保存到云端。' : '';
-  const captureStatus = saveError
-    ? `${saveError} ${newContentText.trim() ? localDraftMessage : ''}`
-    : saveState === 'saving' ? `正在保存到云端… ${localDraftMessage}`
-    : saveState === 'saved' && newContentText.trim() ? `提交时的内容已保存，当前更改尚未保存到云端。${localDraftState === 'unavailable' ? localDraftMessage : '草稿已保留在本机。'}`
-    : saveState === 'saved' ? `已保存到云端。${latestSavedNote?.enrichment?.status === 'pending' ? 'AI 正在后台理解这条记录，你可以继续记录。' : latestSavedNote?.enrichment?.status === 'degraded' ? 'AI 处理暂未完成，不影响笔记保存。' : ''}`
-    : draftRestored ? '已恢复本机草稿，可以继续编辑。'
-    : localDraftMessage;
+  } = useCreateNote(createNote, { onError: setError });
 
   const buildJsonFromPlain = (plainText: string) => {
     const t = plainText || '';
@@ -122,13 +89,6 @@ function NotesContent() {
   };
 
   const highlightId = searchParams.get('highlight') || '';
-  const [highlightedNote, setHighlightedNote] = useState<Note | null>(null);
-  const visibleNotes = useMemo(() => (
-    highlightedNote && !notes.some((note) => note._id === highlightedNote._id)
-      ? [highlightedNote, ...notes]
-      : notes
-  ), [highlightedNote, notes]);
-  const selectedNote = selectedNoteId ? visibleNotes.find((note) => note._id === selectedNoteId) ?? null : null;
   const [drafts, setDrafts] = useState<Record<string, { json: JSONContent; text: string; dirty: boolean }>>({});
   const editingNoteId = activeEditor.type === 'note' ? activeEditor.noteId : null;
   const isComposeOpen = activeEditor.type === 'compose';
@@ -137,32 +97,6 @@ function NotesContent() {
   const noteRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // 滚动容器引用
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!highlightId || notes.some((note) => note._id === highlightId)) {
-      setHighlightedNote(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    void authFetch(`/api/notes/${encodeURIComponent(highlightId)}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`请求失败: ${response.status}`);
-        const payload: unknown = await response.json();
-        const note = payload && typeof payload === 'object'
-          && 'success' in payload && (payload as { success?: unknown }).success === true
-          && 'data' in payload && (payload as { data?: { note?: unknown } }).data?.note;
-        if (!note || typeof note !== 'object' || (note as { _id?: unknown })._id !== highlightId) {
-          throw new Error('笔记详情响应无效');
-        }
-        if (!controller.signal.aborted) setHighlightedNote(note as Note);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setHighlightedNote(null);
-      });
-
-    return () => controller.abort();
-  }, [highlightId, notes]);
 
   // 监听 highlightId 的变化，如果存在则自动滚动到对应的笔记
   useEffect(() => {
@@ -203,7 +137,31 @@ function NotesContent() {
       if (rafId != null) cancelAnimationFrame(rafId);
       if (timerId != null) clearTimeout(timerId);
     };
-  }, [highlightId, visibleNotes]);
+  }, [highlightId, notes]);
+
+    useEffect(() => {
+      let cancelled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      const warmUpEditor = () => {
+        if (cancelled) return;
+        preloadRichTextEditor();
+      };
+
+      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+        const idleId = window.requestIdleCallback(warmUpEditor, { timeout: 1200 });
+        return () => {
+          cancelled = true;
+          window.cancelIdleCallback(idleId);
+        };
+      }
+
+      timeoutId = setTimeout(warmUpEditor, 350);
+      return () => {
+        cancelled = true;
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+    }, []);
 
   const handleDraftChange = (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => {
     setDrafts((prev) => {
@@ -222,23 +180,24 @@ function NotesContent() {
   }, []);
 
   const openCompose = useCallback(() => {
-    preloadEditorFromIntent();
+      preloadRichTextEditor();
     setActiveEditor({ type: 'compose' });
-  }, [preloadEditorFromIntent]);
+  }, []);
 
-  const handleComposeDiscard = useCallback(() => {
-    if (discardDraft()) setActiveEditor({ type: 'none' });
-  }, [discardDraft]);
+  const handleComposeCancel = useCallback(() => {
+    setNewContentText('');
+    setNewContentJson(null);
+    setActiveEditor({ type: 'none' });
+  }, [setNewContentJson, setNewContentText]);
 
-  const handleComposeSubmit = useCallback(async () => {
-    if (await handleSubmit()) {
-      setActiveEditor(current => current.type === 'compose' ? { type: 'none' } : current);
-    }
+  const handleComposeSubmit = useCallback(() => {
+    setActiveEditor({ type: 'none' });
+    void handleSubmit();
   }, [handleSubmit]);
 
   const handleContentEditingChange = useCallback((id: string, isEditing: boolean) => {
     if (isEditing) {
-      preloadEditorFromIntent();
+        preloadRichTextEditor();
       setActiveEditor((current) => (
         current.type === 'note' && current.noteId === id
           ? current
@@ -252,16 +211,7 @@ function NotesContent() {
         ? { type: 'none' }
         : current
     ));
-  }, [preloadEditorFromIntent]);
-
-  const preloadEditorBeforeCardEdit = useCallback((event: React.SyntheticEvent<HTMLDivElement>) => {
-    const target = event.target as Element | null;
-    if (target?.closest(`.${styles.noteTextWrapper}`)) preloadEditorFromIntent();
-  }, [preloadEditorFromIntent]);
-
-  const handleCaptureKeyboardIntent = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Enter' || event.key === ' ') preloadEditorFromIntent();
-  }, [preloadEditorFromIntent]);
+  }, []);
 
   // 详情浮层关闭逻辑
   useEffect(() => {
@@ -289,7 +239,7 @@ function NotesContent() {
           {error && (
             <div className={styles.errorBanner}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 9v4m0 4h.01M10.29 3.86l-7.5 12.99A1 1 0 003.62 18h16.76a1 1 0 00-.86-1.5l-7.5-12.99a1 1 0 00-1.72 0z" stroke="var(--color-action-danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 9v4m0 4h.01M10.29 3.86l-7.5 12.99A1 1 0 003.62 18h16.76a1 1 0 00-.86-1.5l-7.5-12.99a1 1 0 00-1.72 0z" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               <span>{error}</span>
             </div>
@@ -306,102 +256,52 @@ function NotesContent() {
                 className={styles.feedContainer}
                 ref={scrollContainerRef}
               >
-                <div
-                  className={styles.feedComposeAnchor}
-                  onPointerEnter={preloadEditorFromIntent}
-                  onFocus={preloadEditorFromIntent}
-                  onTouchStart={preloadEditorFromIntent}
-                  onKeyDown={handleCaptureKeyboardIntent}
-                >
+                <div className={styles.feedComposeAnchor}>
                   <FloatingQuickCompose
-                    key={user?.id ?? 'anonymous'}
                     open={isComposeOpen}
                     valueJson={newContentJson ?? buildJsonFromPlain(newContentText)}
                     valueText={newContentText}
                     onOpen={openCompose}
-                    onChange={changeContent}
+                    onChange={({ json, text }) => {
+                      setNewContentJson(json);
+                      setNewContentText(text);
+                    }}
                     onSubmit={handleComposeSubmit}
-                    onClose={closeActiveEditor}
-                    onDiscard={handleComposeDiscard}
+                    onCancel={handleComposeCancel}
                     loading={createLoading}
-                    saveFailed={saveState === 'failed'}
-                    status={captureStatus}
-                    statusIsError={Boolean(saveError) || localDraftState === 'unavailable'}
                   />
                 </div>
-                <div
-                  className={styles.feedList}
-                  onPointerDownCapture={preloadEditorBeforeCardEdit}
-                  onFocusCapture={preloadEditorBeforeCardEdit}
-                  onKeyDownCapture={handleCaptureKeyboardIntent}
-                >
+                <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
                   <NoteCounter count={notes.length} />
 
-                  <AnimatePresence>
-                    {visibleNotes.map((note, index) => {
-                      const shouldAnimate = !prefersReducedMotion && index < INITIAL_NOTE_ENTRANCE_LIMIT;
-                      const listMotion = shouldAnimate ? 'enter' : 'none';
-
-                      return (
-                        <motion.div
-                          key={note._id}
-                          className={shouldAnimate ? styles.noteListAnimatedCard : undefined}
-                          data-note-list-motion={listMotion}
-                          initial={shouldAnimate ? { opacity: 0, y: 8 } : false}
-                          animate={shouldAnimate ? { opacity: 1, y: 0 } : undefined}
-                          exit={shouldAnimate ? { opacity: 0, y: -8 } : undefined}
-                          transition={shouldAnimate ? { duration: 0.16, ease: 'easeOut' } : { duration: 0 }}
-                          ref={el => { noteRefs.current[note._id] = el; }}
-                        >
-                          <ModernNoteCard
-                            note={note}
-                            aiIncluded={note.aiIncluded}
-                            onRequestDelete={(id, openerRef) => {
-                              pendingDeleteOpenerRef.current = openerRef?.current ?? null;
-                              setPendingDeleteNoteId(id);
-                            }}
-                            updateNote={updateNote}
-                            draft={drafts[note._id]}
-                            onDraftChange={handleDraftChange}
-                            isContentEditingActive={editingNoteId === note._id}
-                            isHighlighted={note._id === highlightId}
-                            isSelected={note._id === selectedNoteId}
-                            onOpenRelated={(id) => setSelectedNoteId(id)}
-                            onContentEditingChange={handleContentEditingChange}
-                          />
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
-
-                  <div className="flex flex-col items-center gap-2 py-4">
-                    {hasNextPage ? (
-                      <>
-                        {isFetchNextPageError && (
-                          <p id="load-more-error" role="alert" className="text-sm [color:var(--color-status-error)]">
-                            加载更多笔记失败，请重试。
-                          </p>
-                        )}
-                        <Button
-                          type="button"
-                          className="min-h-11 min-w-11 px-4"
-                          disabled={isFetchingNextPage}
-                          aria-describedby={isFetchNextPageError ? 'load-more-error' : undefined}
-                          onClick={() => { void loadMore(); }}
-                        >
-                          {isFetchingNextPage ? '正在加载更多笔记…' : '加载更多笔记'}
-                        </Button>
-                      </>
-                    ) : (
-                      <p aria-live="polite" className="text-sm [color:var(--color-text-secondary)]">已加载全部笔记</p>
-                    )}
-                  </div>
-                </div>
+                  {notes.map((note) => (
+                    <motion.div
+                      layout={note._id !== editingNoteId}
+                      key={note._id}
+                      transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}
+                      ref={el => { noteRefs.current[note._id] = el; }}
+                    >
+                      <ModernNoteCard
+                        note={note}
+                        onRequestDelete={(id) => {
+                          setPendingDeleteNoteId(id);
+                        }}
+                        updateNote={updateNote}
+                        draft={drafts[note._id]}
+                        onDraftChange={handleDraftChange}
+                        isContentEditingActive={editingNoteId === note._id}
+                        isHighlighted={note._id === highlightId}
+                        isSelected={note._id === selectedNoteId}
+                        onClick={() => setSelectedNoteId(note._id)}
+                        onContentEditingChange={handleContentEditingChange}
+                      />
+                    </motion.div>
+                  ))}
+                </motion.div>
               </div>
 
               <DeleteNoteConfirmModal
                 open={!!pendingDeleteNoteId}
-                openerRef={pendingDeleteOpenerRef}
                 onCancel={() => setPendingDeleteNoteId(null)}
                 onConfirm={async () => {
                   const id = pendingDeleteNoteId;
@@ -414,7 +314,8 @@ function NotesContent() {
               <RelatedNotesDrawer
                 isOpen={!!selectedNoteId}
                 onClose={() => setSelectedNoteId(null)}
-                selectedNote={selectedNote}
+                selectedNoteId={selectedNoteId}
+                allNotes={notes}
                 onRefreshRecommendCache={refreshRecommendCache}
               />
             </div>
@@ -425,7 +326,7 @@ function NotesContent() {
   );
 }
 
-import type { JSONContent } from '@tiptap/react';
+import { JSONContent } from '@tiptap/react';
 
 export default function NotesPage() {
   return (

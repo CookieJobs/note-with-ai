@@ -1,5 +1,4 @@
 import { Note } from '../models/Note';
-import { trackProductEventBestEffort } from './productEventService';
 import {
   extractPlainTextFromRichText,
   normalizePlainText,
@@ -324,7 +323,6 @@ export class NoteUpdateOrchestrator {
       throw writeFailed(error);
     }
     const result = this.toResult(created);
-    trackProductEventBestEffort({ name: 'note_created', userId: input.userId, source: 'server', properties: {} });
     for (const artifact of ARTIFACTS) {
       this.scheduler.schedule({ noteId: result.note._id, userId: input.userId, sourceRevision: revision, artifact });
     }

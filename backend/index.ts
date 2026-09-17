@@ -4,7 +4,6 @@ import express, { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import cookieParser from 'cookie-parser';
 
 import noteRoutes from './routes/notes';
 import chatRoutes from './routes/chat';
@@ -18,19 +17,10 @@ import feedRoutes from './routes/feedRoutes';
 import userRoutes from './routes/userRoutes';
 import { globalErrorHandler } from './utils/errorHandler';
 import { logger } from './utils/logger';
-import adminRoutes from './routes/admin';
-import eventRoutes from './routes/events';
-import feedbackRoutes from './routes/feedback';
-import adminFeedbackRoutes from './routes/admin/feedback';
-import memoryInsightsRoutes from './routes/memoryInsights';
-import noteAiPreferencesRoutes from './routes/noteAiPreferences';
-import publicationsRoutes from './routes/publications';
-import inspirationsRoutes from './routes/inspirations';
-import inspirationSettingsRoutes from './routes/inspirationSettings';
-import { startInspirationScheduler } from './services/inspirationScheduler';
 
 dotenv.config();
 
+const app = express();
 const PORT = process.env.PORT || 3001;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-with-ai';
 
@@ -38,13 +28,13 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-w
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : ['http://localhost:3000', 'http://localhost:3001'];
-export function createApp() {
-const app = express();
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,
+}));
 
 // 请求体大小限制（防止超大 payload 导致 OOM）
 app.use(express.json({ limit: '5mb' }));
-app.use(cookieParser());
 
 // 添加请求日志中间件
 app.use((req, res, next) => {
@@ -59,19 +49,11 @@ app.get('/api/ping', (_, res) => {
 
 // ✅ 路由挂载
 app.use('/api/auth', authRoutes);
-app.use('/api/events', eventRoutes);
-app.use('/api/feedback', feedbackRoutes);
-app.use('/api/admin', adminRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/chat', chatRelatedNotesRoutes);
 app.use('/api/recommend', recommendRoutes);
 app.use('/api/feed', feedRoutes);
-app.use('/api/memory-insights', memoryInsightsRoutes);
-app.use('/api/note-ai-preferences', noteAiPreferencesRoutes);
-app.use('/api/publications', publicationsRoutes);
-app.use('/api/inspirations', inspirationsRoutes);
-app.use('/api/inspiration-settings', inspirationSettingsRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/cache', cacheRoutes);
 app.use('/api/performance', performanceRoutes);
@@ -79,10 +61,6 @@ app.use('/api', healthRoutes);
 
 // 全局错误处理中间件（必须在所有路由之后）
 app.use(globalErrorHandler);
-return app;
-}
-
-export const app = createApp();
 
 // ✅ 启动服务
 const connectDB = async () => {
@@ -117,7 +95,6 @@ export default async (req: Request, res: Response) => {
 // Local Development Server
 if (require.main === module) {
   connectDB().then(() => {
-    startInspirationScheduler();
     app.listen(PORT, () => {
       logger.info(`🚀 Backend running at http://localhost:${PORT}`);
     });

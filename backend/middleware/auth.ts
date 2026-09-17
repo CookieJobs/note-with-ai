@@ -7,7 +7,6 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 // backend/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, JwtPayload } from '../utils/jwt';
-import User from '../models/User';
 
 // 扩展Request接口，添加user属性
 declare global {
@@ -18,7 +17,7 @@ declare global {
   }
 }
 
-export const authenticateToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const authenticateToken = (req: Request, res: Response, next: NextFunction): void => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
@@ -29,11 +28,6 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 
   try {
     const decoded = verifyToken(token);
-    const user = await User.findById(decoded.userId).select('_id isActive').lean() as { isActive?: boolean } | null;
-    if (!user || user.isActive === false) {
-      res.status(401).json({ error: '登录已失效或账号已被禁用' });
-      return;
-    }
     req.user = decoded;
     next();
   } catch (error) {
@@ -43,15 +37,14 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 };
 
 // 可选的认证中间件（用于某些不强制登录的接口）
-export const optionalAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const optionalAuth = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (token) {
     try {
       const decoded = verifyToken(token);
-      const user = await User.findById(decoded.userId).select('_id isActive').lean() as { isActive?: boolean } | null;
-      if (user && user.isActive !== false) req.user = decoded;
+      req.user = decoded;
     } catch (error) {
       // 忽略错误，继续执行
     }

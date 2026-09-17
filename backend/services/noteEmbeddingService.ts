@@ -16,7 +16,6 @@ import {
   generateEmbeddingsBatch,
 } from '../utils/embedding';
 import { logger } from '../utils/logger';
-import { AiUsageService } from './aiUsageService';
 
 type EmbeddingNote = Pick<INote, 'title' | 'content' | 'contentText' | 'revision'> & {
   _id: INote['_id'];
@@ -263,16 +262,12 @@ class NoteEmbeddingService {
 
     void (async () => {
       try {
-        const embedding = await generateEmbedding(
-          normalizedText,
-          this.documentEmbeddingOptions,
-          AiUsageService.newContext('embedding', userId),
-        );
+        const embedding = await generateEmbedding(normalizedText, this.documentEmbeddingOptions);
         if (!Array.isArray(embedding) || embedding.length === 0) return;
 
         await this.saveEmbeddingIfFresh({ _id: noteId, userId, revision }, embedding);
       } catch (error: unknown) {
-        logger.warn('embedding background generation failed', { errorCode: 'EMBEDDING_PROVIDER_FAILED' });
+        logger.warn('⚠️ embedding 异步生成失败（已忽略）:', error);
       }
     })();
   }
@@ -295,11 +290,7 @@ class NoteEmbeddingService {
     const text = this.buildEmbeddingText(note as unknown as EmbeddingNote);
     if (!text) return { status: 'failed' };
 
-    const embedding = await generateEmbedding(
-      text,
-      this.documentEmbeddingOptions,
-      AiUsageService.newContext('embedding', userId),
-    );
+    const embedding = await generateEmbedding(text, this.documentEmbeddingOptions);
     if (!Array.isArray(embedding) || embedding.length === 0) {
       return { status: 'failed' };
     }

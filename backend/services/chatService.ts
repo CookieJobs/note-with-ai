@@ -3,9 +3,7 @@ import { Note } from '../models/Note';
 import { IChat, IMessage, IRelatedNote } from '../types';
 import { ErrorHandler } from '../utils/errorHandler';
 import { chatWithDeepSeekStream, summarizeChatTitle, chatWithDeepSeek } from './llmService';
-import { AiUsageService } from './aiUsageService';
 import mongoose from 'mongoose';
-import NoteAiPreference from '../models/NoteAiPreference';
 
 type RelatedNoteRecord = Omit<IRelatedNote, 'noteId'> & {
   noteId: string | { _id?: string | null } | null;
@@ -77,10 +75,6 @@ function normalizeSessionRecord(session: ChatSessionSource): ChatSessionRecord {
 }
 
 class ChatService {
-  private async excludedNoteIds(userId: string): Promise<Set<string>> {
-    const preferences = await NoteAiPreference.find({ userId, included: false }).select('noteId').lean();
-    return new Set((preferences as any[]).map((preference) => String(preference.noteId)));
-  }
   /**
    * Save or update a chat session
    */
@@ -97,8 +91,7 @@ class ChatService {
       .map(m => ({ role: m.role, content: m.content.trim() }));
 
     let chat;
-    const excludedNoteIds = await this.excludedNoteIds(userId);
-    const cleanedRelatedNotes = normalizeRelatedNotes(relatedNotes)?.filter((note) => !excludedNoteIds.has(String(note.noteId)));
+    const cleanedRelatedNotes = normalizeRelatedNotes(relatedNotes);
     const updateData: Partial<IChat> = { messages: cleanedMessages, updatedAt: new Date() };
     if (title) updateData.title = title;
     if (cleanedRelatedNotes) updateData.relatedNotes = cleanedRelatedNotes;
@@ -149,14 +142,7 @@ class ChatService {
       })
       .lean();
 
-    const excludedNoteIds = await this.excludedNoteIds(userId);
-    return (sessions as unknown as ChatSessionRecord[]).map((session) => {
-      const normalized = normalizeSessionRecord(session);
-      return {
-        ...normalized,
-        relatedNotes: normalized.relatedNotes?.filter((note) => !excludedNoteIds.has(String(note.noteId))),
-      };
-    });
+    return (sessions as unknown as ChatSessionRecord[]).map((session) => normalizeSessionRecord(session));
   }
 
   /**
@@ -172,7 +158,7 @@ class ChatService {
   /**
    * Stream chat response from DeepSeek
    */
-  async streamChat(messages: IMessage[], userId?: string): Promise<AsyncIterable<string>> {
+  async streamChat(messages: IMessage[]): Promise<AsyncIterable<string>> {
     // Sanitize messages
     const cleanedMessages = messages
       .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -182,13 +168,13 @@ class ChatService {
        throw ErrorHandler.createValidationError('有效消息为空');
     }
 
-    return chatWithDeepSeekStream(cleanedMessages, AiUsageService.newContext('chat', userId));
+    return chatWithDeepSeekStream(cleanedMessages);
   }
 
   /**
    * Generate a title summary for a chat
    */
-  async summarizeTitle(userContent: string, aiContent: string, userId?: string): Promise<string> {
+  async summarizeTitle(userContent: string, aiContent: string): Promise<string> {
     const userText = (userContent ?? '').toString().trim();
     const aiText = (aiContent ?? '').toString().trim();
 
@@ -197,7 +183,7 @@ class ChatService {
     }
 
     const prompt = userText && aiText ? `用户: ${userText}\nAI: ${aiText}` : (userText || aiText);
-    return await summarizeChatTitle(prompt, userId);
+    return await summarizeChatTitle(prompt);
   }
 
   /**
@@ -238,7 +224,7 @@ class ChatService {
         const aiOpening = await chatWithDeepSeek([
           { role: 'system', content: '你是一个富有洞察力且善于启发的思想伙伴。你的目标是通过回顾用户过去的笔记片段，提出一个有深度、能引发思考或激发表达欲的问题。尝试寻找片段背后的情绪、动机或潜在关联，而不仅仅是表面问候。' },
           { role: 'user', content: prompt }
-        ], AiUsageService.newContext('care_intro', userId));
+        ]);
         return {
           noteId: randomNote._id.toString(),
           noteTitle: randomNote.title,
@@ -263,7 +249,7 @@ class ChatService {
       const aiOpening = await chatWithDeepSeek([
         { role: 'system', content: system },
         { role: 'user', content: userMsg }
-      ], AiUsageService.newContext('care_intro', userId));
+      ]);
       return {
         noteId: randomNote._id.toString(),
         noteTitle: randomNote.title,

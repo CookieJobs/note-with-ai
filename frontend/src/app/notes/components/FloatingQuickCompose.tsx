@@ -22,7 +22,7 @@ const RichTextEditor = dynamic(loadRichTextEditor, {
   loading: () => <EditorLoadingPlaceholder />,
 });
 
-import type { JSONContent } from '@tiptap/react';
+import { JSONContent } from '@tiptap/react';
 
 type FloatingQuickComposeProps = {
   open: boolean;
@@ -30,13 +30,9 @@ type FloatingQuickComposeProps = {
   valueText: string;
   onOpen: () => void;
   onChange: (next: { json: JSONContent; text: string }) => void;
-  onSubmit: () => void | Promise<void>;
-  onClose: () => void;
-  onDiscard: () => void;
+  onSubmit: () => void;
+  onCancel: () => void;
   loading?: boolean;
-  saveFailed?: boolean;
-  status?: string;
-  statusIsError?: boolean;
 };
 
 type ShellPhase = 'collapsed' | 'expanded' | 'closing';
@@ -48,17 +44,10 @@ export default function FloatingQuickCompose({
   onOpen,
   onChange,
   onSubmit,
-  onClose,
-  onDiscard,
+  onCancel,
   loading = false,
-  saveFailed = false,
-  status = '',
-  statusIsError = false,
 }: FloatingQuickComposeProps) {
   const expandedRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const returnFocusRef = useRef(false);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [shellPhase, setShellPhase] = useState<ShellPhase>(open ? 'expanded' : 'collapsed');
 
   useEffect(() => {
@@ -72,20 +61,11 @@ export default function FloatingQuickCompose({
       return;
     }
 
-    returnFocusRef.current = Boolean(expandedRef.current?.contains(document.activeElement));
-    setConfirmDiscard(false);
     setShellPhase((current) => (current === 'expanded' ? 'closing' : current));
   }, [open]);
 
-  useEffect(() => {
-    if (shellPhase === 'collapsed' && returnFocusRef.current) {
-      triggerRef.current?.focus({ preventScroll: true });
-      returnFocusRef.current = false;
-    }
-  }, [shellPhase]);
-
   const disabled = loading;
-  const canSubmit = !disabled && !confirmDiscard && (valueText || '').trim().length > 0;
+  const canSubmit = !disabled && (valueText || '').trim().length > 0;
   const hasDraft = (valueText || '').trim().length > 0;
   const isClosing = shellPhase === 'closing';
   const shellExpanded = shellPhase !== 'collapsed';
@@ -126,25 +106,21 @@ export default function FloatingQuickCompose({
     ease: [0.2, 0.9, 0.2, 1] as const,
   };
 
-  const submit = () => {
+  const submitAndClose = () => {
     if (!canSubmit) return;
-    void onSubmit();
+    onSubmit();
+  };
+
+  const handleCancel = () => {
+    onCancel();
   };
 
   const renderContent = () => {
     return (
-      <>
       <motion.div
         layout
         data-state={shellExpanded ? 'expanded' : 'collapsed'}
         className={`${composeStyles.floatingComposeShell}`}
-        onKeyDown={(event) => {
-          if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (confirmDiscard) setConfirmDiscard(false);
-          else onClose();
-        }}
         initial={false}
         animate={{
           borderRadius: shellExpanded ? 20 : 12,
@@ -153,10 +129,10 @@ export default function FloatingQuickCompose({
           paddingRight: 24,
           paddingBottom: shellPhase === 'expanded' ? 20 : 14,
           paddingLeft: 24,
-          borderColor: shellExpanded ? 'var(--notes-compose-shell-border-expanded)' : 'var(--notes-compose-shell-border-collapsed)',
+          borderColor: shellExpanded ? 'rgba(0, 0, 0, 0.06)' : 'rgba(0, 0, 0, 0.04)',
           boxShadow: shellExpanded
-              ? 'var(--shadow-notes-compose-expanded)'
-              : 'var(--shadow-notes-compose-collapsed)',
+              ? '0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.045)'
+              : '0 1px 3px rgba(0, 0, 0, 0.04), 0 3px 10px rgba(0, 0, 0, 0.035)',
         }}
         transition={{
           layout: shellLayoutTransition,
@@ -173,7 +149,6 @@ export default function FloatingQuickCompose({
             <motion.button
               key="collapsed"
               type="button"
-              ref={triggerRef}
               className={`${composeStyles.floatingComposeBarInner} w-full`}
               onClick={onOpen}
               aria-label="打开快速记录"
@@ -189,7 +164,7 @@ export default function FloatingQuickCompose({
                   exit={{ opacity: 0, y: -1 }}
                 transition={collapsedTransition}
               >
-                {hasDraft ? '继续编辑草稿…' : '记下这一刻…'}
+                {hasDraft ? '继续编辑草稿…' : '发送消息...'}
               </motion.span>
               {hasDraft && (
                 <motion.span
@@ -264,7 +239,7 @@ export default function FloatingQuickCompose({
                         toolbarVariant="advanced"
                           {...flomoEditorChromeProps}
                         onModEnter={() => {
-                          submit();
+                          submitAndClose();
                         }}
                         className="text-gray-900 !mx-auto"
                       />
@@ -280,35 +255,23 @@ export default function FloatingQuickCompose({
                       className={composeStyles.floatingComposeActions}
                     >
                       <div className={composeStyles.floatingComposeHint}>Cmd/Ctrl + Enter 保存</div>
-                      {hasDraft && <button
-                        type="button"
-                        className={composeStyles.composeDiscardBtn}
-                        onClick={() => setConfirmDiscard(true)}
-                        disabled={disabled || confirmDiscard}
-                      >放弃草稿</button>}
                       <button
                         type="button"
                         className={composeStyles.composeCancelBtn}
-                        onClick={onClose}
+                        onClick={handleCancel}
+                        disabled={disabled}
                       >
-                        收起
+                        取消
                       </button>
                       <button
                         type="button"
                         className={composeStyles.composeSaveBtn}
-                        onClick={submit}
+                        onClick={submitAndClose}
                         disabled={!canSubmit}
                       >
-                        {loading ? '保存中…' : saveFailed ? '重试保存' : '保存'}
+                        {loading ? '保存中...' : '保存'}
                       </button>
                     </motion.div>
-                    {confirmDiscard && <div className={composeStyles.discardConfirmation} role="group" aria-label="放弃草稿确认">
-                      <p>放弃这份尚未保存的草稿？此操作无法撤销。</p>
-                      <div>
-                        <button type="button" autoFocus className={composeStyles.composeCancelBtn} onClick={() => setConfirmDiscard(false)}>保留草稿</button>
-                        <button type="button" className={composeStyles.composeDiscardBtn} onClick={() => { setConfirmDiscard(false); onDiscard(); }}>确认放弃</button>
-                      </div>
-                    </div>}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -316,8 +279,6 @@ export default function FloatingQuickCompose({
           )}
         </AnimatePresence>
       </motion.div>
-      {status && <p className={`${composeStyles.captureStatus} ${statusIsError ? composeStyles.captureStatusError : ''}`} role={statusIsError ? 'alert' : 'status'}>{status}</p>}
-      </>
     );
   };
 

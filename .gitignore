@@ -6,14 +6,12 @@ node_modules/
 .vercel/
 .superpowers/
 .claude/worktrees/
-.worktrees/
 
 # 忽略构建产物
 .next/
 dist/
 build/
 frontend/.next/
-frontend/.next-route-sizes.txt
 backend/dist/
 
 # 忽略日志和系统文件

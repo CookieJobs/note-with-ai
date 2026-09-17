@@ -8,13 +8,6 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 import { Request } from 'express';
 import User from '../models/User';
 import { ErrorHandler } from './errorHandler';
-import { trackActiveDay } from '../services/productEventService';
-
-function recordActiveUser(userId: string): void {
-  const lastActiveAt = new Date();
-  trackActiveDay(userId, lastActiveAt);
-  void User.updateOne({ _id: userId }, { $set: { lastActiveAt } }).catch(() => undefined);
-}
 
 type UserResponseShape = {
   _id: unknown;
@@ -51,10 +44,10 @@ export class UserValidator {
       throw ErrorHandler.createAuthenticationError('登录已失效，请重新登录');
     }
     
-    if (user.isActive === false) {
+    if (!user.isActive) {
       throw ErrorHandler.createAuthorizationError('账号已被禁用');
     }
-    recordActiveUser(user._id.toString());
+    
     return user;
   }
 
@@ -116,12 +109,6 @@ export class UserValidator {
       // token 里带的 userId 在当前数据库中找不到：通常是数据库切换/清库/用户被删除导致的“登录失效”
       throw ErrorHandler.createAuthenticationError('登录已失效，请重新登录');
     }
-
-    if (user.isActive === false) {
-      throw ErrorHandler.createAuthorizationError('账号已被禁用');
-    }
-
-    recordActiveUser(user._id.toString());
 
     return user;
   }

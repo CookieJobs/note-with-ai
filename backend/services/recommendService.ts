@@ -4,8 +4,6 @@ import { logger } from '../utils/logger';
 import { buildNoteEmbeddingMetadataFilter, getCachedEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 import { rerankRecommendedNotes } from './llmService';
-import { AiUsageService } from './aiUsageService';
-import NoteAiPreference from '../models/NoteAiPreference';
 
 type NoteSummaryRecord = {
   _id: unknown;
@@ -279,13 +277,12 @@ async function recallTopCandidates(params: {
   s1Threshold: number;
   t0: number;
   tNoteMs: number;
-  excludedNoteIds: Set<string>;
 }): Promise<{ stage?: RecallStageResult; emptyResult?: RecommendationResult }> {
-  const { noteId, userId, queryItems, recallK, finalK, s1Threshold, t0, tNoteMs, excludedNoteIds } = params;
+  const { noteId, userId, queryItems, recallK, finalK, s1Threshold, t0, tNoteMs } = params;
   const tDb0 = Date.now();
   const userNotesPromise = Note.find({
     userId,
-    _id: { $ne: noteId, ...(excludedNoteIds.size > 0 ? { $nin: Array.from(excludedNoteIds) } : {}) },
+    _id: { $ne: noteId },
     'embedding.0': { $exists: true },
     ...CURRENT_DOCUMENT_EMBEDDING_FILTER,
   })
@@ -298,7 +295,7 @@ async function recallTopCandidates(params: {
       if (Array.isArray(q.embedding) && q.embedding.length > 0) return q.embedding;
       const emb = await getCachedEmbedding(String(q.text || '').trim(), {
         inputType: QUERY_INPUT_TYPE,
-      }, AiUsageService.newContext('embedding', userId));
+      });
       return Array.isArray(emb) ? emb : [];
     })
   );
@@ -477,13 +474,12 @@ function buildRerankCandidates(topForLLM: ResolvedRecommendCandidate[]): RerankC
 }
 
 async function resolveRerankStage(params: {
-  userId: string;
   currentNote: any;
   currentUpdatedAt: unknown;
   currentForLLM: CurrentNoteContext['currentForLLM'];
   topForLLM: ResolvedRecommendCandidate[];
 }): Promise<RerankStageResult> {
-  const { userId, currentNote, currentUpdatedAt, currentForLLM, topForLLM } = params;
+  const { currentNote, currentUpdatedAt, currentForLLM, topForLLM } = params;
   const candidates = buildRerankCandidates(topForLLM);
   const topNoteById = new Map<string, ResolvedRecommendCandidate>(topForLLM.map((item) => [String(item.note._id), item]));
   const cache = (currentNote as any).recommendCache;
@@ -520,7 +516,7 @@ async function resolveRerankStage(params: {
 
   const tRerank0 = Date.now();
   if (missing.length > 0) {
-    const rr = await rerankRecommendedNotes({ current: currentForLLM, candidates: missing }, userId);
+    const rr = await rerankRecommendedNotes({ current: currentForLLM, candidates: missing });
     for (const r of rr) rrMap.set(r.id, r);
   }
   const tRerankMs = Date.now() - tRerank0;
@@ -675,14 +671,6 @@ export async function updateNoteRecommendations(
   } = options;
 
   const t0 = Date.now();
-  const excludedPreferences = await NoteAiPreference.find({ userId, included: false }).select('noteId').lean();
-  const excludedNoteIds = new Set((excludedPreferences as any[]).map((preference) => String(preference.noteId)));
-  if (excludedNoteIds.has(noteId)) {
-    return withThresholdMeta(buildEmptyResult('该笔记已设置为不参与 AI', {
-      diagnostics: { stage: 'context', reason: 'note_excluded_from_ai' },
-      timingsMs: { total: Date.now() - t0 },
-    }), { s1Threshold, hardThreshold });
-  }
   const currentNoteStage = await loadCurrentNoteContext({ noteId, userId, t0 });
   if (currentNoteStage.emptyResult) {
     return withThresholdMeta(currentNoteStage.emptyResult, { s1Threshold, hardThreshold });
@@ -705,7 +693,6 @@ export async function updateNoteRecommendations(
     s1Threshold,
     t0,
     tNoteMs: currentContext.tNoteMs,
-    excludedNoteIds,
   });
   if (recallStageResult.emptyResult) {
     const diagnostics = recallStageResult.emptyResult.meta.diagnostics;
@@ -730,7 +717,6 @@ export async function updateNoteRecommendations(
 
   const recallStage = recallStageResult.stage!;
   const rerankStage = await resolveRerankStage({
-    userId,
     currentNote: currentContext.currentNote,
     currentUpdatedAt: currentContext.currentUpdatedAt,
     currentForLLM: currentContext.currentForLLM,

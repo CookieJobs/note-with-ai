@@ -54,7 +54,7 @@ export const ChatRelatedNotesPanel: React.FC<ChatRelatedNotesPanelProps> = ({
             return (
               <div
                 key={`${noteId}-${index}`}
-                className="p-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:shadow-sm hover:border-gray-200 transition-[background-color,border-color,box-shadow] cursor-pointer flex flex-col gap-2"
+                className="p-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:shadow-sm hover:border-gray-200 transition-all cursor-pointer flex flex-col gap-2"
                 onClick={() => noteId && onNoteClick && onNoteClick(noteId)}
               >
               <div className="flex items-start justify-between gap-2">

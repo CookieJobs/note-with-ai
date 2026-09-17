@@ -8,7 +8,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 .container {
   height: 100vh;
   overflow: hidden;
-  background: var(--color-surface-page);
+  background: #f8fafc;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Inter", sans-serif;
   display: flex;
   flex-direction: column;
@@ -16,7 +16,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 }
 
 .emptyContainer {
-  background: linear-gradient(135deg, var(--color-surface-page) 0%, var(--color-surface-sunken) 100%);
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
 .bodyWrapper {
@@ -60,7 +60,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   padding-right: 8px;
   scroll-behavior: smooth;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-text-primary) 18%, transparent) transparent;
+  scrollbar-color: rgba(15, 23, 42, 0.18) transparent;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -71,11 +71,11 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   }
 
   &::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
+    background: rgba(15, 23, 42, 0.16);
     border-radius: 999px;
 
     &:hover {
-      background: color-mix(in srgb, var(--color-text-primary) 28%, transparent);
+      background: rgba(15, 23, 42, 0.28);
     }
   }
 }
@@ -112,7 +112,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 0;
-  color: var(--color-text-primary);
+  color: #111827;
   margin: 0 0 12px;
 }
 
@@ -135,36 +135,19 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 .disclaimer {
   text-align: center;
   font-size: 12px;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
+  color: #9ca3af;
   padding: 8px 16px 12px;
-}
-
-.composer {
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-text-primary) 2%, transparent), 0 8px 24px color-mix(in srgb, var(--color-text-primary) 3%, transparent);
-  transition: border-color var(--motion-duration-fast) var(--motion-easing-standard), box-shadow var(--motion-duration-fast) var(--motion-easing-standard);
-
-  &:focus-within {
-    border-color: var(--color-border-strong);
-    box-shadow: var(--focus-ring);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .composer {
-    transition: none;
-  }
 }
 
 .rightPanel {
   width: var(--right-panel-width);
   flex-shrink: 0;
   z-index: 10;
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid rgba(226, 232, 240, 0.3);
   border-radius: 16px;
-  background: var(--color-surface-raised);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
-  box-shadow: 0 4px 24px color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
 
 .relatedNotesFab {
@@ -175,15 +158,15 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   z-index: 40;
   align-items: center;
   gap: 8px;
-  height: 44px;
+  height: 40px;
   padding: 0 14px;
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 999px;
-  background: var(--color-surface-raised);
-  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.94);
+  color: #111827;
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 10px 30px color-mix(in srgb, var(--color-text-primary) 14%, transparent);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
   backdrop-filter: blur(14px);
   cursor: pointer;
 
@@ -195,8 +178,8 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     height: 20px;
     padding: 0 6px;
     border-radius: 999px;
-    background: var(--color-action-primary);
-    color: var(--color-text-inverse);
+    background: #111827;
+    color: #ffffff;
     font-size: 11px;
     line-height: 1;
   }
@@ -206,7 +189,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   position: fixed;
   inset: 0;
   z-index: 70;
-  background: var(--color-surface-overlay);
+  background: rgba(15, 23, 42, 0.35);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -218,8 +201,8 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   height: min(78vh, 680px);
   border-radius: 20px 20px 0 0;
   overflow: hidden;
-  background: var(--color-surface-raised);
-  box-shadow: 0 -18px 60px color-mix(in srgb, var(--color-text-primary) 24%, transparent);
+  background: #ffffff;
+  box-shadow: 0 -18px 60px rgba(15, 23, 42, 0.24);
 }
 
 .relatedNotesClose {
@@ -227,33 +210,27 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   top: 14px;
   right: 14px;
   z-index: 2;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--color-border-subtle);
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 999px;
-  background: var(--color-surface-raised);
-  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.92);
+  color: #374151;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
 }
 
 .relatedNotesDrawerPanel {
   width: 100%;
 }
 
-.relatedNotesFab:focus-visible,
-.relatedNotesClose:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
 .confirmModal {
   position: fixed;
   inset: 0;
-  background: var(--color-surface-overlay);
+  background: rgba(15, 23, 42, 0.42);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -263,26 +240,26 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 }
 
 .confirmDialog {
-  background: var(--color-surface-raised);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(20px);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 12px;
   padding: 28px;
   max-width: 420px;
   width: min(90%, 420px);
-  box-shadow: 0 20px 60px color-mix(in srgb, var(--color-text-primary) 18%, transparent);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
   animation: slideIn 0.2s ease;
 
   h3 {
     margin: 0 0 14px;
     font-size: 20px;
     font-weight: 700;
-    color: var(--color-text-primary);
+    color: #111827;
   }
 
   p {
     margin: 0 0 24px;
-    color: var(--color-text-secondary);
+    color: #475569;
     font-size: 15px;
     line-height: 1.6;
   }
@@ -294,7 +271,6 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   justify-content: flex-end;
 
   button {
-    min-height: 44px;
     min-width: 80px;
     padding: 10px 18px;
     border: none;
@@ -305,20 +281,20 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     transition: background-color 0.2s ease, transform 0.2s ease;
 
     &:first-child {
-      background: var(--color-action-secondary);
-      color: var(--color-text-secondary);
+      background: #f1f5f9;
+      color: #475569;
 
       &:hover {
-        background: var(--color-action-secondary-hover);
+        background: #e2e8f0;
       }
     }
 
     &:last-child {
-      background: var(--color-status-error);
-      color: var(--color-text-inverse);
+      background: #dc2626;
+      color: #ffffff;
 
       &:hover {
-        background: var(--color-action-danger);
+        background: #b91c1c;
         transform: translateY(-1px);
       }
     }
@@ -336,9 +312,9 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     transform: translateX(-100%);
     background: linear-gradient(
       90deg,
-      transparent 0%,
-      color-mix(in srgb, var(--color-surface-raised) 75%, transparent) 50%,
-      transparent 100%
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.75) 50%,
+      rgba(255, 255, 255, 0) 100%
     );
     animation: shimmer 2s infinite;
   }

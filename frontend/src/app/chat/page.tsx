@@ -6,7 +6,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 */
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { BookOpen, X } from 'lucide-react';
@@ -30,7 +30,6 @@ export default function ChatPage() {
   const [showCare, setShowCare] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isRelatedNotesOpen, setIsRelatedNotesOpen] = useState(false);
-  const mobileSidebarTriggerRef = useRef<HTMLButtonElement>(null);
 
   const { user, isClient } = useAuthGuard();
 
@@ -136,17 +135,14 @@ export default function ChatPage() {
   if (!isClient || !user) {
     return (
       <div className={`${styles.container} ${styles.emptyContainer}`}>
-        <TopNavigation
-          onMenuClick={() => setIsMobileSidebarOpen(true)}
-          menuButtonRef={mobileSidebarTriggerRef}
-        />
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flex: 1, color: 'var(--color-text-tertiary)' }}>
+        <TopNavigation onMenuClick={() => setIsMobileSidebarOpen(true)} />
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', flex: 1, color: '#888' }}>
           <div className="flex flex-col items-center gap-3">
             <div className="loading-spinner" style={{
               width: '24px',
               height: '24px',
-              border: '3px solid var(--color-border-subtle)',
-              borderTopColor: 'var(--color-text-primary)',
+              border: '3px solid rgba(0,0,0,0.1)',
+              borderTopColor: '#333',
               borderRadius: '50%',
               animation: 'spin 1s linear infinite'
             }} />
@@ -176,10 +172,7 @@ export default function ChatPage() {
 
   return (
     <div className={`${styles.container} ${messages.length === 0 ? styles.emptyContainer : ''}`}>
-      <TopNavigation
-        onMenuClick={() => setIsMobileSidebarOpen(true)}
-        menuButtonRef={mobileSidebarTriggerRef}
-      />
+      <TopNavigation onMenuClick={() => setIsMobileSidebarOpen(true)} />
       
       <div className={styles.bodyWrapper}>
         <ChatHistoryPanel
@@ -191,7 +184,6 @@ export default function ChatPage() {
           onSessionSelect={setCurrentSessionId}
           onNewSession={startNewSession}
           onDeleteSession={handleDeleteClick}
-          menuButtonRef={mobileSidebarTriggerRef}
         />
 
         <div className={styles.mainCenter}>

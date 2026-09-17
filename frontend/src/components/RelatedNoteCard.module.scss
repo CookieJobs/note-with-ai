@@ -5,20 +5,20 @@ Pos: 前端 样式
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 .relatedNoteCard {
-  background: linear-gradient(135deg, var(--related-note-tone-011) 0%, var(--related-note-tone-010) 100%);
-  border: 1px solid var(--related-note-tone-009);
-  border-left: 4px solid var(--related-note-tone-015);
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid rgb(23,112,232);
   border-radius: 12px;
   padding: 16px;
   margin: 12px 0;
   position: relative;
-  transition: transform 0.3s ease, box-shadow 0.3s ease, border-left-color 0.3s ease;
-  box-shadow: 0 2px 8px var(--related-note-tone-016);
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 16px var(--related-note-tone-017);
-    border-left-color: var(--related-note-tone-015);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    border-left-color: rgb(23,112,232);
   }
 
   &::before {
@@ -28,7 +28,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, var(--related-note-tone-015), var(--related-note-tone-015), var(--related-note-tone-015));
+    background: linear-gradient(90deg, rgb(23,112,232), rgb(23,112,232), rgb(23,112,232));
     border-radius: 12px 12px 0 0;
     opacity: 0.6;
   }
@@ -40,7 +40,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   gap: 6px;
   margin-bottom: 12px;
   font-size: 12px;
-  color: var(--related-note-tone-004);
+  color: #64748b;
 }
 
 .similarityDot {
@@ -52,15 +52,15 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 
 .similarityText {
   font-weight: 500;
-  color: var(--related-note-tone-003);
+  color: #475569;
 }
 
 .similarityScore {
-  background: var(--related-note-tone-010);
+  background: #f1f5f9;
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: 600;
-  color: var(--related-note-tone-002);
+  color: #334155;
   font-size: 11px;
 }
 
@@ -71,7 +71,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 .noteTitle {
   font-size: 14px;
   font-weight: 600;
-  color: var(--related-note-tone-001);
+  color: #1e293b;
   margin: 0 0 8px 0;
   display: flex;
   align-items: center;
@@ -82,16 +82,15 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 .noteText {
   font-size: 13px;
   line-height: 1.6;
-  color: var(--related-note-tone-003);
+  color: #475569;
   margin: 0;
   word-break: break-word;
 }
 
 .expandButton {
-  min-height: 44px;
   background: none;
   border: none;
-  color: var(--related-note-tone-015);
+  color: rgb(23,112,232);
   font-size: 12px;
   cursor: pointer;
   padding: 4px 0;
@@ -102,7 +101,7 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   transition: color 0.2s ease;
 
   &:hover {
-    color: var(--related-note-tone-022);
+    color: rgba(23,112,232,0.8);
   }
 }
 
@@ -123,23 +122,23 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 }
 
 .keyword {
-  background: var(--related-note-tone-019);
-  color: var(--related-note-tone-015);
+  background: rgba(23,112,232,0.1);
+  color: rgb(23,112,232);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 11px;
   font-weight: 500;
-  border: 1px solid var(--related-note-tone-020);
+  border: 1px solid rgba(23,112,232,0.2);
 }
 
 .keywordMore {
-  background: var(--related-note-tone-010);
-  color: var(--related-note-tone-004);
+  background: #f1f5f9;
+  color: #64748b;
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 11px;
   font-weight: 500;
-  border: 1px solid var(--related-note-tone-009);
+  border: 1px solid #e2e8f0;
 }
 
 .noteFooter {
@@ -147,8 +146,8 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
-  color: var(--related-note-tone-004);
-  border-top: 1px solid var(--related-note-tone-010);
+  color: #64748b;
+  border-top: 1px solid #f1f5f9;
   padding-top: 8px;
 }
 
@@ -159,12 +158,12 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 }
 
 .noteSource {
-  background: var(--related-note-tone-014);
-  color: var(--related-note-tone-005);
+  background: #fef3c7;
+  color: #92400e;
   padding: 2px 6px;
   border-radius: 6px;
   font-weight: 500;
-  border: 1px solid var(--related-note-tone-013);
+  border: 1px solid #fde68a;
 }
 
 /* 响应式设计 */
@@ -196,52 +195,52 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 /* 暗色主题支持 */
 @media (prefers-color-scheme: dark) {
   .relatedNoteCard {
-    background: linear-gradient(135deg, var(--related-note-tone-001) 0%, var(--related-note-tone-002) 100%);
-    border-color: var(--related-note-tone-003);
-    color: var(--related-note-tone-009);
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    border-color: #475569;
+    color: #e2e8f0;
 
     &:hover {
-      box-shadow: 0 4px 16px var(--related-note-tone-018);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     }
   }
 
   .noteTitle {
-    color: var(--related-note-tone-010);
+    color: #f1f5f9;
   }
 
   .noteText {
-    color: var(--related-note-tone-007);
+    color: #cbd5e1;
   }
 
   .similarityText {
-    color: var(--related-note-tone-006);
+    color: #94a3b8;
   }
 
   .similarityScore {
-    background: var(--related-note-tone-003);
-    color: var(--related-note-tone-009);
+    background: #475569;
+    color: #e2e8f0;
   }
 
   .keyword {
-    background: var(--related-note-tone-020);
-    color: var(--related-note-tone-023);
-    border-color: var(--related-note-tone-021);
+    background: rgba(23,112,232,0.2);
+    color: rgba(23,112,232,0.9);
+    border-color: rgba(23,112,232,0.3);
   }
 
   .keywordMore {
-    background: var(--related-note-tone-003);
-    color: var(--related-note-tone-006);
-    border-color: var(--related-note-tone-004);
+    background: #475569;
+    color: #94a3b8;
+    border-color: #64748b;
   }
 
   .noteFooter {
-    border-top-color: var(--related-note-tone-003);
-    color: var(--related-note-tone-006);
+    border-top-color: #475569;
+    color: #94a3b8;
   }
 
   .noteSource {
-    background: var(--related-note-tone-005);
-    color: var(--related-note-tone-012);
-    border-color: var(--related-note-tone-008);
+    background: #92400e;
+    color: #fbbf24;
+    border-color: #d97706;
   }
 }
