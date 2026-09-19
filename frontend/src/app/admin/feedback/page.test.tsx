@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as api from '../lib/adminApi';
@@ -145,9 +145,11 @@ describe('FeedbackPage', () => {
     }));
   });
 
-  it('retains edit values and a visible error without refetching after PATCH failure', async () => {
+  it('keeps a failed save inside the reason dialog, preserving edits and allowing a retry', async () => {
     const fetch = mockPage('owner');
-    vi.spyOn(api, 'adminPatch').mockRejectedValue(new Error('反馈更新失败'));
+    const patch = vi.spyOn(api, 'adminPatch')
+      .mockRejectedValueOnce(new Error('反馈更新失败'))
+      .mockResolvedValueOnce(feedback);
     render(<FeedbackPage />);
     await screen.findByText('编辑器无法保存');
 
@@ -156,9 +158,16 @@ describe('FeedbackPage', () => {
     fireEvent.change(screen.getByLabelText('原因'), { target: { value: '尝试更新内部备注以便跟进' } });
     fireEvent.click(screen.getByRole('button', { name: '确认' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('反馈更新失败');
+    const dialog = screen.getByRole('dialog');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('反馈更新失败');
+    expect(within(dialog).getByLabelText('原因')).toHaveValue('尝试更新内部备注以便跟进');
     expect(screen.getByLabelText('内部备注 feedback-1')).toHaveValue('保留这段编辑');
     expect(fetch.mock.calls.filter(([url]) => String(url).startsWith('/api/admin/feedback?'))).toHaveLength(1);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认' }));
+    expect(await screen.findByText('反馈已更新')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(patch).toHaveBeenCalledTimes(2);
   });
 
   it('renders viewer feedback as read-only even when internal notes are present', async () => {

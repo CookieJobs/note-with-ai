@@ -180,11 +180,11 @@ describe('UserDetailPage', () => {
       isActive: false,
       reason: '违反平台使用规范',
     });
-    expect(screen.getByText('状态：正常')).toBeInTheDocument();
+    expect(screen.getByText('正常')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '提交中…' })).toBeDisabled();
 
     resolvePost({ id: 'user-1', isActive: false, idempotent: false });
-    expect(await screen.findByText('状态：已禁用')).toBeInTheDocument();
+    expect(await screen.findByText('已禁用')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('用户状态已更新');
     expect(fetch.mock.calls.filter(([url]) => url === '/api/admin/users/user-1')).toHaveLength(2);
     expect(fetch.mock.calls.filter(([url]) => url === '/api/admin/auth/me')).toHaveLength(1);
@@ -199,7 +199,7 @@ describe('UserDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('状态更新失败');
-    expect(screen.getByText('状态：正常')).toBeInTheDocument();
+    expect(screen.getByText('正常')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(fetch.mock.calls.filter(([url]) => url === '/api/admin/users/user-1')).toHaveLength(1);
   });

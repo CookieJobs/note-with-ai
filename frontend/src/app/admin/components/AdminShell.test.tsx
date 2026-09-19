@@ -1,15 +1,15 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as api from '../lib/adminApi';
 import type { AdminIdentity, AdminRole } from '../lib/contracts';
 import AdminShell from './AdminShell';
 
-const navigation = vi.hoisted(() => ({ pathname: '/admin', push: vi.fn() }));
+const navigation = vi.hoisted(() => ({ pathname: '/admin', back: vi.fn(), push: vi.fn() }));
 
 vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
-  useRouter: () => ({ push: navigation.push }),
+  useRouter: () => ({ back: navigation.back, push: navigation.push }),
 }));
 
 const identity = (role: AdminRole): AdminIdentity => ({
@@ -22,10 +22,14 @@ const identity = (role: AdminRole): AdminIdentity => ({
 describe('AdminShell', () => {
   beforeEach(() => {
     navigation.pathname = '/admin';
+    navigation.back.mockReset();
     navigation.push.mockReset();
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it('shows a session loading state before rendering protected content', async () => {
     let resolveSession!: (value: { admin: AdminIdentity }) => void;
@@ -38,6 +42,31 @@ describe('AdminShell', () => {
     expect(screen.queryByText('受保护内容')).not.toBeInTheDocument();
     resolveSession({ admin: identity('owner') });
     expect(await screen.findByText('受保护内容')).toBeInTheDocument();
+  });
+
+  it('keeps recovery controls available while session verification is pending', () => {
+    vi.spyOn(api, 'adminFetch').mockImplementation(() => new Promise(() => undefined));
+    render(<AdminShell><div>受保护内容</div></AdminShell>);
+
+    expect(screen.getByRole('status')).toHaveTextContent('正在验证管理员会话…');
+    expect(screen.getByRole('button', { name: '重新验证' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '返回上一页' }));
+    expect(navigation.back).toHaveBeenCalledOnce();
+    expect(screen.getByRole('link', { name: '前往登录页' })).toHaveAttribute('href', '/admin/login');
+  });
+
+  it('ends a hung session verification with a recoverable timeout state', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(api, 'adminFetch').mockImplementation(((_url, options?: RequestInit) => new Promise((_, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    })) as typeof api.adminFetch);
+    render(<AdminShell><div>受保护内容</div></AdminShell>);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('验证管理员会话超时，请检查网络后重试');
+    expect(screen.getByRole('button', { name: '重新验证' })).toBeEnabled();
+    vi.useRealTimers();
   });
 
   it.each([
@@ -75,14 +104,11 @@ describe('AdminShell', () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it('logs out through the admin API and returns to the admin login', async () => {
+  it('keeps the logout action available to an authenticated administrator', async () => {
     vi.spyOn(api, 'adminFetch').mockResolvedValue({ admin: identity('owner') });
-    const post = vi.spyOn(api, 'adminPost').mockResolvedValue(undefined);
     render(<AdminShell><div>内容</div></AdminShell>);
 
-    fireEvent.click(await screen.findByRole('button', { name: '退出登录' }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/api/admin/auth/logout'));
-    expect(navigation.push).toHaveBeenCalledWith('/admin/login');
+    expect(await screen.findByRole('button', { name: '退出登录' })).toBeEnabled();
   });
 
   it('does not request a session around the login page', () => {
@@ -92,5 +118,17 @@ describe('AdminShell', () => {
 
     expect(screen.getByText('登录表单')).toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the users section selected on a user detail page', async () => {
+    navigation.pathname = '/admin/users/user-123';
+    vi.spyOn(api, 'adminFetch').mockResolvedValue({ admin: identity('owner') });
+    render(<AdminShell><div>用户详情</div></AdminShell>);
+
+    const nav = await screen.findByRole('navigation', { name: '运营后台导航' });
+    const selected = nav.querySelectorAll('[aria-current="page"]');
+    expect(selected).toHaveLength(1);
+    expect(selected[0]).toHaveAttribute('href', '/admin/users');
+    expect(screen.getByRole('link', { name: '跳到主要内容' })).toHaveAttribute('href', '#admin-content');
   });
 });

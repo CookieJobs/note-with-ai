@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import styles from '../admin.module.scss';
 import { adminFetch, adminPatch } from '../lib/adminApi';
 import ReasonDialog from '../components/ReasonDialog';
+import { feedbackCategoryLabels, feedbackStatusLabels, formatDateTime } from '../lib/presentation';
 import type {
   AdminIdentity,
   Feedback,
@@ -65,7 +66,6 @@ export default function FeedbackPage() {
   const [edits, setEdits] = useState<Record<string, FeedbackEdit>>({});
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState('');
-  const [mutationError, setMutationError] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
   const [selectedForSave, setSelectedForSave] = useState<Feedback | null>(null);
@@ -120,7 +120,6 @@ export default function FeedbackPage() {
       ...current,
       [id]: { ...current[id], ...next },
     }));
-    setMutationError('');
     setSuccess('');
   }
 
@@ -128,15 +127,12 @@ export default function FeedbackPage() {
     const edit = edits[item.id];
     if (!edit) return;
     setPendingId(item.id);
-    setMutationError('');
     setSuccess('');
     try {
       await adminPatch(`/api/admin/feedback/${item.id}`, { ...edit, reason });
       await loadFeedback(filters);
       setSuccess('反馈已更新');
       setSelectedForSave(null);
-    } catch (error: unknown) {
-      setMutationError(error instanceof Error ? error.message : '更新失败');
     } finally {
       setPendingId(null);
     }
@@ -147,9 +143,16 @@ export default function FeedbackPage() {
 
   return (
     <section>
-      <h2>用户反馈</h2>
-      <form className={styles.toolbar} onSubmit={submitFilters}>
-        <select
+      <header className={styles.pageHeader}>
+        <div>
+          <h2>用户反馈</h2>
+          <p className={styles.pageDescription}>跟进用户问题，更新处理状态并记录内部备注。</p>
+        </div>
+      </header>
+      <form className={styles.filterForm} onSubmit={submitFilters}>
+        <label className={styles.field}>
+          处理状态
+          <select
           aria-label="反馈状态筛选"
           value={draft.status}
           onChange={(event) => setDraft({
@@ -158,9 +161,12 @@ export default function FeedbackPage() {
           })}
         >
           <option value="">全部状态</option>
-          {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
-        </select>
-        <select
+          {statuses.map((status) => <option key={status} value={status}>{feedbackStatusLabels[status]}</option>)}
+          </select>
+        </label>
+        <label className={styles.field}>
+          反馈分类
+          <select
           aria-label="反馈分类筛选"
           value={draft.category}
           onChange={(event) => setDraft({
@@ -169,16 +175,20 @@ export default function FeedbackPage() {
           })}
         >
           <option value="">全部分类</option>
-          {categories.map((category) => <option key={category} value={category}>{category}</option>)}
-        </select>
-        <input
+          {categories.map((category) => <option key={category} value={category}>{feedbackCategoryLabels[category]}</option>)}
+          </select>
+        </label>
+        <label className={`${styles.field} ${styles.searchField}`}>
+          用户 ID
+          <input
           aria-label="反馈用户筛选"
           value={draft.userId}
-          placeholder="用户 ID"
+          placeholder="输入完整用户 ID"
           onChange={(event) => setDraft({ ...draft, userId: event.target.value })}
         />
-        <label>
-          从
+        </label>
+        <label className={styles.field}>
+          提交开始日期
           <input
             aria-label="反馈开始日期"
             type="date"
@@ -186,8 +196,8 @@ export default function FeedbackPage() {
             onChange={(event) => setDraft({ ...draft, from: event.target.value })}
           />
         </label>
-        <label>
-          至
+        <label className={styles.field}>
+          提交结束日期
           <input
             aria-label="反馈结束日期"
             type="date"
@@ -203,7 +213,7 @@ export default function FeedbackPage() {
           />
           只看分配给我
         </label>
-        <button type="submit" disabled={loading}>筛选</button>
+        <button className={styles.primaryButton} type="submit" disabled={loading}>筛选</button>
       </form>
 
       {loading && <p role="status">加载反馈中…</p>}
@@ -213,8 +223,7 @@ export default function FeedbackPage() {
           <button type="button" onClick={() => void loadFeedback(filters)}>重新加载反馈</button>
         </div>
       )}
-      {mutationError && <p role="alert" className={styles.error}>{mutationError}</p>}
-      {success && <p role="status">{success}</p>}
+      {success && <p role="status" className={styles.notice}>{success}</p>}
 
       {!listError && items.length > 0 && (
         <div className={styles.tableWrap}>
@@ -231,9 +240,9 @@ export default function FeedbackPage() {
                 const pending = pendingId === item.id;
                 return (
                   <tr key={item.id}>
-                    <td>{new Date(item.createdAt).toLocaleString('zh-CN')}</td>
-                    <td>{item.category}</td>
-                    <td>{item.content}</td>
+                    <td>{formatDateTime(item.createdAt)}</td>
+                    <td><span className={`${styles.statusBadge} ${styles.statusNeutral}`}>{feedbackCategoryLabels[item.category] ?? item.category}</span></td>
+                    <td><div>{item.content}</div><span className={`${styles.metadata} ${styles.muted}`}>用户：{item.userId}</span>{item.appVersion && <span className={`${styles.metadata} ${styles.muted}`}>版本：{item.appVersion}</span>}</td>
                     <td>
                       {writable && edit ? (
                         <select
@@ -244,15 +253,20 @@ export default function FeedbackPage() {
                             status: event.target.value as FeedbackStatus,
                           })}
                         >
-                          {statuses.map((status) => <option key={status}>{status}</option>)}
+                          {statuses.map((status) => <option key={status} value={status}>{feedbackStatusLabels[status]}</option>)}
                         </select>
-                      ) : item.status}
+                      ) : (
+                        <span className={`${styles.statusBadge} ${item.status === 'resolved' ? styles.statusGood : item.status === 'in_progress' ? styles.statusWarning : styles.statusNeutral}`}>
+                          {feedbackStatusLabels[item.status] ?? item.status}
+                        </span>
+                      )}
                     </td>
                     <td>
                       {writable && edit ? (
                         <textarea
                           aria-label={`内部备注 ${item.id}`}
                           value={edit.internalNote}
+                          placeholder="记录跟进情况，仅管理员可见"
                           maxLength={2000}
                           disabled={pending}
                           onChange={(event) => setEdit(item.id, { internalNote: event.target.value })}
@@ -278,11 +292,12 @@ export default function FeedbackPage() {
                     {writable && (
                       <td>
                         <button
+                          className={styles.secondaryButton}
                           type="button"
                           aria-label={pending ? `保存中 ${item.id}` : `保存反馈 ${item.id}`}
                           disabled={pending || !edit}
                           onClick={() => setSelectedForSave(item)}
-                        >{pending ? '保存中…' : '保存'}</button>
+                        >{pending ? '保存中…' : '保存反馈'}</button>
                       </td>
                     )}
                   </tr>
@@ -292,17 +307,19 @@ export default function FeedbackPage() {
           </table>
         </div>
       )}
-      {!loading && !listError && items.length === 0 && <p>暂无反馈</p>}
+      {!loading && !listError && items.length === 0 && <div className={styles.emptyState}><h3>暂无反馈</h3><p>当前条件下没有反馈，可调整处理状态或日期范围。</p></div>}
 
-      <div className={styles.toolbar} aria-label="反馈分页">
+      <div className={styles.pagination} aria-label="反馈分页">
         <span>第 {pagination.page} 页 · 共 {pagination.total} 条</span>
         <button
           type="button"
+          className={styles.secondaryButton}
           disabled={pagination.page <= 1 || loading}
           onClick={() => changePage(pagination.page - 1)}
         >上一页</button>
         <button
           type="button"
+          className={styles.secondaryButton}
           disabled={!pagination.hasNext || loading}
           onClick={() => changePage(pagination.page + 1)}
         >下一页</button>

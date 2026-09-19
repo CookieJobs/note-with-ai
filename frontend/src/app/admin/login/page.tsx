@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
+import { BookOpen, ArrowLeft, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 
 import styles from '../admin.module.scss';
 import { adminPost } from '../lib/adminApi';
@@ -38,9 +40,11 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main className={styles.login}>
+    <main className={`${styles.adminTheme} ${styles.login}`}>
+      <Link href="/notes" className={styles.loginBack}><ArrowLeft size={16} aria-hidden="true" />返回笔记应用</Link>
       <form onSubmit={(event) => void submit(event)}>
-        <h1>运营后台</h1>
+        <div className={styles.loginBrand}><span className={styles.brandMark}><BookOpen size={22} aria-hidden="true" /></span><span>NoteWithAI</span></div>
+        <div className={styles.loginHeading}><h1>登录运营后台</h1><p>查看产品运行情况，处理用户与 AI 服务问题。</p></div>
         <label>
           邮箱
           <input
@@ -76,7 +80,8 @@ export default function AdminLoginPage() {
           </label>
         )}
         {error && <p role="alert" className={styles.error}>{error}</p>}
-        <button type="submit" disabled={pending}>{pending ? '登录中…' : '登录'}</button>
+        <button type="submit" disabled={pending} className={styles.primaryButton}>{pending ? '登录中…' : '登录'}<ArrowRight size={16} aria-hidden="true" /></button>
+        <p className={styles.loginFootnote}>{passwordOnlyLocalLogin ? '本地开发环境 · 管理员账号登录' : '请使用独立的管理员账号和验证器验证码。'}</p>
       </form>
     </main>
   );

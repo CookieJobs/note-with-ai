@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as api from './lib/adminApi';
@@ -58,8 +58,8 @@ describe('AdminOverviewPage', () => {
 
     await screen.findByText('总用户');
     for (const label of [
-      '今日新增', 'DAU', 'WAU', 'MAU', '激活用户', '笔记', '聊天会话',
-      'AI 调用', 'AI 成功率', '失败富化', 'Token', '估算成本',
+      '今日新增用户', '今日活跃', '近 7 天活跃', '近 30 天活跃', '累计激活用户',
+      '笔记总量', '累计聊天会话', 'AI 调用', 'AI 成功率', 'AI 处理失败', '已知 Token 用量', '估算成本',
     ]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
@@ -67,8 +67,8 @@ describe('AdminOverviewPage', () => {
     expect(screen.getByText('150')).toBeInTheDocument();
     expect(screen.getByText('¥1.23')).toBeInTheDocument();
     expect(screen.getByText(/Token 覆盖：83%/)).toBeInTheDocument();
-    expect(screen.getByText(/D7：数据积累中/)).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: '最近趋势' })).toBeInTheDocument();
+    expect(screen.getByText('D7').closest('div')).toHaveTextContent('数据积累中');
+    expect(screen.getByRole('img', { name: '每日新增笔记趋势' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '7 天' })).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -98,6 +98,67 @@ describe('AdminOverviewPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('keeps the latest range result when an older request finishes last', async () => {
+    let resolveThirtyDays!: (value: Overview) => void;
+    let resolveSevenDays!: (value: Overview) => void;
+    vi.spyOn(api, 'adminFetch')
+      .mockResolvedValueOnce(completeOverview)
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveThirtyDays = resolve as typeof resolveThirtyDays;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveSevenDays = resolve as typeof resolveSevenDays;
+      }));
+    render(<AdminOverviewPage />);
+    await screen.findByText('总用户');
+
+    fireEvent.click(screen.getByRole('button', { name: '30 天' }));
+    fireEvent.click(screen.getByRole('button', { name: '7 天' }));
+    await act(async () => resolveSevenDays({
+      ...completeOverview,
+      summary: { ...completeOverview.summary, totalUsers: 713 },
+    }));
+    expect(screen.getByText('713')).toBeInTheDocument();
+    await act(async () => resolveThirtyDays({
+      ...completeOverview,
+      summary: { ...completeOverview.summary, totalUsers: 301 },
+    }));
+
+    expect(screen.getByText('713')).toBeInTheDocument();
+    expect(screen.queryByText('301')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '7 天' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps the successful range labeled correctly if the next range fails', async () => {
+    vi.spyOn(api, 'adminFetch')
+      .mockResolvedValueOnce(completeOverview)
+      .mockRejectedValueOnce(new Error('概览暂不可用'));
+    render(<AdminOverviewPage />);
+    await screen.findByText('总用户');
+
+    fireEvent.click(screen.getByRole('button', { name: '30 天' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('当前保留上次加载的近 7 天数据');
+    expect(screen.getByText('近 7 天 · 按上海时间统计')).toBeInTheDocument();
+    expect(screen.queryByText('近 30 天 · 按上海时间统计')).not.toBeInTheDocument();
+  });
+
+  it('does not present missing AI usage and pricing as measured zeroes', async () => {
+    vi.spyOn(api, 'adminFetch').mockResolvedValue({
+      ...completeOverview,
+      summary: { ...completeOverview.summary, totalAiCalls: 0, aiSuccessRate: null, failedArtifacts: 0 },
+      tokenCoverage: { ...completeOverview.tokenCoverage, knownCalls: 0, totalSucceededCalls: 0, inputTokens: 0, outputTokens: 0, rate: null },
+      costCoverage: { ...completeOverview.costCoverage, knownCalls: 0, totalCalls: 0, estimatedCostMicros: null, rate: null },
+    });
+    render(<AdminOverviewPage />);
+
+    await screen.findByText('总用户');
+    expect(screen.getByText('暂无已知用量')).toBeInTheDocument();
+    expect(screen.getByText('暂不可估算')).toBeInTheDocument();
+    expect(screen.queryByText('调用全部成功')).not.toBeInTheDocument();
+    expect(screen.queryByText('¥0.00')).not.toBeInTheDocument();
+  });
+
   it('shows an explicit empty state for a range with no accumulated activity', async () => {
     vi.spyOn(api, 'adminFetch').mockResolvedValue({
       ...completeOverview,
@@ -109,6 +170,6 @@ describe('AdminOverviewPage', () => {
     });
     render(<AdminOverviewPage />);
 
-    expect(await screen.findByRole('status', { name: '概览空状态' })).toHaveTextContent('当前范围暂无运营数据');
+    expect(await screen.findByRole('status', { name: '概览空状态' })).toHaveTextContent('当前暂无运营数据');
   });
 });

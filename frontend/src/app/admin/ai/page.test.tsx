@@ -71,7 +71,7 @@ describe('AiPage', () => {
     render(<AiPage />);
 
     expect(screen.getByText('正在确认重试权限…')).toBeInTheDocument();
-    expect(screen.getByText('加载 AI 用量中…')).toBeInTheDocument();
+    expect(screen.getByText('正在加载近 30 天数据…')).toBeInTheDocument();
     expect(screen.getByText('加载失败任务中…')).toBeInTheDocument();
   });
 
@@ -153,6 +153,72 @@ describe('AiPage', () => {
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/admin/ai/usage?range=7d'));
     expect(screen.getByRole('button', { name: '7 天' })).toHaveAttribute('aria-pressed', 'true');
     expect(fetch.mock.calls.filter(([url]) => String(url).startsWith('/api/admin/ai/failures'))).toHaveLength(1);
+  });
+
+  it('keeps the newest usage response when range requests resolve out of order', async () => {
+    const pending: Array<{
+      range: '7d' | '30d';
+      resolve: (value: AiUsage) => void;
+      reject: (error: Error) => void;
+    }> = [];
+    const latest30d: AiUsage = {
+      ...usage,
+      groups: [{ ...usage.groups[0], provider: 'latest-30d' }],
+    };
+    const sevenDay: AiUsage = {
+      ...usage,
+      range: '7d',
+      groups: [{ ...usage.groups[0], provider: 'seven-day' }],
+    };
+    vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === '/api/admin/auth/me') return Promise.resolve(session('viewer'));
+      if (url.startsWith('/api/admin/ai/failures')) return Promise.resolve(failures([]));
+      const range = url.endsWith('range=7d') ? '7d' : '30d';
+      return new Promise<AiUsage>((resolve, reject) => pending.push({ range, resolve, reject }));
+    });
+    render(<AiPage />);
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole('button', { name: '7 天' }));
+    await waitFor(() => expect(pending).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', { name: '30 天' }));
+    await waitFor(() => expect(pending).toHaveLength(3));
+
+    pending[2].resolve(latest30d);
+    expect(await screen.findByText('latest-30d')).toBeInTheDocument();
+    pending[1].resolve(sevenDay);
+    pending[0].resolve(usage);
+
+    await waitFor(() => expect(screen.queryByText('seven-day')).not.toBeInTheDocument());
+    expect(screen.getByText('latest-30d')).toBeInTheDocument();
+  });
+
+  it('ignores an older usage failure after a newer range succeeds', async () => {
+    const pending: Array<{
+      resolve: (value: AiUsage) => void;
+      reject: (error: Error) => void;
+    }> = [];
+    const sevenDay: AiUsage = {
+      ...usage,
+      range: '7d',
+      groups: [{ ...usage.groups[0], provider: 'seven-day' }],
+    };
+    vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === '/api/admin/auth/me') return Promise.resolve(session('viewer'));
+      if (url.startsWith('/api/admin/ai/failures')) return Promise.resolve(failures([]));
+      return new Promise<AiUsage>((resolve, reject) => pending.push({ resolve, reject }));
+    });
+    render(<AiPage />);
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole('button', { name: '7 天' }));
+    await waitFor(() => expect(pending).toHaveLength(2));
+    pending[1].resolve(sevenDay);
+    expect(await screen.findByText('seven-day')).toBeInTheDocument();
+    pending[0].reject(new Error('旧请求失败'));
+
+    await waitFor(() => expect(screen.queryByRole('alert', { name: 'AI 用量错误' })).not.toBeInTheDocument());
+    expect(screen.getByText('seven-day')).toBeInTheDocument();
   });
 
   it('paginates failures independently with nested pagination', async () => {
@@ -247,7 +313,7 @@ describe('AiPage', () => {
     expect(fetch.mock.calls.filter(([url]) => String(url).startsWith('/api/admin/ai/failures'))).toHaveLength(1);
 
     resolveRetry({ retryStatus: 'saved' });
-    expect(await screen.findByRole('status')).toHaveTextContent('重试结果：saved');
+    expect(await screen.findByRole('status')).toHaveTextContent('重试结果：处理完成，已保存');
     expect(fetch.mock.calls.filter(([url]) => String(url).startsWith('/api/admin/ai/failures'))).toHaveLength(2);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import styles from '../admin.module.scss';
 import { adminFetch } from '../lib/adminApi';
+import { actionLabel, auditStatusLabels, formatDateTime } from '../lib/presentation';
 import type { Audit, AuditMetadataValue, AuditStatus, ListResponse, Pagination } from '../lib/contracts';
 
 type AuditFilters = {
@@ -92,19 +93,34 @@ export default function AuditPage() {
   const { items, pagination } = result;
   return (
     <section>
-      <h2>操作审计</h2>
-      <form className={styles.toolbar} onSubmit={submit}>
-        <input
+      <header className={styles.pageHeader}>
+        <div>
+          <h2>操作审计</h2>
+          <p className={styles.pageDescription}>追溯管理员操作与执行结果，记录仅供查看。</p>
+        </div>
+      </header>
+      <form className={styles.filterForm} onSubmit={submit}>
+        <label className={styles.field}>
+          操作者 ID
+          <input
+          placeholder="输入管理员 ID"
           aria-label="操作者筛选"
           value={draft.actorId}
           onChange={(event) => setDraft({ ...draft, actorId: event.target.value })}
         />
-        <input
+        </label>
+        <label className={`${styles.field} ${styles.searchField}`}>
+          操作标识
+          <input
+          placeholder="例如 user.status_changed"
           aria-label="动作筛选"
           value={draft.action}
           onChange={(event) => setDraft({ ...draft, action: event.target.value })}
         />
-        <select
+        </label>
+        <label className={styles.field}>
+          执行状态
+          <select
           aria-label="审计状态筛选"
           value={draft.status}
           onChange={(event) => setDraft({
@@ -113,25 +129,32 @@ export default function AuditPage() {
           })}
         >
           <option value="">全部状态</option>
-          <option value="pending">pending</option>
-          <option value="succeeded">succeeded</option>
-          <option value="failed">failed</option>
-        </select>
-        <input
+          <option value="pending">待确认</option>
+          <option value="succeeded">已成功</option>
+          <option value="failed">已失败</option>
+          </select>
+        </label>
+        <label className={styles.field}>
+          操作开始日期
+          <input
           aria-label="审计开始日期"
           type="date"
           value={draft.from}
           onChange={(event) => setDraft({ ...draft, from: event.target.value })}
         />
-        <input
+        </label>
+        <label className={styles.field}>
+          操作结束日期
+          <input
           aria-label="审计结束日期"
           type="date"
           value={draft.to}
           onChange={(event) => setDraft({ ...draft, to: event.target.value })}
         />
-        <button type="submit" disabled={loading}>筛选</button>
+        </label>
+        <button className={styles.primaryButton} type="submit" disabled={loading}>筛选</button>
       </form>
-      <p className={styles.muted}>审计记录只读；pending 表示命令状态需要人工确认。</p>
+      <p className={styles.muted}>待确认：操作的最终执行结果需要人工核实。</p>
 
       {loading && <p role="status">加载审计中…</p>}
       {error && (
@@ -144,15 +167,16 @@ export default function AuditPage() {
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
-              <tr><th>操作者</th><th>动作</th><th>状态</th><th>目标</th><th>安全元数据</th></tr>
+              <tr><th>操作时间</th><th>操作者</th><th>操作</th><th>执行状态</th><th>目标</th><th>操作详情</th></tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
+                  <td><time dateTime={item.createdAt}>{formatDateTime(item.createdAt)}</time></td>
                   <td>{item.actor.displayName || '系统'}</td>
-                  <td>{item.action}</td>
-                  <td>{item.status === 'pending' ? 'pending（状态待人工确认）' : item.status}</td>
-                  <td>{item.targetType ?? '—'}:{item.targetId ?? '—'}</td>
+                  <td>{actionLabel(item.action)}<span className={`${styles.metadata} ${styles.muted} ${styles.mono}`}>{item.action}</span></td>
+                  <td><span className={`${styles.statusBadge} ${item.status === 'succeeded' ? styles.statusGood : item.status === 'failed' ? styles.statusDanger : styles.statusWarning}`}>{auditStatusLabels[item.status] ?? item.status}</span></td>
+                  <td><span>{({ User: '用户', Note: '笔记', UserFeedback: '反馈' } as Record<string, string>)[item.targetType ?? ''] ?? item.targetType ?? '无目标'}</span><span className={`${styles.metadata} ${styles.mono}`}>{item.targetId ?? '—'}</span></td>
                   <td>
                     {safeMetadata(item.metadata).map(([key, value]) => (
                       <span className={styles.metadata} key={key}>{key}: {String(value)}</span>
@@ -164,16 +188,18 @@ export default function AuditPage() {
           </table>
         </div>
       )}
-      {!loading && !error && items.length === 0 && <p>暂无审计记录</p>}
-      <div className={styles.toolbar} aria-label="审计分页">
+      {!loading && !error && items.length === 0 && <div className={styles.emptyState}><h3>暂无审计记录</h3><p>当前条件下没有操作记录，请调整操作者或日期范围。</p></div>}
+      <div className={styles.pagination} aria-label="审计分页">
         <span>第 {pagination.page} 页 · 共 {pagination.total} 条</span>
         <button
           type="button"
+          className={styles.secondaryButton}
           disabled={pagination.page <= 1 || loading}
           onClick={() => changePage(pagination.page - 1)}
         >上一页</button>
         <button
           type="button"
+          className={styles.secondaryButton}
           disabled={!pagination.hasNext || loading}
           onClick={() => changePage(pagination.page + 1)}
         >下一页</button>

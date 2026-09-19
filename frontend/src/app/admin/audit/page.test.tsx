@@ -79,7 +79,7 @@ describe('AuditPage', () => {
 
     expect(await screen.findByText('reason: retry requested')).toBeInTheDocument();
     expect(screen.getByText('retryStatus: saved')).toBeInTheDocument();
-    expect(screen.getByText('pending（状态待人工确认）')).toBeInTheDocument();
+    expect(screen.getByText('待确认', { selector: 'span' })).toBeInTheDocument();
     expect(screen.queryByText(/must-never-render/)).not.toBeInTheDocument();
     expect(screen.queryByText(/also hidden/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /编辑|删除/ })).not.toBeInTheDocument();
