@@ -128,8 +128,20 @@ class NoteController {
   // GET /
   async getNotes(req: Request, res: Response, next: NextFunction) {
     const user = await UserValidator.authenticateUser(req);
-    const notes = await noteService.getNotes(user._id.toString());
-    ResponseHandler.success(res, { notes }, '获取笔记成功');
+    const rawLimit = req.query.limit;
+    const rawCursor = req.query.cursor;
+    const page = await noteService.getNotesPage(user._id.toString(), {
+      ...(rawLimit === undefined ? {} : { limit: Number(rawLimit) }),
+      ...(rawCursor === undefined ? {} : { cursor: typeof rawCursor === 'string' ? rawCursor : '' }),
+    });
+    ResponseHandler.success(res, page, '获取笔记成功');
+  }
+
+  async getNote(req: Request, res: Response, next: NextFunction) {
+    const id = requireSingleRouteParam(req.params.id, 'id');
+    const user = await UserValidator.authenticateUser(req);
+    const note = await noteService.getNote(user._id.toString(), id);
+    ResponseHandler.success(res, { note }, '获取笔记成功');
   }
 
   // POST /

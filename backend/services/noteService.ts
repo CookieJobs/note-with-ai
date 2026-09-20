@@ -13,8 +13,10 @@ import {
   type UpdateNoteInput,
 } from './NoteUpdateOrchestrator';
 import { runProductionNoteEnrichmentTask } from './noteEnrichmentWorker';
+import { decodeNoteCursor, encodeNoteCursor } from './noteListCursor';
 
 type NoteListItem = NoteDto & { enrichment: ReturnType<typeof getEnrichmentView> };
+export type NotePage = { notes: NoteListItem[]; pageInfo: { nextCursor: string | null; hasMore: boolean } };
 
 function toLlmRole(role: string): 'user' | 'assistant' | 'system' {
   if (role === 'assistant' || role === 'system') return role;
@@ -31,6 +33,29 @@ class NoteService {
         enrichment: getEnrichmentView(value),
       };
     });
+  }
+
+  async getNotesPage(userId: string, options: { limit?: number; cursor?: string | null }): Promise<NotePage> {
+    const limit = Math.max(1, Math.min(50, Math.floor(options.limit ?? 30)));
+    const cursor = options.cursor ? decodeNoteCursor(options.cursor) : null;
+    const filter: Record<string, unknown> = { userId };
+    if (cursor) filter.$or = [{ createdAt: { $lt: cursor.createdAt } }, { createdAt: cursor.createdAt, _id: { $lt: cursor.id } }];
+    const records = await Note.find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit + 1);
+    const hasMore = records.length > limit;
+    const pageRecords = hasMore ? records.slice(0, limit) : records;
+    const notes = pageRecords.map((note) => {
+      const value = typeof note.toObject === 'function' ? note.toObject() : note;
+      return { ...toNoteDto(value), enrichment: getEnrichmentView(value) };
+    });
+    const last = pageRecords[pageRecords.length - 1];
+    return { notes, pageInfo: { hasMore, nextCursor: hasMore && last ? encodeNoteCursor({ createdAt: last.createdAt, id: last._id.toString() }) : null } };
+  }
+
+  async getNote(userId: string, noteId: string): Promise<NoteListItem> {
+    const note = await Note.findOne({ _id: noteId, userId });
+    if (!note) throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
+    const value = typeof note.toObject === 'function' ? note.toObject() : note;
+    return { ...toNoteDto(value), enrichment: getEnrichmentView(value) };
   }
 
   async createNote(userId: string, data: Pick<CreateNoteInput, 'body'>): Promise<NoteWriteResult> {

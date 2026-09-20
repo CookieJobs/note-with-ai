@@ -65,6 +65,9 @@ function NotesContent() {
     createNote,
     updateNote,
     refreshRecommendCache,
+    loadMoreNotes,
+    hasMoreNotes,
+    isLoadingMore,
   } = useNotes(user, { onError: setError });
 
   // 新建笔记 Hook
@@ -273,6 +276,12 @@ function NotesContent() {
                 </div>
                 <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
                   <NoteCounter count={notes.length} />
+
+                  {hasMoreNotes && (
+                    <button type="button" onClick={() => void loadMoreNotes()} disabled={isLoadingMore}>
+                      {isLoadingMore ? '正在加载…' : '加载更多笔记'}
+                    </button>
+                  )}
 
                   {notes.map((note) => (
                     <motion.div

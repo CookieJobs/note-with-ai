@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { authFetch } from '../../../utils/auth';
 import { generateUUID } from '../../../utils/uuid';
@@ -131,6 +131,9 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
   const isMountedRef = useRef(true);
   const listGenerationRef = useRef(0);
   const temporaryNoteIdsRef = useRef(new Set<string>());
+  const nextCursorRef = useRef<string | null>(null);
+  const [hasMoreNotes, setHasMoreNotes] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const mergeFetchedNotesWithTemporaryNotes = useCallback((fetched: Note[]): Note[] => {
     const cached = queryClient.getQueryData<Note[]>(NOTES_QUERY_KEY) ?? [];
@@ -165,6 +168,8 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
       const response = await res.json();
 
       if (response.success && response.data && Array.isArray(response.data.notes)) {
+        nextCursorRef.current = typeof response.data.pageInfo?.nextCursor === 'string' ? response.data.pageInfo.nextCursor : null;
+        setHasMoreNotes(Boolean(response.data.pageInfo?.hasMore));
         if (requestGeneration !== listGenerationRef.current) {
           return mergeFetchedNotesWithTemporaryNotes(queryClient.getQueryData<Note[]>(NOTES_QUERY_KEY) ?? []);
         }
@@ -429,6 +434,29 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     )));
   }, [commitNotesWrite, queryClient]);
 
+  const loadMoreNotes = useCallback(async () => {
+    const cursor = nextCursorRef.current;
+    if (!cursor || isLoadingMore) return;
+    const generation = listGenerationRef.current;
+    setIsLoadingMore(true);
+    try {
+      const response = await authFetch(`/api/notes?cursor=${encodeURIComponent(cursor)}`);
+      const payload = await response.json();
+      if (!response.ok || !payload?.success || !Array.isArray(payload?.data?.notes)) throw new Error('加载更多笔记失败');
+      if (generation !== listGenerationRef.current) return;
+      nextCursorRef.current = typeof payload.data.pageInfo?.nextCursor === 'string' ? payload.data.pageInfo.nextCursor : null;
+      setHasMoreNotes(Boolean(payload.data.pageInfo?.hasMore));
+      commitNotesWrite((cached = []) => {
+        const known = new Set(cached.map((note) => note._id));
+        return [...cached, ...(payload.data.notes as Note[]).filter((note) => !known.has(note._id))];
+      });
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : '加载更多笔记失败');
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [commitNotesWrite, isLoadingMore, onError]);
+
   return {
     notes,
     isLoading,
@@ -437,5 +465,8 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     updateNote,
     refreshRecommendCache,
     refetchNotes: refetch,
+    loadMoreNotes,
+    hasMoreNotes,
+    isLoadingMore,
   };
 }

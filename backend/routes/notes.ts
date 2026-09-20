@@ -36,6 +36,8 @@ router.post('/embedding/ensure', authenticateToken, validate(ensureSchema), asyn
 // 当前用户 summary 补齐 (必须在 /:id 之前)
 router.post('/summary/ensure', authenticateToken, validate(ensureSchema), asyncHandler((req, res, next) => noteController.ensureSummaries(req, res, next)));
 
+router.get('/:id', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.getNote(req, res, next)));
+
 // 删除笔记
 router.delete('/:id', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.deleteNote(req, res, next)));
 
