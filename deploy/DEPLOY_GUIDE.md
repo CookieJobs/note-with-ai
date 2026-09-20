@@ -43,18 +43,28 @@ docker compose exec -T \
 
 ## HTTPS
 
-安装 Nginx 和 Certbot 后，将 `deploy/nginx.conf.example` 复制为 `/etc/nginx/sites-available/default`。首次签发前需暂时保留 HTTP challenge：
+先安装 Nginx 和 Certbot。**证书文件尚不存在时，不要直接启用 `deploy/nginx.conf.example` 的 TLS server**；先保留当前可用 HTTP server，或仅配置下面的 HTTP bootstrap server，完成签发后再复制完整模板：
+
+```nginx
+server {
+    listen 80;
+    server_name bloomy16.com;
+    location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { proxy_pass http://127.0.0.1:3000; }
+}
+```
 
 ```bash
 mkdir -p /var/www/certbot
 nginx -t && systemctl reload nginx
 certbot certonly --webroot -w /var/www/certbot -d bloomy16.com \
   --email '<renewal-contact-email>' --agree-tos --non-interactive
+cp deploy/nginx.conf.example /etc/nginx/sites-available/default
 nginx -t && systemctl reload nginx
 curl -I https://bloomy16.com/admin
 ```
 
-确认 `certbot renew --dry-run` 成功，并检查系统定时续期服务。TLS 证书文件存在前，不能启用包含 `listen 443 ssl` 的完整模板。
+确认 `certbot renew --dry-run` 成功，并检查系统定时续期服务。
 
 ## 回滚
 
