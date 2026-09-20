@@ -820,3 +820,72 @@ describe('useNotes list and write races', () => {
     await waitFor(() => expect(queryClient.getQueryData<Note[]>(['notes'])?.[0].enrichment?.status).toBe('ready'));
   });
 });
+
+describe('useNotes cursor pagination', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('appends a later page once and exposes its following cursor state', async () => {
+    const olderNote: Note = { ...staleNote, _id: 'note-older', title: '更早的笔记' };
+    authFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { notes: [staleNote], pageInfo: { hasMore: true, nextCursor: 'cursor-1' } },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { notes: [staleNote, olderNote], pageInfo: { hasMore: false, nextCursor: null } },
+        }),
+      });
+    const { queryClient, wrapper } = makeHarness();
+    const { result } = renderHook(() => useNotes(user), { wrapper });
+
+    await waitFor(() => expect(queryClient.getQueryData<Note[]>(['notes'])?.map((note) => note._id)).toEqual(['note-1']));
+    await act(async () => { await result.current.loadMoreNotes(); });
+
+    expect(authFetch).toHaveBeenLastCalledWith('/api/notes?cursor=cursor-1');
+    expect(queryClient.getQueryData<Note[]>(['notes'])?.map((note) => note._id)).toEqual(['note-1', 'note-older']);
+    expect(result.current.hasMoreNotes).toBe(false);
+  });
+
+  it('does not append a late page fetched before a canonical write', async () => {
+    const laterPage = deferred<unknown>();
+    authFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { notes: [staleNote], pageInfo: { hasMore: true, nextCursor: 'cursor-1' } },
+        }),
+      })
+      .mockImplementationOnce(() => laterPage.promise)
+      .mockResolvedValueOnce(canonicalResponse(canonicalNote, canonicalEnrichment));
+    const { queryClient, wrapper } = makeHarness();
+    const { result } = renderHook(() => useNotes(user), { wrapper });
+
+    await waitFor(() => expect(queryClient.getQueryData<Note[]>(['notes'])?.[0]).toEqual(staleNote));
+    let loadMore!: Promise<void>;
+    let update!: Promise<Note>;
+    act(() => {
+      loadMore = result.current.loadMoreNotes();
+      update = result.current.updateNote({ noteId: 'note-1', expectedRevision: 4, changes: { title: '新标题' } });
+    });
+    await act(async () => { await update; });
+    await act(async () => {
+      laterPage.resolve({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { notes: [{ ...staleNote, _id: 'late-note' }], pageInfo: { hasMore: false, nextCursor: null } },
+        }),
+      });
+      await loadMore;
+    });
+
+    expect(queryClient.getQueryData<Note[]>(['notes'])).toEqual([{ ...canonicalNote, enrichment: canonicalEnrichment }]);
+  });
+});

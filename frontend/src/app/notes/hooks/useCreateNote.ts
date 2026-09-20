@@ -115,7 +115,8 @@ function removeDraft(session: CaptureSession): boolean {
 
   try {
     const key = draftKey(session.userId);
-    if (localStorage.getItem(key) === session.storedValue) localStorage.removeItem(key);
+    if (localStorage.getItem(key) !== session.storedValue) return false;
+    localStorage.removeItem(key);
     return true;
   } catch {
     return false;
@@ -254,4 +255,3 @@ export function useCreateNote(
     handleSubmit,
   };
 }
-

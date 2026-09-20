@@ -13,7 +13,7 @@ import {
   type UpdateNoteInput,
 } from './NoteUpdateOrchestrator';
 import { runProductionNoteEnrichmentTask } from './noteEnrichmentWorker';
-import { decodeNoteCursor, encodeNoteCursor } from './noteListCursor';
+import { decodeNoteCursor, encodeNoteCursor, parseNotePageLimit } from './noteListCursor';
 
 type NoteListItem = NoteDto & { enrichment: ReturnType<typeof getEnrichmentView> };
 export type NotePage = { notes: NoteListItem[]; pageInfo: { nextCursor: string | null; hasMore: boolean } };
@@ -36,7 +36,7 @@ class NoteService {
   }
 
   async getNotesPage(userId: string, options: { limit?: number; cursor?: string | null }): Promise<NotePage> {
-    const limit = Math.max(1, Math.min(50, Math.floor(options.limit ?? 30)));
+    const limit = parseNotePageLimit(options.limit);
     const cursor = options.cursor ? decodeNoteCursor(options.cursor) : null;
     const filter: Record<string, unknown> = { userId };
     if (cursor) filter.$or = [{ createdAt: { $lt: cursor.createdAt } }, { createdAt: cursor.createdAt, _id: { $lt: cursor.id } }];

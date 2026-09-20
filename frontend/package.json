@@ -8,7 +8,9 @@
         "start": "next start",
         "lint": "eslint .",
         "typecheck": "tsc --noEmit --incremental false",
-        "test": "vitest run"
+        "test": "vitest run",
+        "check:route-budgets": "node scripts/check-route-budgets.mjs",
+        "test:route-budgets": "node --test scripts/check-route-budgets.test.mjs"
     },
     "dependencies": {
         "@floating-ui/react": "^0.27.16",

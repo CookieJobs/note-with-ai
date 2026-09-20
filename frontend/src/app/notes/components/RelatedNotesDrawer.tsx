@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import type { Note } from '../hooks/useNotes';
 import { getRecommendCacheState, hasCandidateS1 } from '../utils/recommendCache';
 import { authFetch } from '../../../utils/auth';
+import { fetchRelatedNoteSummaries } from '../services/relatedNotes';
 
 interface RelatedNotesDrawerProps {
   isOpen: boolean;
@@ -16,8 +17,8 @@ interface RelatedNoteItem {
   id: string;
   note: Note;
   s1: number | null;
-  s2: number;
-  finalScore: number;
+  s2: number | null;
+  finalScore: number | null;
   type: string;
   reason: string;
 }
@@ -54,25 +55,26 @@ export default function RelatedNotesDrawer({
       setRemoteRelated(null);
       return;
     }
+    // The cache is revision-scoped. Clear the old projection immediately when
+    // a write advances the selected note while this drawer is still open.
+    setRemoteRelated(null);
     let cancelled = false;
-    const requestKey = selectedNoteId;
-    void authFetch(`/api/recommend/notes/${encodeURIComponent(requestKey)}`)
-      .then(async (response) => {
-        if (!response.ok) throw new Error('关联笔记读取失败');
-        const payload = await response.json();
-        if (!Array.isArray(payload?.data?.notes) || cancelled) return;
-        setRemoteRelated(payload.data.notes.map((item: any) => ({
-          id: String(item.noteId),
-          note: { _id: String(item.noteId), title: item.title, contentText: item.contentText, content: item.contentText } as Note,
-          s1: typeof item.s1 === 'number' ? item.s1 : null,
-          s2: typeof item.s2 === 'number' ? item.s2 : 0,
-          finalScore: (typeof item.s1 === 'number' ? item.s1 * 0.3 : 0) + (typeof item.s2 === 'number' ? item.s2 * 0.7 : 0),
-          type: item.type || '', reason: item.reason || '',
+    void fetchRelatedNoteSummaries(selectedNoteId, authFetch)
+      .then((summaries) => {
+        if (cancelled) return;
+        setRemoteRelated(summaries.map((item) => ({
+          id: item.noteId,
+          note: { _id: item.noteId, title: item.title, contentText: item.contentText, content: item.contentText } as Note,
+          s1: null,
+          s2: null,
+          finalScore: null,
+          type: item.type,
+          reason: item.reason,
         })));
       })
       .catch(() => { if (!cancelled) setRemoteRelated([]); });
     return () => { cancelled = true; };
-  }, [isOpen, selectedNoteId]);
+  }, [isOpen, selectedNoteId, currentNote?.revision]);
 
   useEffect(() => {
     if (!isOpen || !currentNote || !onRefreshRecommendCache || !cacheState.needsRefresh) return;
@@ -216,7 +218,8 @@ export default function RelatedNotesDrawer({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-3 text-[10px] text-gray-400 font-mono bg-gray-100/50 p-1.5 rounded-lg border border-gray-100">
+                {item.finalScore != null && item.s2 != null && (
+                  <div className="flex items-center gap-3 text-[10px] text-gray-400 font-mono bg-gray-100/50 p-1.5 rounded-lg border border-gray-100">
                   <div className="flex flex-col">
                     <span className="text-gray-500 font-semibold text-[11px]">{item.finalScore.toFixed(2)}</span>
                     <span>综合分</span>
@@ -231,7 +234,8 @@ export default function RelatedNotesDrawer({
                     <span className="text-gray-500 font-semibold text-[11px]">{item.s2.toFixed(2)}</span>
                     <span>模型(s2)</span>
                   </div>
-                </div>
+                  </div>
+                )}
                 <div className="text-sm text-gray-600 line-clamp-3">
                   {item.note.contentText || item.note.content || '暂无内容...'}
                 </div>

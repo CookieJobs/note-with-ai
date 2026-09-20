@@ -28,8 +28,6 @@ export class RelatedNoteSummaryService {
         contentText: String(note.contentText || note.content || ''),
         type: typeof candidate.type === 'string' ? candidate.type : '',
         reason: typeof candidate.reason === 'string' ? candidate.reason : '',
-        s1: Number.isFinite(Number(candidate.s1)) ? Number(candidate.s1) : null,
-        s2: Number.isFinite(Number(candidate.s2)) ? Number(candidate.s2) : 0,
         revision: typeof note.revision === 'number' ? note.revision : 1,
       }];
     });

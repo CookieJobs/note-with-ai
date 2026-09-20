@@ -5,6 +5,14 @@ export type NoteCursor = {
   id: string;
 };
 
+export function parseNotePageLimit(value: number | undefined): number {
+  if (value === undefined) return 30;
+  if (!Number.isInteger(value) || value < 1 || value > 50) {
+    throw ErrorHandler.createValidationError('分页 limit 必须是 1 到 50 之间的整数');
+  }
+  return value;
+}
+
 export function encodeNoteCursor(cursor: NoteCursor): string {
   return Buffer.from(JSON.stringify({ createdAt: cursor.createdAt.toISOString(), id: cursor.id }), 'utf8').toString('base64url');
 }
@@ -20,4 +28,3 @@ export function decodeNoteCursor(value: string): NoteCursor {
     throw ErrorHandler.createValidationError('分页 cursor 无效');
   }
 }
-
