@@ -30,9 +30,10 @@ type FloatingQuickComposeProps = {
   valueText: string;
   onOpen: () => void;
   onChange: (next: { json: JSONContent; text: string }) => void;
-  onSubmit: () => void;
+  onSubmit: () => void | Promise<void>;
   onCancel: () => void;
   loading?: boolean;
+  status?: string;
 };
 
 type ShellPhase = 'collapsed' | 'expanded' | 'closing';
@@ -46,6 +47,7 @@ export default function FloatingQuickCompose({
   onSubmit,
   onCancel,
   loading = false,
+  status = '',
 }: FloatingQuickComposeProps) {
   const expandedRef = useRef<HTMLDivElement | null>(null);
   const [shellPhase, setShellPhase] = useState<ShellPhase>(open ? 'expanded' : 'collapsed');
@@ -254,6 +256,7 @@ export default function FloatingQuickCompose({
                       transition={isClosing ? closingPanelTransition : actionsTransition}
                       className={composeStyles.floatingComposeActions}
                     >
+                      {status && <p role="status">{status}</p>}
                       <div className={composeStyles.floatingComposeHint}>Cmd/Ctrl + Enter 保存</div>
                       <button
                         type="button"

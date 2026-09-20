@@ -70,12 +70,15 @@ function NotesContent() {
   // 新建笔记 Hook
   const {
     newContentText,
-    setNewContentText,
     newContentJson,
-    setNewContentJson,
+    changeContent,
+    discardDraft,
     loading: createLoading,
+    saveState,
+    draftRestored,
+    saveError,
     handleSubmit,
-  } = useCreateNote(createNote, { onError: setError });
+  } = useCreateNote(createNote, { userId: user?.id, onError: setError });
 
   const buildJsonFromPlain = (plainText: string) => {
     const t = plainText || '';
@@ -185,14 +188,13 @@ function NotesContent() {
   }, []);
 
   const handleComposeCancel = useCallback(() => {
-    setNewContentText('');
-    setNewContentJson(null);
+    discardDraft();
     setActiveEditor({ type: 'none' });
-  }, [setNewContentJson, setNewContentText]);
+  }, [discardDraft]);
 
-  const handleComposeSubmit = useCallback(() => {
-    setActiveEditor({ type: 'none' });
-    void handleSubmit();
+  const handleComposeSubmit = useCallback(async () => {
+    const saved = await handleSubmit();
+    if (saved) setActiveEditor({ type: 'none' });
   }, [handleSubmit]);
 
   const handleContentEditingChange = useCallback((id: string, isEditing: boolean) => {
@@ -262,13 +264,11 @@ function NotesContent() {
                     valueJson={newContentJson ?? buildJsonFromPlain(newContentText)}
                     valueText={newContentText}
                     onOpen={openCompose}
-                    onChange={({ json, text }) => {
-                      setNewContentJson(json);
-                      setNewContentText(text);
-                    }}
+                    onChange={changeContent}
                     onSubmit={handleComposeSubmit}
                     onCancel={handleComposeCancel}
                     loading={createLoading}
+                    status={saveError || (draftRestored ? '已恢复上次未保存的草稿。' : saveState === 'saving' ? '正在保存…' : '')}
                   />
                 </div>
                 <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>

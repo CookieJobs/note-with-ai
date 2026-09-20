@@ -9,7 +9,43 @@ const createdNote = {
 };
 
 describe('useCreateNote', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('restores only the signed-in user\'s persisted draft after remount', async () => {
+    localStorage.setItem('quick-capture-draft:user-a', JSON.stringify({
+      version: 1, text: '继续写', json: null,
+    }));
+    localStorage.setItem('quick-capture-draft:user-b', JSON.stringify({
+      version: 1, text: '不该出现', json: null,
+    }));
+    const createNote = vi.fn().mockResolvedValue(createdNote);
+
+    const { result } = renderHook(() => useCreateNote(createNote, { userId: 'user-a' }));
+
+    await act(async () => undefined);
+
+    expect(result.current.newContentText).toBe('继续写');
+    expect(result.current.draftRestored).toBe(true);
+    expect(result.current.localDraftState).toBe('saved');
+  });
+
+  it('falls back to persisted text when rich-text JSON is invalid', async () => {
+    localStorage.setItem('quick-capture-draft:user-a', JSON.stringify({
+      version: 1, text: '保住文字', json: { type: 'not-a-doc' },
+    }));
+    const createNote = vi.fn().mockResolvedValue(createdNote);
+
+    const { result } = renderHook(() => useCreateNote(createNote, { userId: 'user-a' }));
+
+    await act(async () => undefined);
+
+    expect(result.current.newContentText).toBe('保住文字');
+    expect(result.current.newContentJson).toBeNull();
+    expect(result.current.saveError).toContain('格式');
+  });
 
   it('delegates a plain-text compose submission to createNote and clears only after success', async () => {
     const createNote = vi.fn().mockResolvedValue(createdNote);
@@ -70,5 +106,41 @@ describe('useCreateNote', () => {
     expect(onError).toHaveBeenCalledWith('创建失败');
     expect(result.current.newContentText).toBe('仍需重试');
     expect(result.current.newContentJson).toEqual(richText);
+  });
+
+  it('keeps text and reports failed state when saving rejects', async () => {
+    const createNote = vi.fn().mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useCreateNote(createNote, { userId: 'user-a' }));
+
+    act(() => result.current.setNewContentText('不要丢'));
+    await act(async () => {
+      await result.current.handleSubmit();
+    });
+
+    expect(result.current.newContentText).toBe('不要丢');
+    expect(result.current.saveState).toBe('failed');
+    expect(localStorage.getItem('quick-capture-draft:user-a')).toContain('不要丢');
+  });
+
+  it('does not clear text typed after an earlier save began', async () => {
+    let resolveSave: ((note: typeof createdNote) => void) | undefined;
+    const createNote = vi.fn().mockImplementation(() => new Promise<typeof createdNote>((resolve) => {
+      resolveSave = resolve;
+    }));
+    const { result } = renderHook(() => useCreateNote(createNote, { userId: 'user-a' }));
+
+    act(() => result.current.setNewContentText('第一段'));
+    let submit: Promise<boolean> | undefined;
+    act(() => {
+      submit = result.current.handleSubmit();
+    });
+    act(() => result.current.setNewContentText('第一段，继续写'));
+    await act(async () => {
+      resolveSave?.(createdNote);
+      await submit;
+    });
+
+    expect(result.current.newContentText).toBe('第一段，继续写');
+    expect(localStorage.getItem('quick-capture-draft:user-a')).toContain('第一段，继续写');
   });
 });
