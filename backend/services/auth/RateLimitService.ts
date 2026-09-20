@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import crypto from 'crypto';
 import { config } from '../../config';
 import { AppError, ErrorHandler, ErrorType } from '../../utils/errorHandler';
 import { logger } from '../../utils/logger';
@@ -28,6 +29,7 @@ interface RateLimitRule {
 }
 
 let redis: RedisClient | null = null;
+function safeRateLimitKey(key: string): string { return crypto.createHash('sha256').update(key).digest('hex').slice(0, 16); }
 let redisFactory: (() => RedisClient) | null = null;
 const fallbackCounters = new Map<string, FallbackCounter>();
 const LOGIN_FAILURE_WINDOW_SECONDS = 300;
@@ -361,8 +363,8 @@ export class RateLimitService {
       }
 
       logger.warn('Redis unavailable for login failure window, switching to in-memory fallback', {
-        emailKey,
-        ipKey,
+        emailKey: safeRateLimitKey(emailKey),
+        ipKey: safeRateLimitKey(ipKey),
         error: error instanceof Error ? error.message : String(error),
       });
       assertFallbackWindowAvailable(emailKey, LOGIN_EMAIL_FAILURE_LIMIT, LOGIN_LOCKED_MESSAGE);
@@ -378,8 +380,8 @@ export class RateLimitService {
       await bumpRedisWindow(ipKey, LOGIN_FAILURE_WINDOW_SECONDS);
     } catch (error) {
       logger.warn('Redis unavailable while recording login failure, using in-memory fallback', {
-        emailKey,
-        ipKey,
+        emailKey: safeRateLimitKey(emailKey),
+        ipKey: safeRateLimitKey(ipKey),
         error: error instanceof Error ? error.message : String(error),
       });
       bumpFallbackWindow(emailKey, LOGIN_FAILURE_WINDOW_SECONDS);
@@ -394,8 +396,8 @@ export class RateLimitService {
       await clearRedisWindows([emailKey, ipKey]);
     } catch (error) {
       logger.warn('Redis unavailable while clearing login failure window, clearing in-memory fallback', {
-        emailKey,
-        ipKey,
+        emailKey: safeRateLimitKey(emailKey),
+        ipKey: safeRateLimitKey(ipKey),
         error: error instanceof Error ? error.message : String(error),
       });
       clearFallbackWindows([emailKey, ipKey]);

@@ -70,7 +70,7 @@ export const login = async (req: Request, res: Response) => {
   }
 
   // 检查用户是否被禁用
-  if (!user.isActive) {
+  if (user.isActive === false) {
     throw ErrorHandler.createAuthorizationError('账号已被禁用');
   }
 

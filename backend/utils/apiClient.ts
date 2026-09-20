@@ -6,17 +6,33 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 */
 // backend/utils/apiClient.ts
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { randomUUID } from 'crypto';
 import { ErrorHandler } from './errorHandler';
 import { logger } from './logger';
+import { aiUsageService, type AiTelemetryContext, type ProviderUsage } from '../services/aiUsageService';
 
-type DeepSeekResponse = {
+export type DeepSeekResponse = {
   choices?: Array<{
     message?: {
       content?: string;
       reasoning_content?: string;
     };
   }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 };
+
+function usageFromResponse(response: DeepSeekResponse | undefined): ProviderUsage {
+  const usage = response?.usage;
+  return {
+    inputTokens: typeof usage?.prompt_tokens === 'number' ? usage.prompt_tokens : null,
+    outputTokens: typeof usage?.completion_tokens === 'number' ? usage.completion_tokens : null,
+    totalTokens: typeof usage?.total_tokens === 'number' ? usage.total_tokens : null,
+  };
+}
 
 /**
  * 通用API客户端配置
@@ -79,10 +95,11 @@ export class ApiClient {
         return response.data;
       } catch (error: unknown) {
         lastError = error;
-        logger.warn(`❌ API请求失败 (尝试 ${attempt}/${this.config.retries}):`, {
+        logger.warn('API request failed', {
           url,
           method,
-          error: (error as Error).message
+          attempt,
+          errorCode: 'EXTERNAL_REQUEST_FAILED',
         });
 
         // 如果不是最后一次尝试，等待后重试
@@ -135,15 +152,14 @@ export class ApiClient {
    * 创建API错误
    */
   private createApiError(error: unknown, endpoint: string): Error {
-    const message = (error as any).response?.data?.message || (error as Error).message || '未知错误';
     const statusCode = (error as any).response?.status;
     
     if (statusCode >= 400 && statusCode < 500) {
-      return ErrorHandler.createValidationError(`API请求错误: ${message}`);
+      return ErrorHandler.createValidationError('API请求错误');
     } else if (statusCode >= 500) {
-      return ErrorHandler.createExternalApiError(`外部服务错误: ${message}`, endpoint);
+      return ErrorHandler.createExternalApiError('外部服务错误', endpoint);
     } else {
-      return ErrorHandler.createExternalApiError(`网络错误: ${message}`, endpoint);
+      return ErrorHandler.createExternalApiError('网络错误', endpoint);
     }
   }
 }
@@ -170,7 +186,11 @@ export class DeepSeekApiClient extends ApiClient {
   /**
    * 聊天完成请求
    */
-  async chatCompletion(messages: { role: string; content: string }[], options: Record<string, unknown> = {}): Promise<string> {
+  async chatCompletion(
+    messages: { role: string; content: string }[],
+    options: Record<string, unknown> = {},
+    telemetry?: AiTelemetryContext,
+  ): Promise<string> {
     const payload = {
       model: 'deepseek-chat',
       messages,
@@ -180,85 +200,101 @@ export class DeepSeekApiClient extends ApiClient {
       ...options
     };
 
-    const response = await this.post<DeepSeekResponse>('/chat/completions', payload);
-    
-    const reply = response.choices?.[0]?.message?.content?.trim();
-    if (!reply) {
-      throw ErrorHandler.createExternalApiError('未收到模型回复', 'DeepSeek');
-    }
-    
-    return reply;
+    const call = async () => {
+      const response = await this.post<DeepSeekResponse>('/chat/completions', payload);
+      const reply = response.choices?.[0]?.message?.content?.trim();
+      if (!reply) throw ErrorHandler.createExternalApiError('未收到模型回复', 'DeepSeek');
+      return { value: reply, usage: usageFromResponse(response) };
+    };
+    return aiUsageService.run(
+      telemetry ?? { requestId: randomUUID(), operation: 'chat' },
+      { provider: 'deepseek', model: String(payload.model) },
+      call,
+    );
   }
 
   /**
    * 流式聊天完成请求
    * 使用原生 fetch 代替 axios，确保 DeepSeek SSE 数据流逐 chunk 返回，不被缓冲
    */
-  async *chatCompletionStream(messages: { role: string; content: string }[], options: Record<string, unknown> = {}): AsyncIterable<string> {
+  async *chatCompletionStream(
+    messages: { role: string; content: string }[],
+    options: Record<string, unknown> = {},
+    telemetry?: AiTelemetryContext,
+  ): AsyncIterable<string> {
     const payload = {
       model: 'deepseek-chat',
       messages,
       temperature: 0.7,
       max_tokens: 1024,
       stream: true,
-      ...options
+      ...options,
+      stream_options: { include_usage: true },
     };
 
-    // 使用原生 fetch 获取真正的流式响应（Node 18+ 原生支持）
-    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      throw ErrorHandler.createExternalApiError(
-        `API请求错误 (${response.status}): ${errorText || response.statusText}`,
-        'DeepSeek'
-      );
-    }
-
-    if (!response.body) {
-      throw ErrorHandler.createExternalApiError('未收到流式响应 body', 'DeepSeek');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+    const recorder = aiUsageService.createStreamingRecorder(
+      telemetry ?? { requestId: randomUUID(), operation: 'chat' },
+      { provider: 'deepseek', model: String(payload.model) },
+    );
+    let finished = false;
+    let lastUsage: ProviderUsage | undefined;
 
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // 使用原生 fetch 获取真正的流式响应（Node 18+ 原生支持）
+      const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // 最后一行可能不完整，存入 buffer
+      if (!response.ok) throw ErrorHandler.createExternalApiError(`API请求错误 (${response.status})`, 'DeepSeek');
 
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
+      if (!response.body) throw ErrorHandler.createExternalApiError('未收到流式响应 body', 'DeepSeek');
 
-          const data = trimmedLine.slice(6).trim();
-          if (data === '[DONE]') return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
 
-          try {
-            const json = JSON.parse(data);
-            const content = json.choices?.[0]?.delta?.content;
-            if (content) {
-              yield content;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { finished = true; break; }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // 最后一行可能不完整，存入 buffer
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
+
+            const data = trimmedLine.slice(6).trim();
+            if (data === '[DONE]') { finished = true; return; }
+
+            try {
+              const json = JSON.parse(data);
+              lastUsage = usageFromResponse(json as DeepSeekResponse);
+              const content = json.choices?.[0]?.delta?.content;
+              if (content) {
+                yield content;
+              }
+            } catch {
+              // Ignore malformed SSE data; it is not persisted or logged.
             }
-          } catch (e) {
-            // 忽略解析错误，可能是数据不完整
           }
         }
+      } finally {
+        reader.releaseLock();
       }
+    } catch (error) {
+      await recorder.failed(error);
+      throw error;
     } finally {
-      reader.releaseLock();
+      if (finished) await recorder.succeeded(lastUsage);
+      else await recorder.aborted();
     }
   }
 

@@ -3,6 +3,7 @@ import { Note } from '../models/Note';
 import { IChat, IMessage, IRelatedNote } from '../types';
 import { ErrorHandler } from '../utils/errorHandler';
 import { chatWithDeepSeekStream, summarizeChatTitle, chatWithDeepSeek } from './llmService';
+import { AiUsageService } from './aiUsageService';
 import mongoose from 'mongoose';
 
 type RelatedNoteRecord = Omit<IRelatedNote, 'noteId'> & {
@@ -158,7 +159,7 @@ class ChatService {
   /**
    * Stream chat response from DeepSeek
    */
-  async streamChat(messages: IMessage[]): Promise<AsyncIterable<string>> {
+  async streamChat(messages: IMessage[], userId?: string): Promise<AsyncIterable<string>> {
     // Sanitize messages
     const cleanedMessages = messages
       .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -168,13 +169,13 @@ class ChatService {
        throw ErrorHandler.createValidationError('有效消息为空');
     }
 
-    return chatWithDeepSeekStream(cleanedMessages);
+    return chatWithDeepSeekStream(cleanedMessages, AiUsageService.newContext('chat', userId));
   }
 
   /**
    * Generate a title summary for a chat
    */
-  async summarizeTitle(userContent: string, aiContent: string): Promise<string> {
+  async summarizeTitle(userContent: string, aiContent: string, userId?: string): Promise<string> {
     const userText = (userContent ?? '').toString().trim();
     const aiText = (aiContent ?? '').toString().trim();
 
@@ -183,7 +184,7 @@ class ChatService {
     }
 
     const prompt = userText && aiText ? `用户: ${userText}\nAI: ${aiText}` : (userText || aiText);
-    return await summarizeChatTitle(prompt);
+    return await summarizeChatTitle(prompt, userId);
   }
 
   /**
@@ -224,7 +225,7 @@ class ChatService {
         const aiOpening = await chatWithDeepSeek([
           { role: 'system', content: '你是一个富有洞察力且善于启发的思想伙伴。你的目标是通过回顾用户过去的笔记片段，提出一个有深度、能引发思考或激发表达欲的问题。尝试寻找片段背后的情绪、动机或潜在关联，而不仅仅是表面问候。' },
           { role: 'user', content: prompt }
-        ]);
+        ], AiUsageService.newContext('care_intro', userId));
         return {
           noteId: randomNote._id.toString(),
           noteTitle: randomNote.title,
@@ -249,7 +250,7 @@ class ChatService {
       const aiOpening = await chatWithDeepSeek([
         { role: 'system', content: system },
         { role: 'user', content: userMsg }
-      ]);
+      ], AiUsageService.newContext('care_intro', userId));
       return {
         noteId: randomNote._id.toString(),
         noteTitle: randomNote.title,

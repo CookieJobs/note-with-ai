@@ -1,6 +1,7 @@
 import { IMessage } from '../types';
 import { chatRelatedNoteRecallService } from './chatRelatedNoteRecallService';
 import { chatService } from './chatService';
+import { trackProductEventBestEffort } from './productEventService';
 
 type SessionSnapshot = ReturnType<typeof chatService.formatSession>;
 
@@ -38,7 +39,7 @@ class ChatTurnCommitService {
     onChunk,
     onAborted,
   }: StreamAndCommitInput): Promise<StreamAndCommitResult> {
-    const stream = await chatService.streamChat(messages);
+    const stream = await chatService.streamChat(messages, userId);
     let fullReply = '';
     let aborted = false;
 
@@ -75,7 +76,7 @@ class ChatTurnCommitService {
 
     const [nextTitle, relatedNotes] = await Promise.all([
       userText && fullReply.trim()
-        ? chatService.summarizeTitle(userText, fullReply).catch(() => title)
+        ? chatService.summarizeTitle(userText, fullReply, userId).catch(() => title)
         : Promise.resolve(title),
       chatRelatedNoteRecallService.recallFromMessages({
         userId,
@@ -90,6 +91,7 @@ class ChatTurnCommitService {
       nextTitle || title,
       relatedNotes,
     );
+    trackProductEventBestEffort({ name: 'chat_turn_committed', userId, source: 'server', properties: {} });
 
     return {
       fullReply,

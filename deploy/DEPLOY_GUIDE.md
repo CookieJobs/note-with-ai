@@ -1,167 +1,71 @@
-# NoteWithAI 部署与更新指南
+# NoteWithAI 安全部署指南
 
-本文档包含将代码更新到服务器以及在服务器上进行操作的详细步骤。
+此发布使用同机 Docker MongoDB（服务名 `mongo`）和 Redis；部署不会清空数据库或 Docker volume。管理员后台仅在 HTTPS 生效后使用，入口为 `https://bloomy16.com/admin`。
 
-## 📋 目录
-1. [代码更新流程](#1-代码更新流程)
-2. [服务器操作指南](#2-服务器操作指南)
-3. [Nginx 配置修复特别指南](#3-nginx-配置修复特别指南)
+## 发布前
 
----
+在服务器 `/root/note-with-ai/.env` 保留既有业务变量，并设置下列键。密钥只能保存在服务器 `.env`，不要提交、复制到终端记录或发送到聊天：
 
-## 1. 代码更新流程
-
-在本地电脑上完成代码修改后，需要将其推送到代码仓库，然后在服务器上拉取。
-
-### 第一步：提交代码 (本地)
-打开终端，在项目根目录下执行：
-
-```bash
-# 1. 添加所有修改
-git add .
-
-# 2. 提交修改 (写一个有意义的备注)
-git commit -m "修复 Nginx 配置问题"
-
-# 3. 推送到远程仓库 (例如 GitHub/GitLab)
-git push
+```dotenv
+ALLOWED_ORIGINS=https://bloomy16.com
+ADMIN_JWT_SECRET=<independent-random-secret>
+ADMIN_JWT_EXPIRES_IN=8h
+ADMIN_ENCRYPTION_KEY=<base64-encoded-32-byte-key>
 ```
 
-### 第二步：登录服务器
-使用 SSH 登录你的远程服务器：
+生成 `ADMIN_ENCRYPTION_KEY`：`openssl rand -base64 32`。`ADMIN_JWT_SECRET` 必须与普通 `JWT_SECRET` 不同。保留已有的 OpenRouter 和 embedding 变量，因为后台会读取无内容的聚合指标。
+
+## 备份、构建和切换
+
+先创建带时间戳的目录，备份当前提交、镜像、`.env`、`docker-compose.yml` 及 MongoDB archive。然后 `git fetch origin codex/admin-production-release`，校验 fetched commit，再以 detached HEAD 切换到该 commit；不要用 `git reset`，也不要覆盖服务器上已有的 Compose 变量。
+
+切换后运行：
 
 ```bash
-# 请将 your_server_ip 替换为你的服务器 IP (例如 47.118.16.95)
-# 如果有特定的用户名 (如 root)，请使用 ssh root@your_server_ip
-ssh root@47.118.16.95
-```
-
-### 第三步：拉取最新代码 (服务器)
-登录成功后，进入你的项目目录并拉取代码：
-
-```bash
-# 1. 进入项目目录 (根据你的实际部署路径，可能是 /var/www/noteWithAI 或 ~/noteWithAI)
-cd /path/to/your/project/noteWithAI
-
-# 2. 拉取最新代码
-git pull
-```
-
-### 第四步：重建服务 (如果修改了代码)
-如果你修改了前端或后端的代码 (JS/TS 文件)，需要重建 Docker 容器：
-
-```bash
-# 停止并删除旧容器
-docker compose down
-
-# 重新构建并启动 (后台运行)
+docker compose config
 docker compose up -d --build
-```
-> **提示**: 如果只是修改 Nginx 配置，不需要执行这一步。
-
-### 低内存服务器构建说明
-前端 Docker 构建默认使用较保守的参数，避免 Next.js 在低配服务器上卡在 `Creating an optimized production build ...`：
-
-```bash
-FRONTEND_NODE_BUILD_MEMORY=768
-FRONTEND_NEXT_BUILD_WORKERS=1
-```
-
-如果服务器内存充足，可以在项目根目录 `.env` 中调高，例如：
-
-```bash
-FRONTEND_NODE_BUILD_MEMORY=1536
-FRONTEND_NEXT_BUILD_WORKERS=2
-```
-
-如果仍然卡住，先保持 `FRONTEND_NEXT_BUILD_WORKERS=1`，再按服务器实际内存逐步调整 `FRONTEND_NODE_BUILD_MEMORY`。
-
----
-
-## 2. 服务器操作指南
-
-以下是一些常用的服务器维护命令。
-
-### 查看服务状态
-```bash
-# 查看所有容器运行状态
 docker compose ps
-
-# 查看实时日志 (按 Ctrl+C 退出)
-docker compose logs -f
+curl -fsS http://127.0.0.1:3001/api/health
 ```
 
-### 重启特定服务
-```bash
-# 只重启后端
-docker compose restart backend
-
-# 只重启前端
-docker compose restart frontend
-```
-
----
-
-## 3. Nginx 配置修复特别指南
-
-针对你当前遇到的 `404 Not Found` 问题，这是修复步骤。
-
-### 第一步：找到 Nginx 配置文件
-通常 Nginx 配置文件位于 `/etc/nginx/sites-enabled/` 目录下。
+确认健康检查和容器状态后，再创建首位 owner。使用已编译的 CLI，而不是 `ts-node`：
 
 ```bash
-# 进入配置目录
-cd /etc/nginx/sites-enabled/
-
-# 列出文件，找到你的配置文件 (可能是 default 或 bloomy16.com)
-ls
+docker compose exec -T \
+  -e ADMIN_CREATE_EMAIL='<owner-email>' \
+  -e ADMIN_CREATE_DISPLAY_NAME='<owner-display-name>' \
+  -e ADMIN_CREATE_PASSWORD='<new-strong-password>' \
+  -e ADMIN_CREATE_ROLE=owner \
+  backend node dist/scripts/create_admin.js
 ```
 
-### 第二步：编辑配置文件
-假设你的配置文件名为 `bloomy16.com` (如果没有，可能在 `default` 中)：
+该命令的 provisioning URI 仅在受控终端中显示；立即导入受信任的 TOTP 应用，安全交付密码，并避免在 shell history、日志或 Git 中保留两者。
 
-```bash
-# 使用 nano 编辑器打开文件 (比 vim 更容易上手)
-nano bloomy16.com
-# 或者
-nano default
-```
+## HTTPS
 
-### 第三步：修改内容
-找到 `location /api/` 部分，参考 `deploy/nginx.conf.example` 进行修改。
+先安装 Nginx 和 Certbot。**证书文件尚不存在时，不要直接启用 `deploy/nginx.conf.example` 的 TLS server**；先保留当前可用 HTTP server，或仅配置下面的 HTTP bootstrap server，完成签发后再复制完整模板：
 
-**修改前 (错误)**:
 ```nginx
-location /api/ {
-    proxy_pass http://localhost:3001/;  # <--- 注意这个斜杠
+server {
+    listen 80;
+    server_name bloomy16.com;
+    location ^~ /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { proxy_pass http://127.0.0.1:3000; }
 }
 ```
 
-**修改后 (正确)**:
-```nginx
-location /api/ {
-    proxy_pass http://localhost:3001/api/; # <--- 明确加上 /api/
-    # 其他配置保持不变...
-}
-```
-
-### 第四步：保存并退出 (Nano 编辑器)
-1. 按 `Ctrl + O` (保存)
-2. 按 `Enter` (确认文件名)
-3. 按 `Ctrl + X` (退出编辑器)
-
-### 第五步：验证并重启 Nginx
-在修改生效前，必须检查配置语法是否正确：
-
 ```bash
-# 1. 检查语法
-sudo nginx -t
-
-# 如果显示 "syntax is ok" 和 "test is successful"，则继续。
-# 如果报错，请重新检查配置文件。
-
-# 2. 重启 Nginx 使配置生效
-sudo systemctl reload nginx
+mkdir -p /var/www/certbot
+nginx -t && systemctl reload nginx
+certbot certonly --webroot -w /var/www/certbot -d bloomy16.com \
+  --email '<renewal-contact-email>' --agree-tos --non-interactive
+cp deploy/nginx.conf.example /etc/nginx/sites-available/default
+nginx -t && systemctl reload nginx
+curl -I https://bloomy16.com/admin
 ```
 
-🎉 **完成！** 现在再次访问网站尝试登录。
+确认 `certbot renew --dry-run` 成功，并检查系统定时续期服务。
+
+## 回滚
+
+停止前记录正在运行的镜像。若发布失败，恢复备份的 `.env` 和 Compose 文件，切换回备份 commit，使用原镜像或 `docker compose up -d --build` 恢复服务。数据库只在确认需要时才从 MongoDB archive 恢复；一般代码回滚不应恢复数据库。
