@@ -13,6 +13,7 @@ import { runProductionNoteEnrichmentTask, type EnrichmentTaskStatus } from '../s
 import { authenticateToken } from '../middleware/auth';
 import { UserValidator, ResourceValidator } from '../utils/userValidation';
 import { asyncHandler, ResponseHandler, ErrorHandler } from '../utils/errorHandler';
+import { relatedNoteSummaryService } from '../services/relatedNoteSummaryService';
 
 const router = express.Router();
 
@@ -50,6 +51,14 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   const articles = await searchArticlesByKeyword(topKeywords);
 
   return ResponseHandler.success(res, { keywords: topKeywords, articles });
+}));
+
+router.get('/notes/:noteId', authenticateToken, asyncHandler(async (req, res) => {
+  const user = await UserValidator.authenticateUser(req);
+  const noteId = typeof req.params.noteId === 'string' ? req.params.noteId : '';
+  if (!noteId) throw ErrorHandler.createValidationError('noteId 不能为空');
+  const notes = await relatedNoteSummaryService.list(user._id.toString(), noteId);
+  ResponseHandler.success(res, { notes }, '获取关联笔记成功');
 }));
 
 /**

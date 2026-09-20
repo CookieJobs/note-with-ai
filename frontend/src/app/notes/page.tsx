@@ -145,30 +145,6 @@ function NotesContent() {
     };
   }, [highlightId, notes]);
 
-    useEffect(() => {
-      let cancelled = false;
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-      const warmUpEditor = () => {
-        if (cancelled) return;
-        preloadRichTextEditor();
-      };
-
-      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        const idleId = window.requestIdleCallback(warmUpEditor, { timeout: 1200 });
-        return () => {
-          cancelled = true;
-          window.cancelIdleCallback(idleId);
-        };
-      }
-
-      timeoutId = setTimeout(warmUpEditor, 350);
-      return () => {
-        cancelled = true;
-        if (timeoutId) clearTimeout(timeoutId);
-      };
-    }, []);
-
   const handleDraftChange = (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => {
     setDrafts((prev) => {
       if (!draft.dirty) {
