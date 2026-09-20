@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Note } from '../hooks/useNotes';
 import { getRecommendCacheState, hasCandidateS1 } from '../utils/recommendCache';
+import { authFetch } from '../../../utils/auth';
 
 interface RelatedNotesDrawerProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export default function RelatedNotesDrawer({
 }: RelatedNotesDrawerProps) {
   const router = useRouter();
   const [refreshState, setRefreshState] = useState<'idle' | 'refreshing' | 'success' | 'error'>('idle');
+  const [remoteRelated, setRemoteRelated] = useState<RelatedNoteItem[] | null>(null);
   const lastAttemptKeyRef = useRef<string | null>(null);
 
   const currentNote = useMemo(
@@ -46,6 +48,31 @@ export default function RelatedNotesDrawer({
     }
     setRefreshState('idle');
   }, [selectedNoteId, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !selectedNoteId) {
+      setRemoteRelated(null);
+      return;
+    }
+    let cancelled = false;
+    const requestKey = selectedNoteId;
+    void authFetch(`/api/recommend/notes/${encodeURIComponent(requestKey)}`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('关联笔记读取失败');
+        const payload = await response.json();
+        if (!Array.isArray(payload?.data?.notes) || cancelled) return;
+        setRemoteRelated(payload.data.notes.map((item: any) => ({
+          id: String(item.noteId),
+          note: { _id: String(item.noteId), title: item.title, contentText: item.contentText, content: item.contentText } as Note,
+          s1: typeof item.s1 === 'number' ? item.s1 : null,
+          s2: typeof item.s2 === 'number' ? item.s2 : 0,
+          finalScore: (typeof item.s1 === 'number' ? item.s1 * 0.3 : 0) + (typeof item.s2 === 'number' ? item.s2 * 0.7 : 0),
+          type: item.type || '', reason: item.reason || '',
+        })));
+      })
+      .catch(() => { if (!cancelled) setRemoteRelated([]); });
+    return () => { cancelled = true; };
+  }, [isOpen, selectedNoteId]);
 
   useEffect(() => {
     if (!isOpen || !currentNote || !onRefreshRecommendCache || !cacheState.needsRefresh) return;
@@ -82,7 +109,7 @@ export default function RelatedNotesDrawer({
   }, [cacheState.needsRefresh, cacheState.status, currentNote, isOpen, onRefreshRecommendCache]);
 
   // 直接利用本地缓存中的大模型打分进行关联推荐，无需发网络请求
-  const relatedNotes = useMemo(() => {
+  const localRelatedNotes = useMemo(() => {
     if (!currentNote || !currentNote.recommendCache?.byCandidateId) {
       return [];
     }
@@ -119,6 +146,7 @@ export default function RelatedNotesDrawer({
 
     return related;
   }, [allNotes, currentNote]);
+  const relatedNotes = remoteRelated ?? localRelatedNotes;
 
   const showRefreshingMessage = refreshState === 'refreshing';
   const showRefreshSuccess = refreshState === 'success' && cacheState.status !== 'current-empty';
