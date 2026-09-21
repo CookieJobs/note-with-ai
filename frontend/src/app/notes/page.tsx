@@ -12,6 +12,7 @@ import ModernNoteCard from './components/ModernNoteCard';
 import FloatingQuickCompose from './components/FloatingQuickCompose';
 import RelatedNotesDrawer from './components/RelatedNotesDrawer';
 import NotesLoadMoreFooter from './components/NotesLoadMoreFooter';
+import NoteCounter from './components/NoteCounter';
 import { preloadRichTextEditor } from './components/richTextEditorLoader';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
@@ -252,6 +253,7 @@ function NotesContent() {
                   />
                 </div>
                 <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
+                  <NoteCounter count={notes.length} />
                   {notes.map((note) => (
                     <motion.div
                       layout={note._id !== editingNoteId}
@@ -277,7 +279,6 @@ function NotesContent() {
                   ))}
                   {notes.length > 0 && (
                     <NotesLoadMoreFooter
-                      displayedCount={notes.length}
                       hasMore={hasMoreNotes}
                       isLoading={isLoadingMore}
                       error={loadMoreError ?? undefined}
