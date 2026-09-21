@@ -16,9 +16,6 @@ interface RelatedNotesDrawerProps {
 interface RelatedNoteItem {
   id: string;
   note: Note;
-  s1: number | null;
-  s2: number | null;
-  finalScore: number | null;
   type: string;
   reason: string;
 }
@@ -65,9 +62,6 @@ export default function RelatedNotesDrawer({
         setRemoteRelated(summaries.map((item) => ({
           id: item.noteId,
           note: { _id: item.noteId, title: item.title, contentText: item.contentText, content: item.contentText } as Note,
-          s1: null,
-          s2: null,
-          finalScore: null,
           type: item.type,
           reason: item.reason,
         })));
@@ -110,7 +104,8 @@ export default function RelatedNotesDrawer({
     };
   }, [cacheState.needsRefresh, cacheState.status, currentNote, isOpen, onRefreshRecommendCache]);
 
-  // 直接利用本地缓存中的大模型打分进行关联推荐，无需发网络请求
+  // The current cached relation can be shown while the independent summary
+  // request is in flight, but its ranking diagnostics are never user-facing.
   const localRelatedNotes = useMemo(() => {
     if (!currentNote || !currentNote.recommendCache?.byCandidateId) {
       return [];
@@ -118,35 +113,28 @@ export default function RelatedNotesDrawer({
 
     const byCandidateId = currentNote.recommendCache.byCandidateId;
     
-    // 提取并过滤已经被删除的笔记
-    const candidates: RelatedNoteItem[] = Object.entries(byCandidateId)
-      .map(([id, data]: [string, any]) => {
+    const candidates = Object.entries(byCandidateId)
+      .flatMap(([id, data]: [string, any]) => {
         const note = allNotes.find(n => String(n._id) === String(id));
-        const s1 = hasCandidateS1(data) ? Number(data.s1) : null;
-        const s2 = data.s2 || 0;
-        // 最终融合得分计算公式：0.3 * s1 + 0.7 * s2
-        const finalScore = 0.3 * (s1 ?? 0) + 0.7 * s2;
+        const s1 = hasCandidateS1(data) ? Number(data.s1) : 0;
+        const s2 = Number(data.s2 || 0);
+        const passesExistingThreshold = s2 >= 0.7;
+        if (!note || !passesExistingThreshold || data.type === '弱关联') return [];
+        return [{
+          item: {
+            id,
+            note,
+            type: data.type || '',
+            reason: data.reason || ''
+          },
+          rankScore: 0.3 * s1 + 0.7 * s2,
+        }];
+      });
 
-        return {
-          id,
-          note: note as Note,
-          s1,
-          s2,
-          finalScore,
-          type: data.type || '',
-          reason: data.reason || ''
-        };
-      })
-      .filter(item => item.note != null);
-
-    // 按照最终融合得分降序排列，只展示大模型得分较高且不为“弱关联”的笔记，取前 5 篇
-    // 提高门槛：s2 必须大于等于 0.7 才能被视为强相关
-    const related = candidates
-      .filter(c => c.s2 >= 0.7 && c.type !== '弱关联')
-      .sort((a, b) => b.finalScore - a.finalScore)
-      .slice(0, 5);
-
-    return related;
+    return candidates
+      .sort((a, b) => b.rankScore - a.rankScore)
+      .slice(0, 5)
+      .map(({ item }) => item);
   }, [allNotes, currentNote]);
   const relatedNotes = remoteRelated ?? localRelatedNotes;
 
@@ -155,8 +143,6 @@ export default function RelatedNotesDrawer({
   const showRefreshError = refreshState === 'error';
   const showLoadingState = relatedNotes.length === 0 && (showRefreshingMessage || cacheState.status === 'missing');
   const showResolvedEmptyState = relatedNotes.length === 0 && !showLoadingState;
-
-  const formatMetric = (value: number | null) => (value == null ? '--' : value.toFixed(2));
 
   return (
     <>
@@ -218,30 +204,13 @@ export default function RelatedNotesDrawer({
                     </span>
                   )}
                 </div>
-                {item.finalScore != null && item.s2 != null && (
-                  <div className="flex items-center gap-3 text-[10px] text-gray-400 font-mono bg-gray-100/50 p-1.5 rounded-lg border border-gray-100">
-                  <div className="flex flex-col">
-                    <span className="text-gray-500 font-semibold text-[11px]">{item.finalScore.toFixed(2)}</span>
-                    <span>综合分</span>
-                  </div>
-                  <div className="w-px h-6 bg-gray-200"></div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-500 font-semibold text-[11px]">{formatMetric(item.s1)}</span>
-                    <span>向量(s1)</span>
-                  </div>
-                  <div className="w-px h-6 bg-gray-200"></div>
-                  <div className="flex flex-col">
-                    <span className="text-gray-500 font-semibold text-[11px]">{item.s2.toFixed(2)}</span>
-                    <span>模型(s2)</span>
-                  </div>
-                  </div>
-                )}
                 <div className="text-sm text-gray-600 line-clamp-3">
                   {item.note.contentText || item.note.content || '暂无内容...'}
                 </div>
                 {item.reason && (
                   <div className="mt-2 text-xs text-gray-400 bg-gray-100/50 p-2 rounded-lg leading-relaxed">
-                    💡 {item.reason}
+                    <span className="font-medium text-gray-600">关联理由</span>
+                    <p className="mt-1">{item.reason}</p>
                   </div>
                 )}
               </div>
@@ -251,7 +220,7 @@ export default function RelatedNotesDrawer({
               <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-gray-500" />
               <div className="text-gray-600 font-medium">正在计算相关推荐</div>
               <div className="text-xs text-gray-400 max-w-[220px]">
-                这条笔记的旧缓存正在刷新，稍后会显示最新的向量分数和相关结果
+                正在整理与这条笔记有关的内容，完成后会在这里显示。
               </div>
             </div>
           ) : showResolvedEmptyState ? (
@@ -262,9 +231,9 @@ export default function RelatedNotesDrawer({
                 <circle cx="10" cy="13" r="2"></circle>
                 <line x1="11.4" y1="14.4" x2="15" y2="18"></line>
               </svg>
-              <div className="text-gray-500 font-medium">暂无强相关的笔记内容</div>
+              <div className="text-gray-500 font-medium">暂无关联笔记</div>
               <div className="text-xs text-gray-400 max-w-[200px]">
-                后台可能正在异步计算中，或者该笔记内容尚未达到强关联阈值
+                当前没有可展示的关联内容，之后可以再试一次。
               </div>
             </div>
           ) : null}
