@@ -134,6 +134,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
   const nextCursorRef = useRef<string | null>(null);
   const [hasMoreNotes, setHasMoreNotes] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
   const mergeFetchedNotesWithTemporaryNotes = useCallback((fetched: Note[]): Note[] => {
     const cached = queryClient.getQueryData<Note[]>(NOTES_QUERY_KEY) ?? [];
@@ -439,6 +440,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     if (!cursor || isLoadingMore) return;
     const generation = listGenerationRef.current;
     setIsLoadingMore(true);
+    setLoadMoreError(null);
     try {
       const response = await authFetch(`/api/notes?cursor=${encodeURIComponent(cursor)}`);
       const payload = await response.json();
@@ -451,11 +453,11 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
         return [...cached, ...(payload.data.notes as Note[]).filter((note) => !known.has(note._id))];
       });
     } catch (error) {
-      onError?.(error instanceof Error ? error.message : '加载更多笔记失败');
+      setLoadMoreError(error instanceof Error ? error.message : '加载更多笔记失败');
     } finally {
       setIsLoadingMore(false);
     }
-  }, [commitNotesWrite, isLoadingMore, onError]);
+  }, [commitNotesWrite, isLoadingMore]);
 
   return {
     notes,
@@ -468,5 +470,6 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     loadMoreNotes,
     hasMoreNotes,
     isLoadingMore,
+    loadMoreError,
   };
 }

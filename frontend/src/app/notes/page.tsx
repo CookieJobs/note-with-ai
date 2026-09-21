@@ -11,7 +11,7 @@ import DeleteNoteConfirmModal from './components/DeleteNoteConfirmModal';
 import ModernNoteCard from './components/ModernNoteCard';
 import FloatingQuickCompose from './components/FloatingQuickCompose';
 import RelatedNotesDrawer from './components/RelatedNotesDrawer';
-import NoteCounter from './components/NoteCounter';
+import NotesLoadMoreFooter from './components/NotesLoadMoreFooter';
 import { preloadRichTextEditor } from './components/richTextEditorLoader';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { useCreateNote } from './hooks/useCreateNote';
@@ -68,6 +68,7 @@ function NotesContent() {
     loadMoreNotes,
     hasMoreNotes,
     isLoadingMore,
+    loadMoreError,
   } = useNotes(user, { onError: setError });
 
   // 新建笔记 Hook
@@ -251,14 +252,6 @@ function NotesContent() {
                   />
                 </div>
                 <motion.div layout className={styles.feedList} transition={{ type: 'spring', stiffness: 290, damping: 28, mass: 0.9 }}>
-                  <NoteCounter count={notes.length} />
-
-                  {hasMoreNotes && (
-                    <button type="button" onClick={() => void loadMoreNotes()} disabled={isLoadingMore}>
-                      {isLoadingMore ? '正在加载…' : '加载更多笔记'}
-                    </button>
-                  )}
-
                   {notes.map((note) => (
                     <motion.div
                       layout={note._id !== editingNoteId}
@@ -282,6 +275,15 @@ function NotesContent() {
                       />
                     </motion.div>
                   ))}
+                  {notes.length > 0 && (
+                    <NotesLoadMoreFooter
+                      displayedCount={notes.length}
+                      hasMore={hasMoreNotes}
+                      isLoading={isLoadingMore}
+                      error={loadMoreError ?? undefined}
+                      onLoadMore={() => void loadMoreNotes()}
+                    />
+                  )}
                 </motion.div>
               </div>
 

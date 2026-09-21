@@ -888,4 +888,24 @@ describe('useNotes cursor pagination', () => {
 
     expect(queryClient.getQueryData<Note[]>(['notes'])).toEqual([{ ...canonicalNote, enrichment: canonicalEnrichment }]);
   });
+
+  it('exposes an in-place retryable load-more error without replacing the notes already shown', async () => {
+    authFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { notes: [staleNote], pageInfo: { hasMore: true, nextCursor: 'cursor-1' } },
+        }),
+      })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({ success: false }) });
+    const { queryClient, wrapper } = makeHarness();
+    const { result } = renderHook(() => useNotes(user), { wrapper });
+
+    await waitFor(() => expect(result.current.hasMoreNotes).toBe(true));
+    await act(async () => { await result.current.loadMoreNotes(); });
+
+    expect(result.current.loadMoreError).toBe('加载更多笔记失败');
+    expect(queryClient.getQueryData<Note[]>(['notes'])?.map((note) => note._id)).toEqual(['note-1']);
+  });
 });
