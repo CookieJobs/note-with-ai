@@ -22,6 +22,7 @@ import adminRoutes from './routes/admin';
 import eventRoutes from './routes/events';
 import feedbackRoutes from './routes/feedback';
 import adminFeedbackRoutes from './routes/admin/feedback';
+import inspirationRoutes from './routes/inspirations';
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ app.get('/api/ping', (_, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/inspirations', inspirationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/chat', chatRoutes);
