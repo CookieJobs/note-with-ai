@@ -109,7 +109,7 @@ export default function InspirationPage() {
         </p>
 
         <section className={styles.actionSection} aria-label="手动研究灵感">
-          <button className={styles.researchButton} type="button" onClick={handleResearch} disabled={requesting}>
+          <button className={styles.researchButton} type="button" onClick={handleResearch} disabled={requesting || loading || !user}>
             {requesting ? '正在检索并整理来源…' : '为我研究一条灵感'}
           </button>
           {requesting && <p className={styles.progress} role="status">正在阅读近期主题并检索公开来源，请稍候。</p>}

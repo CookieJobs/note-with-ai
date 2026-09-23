@@ -84,6 +84,9 @@ describe('InspirationPage', () => {
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/auth'));
     expect(mockGetLatestInspiration).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '为我研究一条灵感' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '为我研究一条灵感' }));
+    expect(mockRequestInspiration).not.toHaveBeenCalled();
   });
 
   it('does not expose save, dismiss, history, scheduling, or notification actions', async () => {
