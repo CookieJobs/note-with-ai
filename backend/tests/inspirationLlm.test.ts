@@ -107,4 +107,15 @@ describe('P15 DeepSeek boundary', () => {
       return true;
     });
   });
+
+  it('maps missing DeepSeek configuration to a stable unavailable error without calling the provider', async () => {
+    config.DEEPSEEK_API_KEY = undefined;
+    let called = false;
+
+    await assert.rejects(planResearch([note], 'user-1', async () => {
+      called = true;
+      return '{}';
+    }), { details: { code: 'AI_PROVIDER_UNAVAILABLE' } });
+    assert.equal(called, false);
+  });
 });

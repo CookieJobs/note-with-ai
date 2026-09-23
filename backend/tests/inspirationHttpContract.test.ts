@@ -11,16 +11,20 @@ import { UserValidator } from '../utils/userValidation';
 type CapturedResponse = {
   statusCode: number;
   body: unknown;
+  headers: Record<string, string>;
   status: (code: number) => CapturedResponse;
   json: (body: unknown) => CapturedResponse;
+  setHeader: (name: string, value: string) => CapturedResponse;
 };
 
 function makeResponse(): CapturedResponse {
   return {
     statusCode: 200,
     body: undefined,
+    headers: {},
     status(code) { this.statusCode = code; return this; },
     json(body) { this.body = body; return this; },
+    setHeader(name, value) { this.headers[name] = value; return this; },
   };
 }
 
@@ -68,6 +72,7 @@ describe('P15 inspiration HTTP contract', () => {
     const response = makeResponse();
     const error = await invokeRoute(routeHandler('/', 'post'), { body: { query: 'must be ignored', noteId: 'must be ignored' } }, response);
     assert.equal(error, undefined);
+    assert.equal(response.headers['Cache-Control'], 'no-store');
     assert.deepEqual(response.body, { success: true, message: '研究灵感已生成', data: { status: 'created', item } });
   });
 
@@ -80,6 +85,7 @@ describe('P15 inspiration HTTP contract', () => {
     const response = makeResponse();
     const error = await invokeRoute(routeHandler('/', 'post'), { body: { query: 'unsafe client query' } }, response);
     assert.equal(error, undefined);
+    assert.equal(response.headers['Cache-Control'], 'no-store');
     assert.deepEqual(response.body, { success: true, message: '这次没有找到新灵感', data: { status: 'no_result' } });
   });
 
@@ -104,6 +110,7 @@ describe('P15 inspiration HTTP contract', () => {
     const response = makeResponse();
     const error = await invokeRoute(routeHandler('/latest', 'get'), {}, response);
     assert.equal(error, undefined);
+    assert.equal(response.headers['Cache-Control'], 'no-store');
     assert.deepEqual(response.body, { success: true, message: '获取最新灵感成功', data: { item: null } });
   });
 

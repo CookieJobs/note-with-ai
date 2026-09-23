@@ -93,6 +93,18 @@ describe('P15 inspiration service', () => {
     assert.equal(models.deletedItems.length, 0);
   });
 
+  it('returns no result without calling providers when the user has no usable note metadata', async () => {
+    const models = installModelDoubles([]);
+    const service = createInspirationService({
+      planner: async () => { throw new Error('planner must not run'); },
+      search: async () => { throw new Error('search must not run'); },
+      synthesizer: async () => { throw new Error('synthesis must not run'); },
+    });
+
+    assert.deepEqual(await service.request('user-1'), { status: 'no_result' });
+    assert.equal(models.created.length, 0);
+  });
+
   it('deletes an incomplete result and its registered sources after a duplicate-source race', async () => {
     const models = installModelDoubles([noteFixture], {
       insertSources: async () => { const error = new Error('duplicate') as Error & { code?: number }; error.code = 11000; throw error; },

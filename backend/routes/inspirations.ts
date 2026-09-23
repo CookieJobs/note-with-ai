@@ -13,6 +13,7 @@ import { UserValidator } from '../utils/userValidation';
 const router = express.Router();
 
 router.post('/', authenticateToken, asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const user = await UserValidator.authenticateUser(req);
   const result = await inspirationService.request(user._id.toString());
   ResponseHandler.success(
@@ -23,6 +24,7 @@ router.post('/', authenticateToken, asyncHandler(async (req, res) => {
 }));
 
 router.get('/latest', authenticateToken, asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const user = await UserValidator.authenticateUser(req);
   ResponseHandler.success(
     res,
