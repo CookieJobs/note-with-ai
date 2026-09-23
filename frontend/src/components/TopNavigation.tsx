@@ -10,6 +10,7 @@ import { Menu } from 'lucide-react';
 const menuItems = [
   { label: '笔记', href: '/notes' },
   { label: '聊天', href: '/chat' },
+  { label: '灵感', href: '/inspiration' },
 ];
 
 interface TopNavigationProps {
@@ -20,7 +21,7 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const activeIndex = pathname.startsWith('/chat') ? 1 : 0;
+  const activeIndex = Math.max(0, menuItems.findIndex(({ href }) => pathname === href || pathname.startsWith(`${href}/`)));
 
   useEffect(() => {
     const userData = getUser();

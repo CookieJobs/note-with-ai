@@ -48,4 +48,23 @@ describe('TopNavigation', () => {
     expect(screen.getByRole('link', { name: '笔记' })).toHaveAttribute('href', '/notes');
     expect(screen.getByText('聊天')).toHaveAttribute('aria-current', 'page');
   });
+
+  it('marks inspiration current and keeps notes and chat navigable', () => {
+    mockUsePathname.mockReturnValue('/inspiration');
+
+    render(<TopNavigation />);
+
+    expect(screen.getByText('灵感')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: '笔记' })).toHaveAttribute('href', '/notes');
+    expect(screen.getByRole('link', { name: '聊天' })).toHaveAttribute('href', '/chat');
+  });
+
+  it('keeps the inspiration navigation active on its child routes', () => {
+    mockUsePathname.mockReturnValue('/inspiration/example');
+
+    render(<TopNavigation />);
+
+    expect(screen.getByRole('link', { name: '灵感' })).toHaveAttribute('href', '/inspiration');
+    expect(document.querySelector('nav')).toHaveAttribute('data-active-index', '2');
+  });
 });
