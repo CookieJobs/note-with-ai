@@ -42,6 +42,18 @@ export async function chatWithDeepSeek(
   }, telemetry);
 }
 
+export async function chatWithDeepSeekJson(
+  messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
+  telemetry: AiTelemetryContext,
+  maxTokens: number,
+): Promise<string> {
+  return getDeepSeekClient().chatCompletion(messages, {
+    temperature: 0.1,
+    max_tokens: maxTokens,
+    response_format: { type: 'json_object' },
+  }, telemetry);
+}
+
 /**
  * 与 DeepSeek 聊天模型流式对话
  */

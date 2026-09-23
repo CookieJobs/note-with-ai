@@ -25,6 +25,17 @@ function assertNoForbiddenKeys(value: unknown): void {
 describe('AiUsageService', () => {
   afterEach(() => mock.restoreAll());
 
+  it('accepts P15 planning and synthesis operations in the persisted telemetry schema', async () => {
+    const { AiUsageEvent } = require('../models/AiUsageEvent') as typeof import('../models/AiUsageEvent');
+    for (const operation of ['inspiration_plan', 'inspiration_synthesis'] as const) {
+      const event = new AiUsageEvent({
+        requestId: `req-${operation}`, provider: 'deepseek', model: 'deepseek-chat', operation,
+        status: 'succeeded', startedAt: new Date(), finishedAt: new Date(), durationMs: 1,
+      });
+      await assert.doesNotReject(event.validate());
+    }
+  });
+
   it('writes one content-free succeeded event with provider usage and micro-CNY cost', async () => {
     const { AiUsageEvent } = require('../models/AiUsageEvent') as typeof import('../models/AiUsageEvent');
     const { AiUsageService } = require('../services/aiUsageService') as typeof import('../services/aiUsageService');
