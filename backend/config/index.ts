@@ -29,6 +29,11 @@ const envSchema = z.object({
   // DeepSeek API 配置
   DEEPSEEK_API_KEY: z.string().optional(),
 
+  // Tavily Search API 配置（仅后端）
+  TAVILY_API_KEY: z.string().min(1).optional(),
+  TAVILY_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(20_000).default(8_000),
+  TAVILY_SEARCH_LANGUAGE: z.string().trim().min(2).max(20).default('zh'),
+
   // Legacy DashScope API 配置
   DASHSCOPE_API_KEY: z.string().optional(),
 
