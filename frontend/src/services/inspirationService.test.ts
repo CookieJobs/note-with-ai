@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { mockAuthFetch } = vi.hoisted(() => ({ mockAuthFetch: vi.fn() }));
 vi.mock('../utils/auth', () => ({ authFetch: mockAuthFetch }));
 
-import { getLatestInspiration, InspirationApiError, requestInspiration } from './inspirationService';
+import { changeInspirationState, getInspirationSettings, getLatestInspiration, InspirationApiError, listInspirations, requestInspiration, setInspirationEnabled } from './inspirationService';
 
 describe('inspirationService', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -34,8 +34,36 @@ describe('inspirationService', () => {
     const item = { id: 'i1', topicLabel: '知识管理', headline: '整理方法', brief: '摘要【1】', whyRelevant: '相关', nextQuestion: '下一步？', sources: [], createdAt: '2026-09-22' };
     mockAuthFetch.mockResolvedValue(new Response(JSON.stringify({ success: true, data: { item, internalQuery: 'hidden' } }), { status: 200 }));
 
-    await expect(getLatestInspiration()).resolves.toEqual(item);
+    await expect(getLatestInspiration()).resolves.toEqual({ ...item, userState: 'regular', origin: 'manual', viewedAt: null });
     expect(mockAuthFetch).toHaveBeenCalledWith('/api/inspirations/latest');
+  });
+
+  it('loads a safe paged history with legacy defaults and a cursor', async () => {
+    const item = { id: 'i1', topicLabel: '主题', headline: '研究标题', brief: '摘要', whyRelevant: '关联', nextQuestion: '下一步', sources: [], createdAt: '2026-09-22T00:00:00Z', internalQuery: 'private query' };
+    mockAuthFetch.mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [item], nextCursor: 'next-page' } }), { status: 200 }));
+    await expect(listInspirations('recent', null)).resolves.toEqual({ items: [{ ...item, internalQuery: undefined, userState: 'regular', origin: 'manual', viewedAt: null }].map(({ internalQuery, ...safe }) => safe), nextCursor: 'next-page' });
+    expect(mockAuthFetch).toHaveBeenCalledWith('/api/inspirations?view=recent');
+  });
+
+  it('sends only the requested state operation', async () => {
+    const item = { id: 'i1', topicLabel: '主题', headline: '研究标题', brief: '摘要', whyRelevant: '关联', nextQuestion: '下一步', sources: [], createdAt: '2026-09-22T00:00:00Z', userState: 'saved' };
+    mockAuthFetch.mockResolvedValue(new Response(JSON.stringify({ success: true, data: { item } }), { status: 200 }));
+    await expect(changeInspirationState('i1', 'save')).resolves.toMatchObject({ userState: 'saved' });
+    expect(mockAuthFetch).toHaveBeenCalledWith('/api/inspirations/i1/user-state', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'save' }),
+    });
+  });
+
+  it('reads and changes the explicit opt-in setting without calling research', async () => {
+    const settings = { enabled: false, consentedAt: null, nextEligibleAt: null, lastAttemptAt: null, lastStatus: null };
+    mockAuthFetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: settings }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { ...settings, enabled: true } }), { status: 200 }));
+    await expect(getInspirationSettings()).resolves.toEqual(settings);
+    await expect(setInspirationEnabled(true)).resolves.toMatchObject({ enabled: true });
+    expect(mockAuthFetch).toHaveBeenNthCalledWith(1, '/api/inspirations/settings');
+    expect(mockAuthFetch).toHaveBeenNthCalledWith(2, '/api/inspirations/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }),
+    });
   });
 
   it('uses a safe fallback for malformed JSON', async () => {

@@ -1,15 +1,20 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import TopNavigation from '../../components/TopNavigation';
 import {
-  getLatestInspiration,
+  changeInspirationState,
+  getInspiration,
   InspirationApiError,
+  listInspirations,
+  markInspirationViewed,
   requestInspiration,
   type InspirationApiError as InspirationApiErrorType,
   type InspirationErrorCode,
   type InspirationItem,
+  type InspirationStateOperation,
+  type InspirationView,
   type RequestInspirationResult,
 } from '../../services/inspirationService';
 import { getUser, isAuthenticated } from '../../utils/auth';
@@ -56,26 +61,130 @@ function renderBrief(brief: string, item: InspirationItem) {
   });
 }
 
+type HistoryPage = { items: InspirationItem[]; nextCursor: string | null; loaded: boolean };
+const emptyPage = (): HistoryPage => ({ items: [], nextCursor: null, loaded: false });
+const viewLabels: Record<InspirationView, string> = { recent: '最近', saved: '已保存', dismissed: '已忽略' };
+const views: InspirationView[] = ['recent', 'saved', 'dismissed'];
+
+function belongsInView(item: InspirationItem, view: InspirationView): boolean {
+  return view === 'recent' ? item.userState !== 'dismissed' : item.userState === view;
+}
+
+function updatePages(pages: Record<InspirationView, HistoryPage>, changed: InspirationItem): Record<InspirationView, HistoryPage> {
+  return Object.fromEntries(views.map((view) => {
+    const page = pages[view];
+    if (!page.loaded) return [view, page];
+    const existing = page.items.filter((entry) => entry.id !== changed.id);
+    return [view, { ...page, items: belongsInView(changed, view) ? [changed, ...existing] : existing }];
+  })) as Record<InspirationView, HistoryPage>;
+}
+
 export default function InspirationPage() {
   const router = useRouter();
   const user = useAuthGuard({ isAuthenticated, getUser, routerPush: router.push, redirectTo: '/auth' });
   const [item, setItem] = useState<InspirationItem | null>(null);
+  const [view, setView] = useState<InspirationView>('recent');
+  const [pages, setPages] = useState<Record<InspirationView, HistoryPage>>({ recent: emptyPage(), saved: emptyPage(), dismissed: emptyPage() });
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [requesting, setRequesting] = useState(false);
+  const [organizing, setOrganizing] = useState(false);
   const [message, setMessage] = useState<{ kind: 'error' | 'empty'; text: string } | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const loadingViews = useRef(new Set<InspirationView>());
 
   useEffect(() => {
     if (!user) return;
     let active = true;
     setLoading(true);
-    getLatestInspiration()
-      .then((latest) => { if (active) setItem(latest); })
+    listInspirations('recent', null)
+      .then((first) => {
+        if (!active) return;
+        setPages((previous) => ({ ...previous, recent: { ...first, loaded: true } }));
+        const newest = first.items[0];
+        if (newest) {
+          setItem(newest);
+          if (!newest.viewedAt) void markInspirationViewed(newest.id).then((viewed) => {
+            if (active) { setItem(viewed); setPages((previous) => updatePages(previous, viewed)); }
+          }).catch(() => undefined);
+        }
+      })
       .catch((error: InspirationApiErrorType) => {
-        if (active) setMessage({ kind: 'error', text: messageForInspirationError(error) });
+        if (active) setHistoryError(`加载失败，请重试。${messageForInspirationError(error)}`);
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [user]);
+
+  const loadView = async (nextView: InspirationView) => {
+    setView(nextView);
+    setHistoryError(null);
+    if (pages[nextView].loaded || loadingViews.current.has(nextView)) return;
+    loadingViews.current.add(nextView);
+    setListLoading(true);
+    try {
+      const result = await listInspirations(nextView, null);
+      setPages((previous) => ({ ...previous, [nextView]: { ...result, loaded: true } }));
+    } catch {
+      setHistoryError('加载失败，请重试。');
+    } finally {
+      loadingViews.current.delete(nextView);
+      setListLoading(loadingViews.current.size > 0);
+    }
+  };
+
+  const loadMore = async () => {
+    const cursor = pages[view].nextCursor;
+    if (!cursor || listLoading) return;
+    setListLoading(true);
+    setHistoryError(null);
+    try {
+      const result = await listInspirations(view, cursor);
+      setPages((previous) => {
+        const current = previous[view];
+        const existingIds = new Set(current.items.map((entry) => entry.id));
+        return { ...previous, [view]: {
+          items: [...current.items, ...result.items.filter((entry) => !existingIds.has(entry.id))],
+          nextCursor: result.nextCursor, loaded: true,
+        } };
+      });
+    } catch {
+      setHistoryError('加载失败，请重试。已显示的灵感不会丢失。');
+    } finally {
+      setListLoading(loadingViews.current.size > 0);
+    }
+  };
+
+  const openItem = async (entry: InspirationItem) => {
+    setHistoryError(null);
+    try {
+      const full = await getInspiration(entry.id);
+      setItem(full);
+      if (!full.viewedAt) {
+        const viewed = await markInspirationViewed(full.id);
+        setItem(viewed);
+        setPages((previous) => updatePages(previous, viewed));
+      }
+    } catch {
+      setHistoryError('加载失败，请重试。当前灵感仍会保留。');
+    }
+  };
+
+  const organize = async (operation: InspirationStateOperation) => {
+    if (!item || organizing) return;
+    setOrganizing(true);
+    setHistoryError(null);
+    try {
+      const updated = await changeInspirationState(item.id, operation);
+      setPages((previous) => updatePages(previous, updated));
+      if (belongsInView(updated, view)) setItem(updated);
+      else setItem(pages[view].items.find((entry) => entry.id !== updated.id) || null);
+    } catch {
+      setHistoryError('操作未成功，请重试。已显示的灵感未改变。');
+    } finally {
+      setOrganizing(false);
+    }
+  };
 
   const handleResearch = async () => {
     if (requesting) return;
@@ -88,6 +197,12 @@ export default function InspirationPage() {
         return;
       }
       setItem(result.item);
+      setView('recent');
+      setPages((previous) => updatePages(previous, result.item));
+      void markInspirationViewed(result.item.id).then((viewed) => {
+        setItem(viewed);
+        setPages((previous) => updatePages(previous, viewed));
+      }).catch(() => undefined);
     } catch (error) {
       setMessage({ kind: 'error', text: messageForInspirationError(error) });
     } finally {
@@ -154,8 +269,63 @@ export default function InspirationPage() {
                 ))}
               </ul>
             </section>
+            <div className={styles.cardActions}>
+              {item.userState === 'saved' ? (
+                <button type="button" onClick={() => void organize('unsave')} disabled={organizing}>取消保存</button>
+              ) : item.userState === 'dismissed' ? (
+                <button type="button" onClick={() => void organize('restore')} disabled={organizing}>恢复灵感</button>
+              ) : (
+                <>
+                  <button type="button" onClick={() => void organize('save')} disabled={organizing}>保存灵感</button>
+                  <button type="button" onClick={() => void organize('dismiss')} disabled={organizing}>忽略</button>
+                </>
+              )}
+            </div>
           </article>
         )}
+
+        <section className={styles.history} aria-label="灵感历史">
+          <div className={styles.historyHeading}>
+            <h2>灵感历史</h2>
+            <span>研究过的内容都会留在这里</span>
+          </div>
+          <div className={styles.historyTabs} role="tablist" aria-label="灵感历史分类">
+            {views.map((entry) => (
+              <button key={entry} type="button" role="tab" aria-selected={view === entry}
+                className={view === entry ? styles.activeTab : ''} onClick={() => void loadView(entry)}>
+                {viewLabels[entry]}
+              </button>
+            ))}
+          </div>
+          <div role="tabpanel" aria-label={`${viewLabels[view]}灵感`}>
+            {pages[view].loaded && pages[view].items.length === 0 && (
+              <p className={styles.historyEmpty}>{view === 'recent' ? '这里还没有灵感。你可以先研究一条，之后再回来查看。' : `这里还没有${viewLabels[view]}的灵感。`}</p>
+            )}
+            <ul className={styles.historyList}>
+              {pages[view].items.map((entry) => (
+                <li key={entry.id}>
+                  <button type="button" className={styles.historyRow} onClick={() => void openItem(entry)}
+                    aria-current={item?.id === entry.id ? 'true' : undefined}>
+                    <span className={styles.historyRowTitle}>{entry.headline}</span>
+                    <span className={styles.historyMeta}>
+                      {entry.origin === 'scheduled' && <span>定期发现</span>}
+                      {entry.origin === 'scheduled' && !entry.viewedAt && <span className={styles.newMarker}>新</span>}
+                      {entry.userState === 'saved' && <span>已保存</span>}
+                      <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleDateString('zh-CN')}</time>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {pages[view].nextCursor && (
+              <button type="button" className={styles.loadMore} onClick={() => void loadMore()} disabled={listLoading}>
+                {listLoading ? '正在加载…' : '加载更多灵感'}
+              </button>
+            )}
+            {listLoading && !pages[view].nextCursor && <p className={styles.progress} role="status">正在加载灵感…</p>}
+            {historyError && <p className={styles.errorMessage} role="alert">{historyError}</p>}
+          </div>
+        </section>
       </main>
     </div>
   );

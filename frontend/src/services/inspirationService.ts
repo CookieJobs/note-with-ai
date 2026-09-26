@@ -26,6 +26,19 @@ export type InspirationItem = {
   nextQuestion: string;
   sources: InspirationSource[];
   createdAt: string;
+  userState: 'regular' | 'saved' | 'dismissed';
+  origin: 'manual' | 'scheduled';
+  viewedAt: string | null;
+};
+
+export type InspirationView = 'recent' | 'saved' | 'dismissed';
+export type InspirationStateOperation = 'save' | 'unsave' | 'dismiss' | 'restore';
+export type InspirationSettings = {
+  enabled: boolean;
+  consentedAt: string | null;
+  nextEligibleAt: string | null;
+  lastAttemptAt: string | null;
+  lastStatus: string | null;
 };
 
 export type RequestInspirationResult =
@@ -78,6 +91,10 @@ function toItem(value: unknown): InspirationItem | null {
   const sources = Array.isArray(value.sources)
     ? value.sources.map(toSource).filter((source): source is InspirationSource => source !== null)
     : [];
+  const userState: InspirationItem['userState'] = value.userState === 'saved' || value.userState === 'dismissed'
+    ? value.userState
+    : 'regular';
+  const origin: InspirationItem['origin'] = value.origin === 'scheduled' ? 'scheduled' : 'manual';
   const item = {
     id: safeString(value.id),
     topicLabel: safeString(value.topicLabel),
@@ -87,6 +104,9 @@ function toItem(value: unknown): InspirationItem | null {
     nextQuestion: safeString(value.nextQuestion),
     sources,
     createdAt: safeString(value.createdAt),
+    userState,
+    origin,
+    viewedAt: typeof value.viewedAt === 'string' ? value.viewedAt : null,
   };
   return item.id && item.headline ? item : null;
 }
@@ -135,4 +155,63 @@ export async function getLatestInspiration(): Promise<InspirationItem | null> {
   const item = toItem(data.item);
   if (item) return item;
   throw new InspirationApiError(undefined, 502, '暂时无法加载灵感');
+}
+
+function itemFromEnvelope(data: unknown, fallback: string): InspirationItem {
+  const item = isRecord(data) ? toItem(data.item) : null;
+  if (!item) throw new InspirationApiError(undefined, 502, fallback);
+  return item;
+}
+
+export async function listInspirations(view: InspirationView, cursor: string | null = null): Promise<{ items: InspirationItem[]; nextCursor: string | null }> {
+  const params = new URLSearchParams({ view });
+  if (cursor) params.set('cursor', cursor);
+  const data = await readEnvelope(await authFetch(`/api/inspirations?${params.toString()}`), '暂时无法加载灵感历史');
+  if (!isRecord(data) || !Array.isArray(data.items)) throw new InspirationApiError(undefined, 502, '暂时无法加载灵感历史');
+  const items = data.items.map(toItem);
+  if (items.some((item) => item === null) || (data.nextCursor !== null && typeof data.nextCursor !== 'string')) {
+    throw new InspirationApiError(undefined, 502, '暂时无法加载灵感历史');
+  }
+  return { items: items as InspirationItem[], nextCursor: data.nextCursor as string | null };
+}
+
+export async function getInspiration(id: string): Promise<InspirationItem> {
+  const data = await readEnvelope(await authFetch(`/api/inspirations/${encodeURIComponent(id)}`), '暂时无法加载灵感');
+  return itemFromEnvelope(data, '暂时无法加载灵感');
+}
+
+export async function changeInspirationState(id: string, operation: InspirationStateOperation): Promise<InspirationItem> {
+  const data = await readEnvelope(await authFetch(`/api/inspirations/${encodeURIComponent(id)}/user-state`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation }),
+  }), '暂时无法更新灵感');
+  return itemFromEnvelope(data, '暂时无法更新灵感');
+}
+
+export async function markInspirationViewed(id: string): Promise<InspirationItem> {
+  const data = await readEnvelope(await authFetch(`/api/inspirations/${encodeURIComponent(id)}/viewed`, { method: 'POST' }), '暂时无法标记灵感');
+  return itemFromEnvelope(data, '暂时无法标记灵感');
+}
+
+function settingsFromEnvelope(data: unknown): InspirationSettings {
+  if (!isRecord(data) || typeof data.enabled !== 'boolean') throw new InspirationApiError(undefined, 502, '暂时无法加载灵感设置');
+  const nullable = (value: unknown) => typeof value === 'string' ? value : null;
+  return {
+    enabled: data.enabled,
+    consentedAt: nullable(data.consentedAt),
+    nextEligibleAt: nullable(data.nextEligibleAt),
+    lastAttemptAt: nullable(data.lastAttemptAt),
+    lastStatus: nullable(data.lastStatus),
+  };
+}
+
+export async function getInspirationSettings(): Promise<InspirationSettings> {
+  const data = await readEnvelope(await authFetch('/api/inspirations/settings'), '暂时无法加载灵感设置');
+  return settingsFromEnvelope(data);
+}
+
+export async function setInspirationEnabled(enabled: boolean): Promise<InspirationSettings> {
+  const data = await readEnvelope(await authFetch('/api/inspirations/settings', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
+  }), '暂时无法更新灵感设置');
+  return settingsFromEnvelope(data);
 }
