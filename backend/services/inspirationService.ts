@@ -1,5 +1,6 @@
 import { Note } from '../models/Note';
 import InspirationItem from '../models/InspirationItem';
+import { inspirationCatalogService } from './inspirationCatalogService';
 import InspirationSource from '../models/InspirationSource';
 import { tavilySearchProvider } from './tavilySearchProvider';
 import { planResearch, sanitizeMetadata, synthesizeResearch } from './inspirationLlm';
@@ -76,10 +77,7 @@ class InspirationService {
   }
 
   async latest(userId: string): Promise<InspirationDto | null> {
-    const item = await InspirationItem.findOne({ userId, status: 'completed' })
-      .sort({ createdAt: -1 })
-      .lean();
-    return item ? toInspirationDto(item as Record<string, unknown>) : null;
+    return inspirationCatalogService.latest(userId);
   }
 
   private async performResearch(userId: string): Promise<{ status: 'created'; item: InspirationDto } | { status: 'no_result' }> {

@@ -185,7 +185,7 @@ describe('P15 inspiration service', () => {
       relatedNotes: [{ noteId: 'secret-note-id', revision: 4 }], internalQuery: 'secret query',
     };
     const query = {
-      sort: (value: unknown) => { assert.deepEqual(value, { createdAt: -1 }); return query; },
+      sort: (value: unknown) => { assert.deepEqual(value, { createdAt: -1, _id: -1 }); return query; },
       lean: async () => item,
     };
     mock.method(InspirationItem, 'findOne', (filter: unknown) => { receivedFilter = filter; return query as never; });
@@ -193,7 +193,7 @@ describe('P15 inspiration service', () => {
 
     const result = await service.latest('user-1');
 
-    assert.deepEqual(receivedFilter, { userId: 'user-1', status: 'completed' });
+    assert.deepEqual(receivedFilter, { userId: 'user-1', status: 'completed', userState: { $ne: 'dismissed' } });
     assert.equal(result?.headline, '让记录更容易复用');
     assert.equal('userId' in (result as object), false);
     assert.equal('relatedNotes' in (result as object), false);

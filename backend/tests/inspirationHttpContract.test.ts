@@ -3,6 +3,7 @@ import { afterEach, describe, it, mock } from 'node:test';
 import type { NextFunction } from 'express';
 import inspirationRouter from '../routes/inspirations';
 import { inspirationService } from '../services/inspirationService';
+import { inspirationCatalogService } from '../services/inspirationCatalogService';
 import { inspirationError, type InspirationDto } from '../services/inspirationTypes';
 import { authenticateToken } from '../middleware/auth';
 import { globalErrorHandler } from '../utils/errorHandler';
@@ -59,7 +60,7 @@ describe('P15 inspiration HTTP contract', () => {
   afterEach(() => mock.restoreAll());
 
   it('requires authentication as the first middleware for POST and GET', () => {
-    for (const [path, method] of [['/', 'post'], ['/latest', 'get']] as const) {
+    for (const [path, method] of [['/', 'post'], ['/latest', 'get'], ['/', 'get'], ['/:id', 'get']] as const) {
       assert.equal(routeStack(path, method)[0].handle, authenticateToken);
     }
   });
@@ -113,6 +114,41 @@ describe('P15 inspiration HTTP contract', () => {
     assert.equal(error, undefined);
     assert.equal(response.headers['Cache-Control'], 'no-store');
     assert.deepEqual(response.body, { success: true, message: '获取最新灵感成功', data: { item: null } });
+  });
+
+  it('returns only the authenticated user history and never caches it', async () => {
+    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
+    mock.method(inspirationCatalogService, 'list', async (userId: string, view: string, cursor: string | null) => {
+      assert.deepEqual([userId, view, cursor], ['user-1', 'saved', null]);
+      return { items: [item], nextCursor: null };
+    });
+    const response = makeResponse();
+    const error = await invokeRoute(routeHandler('/', 'get'), { query: { view: 'saved' } }, response);
+    assert.equal(error, undefined);
+    assert.equal(response.headers['Cache-Control'], 'no-store');
+    assert.deepEqual((response.body as any).data, { items: [item], nextCursor: null });
+  });
+
+  it('returns the current user detail through the safe envelope', async () => {
+    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
+    mock.method(inspirationCatalogService, 'detail', async (userId: string, itemId: string) => {
+      assert.deepEqual([userId, itemId], ['user-1', item.id]);
+      return item;
+    });
+    const response = makeResponse();
+    const error = await invokeRoute(routeHandler('/:id', 'get'), { params: { id: item.id } }, response);
+    assert.equal(error, undefined);
+    assert.equal(response.headers['Cache-Control'], 'no-store');
+    assert.deepEqual((response.body as any).data, { item });
+  });
+
+  it('rejects ambiguous view query values rather than silently selecting recent', async () => {
+    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
+    const response = makeResponse();
+    const error = await invokeRoute(routeHandler('/', 'get'), { query: { view: ['saved'] } }, response);
+    assert.ok(error);
+    globalErrorHandler(error as never, { method: 'GET', path: '/api/inspirations' } as never, response as never, (() => undefined) as NextFunction);
+    assert.equal(response.statusCode, 400);
   });
 
   it('preserves the in-progress error code but never returns query or note metadata', async () => {
