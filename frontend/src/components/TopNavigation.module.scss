@@ -103,6 +103,22 @@
   }
 }
 
+.inspirationBadge {
+  display: inline-flex;
+  min-width: 17px;
+  height: 17px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #e8edf2;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .active {
   color: #111827 !important;
   font-weight: 600;

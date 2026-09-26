@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { mockAuthFetch } = vi.hoisted(() => ({ mockAuthFetch: vi.fn() }));
 vi.mock('../utils/auth', () => ({ authFetch: mockAuthFetch }));
 
-import { changeInspirationState, getInspirationSettings, getLatestInspiration, InspirationApiError, listInspirations, requestInspiration, setInspirationEnabled } from './inspirationService';
+import { changeInspirationState, getInspirationSettings, getLatestInspiration, getUnviewedInspirationCount, InspirationApiError, listInspirations, requestInspiration, setInspirationEnabled } from './inspirationService';
 
 describe('inspirationService', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -64,6 +64,12 @@ describe('inspirationService', () => {
     expect(mockAuthFetch).toHaveBeenNthCalledWith(2, '/api/inspirations/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }),
     });
+  });
+
+  it('reads only the server-owned count of unviewed scheduled items', async () => {
+    mockAuthFetch.mockResolvedValue(new Response(JSON.stringify({ success: true, data: { count: 3, privateQuery: 'hidden' } }), { status: 200 }));
+    await expect(getUnviewedInspirationCount()).resolves.toBe(3);
+    expect(mockAuthFetch).toHaveBeenCalledWith('/api/inspirations/unviewed-count');
   });
 
   it('uses a safe fallback for malformed JSON', async () => {

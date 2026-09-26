@@ -215,3 +215,11 @@ export async function setInspirationEnabled(enabled: boolean): Promise<Inspirati
   }), '暂时无法更新灵感设置');
   return settingsFromEnvelope(data);
 }
+
+export async function getUnviewedInspirationCount(): Promise<number> {
+  const data = await readEnvelope(await authFetch('/api/inspirations/unviewed-count'), '暂时无法加载新灵感数量');
+  if (!isRecord(data) || !Number.isSafeInteger(data.count) || (data.count as number) < 0) {
+    throw new InspirationApiError(undefined, 502, '暂时无法加载新灵感数量');
+  }
+  return data.count as number;
+}

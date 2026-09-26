@@ -6,13 +6,17 @@ import TopNavigation from '../../components/TopNavigation';
 import {
   changeInspirationState,
   getInspiration,
+  getInspirationSettings,
+  getUnviewedInspirationCount,
   InspirationApiError,
   listInspirations,
   markInspirationViewed,
   requestInspiration,
+  setInspirationEnabled,
   type InspirationApiError as InspirationApiErrorType,
   type InspirationErrorCode,
   type InspirationItem,
+  type InspirationSettings,
   type InspirationStateOperation,
   type InspirationView,
   type RequestInspirationResult,
@@ -65,6 +69,16 @@ type HistoryPage = { items: InspirationItem[]; nextCursor: string | null; loaded
 const emptyPage = (): HistoryPage => ({ items: [], nextCursor: null, loaded: false });
 const viewLabels: Record<InspirationView, string> = { recent: '最近', saved: '已保存', dismissed: '已忽略' };
 const views: InspirationView[] = ['recent', 'saved', 'dismissed'];
+const scheduleStatusLabels: Record<string, string> = {
+  completed: '最近一次检查已完成。',
+  no_result: '最近一次检查没有发现新的来源。',
+  failed: '最近一次检查暂时未能完成，会在下一个检查周期再试。',
+  cancelled: '最近一次检查因设置关闭而停止。',
+};
+
+function announceInspirationCountChanged() {
+  window.dispatchEvent(new Event('inspiration-count-changed'));
+}
 
 function belongsInView(item: InspirationItem, view: InspirationView): boolean {
   return view === 'recent' ? item.userState !== 'dismissed' : item.userState === view;
@@ -91,12 +105,20 @@ export default function InspirationPage() {
   const [organizing, setOrganizing] = useState(false);
   const [message, setMessage] = useState<{ kind: 'error' | 'empty'; text: string } | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<InspirationSettings | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [unviewedCount, setUnviewedCount] = useState(0);
   const loadingViews = useRef(new Set<InspirationView>());
 
   useEffect(() => {
     if (!user) return;
     let active = true;
     setLoading(true);
+    getInspirationSettings()
+      .then((value) => { if (active) setSettings(value); })
+      .catch(() => { if (active) setSettingsError('暂时无法加载定期发现设置。'); });
+    getUnviewedInspirationCount().then((count) => { if (active) setUnviewedCount(count); }).catch(() => undefined);
     listInspirations('recent', null)
       .then((first) => {
         if (!active) return;
@@ -105,7 +127,12 @@ export default function InspirationPage() {
         if (newest) {
           setItem(newest);
           if (!newest.viewedAt) void markInspirationViewed(newest.id).then((viewed) => {
-            if (active) { setItem(viewed); setPages((previous) => updatePages(previous, viewed)); }
+            if (active) {
+              setItem(viewed);
+              setPages((previous) => updatePages(previous, viewed));
+              announceInspirationCountChanged();
+              void getUnviewedInspirationCount().then(setUnviewedCount).catch(() => undefined);
+            }
           }).catch(() => undefined);
         }
       })
@@ -164,6 +191,8 @@ export default function InspirationPage() {
         const viewed = await markInspirationViewed(full.id);
         setItem(viewed);
         setPages((previous) => updatePages(previous, viewed));
+        announceInspirationCountChanged();
+        void getUnviewedInspirationCount().then(setUnviewedCount).catch(() => undefined);
       }
     } catch {
       setHistoryError('加载失败，请重试。当前灵感仍会保留。');
@@ -179,10 +208,24 @@ export default function InspirationPage() {
       setPages((previous) => updatePages(previous, updated));
       if (belongsInView(updated, view)) setItem(updated);
       else setItem(pages[view].items.find((entry) => entry.id !== updated.id) || null);
+      if (operation === 'dismiss') void getUnviewedInspirationCount().then(setUnviewedCount).catch(() => undefined);
     } catch {
       setHistoryError('操作未成功，请重试。已显示的灵感未改变。');
     } finally {
       setOrganizing(false);
+    }
+  };
+
+  const saveScheduledSetting = async (enabled: boolean) => {
+    if (savingSettings) return;
+    setSavingSettings(true);
+    setSettingsError(null);
+    try {
+      setSettings(await setInspirationEnabled(enabled));
+    } catch {
+      setSettingsError('设置未能保存，请重试。');
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -284,10 +327,33 @@ export default function InspirationPage() {
           </article>
         )}
 
+        <section className={styles.scheduledPanel} aria-labelledby="scheduled-title">
+          <div className={styles.scheduledHeading}>
+            <div>
+              <h2 id="scheduled-title">定期发现</h2>
+              <p>在你授权后，系统会按周期从近期主题中寻找新线索。</p>
+            </div>
+            <label className={styles.switchLabel}>
+              <span>定期为我寻找灵感</span>
+              <input type="checkbox" role="switch" aria-label="定期为我寻找灵感"
+                checked={settings?.enabled ?? false} disabled={!settings || savingSettings || !user}
+                onChange={(event) => void saveScheduledSetting(event.target.checked)} />
+            </label>
+          </div>
+          <p className={styles.scheduleDisclosure}>
+            开启后会使用近期笔记的标题、关键词和短摘要；DeepSeek 接收这些受限元数据，Tavily 仅接收搜索查询。每 24 小时最多尝试一次，结果会进入灵感历史。开启本身不会立即开始研究。
+          </p>
+          {settings?.enabled && settings.nextEligibleAt && (
+            <p className={styles.scheduleStatus}>预计下次检查：{new Date(settings.nextEligibleAt).toLocaleString()}（当地时间）</p>
+          )}
+          {settings?.lastStatus && <p className={styles.scheduleStatus}>{scheduleStatusLabels[settings.lastStatus] || '最近一次检查状态已更新。'}</p>}
+          {settingsError && <p className={styles.errorMessage} role="alert">{settingsError}</p>}
+        </section>
+
         <section className={styles.history} aria-label="灵感历史">
           <div className={styles.historyHeading}>
             <h2>灵感历史</h2>
-            <span>研究过的内容都会留在这里</span>
+            <span>{unviewedCount > 0 ? `${unviewedCount} 条新灵感` : '研究过的内容都会留在这里'}</span>
           </div>
           <div className={styles.historyTabs} role="tablist" aria-label="灵感历史分类">
             {views.map((entry) => (

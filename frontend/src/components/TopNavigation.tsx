@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUser, logout } from '../utils/auth';
+import { getUnviewedInspirationCount } from '../services/inspirationService';
 import styles from './TopNavigation.module.scss';
 import { Menu } from 'lucide-react';
 
@@ -21,11 +22,27 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [unviewedInspirationCount, setUnviewedInspirationCount] = useState(0);
   const activeIndex = Math.max(0, menuItems.findIndex(({ href }) => pathname === href || pathname.startsWith(`${href}/`)));
 
   useEffect(() => {
     const userData = getUser();
     setUser(userData);
+    if (!userData) return;
+    let active = true;
+    const refreshCount = () => {
+      void getUnviewedInspirationCount()
+        .then((count) => { if (active) setUnviewedInspirationCount(count); })
+        .catch(() => undefined);
+    };
+    refreshCount();
+    const interval = window.setInterval(refreshCount, 60_000);
+    window.addEventListener('inspiration-count-changed', refreshCount);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('inspiration-count-changed', refreshCount);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -60,6 +77,13 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
             <span className={styles.navHoverPill} aria-hidden="true" />
             {menuItems.map(({ label, href }) => {
               const isActive = pathname === href;
+              const showNewBadge = label === '灵感' && unviewedInspirationCount > 0;
+              const navContent = (
+                <>
+                  <span>{label}</span>
+                  {showNewBadge && <span className={styles.inspirationBadge} aria-label={`${unviewedInspirationCount} 条新灵感`}>{unviewedInspirationCount > 99 ? '99+' : unviewedInspirationCount}</span>}
+                </>
+              );
               if (isActive) {
                 return (
                   <span
@@ -67,7 +91,7 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
                     className={`${styles.navItem} ${styles.active}`}
                     aria-current="page"
                   >
-                    {label}
+                    {navContent}
                   </span>
                 );
               }
@@ -78,7 +102,7 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
                   href={href}
                   className={styles.navItem}
                 >
-                  {label}
+                  {navContent}
                 </Link>
               );
             })}

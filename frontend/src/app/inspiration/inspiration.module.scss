@@ -187,6 +187,56 @@
   }
 }
 
+.scheduledPanel {
+  margin-top: 28px;
+  padding: 17px 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.scheduledHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+
+  h2 { margin: 0; color: #334155; font-size: 14px; font-weight: 650; }
+  p { margin: 5px 0 0; color: #64748b; font-size: 12px; line-height: 1.6; }
+}
+
+.switchLabel {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+
+  input {
+    width: 38px;
+    height: 22px;
+    margin: 0;
+    accent-color: #334155;
+    cursor: pointer;
+  }
+
+  input:focus-visible { outline: 3px solid #94a3b8; outline-offset: 3px; border-radius: 12px; }
+  input:disabled { cursor: progress; opacity: 0.55; }
+}
+
+.scheduleDisclosure,
+.scheduleStatus {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.scheduleStatus { color: #475569; }
+
 .history {
   margin-top: 38px;
 }
@@ -355,6 +405,7 @@
   .historyHeading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .historyRow { align-items: flex-start; flex-direction: column; gap: 5px; }
   .historyMeta { flex-wrap: wrap; }
+  .scheduledHeading { align-items: flex-start; flex-direction: column; gap: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
