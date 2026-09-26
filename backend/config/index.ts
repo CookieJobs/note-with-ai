@@ -33,6 +33,9 @@ const envSchema = z.object({
   TAVILY_API_KEY: z.string().min(1).optional(),
   TAVILY_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(20_000).default(8_000),
   TAVILY_SEARCH_LANGUAGE: z.string().trim().min(2).max(20).default('zh'),
+  INSPIRATION_AUTO_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(2),
+  INSPIRATION_AUTO_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000).default(20),
+  INSPIRATION_WORKER_POLL_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),
 
   // Legacy DashScope API 配置
   DASHSCOPE_API_KEY: z.string().optional(),

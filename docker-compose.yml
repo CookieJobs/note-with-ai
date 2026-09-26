@@ -29,6 +29,9 @@ services:
       - REDIS_URL=redis://redis:6379
       # 这里使用变量，部署时通过 .env 文件或命令行传入
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - TAVILY_SEARCH_TIMEOUT_MS=${TAVILY_SEARCH_TIMEOUT_MS:-8000}
+      - TAVILY_SEARCH_LANGUAGE=${TAVILY_SEARCH_LANGUAGE:-zh}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL}
@@ -48,6 +51,31 @@ services:
     depends_on:
       - mongo
       - redis
+    restart: always
+
+  # P16＋P17 独立自动研究进程：仅明确指定 profile 时启动。
+  inspiration-worker:
+    profiles: ["inspiration"]
+    build: ./backend
+    command: ["node", "dist/scripts/run_inspiration_worker.js"]
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongo:27017/note-with-ai
+      - REDIS_URL=redis://redis:6379
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - TAVILY_SEARCH_TIMEOUT_MS=${TAVILY_SEARCH_TIMEOUT_MS:-8000}
+      - TAVILY_SEARCH_LANGUAGE=${TAVILY_SEARCH_LANGUAGE:-zh}
+      - INSPIRATION_AUTO_CONCURRENCY=${INSPIRATION_AUTO_CONCURRENCY:-2}
+      - INSPIRATION_AUTO_DAILY_LIMIT=${INSPIRATION_AUTO_DAILY_LIMIT:-20}
+      - INSPIRATION_WORKER_POLL_MS=${INSPIRATION_WORKER_POLL_MS:-60000}
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_JWT_SECRET=${ADMIN_JWT_SECRET}
+      - ADMIN_ENCRYPTION_KEY=${ADMIN_ENCRYPTION_KEY}
+      - QQ_EMAIL_USER=${QQ_EMAIL_USER}
+      - QQ_EMAIL_PASS=${QQ_EMAIL_PASS}
+    depends_on:
+      - mongo
     restart: always
 
   # 前端服务

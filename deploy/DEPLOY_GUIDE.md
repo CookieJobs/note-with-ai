@@ -69,3 +69,11 @@ curl -I https://bloomy16.com/admin
 ## 回滚
 
 停止前记录正在运行的镜像。若发布失败，恢复备份的 `.env` 和 Compose 文件，切换回备份 commit，使用原镜像或 `docker compose up -d --build` 恢复服务。数据库只在确认需要时才从 MongoDB archive 恢复；一般代码回滚不应恢复数据库。
+
+## P16＋P17 灵感主动发现（独立验收后才启用）
+
+本功能的历史与保存操作由普通后端提供；定期研究由 `inspiration-worker` 独立进程负责。它属于 `inspiration` profile，普通 `docker compose up -d` 不会启动。用户未主动开启开关时，即使 worker 在运行，也不会调用 DeepSeek 或 Tavily。本节不授权部署，也不包含运营后台上线步骤。
+
+先在服务器后端专用 `.env` 中配置 `DEEPSEEK_API_KEY`、`TAVILY_API_KEY`，可按预算调整 `INSPIRATION_AUTO_CONCURRENCY`（默认 2）、`INSPIRATION_AUTO_DAILY_LIMIT`（默认 20）、`INSPIRATION_WORKER_POLL_MS`（默认 60000）。不要把真实密钥写进 Git、截图或聊天。完成 P15 和 P16＋P17 的本地整体验收、备份与单独发布批准后，才运行 `docker compose --profile inspiration up -d inspiration-worker`。检查 `docker compose ps` 和只含安全状态码的 worker 日志；设置接口显示用户上次检查结果。
+
+如需暂停新的自动研究，先关闭用户开关，或执行 `docker compose --profile inspiration stop inspiration-worker`。已发出的外部请求无法撤回；停掉 worker 不会删除历史灵感。恢复时只处理仍符合频率约束的任务，不补跑停机期间的每一天。
