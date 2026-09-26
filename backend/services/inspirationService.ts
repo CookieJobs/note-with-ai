@@ -8,7 +8,7 @@ import {
   type InspirationDto,
   type LimitedNoteContext,
   type ResearchPlan,
-  type ResearchSource,
+  toInspirationDto,
 } from './inspirationTypes';
 
 type NoteRecord = {
@@ -53,39 +53,6 @@ function buildLimitedNotes(records: NoteRecord[]): LimitedNoteContext[] {
   }).filter((note) => note.title || note.keywords.length || note.summary);
 }
 
-function sourceDate(value: unknown): string {
-  if (value instanceof Date) return value.toISOString();
-  const date = new Date(String(value || ''));
-  return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString();
-}
-
-function sourceToDto(source: Record<string, unknown>): ResearchSource {
-  return {
-    sourceId: String(source.sourceId || ''),
-    canonicalUrl: String(source.canonicalUrl || ''),
-    title: String(source.title || ''),
-    publisher: String(source.publisher || ''),
-    snippet: String(source.snippet || ''),
-    retrievedAt: sourceDate(source.retrievedAt),
-  };
-}
-
-function toDto(item: Record<string, unknown>): InspirationDto {
-  const sources = Array.isArray(item.sources)
-    ? item.sources.map((source) => sourceToDto(source as Record<string, unknown>))
-    : [];
-  return {
-    id: idString(item._id),
-    topicLabel: String(item.topicLabel || ''),
-    headline: String(item.headline || ''),
-    brief: String(item.brief || ''),
-    whyRelevant: String(item.whyRelevant || ''),
-    nextQuestion: String(item.nextQuestion || ''),
-    sources,
-    createdAt: sourceDate(item.createdAt),
-  };
-}
-
 function errorCode(error: unknown): number | undefined {
   return typeof error === 'object' && error !== null && typeof (error as { code?: unknown }).code === 'number'
     ? (error as { code: number }).code
@@ -112,7 +79,7 @@ class InspirationService {
     const item = await InspirationItem.findOne({ userId, status: 'completed' })
       .sort({ createdAt: -1 })
       .lean();
-    return item ? toDto(item as Record<string, unknown>) : null;
+    return item ? toInspirationDto(item as Record<string, unknown>) : null;
   }
 
   private async performResearch(userId: string): Promise<{ status: 'created'; item: InspirationDto } | { status: 'no_result' }> {
@@ -150,6 +117,8 @@ class InspirationService {
       nextQuestion: draft.nextQuestion,
       sources: citedSources,
       status: 'draft',
+      userState: 'regular',
+      origin: 'manual',
     });
     const inspirationId = idString((created as unknown as Record<string, unknown>)._id);
 
@@ -173,7 +142,7 @@ class InspirationService {
       throw error;
     }
 
-    return { status: 'created', item: toDto(created as unknown as Record<string, unknown>) };
+    return { status: 'created', item: toInspirationDto(created as unknown as Record<string, unknown>) };
   }
 }
 

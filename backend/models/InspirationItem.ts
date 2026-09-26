@@ -30,9 +30,14 @@ const InspirationItemSchema = new mongoose.Schema({
     validate: [(value: unknown[]) => value.length >= 1 && value.length <= 3, 'sources must contain 1-3 items'],
   },
   status: { type: String, required: true, enum: ['draft', 'completed'], default: 'draft' },
+  userState: { type: String, enum: ['regular', 'saved', 'dismissed'], default: 'regular' },
+  userStateChangedAt: { type: Date, default: null },
+  origin: { type: String, enum: ['manual', 'scheduled'], default: 'manual' },
+  viewedAt: { type: Date, default: null },
 }, { timestamps: true, versionKey: false });
 
-InspirationItemSchema.index({ userId: 1, status: 1, createdAt: -1 });
+InspirationItemSchema.index({ userId: 1, status: 1, createdAt: -1, _id: -1 });
+InspirationItemSchema.index({ userId: 1, status: 1, userState: 1, userStateChangedAt: -1, _id: -1 });
 
 const InspirationItem = mongoose.models.InspirationItem
   || mongoose.model('InspirationItem', InspirationItemSchema);

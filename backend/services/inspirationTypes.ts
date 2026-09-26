@@ -44,7 +44,50 @@ export type InspirationDto = {
   nextQuestion: string;
   sources: ResearchSource[];
   createdAt: string;
+  userState: 'regular' | 'saved' | 'dismissed';
+  origin: 'manual' | 'scheduled';
+  viewedAt: string | null;
 };
+
+function stringValue(value: unknown): string {
+  if (value && typeof value === 'object' && 'toString' in value && typeof value.toString === 'function') {
+    return value.toString();
+  }
+  return String(value || '');
+}
+
+function isoDate(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  const date = new Date(String(value || ''));
+  return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString();
+}
+
+export function toInspirationDto(item: Record<string, unknown>): InspirationDto {
+  const sources = Array.isArray(item.sources) ? item.sources.map((entry) => {
+    const source = entry as Record<string, unknown>;
+    return {
+      sourceId: String(source.sourceId || ''),
+      canonicalUrl: String(source.canonicalUrl || ''),
+      title: String(source.title || ''),
+      publisher: String(source.publisher || ''),
+      snippet: String(source.snippet || ''),
+      retrievedAt: isoDate(source.retrievedAt),
+    };
+  }) : [];
+  return {
+    id: stringValue(item._id),
+    topicLabel: String(item.topicLabel || ''),
+    headline: String(item.headline || ''),
+    brief: String(item.brief || ''),
+    whyRelevant: String(item.whyRelevant || ''),
+    nextQuestion: String(item.nextQuestion || ''),
+    sources,
+    createdAt: isoDate(item.createdAt),
+    userState: item.userState === 'saved' || item.userState === 'dismissed' ? item.userState : 'regular',
+    origin: item.origin === 'scheduled' ? 'scheduled' : 'manual',
+    viewedAt: item.viewedAt ? isoDate(item.viewedAt) : null,
+  };
+}
 
 export function inspirationError(code: InspirationErrorCode, statusCode: number): AppError {
   const messages: Record<InspirationErrorCode, string> = {

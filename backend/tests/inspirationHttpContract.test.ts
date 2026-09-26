@@ -52,6 +52,7 @@ const item: InspirationDto = {
   brief: '分类方法值得尝试【1】。', whyRelevant: '关联近期整理笔记。', nextQuestion: '先整理哪类记录？',
   sources: [{ sourceId: '1', canonicalUrl: 'https://example.com/a', title: '来源', publisher: 'example.com', snippet: '摘要', retrievedAt: '2026-09-22T00:00:00.000Z' }],
   createdAt: '2026-09-22T00:00:01.000Z',
+  userState: 'regular', origin: 'manual', viewedAt: null,
 };
 
 describe('P15 inspiration HTTP contract', () => {

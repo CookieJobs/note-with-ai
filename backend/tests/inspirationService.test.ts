@@ -81,6 +81,9 @@ describe('P15 inspiration service', () => {
     assert.equal(result.status, 'created');
     assert.equal(result.item.brief, draft.brief);
     assert.equal(result.item.sources[0].canonicalUrl, source.canonicalUrl);
+    assert.equal(result.item.userState, 'regular');
+    assert.equal(result.item.origin, 'manual');
+    assert.equal(result.item.viewedAt, null);
     assert.equal(JSON.stringify(plannerInputs).includes('必须永远不读取'), false);
     assert.deepEqual(plannerInputs[0], [{
       noteId: 'note-1', revision: 4, title: '知识管理', keywords: ['整理'], summary: '如何把记录形成可复用知识',
