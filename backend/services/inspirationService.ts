@@ -1,6 +1,8 @@
 import { Note } from '../models/Note';
 import InspirationItem from '../models/InspirationItem';
 import { inspirationCatalogService } from './inspirationCatalogService';
+import { inspirationResearchGate } from './inspirationResearchGate';
+import { inspirationScheduleService } from './inspirationScheduleService';
 import InspirationSource from '../models/InspirationSource';
 import { tavilySearchProvider } from './tavilySearchProvider';
 import { planResearch, sanitizeMetadata, synthesizeResearch } from './inspirationLlm';
@@ -25,6 +27,9 @@ type InspirationServiceDependencies = {
   search: typeof tavilySearchProvider.search;
   synthesizer: typeof synthesizeResearch;
 };
+
+type ManualResult = { status: 'created'; item: InspirationDto } | { status: 'no_result' };
+type ScheduledResult = ManualResult | { status: 'cancelled' };
 
 const defaultDependencies: InspirationServiceDependencies = {
   planner: planResearch,
@@ -61,13 +66,13 @@ function errorCode(error: unknown): number | undefined {
 }
 
 class InspirationService {
-  private readonly activeRequests = new Map<string, Promise<{ status: 'created'; item: InspirationDto } | { status: 'no_result' }>>();
+  private readonly activeRequests = new Map<string, Promise<ManualResult>>();
 
   constructor(private readonly dependencies: InspirationServiceDependencies) {}
 
-  async request(userId: string): Promise<{ status: 'created'; item: InspirationDto } | { status: 'no_result' }> {
+  async request(userId: string): Promise<ManualResult> {
     if (this.activeRequests.has(userId)) throw inspirationError('INSPIRATION_IN_PROGRESS', 409);
-    const active = this.performResearch(userId);
+    const active = this.runManual(userId);
     this.activeRequests.set(userId, active);
     try {
       return await active;
@@ -76,11 +81,38 @@ class InspirationService {
     }
   }
 
+  async runScheduled(userId: string, canContinue: () => Promise<boolean>): Promise<ScheduledResult> {
+    const token = await inspirationResearchGate.acquire(userId, 'scheduled');
+    if (!token) throw inspirationError('INSPIRATION_IN_PROGRESS', 409);
+    try {
+      const allowed = async () => await inspirationScheduleService.isEnabled(userId) && await canContinue();
+      return await this.performResearch(userId, 'scheduled', allowed);
+    } finally {
+      await inspirationResearchGate.release(userId, token);
+    }
+  }
+
+  private async runManual(userId: string): Promise<ManualResult> {
+    const token = await inspirationResearchGate.acquire(userId, 'manual');
+    if (!token) throw inspirationError('INSPIRATION_IN_PROGRESS', 409);
+    try {
+      await inspirationScheduleService.recordManualStart(userId);
+      const result = await this.performResearch(userId, 'manual');
+      return result.status === 'cancelled' ? { status: 'no_result' } : result;
+    } finally {
+      await inspirationResearchGate.release(userId, token);
+    }
+  }
+
   async latest(userId: string): Promise<InspirationDto | null> {
     return inspirationCatalogService.latest(userId);
   }
 
-  private async performResearch(userId: string): Promise<{ status: 'created'; item: InspirationDto } | { status: 'no_result' }> {
+  private async performResearch(
+    userId: string,
+    origin: 'manual' | 'scheduled',
+    canContinue?: () => Promise<boolean>,
+  ): Promise<ScheduledResult> {
     const records = await Note.find({ userId })
       .sort({ updatedAt: -1 })
       .limit(5)
@@ -89,7 +121,9 @@ class InspirationService {
     const notes = buildLimitedNotes(records);
     if (!notes.length) return { status: 'no_result' };
 
+    if (canContinue && !await canContinue()) return { status: 'cancelled' };
     const plan: ResearchPlan = await this.dependencies.planner(notes, userId);
+    if (canContinue && !await canContinue()) return { status: 'cancelled' };
     const candidates = await this.dependencies.search(plan.query);
     if (!candidates.length) return { status: 'no_result' };
 
@@ -101,6 +135,7 @@ class InspirationService {
     const availableSources = candidates.filter((source) => !usedUrls.has(source.canonicalUrl)).slice(0, 3);
     if (!availableSources.length) return { status: 'no_result' };
 
+    if (canContinue && !await canContinue()) return { status: 'cancelled' };
     const draft = await this.dependencies.synthesizer(plan, notes, availableSources, userId);
     const citedSources = availableSources.filter((source) => draft.sourceIds.includes(source.sourceId));
     if (!citedSources.length) throw inspirationError('INSPIRATION_SYNTHESIS_FAILED', 502);
@@ -116,7 +151,7 @@ class InspirationService {
       sources: citedSources,
       status: 'draft',
       userState: 'regular',
-      origin: 'manual',
+      origin,
     });
     const inspirationId = idString((created as unknown as Record<string, unknown>)._id);
 

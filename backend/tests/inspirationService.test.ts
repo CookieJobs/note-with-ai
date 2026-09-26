@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 import type { LimitedNoteContext, ResearchDraft, ResearchPlan, ResearchSource } from '../services/inspirationTypes';
 import { createInspirationService } from '../services/inspirationService';
+import { inspirationResearchGate } from '../services/inspirationResearchGate';
+import { inspirationScheduleService } from '../services/inspirationScheduleService';
 
 const noteFixture = {
   _id: { toString: () => 'note-1' }, revision: 4, title: '知识管理', keywords: ['整理'],
@@ -40,6 +42,15 @@ function installModelDoubles(records: unknown[] = [noteFixture], overrides: {
   const deletedItems: unknown[] = [];
   const deletedSources: unknown[] = [];
   const updates: unknown[] = [];
+  const active = new Set<string>();
+
+  mock.method(inspirationResearchGate, 'acquire', async (userId: string) => {
+    if (active.has(userId)) return null;
+    active.add(userId);
+    return `${userId}-token`;
+  });
+  mock.method(inspirationResearchGate, 'release', async (userId: string) => { active.delete(userId); });
+  mock.method(inspirationScheduleService, 'recordManualStart', async () => undefined);
 
   mock.method(Note, 'find', () => makeNoteQuery(records) as never);
   mock.method(InspirationSource, 'find', (filter: Record<string, unknown>) => {
@@ -198,5 +209,18 @@ describe('P15 inspiration service', () => {
     assert.equal('userId' in (result as object), false);
     assert.equal('relatedNotes' in (result as object), false);
     assert.equal('internalQuery' in (result as object), false);
+  });
+
+  it('stops a scheduled run before Tavily if opt-in is removed during planning', async () => {
+    installModelDoubles();
+    mock.method(inspirationScheduleService, 'isEnabled', async () => true);
+    let allowed = true;
+    const service = createInspirationService({
+      planner: async () => { allowed = false; return plan; },
+      search: async () => { throw new Error('Tavily must not be called after opt-out'); },
+      synthesizer: async () => draft,
+    });
+    const result = await service.runScheduled('user-1', async () => allowed);
+    assert.deepEqual(result, { status: 'cancelled' });
   });
 });

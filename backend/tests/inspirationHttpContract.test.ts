@@ -4,6 +4,7 @@ import type { NextFunction } from 'express';
 import inspirationRouter from '../routes/inspirations';
 import { inspirationService } from '../services/inspirationService';
 import { inspirationCatalogService } from '../services/inspirationCatalogService';
+import { inspirationScheduleService } from '../services/inspirationScheduleService';
 import { inspirationError, type InspirationDto } from '../services/inspirationTypes';
 import { authenticateToken } from '../middleware/auth';
 import { globalErrorHandler } from '../utils/errorHandler';
@@ -29,14 +30,14 @@ function makeResponse(): CapturedResponse {
   };
 }
 
-function routeStack(path: string, method: 'get' | 'post' | 'patch') {
+function routeStack(path: string, method: 'get' | 'post' | 'patch' | 'put') {
   const layer = (inspirationRouter as never as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: Function }> } }> }).stack
     .find((entry) => entry.route?.path === path && entry.route.methods[method]);
   assert.ok(layer?.route, `missing ${method.toUpperCase()} ${path}`);
   return layer.route.stack;
 }
 
-function routeHandler(path: string, method: 'get' | 'post' | 'patch') {
+function routeHandler(path: string, method: 'get' | 'post' | 'patch' | 'put') {
   const handlers = routeStack(path, method);
   return handlers[handlers.length - 1].handle;
 }
@@ -60,7 +61,7 @@ describe('P15 inspiration HTTP contract', () => {
   afterEach(() => mock.restoreAll());
 
   it('requires authentication as the first middleware for POST and GET', () => {
-    for (const [path, method] of [['/', 'post'], ['/latest', 'get'], ['/', 'get'], ['/:id', 'get'], ['/:id/user-state', 'patch'], ['/:id/viewed', 'post'], ['/unviewed-count', 'get']] as const) {
+    for (const [path, method] of [['/', 'post'], ['/latest', 'get'], ['/', 'get'], ['/:id', 'get'], ['/:id/user-state', 'patch'], ['/:id/viewed', 'post'], ['/unviewed-count', 'get'], ['/settings', 'get'], ['/settings', 'put']] as const) {
       assert.equal(routeStack(path, method)[0].handle, authenticateToken);
     }
   });
@@ -162,6 +163,19 @@ describe('P15 inspiration HTTP contract', () => {
     assert.equal(error, undefined);
     assert.equal(response.headers['Cache-Control'], 'no-store');
     assert.equal((response.body as any).data.item.userState, 'saved');
+  });
+
+  it('stores opt-in only for the authenticated user and without starting research', async () => {
+    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
+    mock.method(inspirationScheduleService, 'setEnabled', async (userId: string, enabled: boolean) => {
+      assert.deepEqual([userId, enabled], ['user-1', true]);
+      return { enabled: true, consentedAt: '2026-09-26T00:00:00.000Z', nextEligibleAt: '2026-09-27T00:00:00.000Z', lastAttemptAt: null, lastStatus: null };
+    });
+    const response = makeResponse();
+    const error = await invokeRoute(routeHandler('/settings', 'put'), { body: { enabled: true } }, response);
+    assert.equal(error, undefined);
+    assert.equal(response.headers['Cache-Control'], 'no-store');
+    assert.equal((response.body as any).data.enabled, true);
   });
 
   it('preserves the in-progress error code but never returns query or note metadata', async () => {

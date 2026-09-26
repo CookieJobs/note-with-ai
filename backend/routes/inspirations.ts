@@ -8,6 +8,7 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { inspirationService } from '../services/inspirationService';
 import { inspirationCatalogService, type InspirationView, type InspirationStateOperation } from '../services/inspirationCatalogService';
+import { inspirationScheduleService } from '../services/inspirationScheduleService';
 import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandler';
 import { UserValidator } from '../utils/userValidation';
 
@@ -54,6 +55,23 @@ router.get('/unviewed-count', authenticateToken, asyncHandler(async (req, res) =
   ResponseHandler.success(res,
     { count: await inspirationCatalogService.unviewedCount(user._id.toString()) },
     '获取新灵感数量成功');
+}));
+
+router.get('/settings', authenticateToken, asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const user = await UserValidator.authenticateUser(req);
+  ResponseHandler.success(res, await inspirationScheduleService.get(user._id.toString()), '获取灵感设置成功');
+}));
+
+router.put('/settings', authenticateToken, asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const user = await UserValidator.authenticateUser(req);
+  if (typeof req.body?.enabled !== 'boolean' || Object.keys(req.body).length !== 1) {
+    throw ErrorHandler.createValidationError('无效的灵感设置');
+  }
+  ResponseHandler.success(res,
+    await inspirationScheduleService.setEnabled(user._id.toString(), req.body.enabled),
+    '灵感设置已更新');
 }));
 
 router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
