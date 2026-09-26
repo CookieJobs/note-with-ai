@@ -29,14 +29,14 @@ function makeResponse(): CapturedResponse {
   };
 }
 
-function routeStack(path: string, method: 'get' | 'post') {
+function routeStack(path: string, method: 'get' | 'post' | 'patch') {
   const layer = (inspirationRouter as never as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: Function }> } }> }).stack
     .find((entry) => entry.route?.path === path && entry.route.methods[method]);
   assert.ok(layer?.route, `missing ${method.toUpperCase()} ${path}`);
   return layer.route.stack;
 }
 
-function routeHandler(path: string, method: 'get' | 'post') {
+function routeHandler(path: string, method: 'get' | 'post' | 'patch') {
   const handlers = routeStack(path, method);
   return handlers[handlers.length - 1].handle;
 }
@@ -60,7 +60,7 @@ describe('P15 inspiration HTTP contract', () => {
   afterEach(() => mock.restoreAll());
 
   it('requires authentication as the first middleware for POST and GET', () => {
-    for (const [path, method] of [['/', 'post'], ['/latest', 'get'], ['/', 'get'], ['/:id', 'get']] as const) {
+    for (const [path, method] of [['/', 'post'], ['/latest', 'get'], ['/', 'get'], ['/:id', 'get'], ['/:id/user-state', 'patch'], ['/:id/viewed', 'post'], ['/unviewed-count', 'get']] as const) {
       assert.equal(routeStack(path, method)[0].handle, authenticateToken);
     }
   });
@@ -149,6 +149,19 @@ describe('P15 inspiration HTTP contract', () => {
     assert.ok(error);
     globalErrorHandler(error as never, { method: 'GET', path: '/api/inspirations' } as never, response as never, (() => undefined) as NextFunction);
     assert.equal(response.statusCode, 400);
+  });
+
+  it('accepts only a named organization operation and keeps the response private', async () => {
+    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
+    mock.method(inspirationCatalogService, 'changeUserState', async (userId: string, itemId: string, operation: string) => {
+      assert.deepEqual([userId, itemId, operation], ['user-1', item.id, 'save']);
+      return { ...item, userState: 'saved' as const };
+    });
+    const response = makeResponse();
+    const error = await invokeRoute(routeHandler('/:id/user-state', 'patch'), { params: { id: item.id }, body: { operation: 'save' } }, response);
+    assert.equal(error, undefined);
+    assert.equal(response.headers['Cache-Control'], 'no-store');
+    assert.equal((response.body as any).data.item.userState, 'saved');
   });
 
   it('preserves the in-progress error code but never returns query or note metadata', async () => {

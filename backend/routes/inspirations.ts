@@ -7,7 +7,7 @@ Note: 路由只负责鉴权与标准响应适配；研究上下文、搜索和�
 import express from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { inspirationService } from '../services/inspirationService';
-import { inspirationCatalogService, type InspirationView } from '../services/inspirationCatalogService';
+import { inspirationCatalogService, type InspirationView, type InspirationStateOperation } from '../services/inspirationCatalogService';
 import { asyncHandler, ErrorHandler, ResponseHandler } from '../utils/errorHandler';
 import { UserValidator } from '../utils/userValidation';
 
@@ -48,12 +48,40 @@ router.get('/latest', authenticateToken, asyncHandler(async (req, res) => {
   );
 }));
 
+router.get('/unviewed-count', authenticateToken, asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const user = await UserValidator.authenticateUser(req);
+  ResponseHandler.success(res,
+    { count: await inspirationCatalogService.unviewedCount(user._id.toString()) },
+    '获取新灵感数量成功');
+}));
+
 router.get('/:id', authenticateToken, asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const user = await UserValidator.authenticateUser(req);
   ResponseHandler.success(res,
     { item: await inspirationCatalogService.detail(user._id.toString(), String(req.params.id)) },
     '获取灵感成功');
+}));
+
+router.patch('/:id/user-state', authenticateToken, asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const user = await UserValidator.authenticateUser(req);
+  const operation = req.body?.operation;
+  if (typeof operation !== 'string' || !['save', 'unsave', 'dismiss', 'restore'].includes(operation)) {
+    throw ErrorHandler.createValidationError('无效的灵感操作');
+  }
+  ResponseHandler.success(res,
+    { item: await inspirationCatalogService.changeUserState(user._id.toString(), String(req.params.id), operation as InspirationStateOperation) },
+    '灵感状态已更新');
+}));
+
+router.post('/:id/viewed', authenticateToken, asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const user = await UserValidator.authenticateUser(req);
+  ResponseHandler.success(res,
+    { item: await inspirationCatalogService.markViewed(user._id.toString(), String(req.params.id)) },
+    '灵感已查看');
 }));
 
 export default router;

@@ -83,4 +83,68 @@ describe('inspiration catalog', () => {
     await assert.rejects(inspirationCatalogService.detail('user-1', id(9)), (error: any) => error.statusCode === 404);
     assert.deepEqual(filters, [{ _id: id(9), userId: 'user-1', status: 'completed' }]);
   });
+
+  it('saves, unsaves, dismisses and restores without losing the result or its source', async () => {
+    const item = { ...row(1), userState: 'regular', sources: [{ sourceId: '1', canonicalUrl: 'https://example.com/a', title: '来源' }] };
+    mock.method(InspirationItem, 'findOneAndUpdate', async (filter: any, update: any) => {
+      if (filter.userId !== item.userId || filter._id !== item._id) return null;
+      const allowed = Array.isArray(filter.userState?.$in) ? filter.userState.$in : [filter.userState];
+      if (!allowed.includes(item.userState)) return null;
+      Object.assign(item, update.$set);
+      return item as never;
+    });
+    mock.method(InspirationItem, 'findOne', () => ({ lean: async () => item }) as never);
+    assert.equal((await inspirationCatalogService.changeUserState('user-1', item._id, 'save')).userState, 'saved');
+    assert.equal((await inspirationCatalogService.changeUserState('user-1', item._id, 'save')).userState, 'saved');
+    await assert.rejects(inspirationCatalogService.changeUserState('user-1', item._id, 'dismiss'), (error: any) => error.statusCode === 409);
+    assert.equal((await inspirationCatalogService.changeUserState('user-1', item._id, 'unsave')).userState, 'regular');
+    assert.equal((await inspirationCatalogService.changeUserState('user-1', item._id, 'dismiss')).userState, 'dismissed');
+    assert.equal((await inspirationCatalogService.changeUserState('user-1', item._id, 'restore')).userState, 'regular');
+    assert.equal(item.sources[0].canonicalUrl, 'https://example.com/a');
+  });
+
+  it('one of two conflicting concurrent transitions wins and the stale one returns conflict', async () => {
+    const item = { ...row(1), userState: 'regular' };
+    mock.method(InspirationItem, 'findOneAndUpdate', async (filter: any, update: any) => {
+      if (filter.userState?.$in.includes(item.userState)) {
+        Object.assign(item, update.$set);
+        return item as never;
+      }
+      return null;
+    });
+    mock.method(InspirationItem, 'findOne', () => ({ lean: async () => item }) as never);
+    const results = await Promise.allSettled([
+      inspirationCatalogService.changeUserState('user-1', item._id, 'save'),
+      inspirationCatalogService.changeUserState('user-1', item._id, 'dismiss'),
+    ]);
+    assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+    assert.equal(results.filter((result) => result.status === 'rejected' && (result.reason as any).statusCode === 409).length, 1);
+  });
+
+  it('marks a scheduled result viewed once and counts only unviewed non-ignored scheduled results', async () => {
+    const item = { ...row(1), origin: 'scheduled', userState: 'regular', viewedAt: null as Date | null };
+    mock.method(InspirationItem, 'findOneAndUpdate', async (filter: any, update: any) => {
+      if (filter.viewedAt === null && item.viewedAt === null) {
+        item.viewedAt = update.$set.viewedAt;
+        return item as never;
+      }
+      return null;
+    });
+    mock.method(InspirationItem, 'findOne', () => ({ lean: async () => item }) as never);
+    mock.method(InspirationItem, 'countDocuments', async (filter: any) => {
+      assert.deepEqual(filter, { userId: 'user-1', status: 'completed', origin: 'scheduled', viewedAt: null, userState: { $ne: 'dismissed' } });
+      return item.viewedAt === null ? 1 : 0;
+    });
+    assert.equal(await inspirationCatalogService.unviewedCount('user-1'), 1);
+    assert.ok((await inspirationCatalogService.markViewed('user-1', item._id)).viewedAt);
+    const firstViewedAt = item.viewedAt;
+    assert.equal((await inspirationCatalogService.markViewed('user-1', item._id)).viewedAt, firstViewedAt?.toISOString());
+    assert.equal(await inspirationCatalogService.unviewedCount('user-1'), 0);
+  });
+
+  it('returns 404 for a result outside the current user on state writes', async () => {
+    mock.method(InspirationItem, 'findOneAndUpdate', async () => null as never);
+    mock.method(InspirationItem, 'findOne', () => ({ lean: async () => null }) as never);
+    await assert.rejects(inspirationCatalogService.changeUserState('user-1', id(2), 'save'), (error: any) => error.statusCode === 404);
+  });
 });
