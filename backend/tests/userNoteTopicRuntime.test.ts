@@ -3,17 +3,20 @@ import mongoose from 'mongoose';
 import { after, before, test } from 'node:test';
 import { Note } from '../models/Note';
 import UserNoteTopicIndex from '../models/UserNoteTopicIndex';
+import UserNoteTopicBackfill from '../models/UserNoteTopicBackfill';
 import UserNoteTopicWorkerLease from '../models/UserNoteTopicWorkerLease';
 import { createUserNoteTopicWorker } from '../services/userNoteTopicIndexWorker';
 import { MongoTopicStore, LEASE_MS } from '../services/userNoteTopicIndexService';
 import { createUserNoteTopicRuntime } from '../services/userNoteTopicRuntime';
 import { buildTopicInputs } from '../services/userNoteTopicInputs';
+import { runTopicBackfillPage } from '../services/userNoteTopicBackfill';
 
 const TEST_DATABASE_URI = 'mongodb://127.0.0.1:27017/note_with_ai_profile_topic_test_20261002_b3';
 const RUN_MONGO = process.env.PROFILE_TOPIC_MONGO_TEST === '1';
 const store = new MongoTopicStore();
 const ownedNotes: mongoose.Types.ObjectId[] = [];
 const ownedUsers: mongoose.Types.ObjectId[] = [];
+const ownedScopes: string[] = [];
 
 before(async () => {
   if (!RUN_MONGO) return;
@@ -28,6 +31,7 @@ after(async () => {
     await UserNoteTopicIndex.deleteMany({ noteId: { $in: ownedNotes } });
   }
   if (ownedUsers.length) await UserNoteTopicWorkerLease.deleteMany({ userId: { $in: ownedUsers } });
+  if (ownedScopes.length) await UserNoteTopicBackfill.deleteMany({ scopeKey: { $in: ownedScopes } });
   await mongoose.disconnect();
 });
 
@@ -126,5 +130,39 @@ test('单个用户扫描失败时runtime仍等待其余用户并推进游标', a
 
   assert.deepEqual(processed.sort(), ['user-a', 'user-b', 'user-c']);
   assert.equal(advanced, true);
+  runtime.stop();
+});
+
+test('runtime tick在已完成扫尾后持久静默60秒，再恢复扫描', { skip: !RUN_MONGO }, async () => {
+  const { userId } = await noteFixture();
+  ownedScopes.push(`user:${userId}`);
+  let noteReads = 0;
+  let now = new Date('2026-10-02T07:00:00.000Z');
+  const countedStore = {
+    getIndex: (...args: Parameters<typeof store.getIndex>) => store.getIndex(...args),
+    recoverSuccessProjection: (...args: Parameters<typeof store.recoverSuccessProjection>) => store.recoverSuccessProjection(...args),
+    schedule: (...args: Parameters<typeof store.schedule>) => store.schedule(...args),
+    getNote: async (...args: Parameters<typeof store.getNote>) => {
+      noteReads += 1;
+      return store.getNote(...args);
+    },
+  };
+  const runtime = createUserNoteTopicRuntime({
+    worker: { processNext: async () => false },
+    getCursor: async () => ({ _id: 'runtime', cursor: null, cursorVersion: 0 }),
+    listUsers: async () => ({ userIds: [userId], cursor: null }),
+    advanceCursor: async (_current: any, next: string | null) => next,
+    backfillPage: async (input: any) => runTopicBackfillPage(input, { store: countedStore, now: () => now }),
+    now: () => now,
+  } as any);
+
+  await runtime.tick();
+  assert.equal(noteReads, 1);
+  now = new Date(now.getTime() + 59_999);
+  await runtime.tick();
+  assert.equal(noteReads, 1, 'the next one-second runtime tick must respect the persisted rescan deadline');
+  now = new Date(now.getTime() + 1);
+  await runtime.tick();
+  assert.equal(noteReads, 2, 'runtime resumes the full sweep once the 60-second deadline passes');
   runtime.stop();
 });

@@ -67,6 +67,66 @@ test('回填可从持久化游标恢复且重复执行安全', { skip: !RUN_MONG
   );
 });
 
+test('周期扫尾完成后持久等待60秒，未完成分页仍可继续推进', { skip: !RUN_MONGO }, async () => {
+  const userId = new mongoose.Types.ObjectId();
+  const ids = Array.from({ length: 3 }, () => new mongoose.Types.ObjectId()).sort((a, b) => a.toString().localeCompare(b.toString()));
+  for (const id of ids) await createNote(userId, id);
+  ownedScopes.push(`user:${userId}`);
+  let reads = 0;
+  const countedStore = {
+    getIndex: (...args: Parameters<typeof topicStore.getIndex>) => topicStore.getIndex(...args),
+    recoverSuccessProjection: (...args: Parameters<typeof topicStore.recoverSuccessProjection>) => topicStore.recoverSuccessProjection(...args),
+    schedule: (...args: Parameters<typeof topicStore.schedule>) => topicStore.schedule(...args),
+    getNote: async (...args: Parameters<typeof topicStore.getNote>) => {
+      reads += 1;
+      return topicStore.getNote(...args);
+    },
+  };
+  const firstAt = new Date('2026-10-02T06:00:00.000Z');
+  const dependencies = { store: countedStore, now: () => firstAt };
+
+  const firstPage = await runTopicBackfillPage({ userId: String(userId), limit: 1, rescanIntervalMs: 60_000 }, dependencies);
+  assert.equal(firstPage.done, false);
+  assert.equal(reads, 1);
+
+  const secondPage = await runTopicBackfillPage({ userId: String(userId), limit: 1, rescanIntervalMs: 60_000 }, {
+    ...dependencies, now: () => new Date(firstAt.getTime() + 1_000),
+  });
+  assert.equal(secondPage.done, false);
+  assert.equal(reads, 2, 'unfinished pages continue immediately instead of waiting for the next sweep');
+
+  const completedAt = new Date(firstAt.getTime() + 2_000);
+  const finalPage = await runTopicBackfillPage({ userId: String(userId), limit: 1, rescanIntervalMs: 60_000 }, {
+    ...dependencies, now: () => completedAt,
+  });
+  assert.equal(finalPage.done, false);
+  assert.equal(reads, 3);
+
+  const completionTime = new Date(completedAt.getTime() + 1_000);
+  const emptyPage = await runTopicBackfillPage({ userId: String(userId), limit: 1, rescanIntervalMs: 60_000 }, {
+    ...dependencies, now: () => completionTime,
+  });
+  assert.equal(emptyPage.done, true);
+  assert.equal(reads, 3);
+  const completedCheckpoint: any = await UserNoteTopicBackfill.findOne({ scopeKey: `user:${userId}` }).lean();
+  assert.equal(completedCheckpoint.nextRescanAt.getTime(), completionTime.getTime() + 60_000);
+
+  const repeated = await runTopicBackfillPage({ userId: String(userId), limit: 1, rescanIntervalMs: 60_000 }, {
+    ...dependencies, now: () => new Date(completionTime.getTime() + 59_999),
+  });
+  assert.equal(repeated.done, true);
+  assert.equal(repeated.scanned, 0);
+  assert.equal(reads, 3, 'a repeated pass before the deadline does not scan notes');
+
+  await runTopicBackfillPage({ userId: String(userId), limit: 1, rescanIntervalMs: 60_000 }, {
+    ...dependencies, now: () => new Date(completionTime.getTime() + 60_000),
+  });
+  assert.equal(reads, 4, 'a later sweep resumes from the beginning after the persisted deadline');
+  const checkpoint: any = await UserNoteTopicBackfill.findOne({ scopeKey: `user:${userId}` }).lean();
+  assert.equal(String(checkpoint.cursor), ids[0].toString(), 'the resumed sweep restarts from its first note');
+  assert.equal(checkpoint.nextRescanAt, null, 'an unfinished new sweep does not inherit the previous cooldown');
+});
+
 test('回填从Note权威成功快照恢复遗漏的索引投影且不重开AI任务', { skip: !RUN_MONGO }, async () => {
   const userId = new mongoose.Types.ObjectId();
   const note = await createNote(userId);

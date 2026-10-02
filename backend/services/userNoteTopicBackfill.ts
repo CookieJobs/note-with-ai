@@ -32,11 +32,15 @@ async function ensureCheckpoint(userId: string): Promise<any> {
 }
 
 export async function runTopicBackfillPage(
-  { userId, limit }: { userId: string; limit: number },
+  { userId, limit, rescanIntervalMs = 0 }: { userId: string; limit: number; rescanIntervalMs?: number },
   dependencies: TopicBackfillDependencies = defaultDependencies,
 ): Promise<TopicBackfillPage> {
   const pageSize = Math.max(1, Math.min(MAX_PAGE_SIZE, Math.trunc(limit) || 1));
   const checkpoint = await ensureCheckpoint(userId);
+  const now = dependencies.now();
+  if (rescanIntervalMs > 0 && checkpoint.done && checkpoint.nextRescanAt && new Date(checkpoint.nextRescanAt).getTime() > now.getTime()) {
+    return { scanned: 0, cursor: null, done: true };
+  }
   // A completed sweep is restarted from the beginning on its next bounded pass. This
   // catches a missed hook without requiring a GET request or a full-table sync.
   const previousCursor = checkpoint.done ? null : idString(checkpoint.cursor);
@@ -49,8 +53,6 @@ export async function runTopicBackfillPage(
   const filter: Record<string, unknown> = { userId: new mongoose.Types.ObjectId(userId) };
   if (previousCursor) filter._id = { $gt: new mongoose.Types.ObjectId(previousCursor) };
   const notes = await Note.find(filter).sort({ _id: 1 }).limit(pageSize).select('_id').lean();
-  const now = dependencies.now();
-
   for (const entry of notes) {
     const noteId = String(entry._id);
     const note = await dependencies.store.getNote(userId, noteId);
@@ -75,7 +77,15 @@ export async function runTopicBackfillPage(
   const nextCursor = finished ? null : String(notes[notes.length - 1]._id);
   const advanced = await UserNoteTopicBackfill.updateOne(
     checkpointFilter,
-    { $set: { cursor: nextCursor ? new mongoose.Types.ObjectId(nextCursor) : null, done: finished, updatedAt: now }, $inc: { cursorVersion: 1 } },
+    {
+      $set: {
+        cursor: nextCursor ? new mongoose.Types.ObjectId(nextCursor) : null,
+        done: finished,
+        nextRescanAt: finished && rescanIntervalMs > 0 ? new Date(now.getTime() + rescanIntervalMs) : null,
+        updatedAt: now,
+      },
+      $inc: { cursorVersion: 1 },
+    },
   );
   if (advanced.matchedCount !== 1) {
     const current: any = await UserNoteTopicBackfill.findById(checkpoint._id).lean();

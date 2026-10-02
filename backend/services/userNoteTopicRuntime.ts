@@ -10,6 +10,7 @@ import {
 
 const USER_PAGE_SIZE = 20;
 const DEFAULT_POLL_MS = 1_000;
+const BACKFILL_RESCAN_INTERVAL_MS = 60_000;
 
 type RuntimeWorker = { processNext(userId: string): Promise<boolean> };
 type RuntimeTimer = ReturnType<typeof setInterval>;
@@ -61,7 +62,7 @@ export function createUserNoteTopicRuntime(
       // prevent separate runtime instances from processing the same user together.
       await Promise.allSettled(page.userIds.map(async (userId) => {
         try {
-          await dependencies.backfillPage({ userId, limit: 50 });
+          await dependencies.backfillPage({ userId, limit: 50, rescanIntervalMs: BACKFILL_RESCAN_INTERVAL_MS });
         } catch (error) {
           logger.warn('User note topic backfill page failed', { userId, error: error instanceof Error ? error.message : String(error) });
         }

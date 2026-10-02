@@ -6,6 +6,8 @@ const UserNoteTopicBackfillSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   cursor: { type: mongoose.Schema.Types.ObjectId, default: null },
   done: { type: Boolean, default: false },
+  // Durable cooldown between completed full sweeps; independent from timestamps.updatedAt.
+  nextRescanAt: { type: Date, default: null },
   cursorVersion: { type: Number, default: 0, min: 0 },
   leaseToken: { type: String, default: null },
   leaseUntil: { type: Date, default: null },
