@@ -54,6 +54,16 @@ export const updateProfileSchema = z.object({
       .regex(/^[a-zA-Z0-9_\-一-龥]+$/, '用户名只能包含字母、数字、下划线、中划线和中文')
       .optional(),
     email: z.string().email('邮箱格式不正确').optional(),
-    avatar: z.string().optional(),
+    avatar: z.enum([
+      'preset:initials',
+      'preset:01',
+      'preset:02',
+      'preset:03',
+      'preset:04',
+      'preset:05',
+      'preset:06',
+      'preset:07',
+      'preset:08',
+    ]).optional(),
   }),
 });

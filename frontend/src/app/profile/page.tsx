@@ -9,6 +9,8 @@ import TopNavigation from '../../components/TopNavigation';
 import styles from './profile.module.scss';
 import { toast } from 'sonner';
 import { defaultProfileBackgroundTheme, mapUserProfileToBackgroundTheme } from './profileBackgroundTheme';
+import AvatarPicker from './AvatarPicker';
+import { AVATAR_PRESETS, resolveAvatarDisplay, type AvatarSelection } from './avatarPresets';
 
 function StatsBar({ stats, loading, error, onRetry }: {
   stats: UserStats | null; loading: boolean; error: boolean; onRetry: () => void;
@@ -31,37 +33,51 @@ function EditProfileModal({ open, user, onClose, onSaved }: {
   open: boolean; user: { username?: string; email: string; avatar?: string };
   onClose: () => void; onSaved: (u: { username?: string; avatar?: string }) => void;
 }) {
-  const [form, setForm] = useState({ username: '', avatar: '' });
+  const [username, setUsername] = useState('');
+  const [avatarSelection, setAvatarSelection] = useState<AvatarSelection | null>(null);
+  const [avatarChanged, setAvatarChanged] = useState(false);
   const [saving, setSaving] = useState(false);
-  useEffect(() => setForm({ username: user.username || '', avatar: user.avatar || '' }), [user.username, user.avatar, open]);
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const focusReturnRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    focusReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setUsername(user.username || '');
+    const hasStoredAvatar = Boolean(user.avatar);
+    const isStoredPreset = user.avatar === 'preset:initials' || AVATAR_PRESETS.some((preset) => preset.id === user.avatar);
+    setAvatarSelection(isStoredPreset ? user.avatar as AvatarSelection : hasStoredAvatar ? null : 'preset:initials');
+    setAvatarChanged(false);
+    usernameInputRef.current?.focus();
+    return () => focusReturnRef.current?.focus();
+  }, [user.username, user.avatar, open]);
   if (!open) return null;
   const handleSave = async () => {
-    if (!form.username.trim()) { toast.error('用户名不能为空'); return; }
+    if (!username.trim()) { toast.error('用户名不能为空'); return; }
     try {
       setSaving(true);
-      const updated = await updateProfile({ username: form.username.trim(), avatar: form.avatar.trim() || undefined });
+      const request: { username: string; avatar?: AvatarSelection } = { username: username.trim() };
+      if (avatarChanged && avatarSelection) request.avatar = avatarSelection;
+      const updated = await updateProfile(request);
       toast.success('资料更新成功');
-      onSaved({ username: updated.username, avatar: updated.avatar });
+      const saved: { username?: string; avatar?: string } = { username: updated.username };
+      if (avatarChanged && updated.avatar !== undefined) saved.avatar = updated.avatar;
+      onSaved(saved);
       onClose();
     } catch { toast.error('更新失败，请稍后重试'); } finally { setSaving(false); }
   };
   return (
-    <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-profile-title" onClick={(e) => e.stopPropagation()}>
-        <div className={styles.modalHeader}><h3 id="edit-profile-title">编辑资料</h3><button className={styles.modalClose} aria-label="关闭" onClick={onClose}>&times;</button></div>
+    <div className={styles.modalOverlay} onClick={() => { if (!saving) onClose(); }}>
+      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-profile-title" onClick={(e) => e.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape' && !saving) onClose(); }}>
+        <div className={styles.modalHeader}><h3 id="edit-profile-title">编辑资料</h3><button className={styles.modalClose} aria-label="关闭" onClick={onClose} disabled={saving}>&times;</button></div>
         <div className={styles.modalBody}>
-          <label className={styles.fieldLabel} htmlFor="profile-avatar">头像 URL</label>
-          <div className={styles.avatarPreviewRow}>
-            <div className={styles.avatarPreview}>{form.avatar ? <img src={form.avatar} alt="头像预览" className={styles.avatarImg} /> : <span>{(user.username || 'U')[0].toUpperCase()}</span>}</div>
-            <input id="profile-avatar" className={styles.input} placeholder="粘贴图片 URL" value={form.avatar} onChange={(e) => setForm((f) => ({ ...f, avatar: e.target.value }))} />
-          </div>
+          <AvatarPicker value={avatarSelection} legacyAvatarUrl={user.avatar} username={username || user.username || ''} onChange={(value) => { setAvatarSelection(value); setAvatarChanged(true); }} />
           <label className={styles.fieldLabel} htmlFor="profile-username">用户名</label>
-          <input id="profile-username" className={styles.input} placeholder="设置用户名" value={form.username} maxLength={20} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} />
+          <input ref={usernameInputRef} id="profile-username" className={styles.input} placeholder="设置用户名" value={username} maxLength={20} onChange={(e) => setUsername(e.target.value)} />
           <label className={styles.fieldLabel} htmlFor="profile-email">邮箱</label>
           <input id="profile-email" className={styles.input} value={user.email} readOnly disabled />
           <p className={styles.fieldHint}>邮箱暂不支持修改</p>
         </div>
-        <div className={styles.modalFooter}><button className={styles.btnCancel} onClick={onClose}>取消</button><button className={styles.btnPrimary} onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存'}</button></div>
+        <div className={styles.modalFooter}><button className={styles.btnCancel} onClick={onClose} disabled={saving}>取消</button><button className={styles.btnPrimary} onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存'}</button></div>
       </div>
     </div>
   );
@@ -116,6 +132,7 @@ export default function ProfilePage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [failedAvatarSrc, setFailedAvatarSrc] = useState<string>();
   const [aiExpanded, setAiExpanded] = useState(true);
   const requestId = useRef(0);
   const statsCache = useRef<UserStats | null>(null);
@@ -131,6 +148,7 @@ export default function ProfilePage() {
       : defaultProfileBackgroundTheme;
   }, [profile?.userProfile, user?.email, user?.username]);
   const pageStyle = useMemo(() => ({ ['--profile-background' as string]: theme.background }) as CSSProperties, [theme.background]);
+  const avatarDisplay = resolveAvatarDisplay(user?.avatar, user?.username || '');
 
   const loadStats = useCallback(async () => {
     if (!statsCache.current) setStatsLoading(true);
@@ -210,7 +228,9 @@ export default function ProfilePage() {
             <section className={`${styles.sectionGroup} ${styles.accountGroup}`} aria-labelledby="account-title">
               <div className={styles.sectionGroupHeader}><h1 id="account-title" className={styles.sectionGroupTitle}>账户设置</h1></div>
               <div className={styles.profileHeader}>
-                <div className={styles.avatar}>{user.avatar ? <img src={user.avatar} alt="" className={styles.avatarImg} /> : <span>{(user.username || 'U')[0]?.toUpperCase()}</span>}</div>
+                <div className={styles.avatar}>{avatarDisplay.src && avatarDisplay.src !== failedAvatarSrc
+                  ? <img src={avatarDisplay.src} alt="" className={styles.avatarImg} onError={() => setFailedAvatarSrc(avatarDisplay.src)} />
+                  : <span>{avatarDisplay.initials}</span>}</div>
                 <div className={styles.userInfo}><h2>{user.username || '未设置用户名'}</h2><p>{user.email}</p></div>
               </div>
               <div className={styles.profileActions}><button className={styles.btnOutlineSm} onClick={() => setEditOpen(true)}>编辑资料</button><button className={styles.btnOutlineSm} onClick={() => setPasswordOpen(true)}>修改密码</button></div>

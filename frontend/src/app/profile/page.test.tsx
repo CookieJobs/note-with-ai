@@ -219,6 +219,110 @@ describe('ProfilePage', () => {
     await waitFor(() => expect(mocks.updateProfile).toHaveBeenCalledWith(expect.objectContaining({ username: '新名字' })));
   });
 
+  it('仅保存用户名时省略 avatar 并保留旧 URL', async () => {
+    const legacyUrl = 'https://legacy.example/avatar.png';
+    mocks.getUser.mockReturnValue({ id: 'user-1', username: '测试用户', email: 'test@example.com', avatar: legacyUrl });
+    mocks.updateProfile.mockResolvedValue({ username: '新名字', avatar: legacyUrl });
+
+    const { container } = render(<ProfilePage />);
+    await waitFor(() => expect(container.querySelector('section[aria-labelledby="account-title"] img')).toHaveAttribute('src', legacyUrl));
+    fireEvent.click(screen.getByRole('button', { name: '编辑资料' }));
+    fireEvent.change(screen.getByPlaceholderText('设置用户名'), { target: { value: '新名字' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(mocks.updateProfile).toHaveBeenCalledWith({ username: '新名字' }));
+    expect(container.querySelector('section[aria-labelledby="account-title"] img')).toHaveAttribute('src', legacyUrl);
+  });
+
+  it('无存储头像时默认选择首字母且用户名保存省略 avatar', async () => {
+    mocks.updateProfile.mockResolvedValue({ username: '新名字' });
+    render(<ProfilePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑资料' }));
+    expect(screen.getByRole('radio', { name: '姓名首字母' })).toBeChecked();
+    fireEvent.change(screen.getByPlaceholderText('设置用户名'), { target: { value: '新名字' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(mocks.updateProfile).toHaveBeenCalledWith({ username: '新名字' }));
+  });
+
+  it('保留未知旧头像值且不在用户名保存时迁移', async () => {
+    const unknownLegacyValue = 'legacy:unrecognized-avatar';
+    mocks.getUser.mockReturnValue({ id: 'user-1', username: '测试用户', email: 'test@example.com', avatar: unknownLegacyValue });
+    mocks.updateProfile.mockResolvedValue({ username: '新名字', avatar: unknownLegacyValue });
+    const { container } = render(<ProfilePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑资料' }));
+    expect(screen.getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
+    expect(screen.getByAltText('头像预览：现有头像')).toHaveAttribute('src', unknownLegacyValue);
+    fireEvent.change(screen.getByPlaceholderText('设置用户名'), { target: { value: '新名字' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(mocks.updateProfile).toHaveBeenCalledWith({ username: '新名字' }));
+    expect(container.querySelector('section[aria-labelledby="account-title"] img')).toHaveAttribute('src', unknownLegacyValue);
+  });
+
+  it('取消或关闭时丢弃头像草稿', async () => {
+    const legacyUrl = 'https://legacy.example/avatar.png';
+    mocks.getUser.mockReturnValue({ id: 'user-1', username: '测试用户', email: 'test@example.com', avatar: legacyUrl });
+    render(<ProfilePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑资料' }));
+    fireEvent.click(screen.getByRole('radio', { name: '预设头像 3' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    fireEvent.click(screen.getByRole('button', { name: '编辑资料' }));
+    expect(screen.getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
+    expect(screen.getByAltText('头像预览：现有头像')).toHaveAttribute('src', legacyUrl);
+    fireEvent.click(screen.getByRole('radio', { name: '预设头像 4' }));
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑资料' }));
+    expect(screen.getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
+    expect(mocks.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('显式保存预设时写入其稳定键', async () => {
+    mocks.updateProfile.mockResolvedValue({ username: '测试用户', avatar: 'preset:03' });
+    const { container } = render(<ProfilePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑资料' }));
+    fireEvent.click(screen.getByRole('radio', { name: '预设头像 3' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(mocks.updateProfile).toHaveBeenCalledWith({ username: '测试用户', avatar: 'preset:03' }));
+    expect(container.querySelector('section[aria-labelledby="account-title"] img')).toHaveAttribute('src', '/avatars/profile-preset-03.svg');
+  });
+
+  it('渲染旧头像且不做转换，失效时回退首字母', async () => {
+    const legacyUrl = 'https://legacy.example/old.png';
+    mocks.getUser.mockReturnValue({ id: 'user-1', username: '测试用户', email: 'test@example.com', avatar: legacyUrl });
+    const { container } = render(<ProfilePage />);
+
+    await waitFor(() => expect(container.querySelector('section[aria-labelledby="account-title"] img')).toHaveAttribute('src', legacyUrl));
+    const legacyImage = container.querySelector('section[aria-labelledby="account-title"] img')!;
+    expect(legacyImage).toHaveAttribute('src', legacyUrl);
+    fireEvent.error(legacyImage);
+    expect(screen.getByText('测试')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '编辑资料' }));
+    expect(screen.getByAltText('头像预览：现有头像')).toHaveAttribute('src', legacyUrl);
+    expect(screen.queryByPlaceholderText(/URL|图片/)).not.toBeInTheDocument();
+  });
+
+  it('保存期间禁止关闭弹窗以避免迟到的保存结果覆盖新会话', async () => {
+    let resolveSave!: (value: { username: string; avatar?: string }) => void;
+    mocks.updateProfile.mockReturnValue(new Promise((resolve) => { resolveSave = resolve; }));
+    render(<ProfilePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑资料' }));
+    fireEvent.click(screen.getByRole('radio', { name: '预设头像 1' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByRole('button', { name: '关闭' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '取消' })).toBeDisabled();
+
+    await act(async () => resolveSave({ username: '测试用户', avatar: 'preset:01' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('修改密码弹窗仍可打开并提交有效凭据', async () => {
     render(<ProfilePage />);
     fireEvent.click(await screen.findByRole('button', { name: '修改密码' }));
