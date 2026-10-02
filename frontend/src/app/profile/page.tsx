@@ -3,111 +3,38 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUser, isAuthenticated } from '../../utils/auth';
-import { getFeed, triggerAnalysis, getStats, FeedResponse, UserStats } from '../../services/feedService';
+import { getProfileAnalysis, getStats, triggerProfileAnalysis, type ProfileAnalysisResponse, type UserStats } from '../../services/profileService';
 import { updateProfile, changePassword } from '../../services/userService';
 import TopNavigation from '../../components/TopNavigation';
 import styles from './profile.module.scss';
 import { toast } from 'sonner';
 import { defaultProfileBackgroundTheme, mapUserProfileToBackgroundTheme } from './profileBackgroundTheme';
 
-/* ========== Skeleton ========== */
-
-function SkeletonBar() {
+function StatsBar({ stats, loading, error, onRetry }: {
+  stats: UserStats | null; loading: boolean; error: boolean; onRetry: () => void;
+}) {
   return (
-    <div className={styles.statsBar}>
-      <div className={styles.skeletonBar} style={{ width: '100%', height: 20 }} />
-    </div>
-  );
-}
-
-function SkeletonFeed() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className={styles.sectionGroup} style={{ padding: '1rem' }}>
-          <div className={styles.skeletonBar} style={{ width: '30%', height: 14, marginBottom: 12 }} />
-          <div className={styles.skeletonBar} style={{ width: '70%', height: 18, marginBottom: 8 }} />
-          <div className={styles.skeletonBar} style={{ width: '100%', height: 12, marginBottom: 6 }} />
-          <div className={styles.skeletonBar} style={{ width: '85%', height: 12 }} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ========== Stats Bar ========== */
-
-function StatsBar({ stats }: { stats: UserStats | null }) {
-  if (!stats) return <SkeletonBar />;
-
-  const items = [
-    { value: stats.totalNotes, unit: '篇', label: '笔记' },
-    { value: stats.notesThisMonth, unit: '篇', label: '本月' },
-  ];
-
-  return (
-    <div className={styles.statsBar}>
+    <div className={styles.statsBar} aria-live="polite">
       <span className={styles.statsBarLabel}>使用统计</span>
-      {items.map((item, i) => (
-        <span key={i} className={styles.statsBarItem}>
-          <strong>{item.value}</strong> {item.unit} {item.label}
-        </span>
-      ))}
+      {loading && !stats ? <div className={styles.skeletonBar} style={{ width: 180, height: 20 }} aria-label="统计加载中" /> : error && !stats ? (
+        <><span className={styles.statsError}>统计暂不可用</span><button className={styles.btnOutlineSm} onClick={onRetry}>重试统计</button></>
+      ) : stats && <>
+        <span className={styles.statsBarItem}><strong>{stats.totalNotes}</strong> 篇 笔记</span>
+        <span className={styles.statsBarItem}><strong>{stats.notesThisMonth}</strong> 篇 本月</span>
+        {error && <><span className={styles.statsError}>刷新失败，显示上次数据</span><button className={styles.btnOutlineSm} onClick={onRetry}>重试统计</button></>}
+      </>}
     </div>
   );
 }
 
-/* ========== Interest Graph ========== */
-
-function InterestGraph({ interests }: { interests: { topic: string; score: number }[] }) {
-  if (!interests || interests.length === 0) return null;
-
-  const barColors = [
-    '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981',
-    '#f59e0b', '#ef4444', '#ec4899', '#6366f1',
-  ];
-
-  return (
-    <div className={styles.aiSubCard}>
-      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.5rem' }}>兴趣图谱</div>
-      <div className={styles.interestBars}>
-        {interests.map((interest, idx) => {
-          const color = barColors[idx % barColors.length];
-          const pct = Math.round(interest.score * 100);
-          return (
-            <div key={idx} className={styles.interestBarRow}>
-              <span className={styles.interestLabel}>{interest.topic}</span>
-              <div className={styles.interestTrack}>
-                <div className={styles.interestFill} style={{ width: `${Math.max(pct, 5)}%`, backgroundColor: color }} />
-              </div>
-              <span className={styles.interestScore} style={{ color }}>{pct}%</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ========== Edit Profile Modal ========== */
-
-function EditProfileModal({
-  open, user, onClose, onSaved,
-}: {
-  open: boolean;
-  user: { username?: string; email: string; avatar?: string };
-  onClose: () => void;
-  onSaved: (u: { username?: string; avatar?: string }) => void;
+function EditProfileModal({ open, user, onClose, onSaved }: {
+  open: boolean; user: { username?: string; email: string; avatar?: string };
+  onClose: () => void; onSaved: (u: { username?: string; avatar?: string }) => void;
 }) {
   const [form, setForm] = useState({ username: '', avatar: '' });
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setForm({ username: user.username || '', avatar: user.avatar || '' });
-  }, [user.username, user.avatar, open]);
-
+  useEffect(() => setForm({ username: user.username || '', avatar: user.avatar || '' }), [user.username, user.avatar, open]);
   if (!open) return null;
-
   const handleSave = async () => {
     if (!form.username.trim()) { toast.error('用户名不能为空'); return; }
     try {
@@ -116,56 +43,35 @@ function EditProfileModal({
       toast.success('资料更新成功');
       onSaved({ username: updated.username, avatar: updated.avatar });
       onClose();
-    } catch (e: any) {
-      toast.error(e.message || '更新失败');
-    } finally {
-      setSaving(false);
-    }
+    } catch { toast.error('更新失败，请稍后重试'); } finally { setSaving(false); }
   };
-
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.modalHeader}>
-          <h3>编辑资料</h3>
-          <button className={styles.modalClose} onClick={onClose}>&times;</button>
-        </div>
+      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-profile-title" onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}><h3 id="edit-profile-title">编辑资料</h3><button className={styles.modalClose} aria-label="关闭" onClick={onClose}>&times;</button></div>
         <div className={styles.modalBody}>
-          <label className={styles.fieldLabel}>头像 URL</label>
+          <label className={styles.fieldLabel} htmlFor="profile-avatar">头像 URL</label>
           <div className={styles.avatarPreviewRow}>
-            <div className={styles.avatarPreview}>
-              {form.avatar ? (
-                // Avatar URLs are user-provided and cannot safely be allowlisted for next/image.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={form.avatar} alt="" className={styles.avatarImg} loading="lazy" decoding="async" />
-              ) : <span>{(user.username || 'U')[0].toUpperCase()}</span>}
-            </div>
-            <input className={styles.input} placeholder="粘贴图片 URL" value={form.avatar} onChange={(e) => setForm((f) => ({ ...f, avatar: e.target.value }))} />
+            <div className={styles.avatarPreview}>{form.avatar ? <img src={form.avatar} alt="头像预览" className={styles.avatarImg} /> : <span>{(user.username || 'U')[0].toUpperCase()}</span>}</div>
+            <input id="profile-avatar" className={styles.input} placeholder="粘贴图片 URL" value={form.avatar} onChange={(e) => setForm((f) => ({ ...f, avatar: e.target.value }))} />
           </div>
-          <label className={styles.fieldLabel}>用户名</label>
-          <input className={styles.input} placeholder="设置用户名" value={form.username} maxLength={20} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} />
-          <label className={styles.fieldLabel}>邮箱</label>
-          <input className={styles.input} value={user.email} disabled style={{ opacity: 0.5 }} />
+          <label className={styles.fieldLabel} htmlFor="profile-username">用户名</label>
+          <input id="profile-username" className={styles.input} placeholder="设置用户名" value={form.username} maxLength={20} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} />
+          <label className={styles.fieldLabel} htmlFor="profile-email">邮箱</label>
+          <input id="profile-email" className={styles.input} value={user.email} readOnly disabled />
           <p className={styles.fieldHint}>邮箱暂不支持修改</p>
         </div>
-        <div className={styles.modalFooter}>
-          <button className={styles.btnCancel} onClick={onClose}>取消</button>
-          <button className={styles.btnPrimary} onClick={handleSave} disabled={saving}>{saving ? '保存中...' : '保存'}</button>
-        </div>
+        <div className={styles.modalFooter}><button className={styles.btnCancel} onClick={onClose}>取消</button><button className={styles.btnPrimary} onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存'}</button></div>
       </div>
     </div>
   );
 }
 
-/* ========== Change Password Modal ========== */
-
 function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [form, setForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
   const [saving, setSaving] = useState(false);
-
   useEffect(() => { if (open) setForm({ oldPassword: '', newPassword: '', confirmPassword: '' }); }, [open]);
   if (!open) return null;
-
   const handleSave = async () => {
     if (!form.oldPassword) { toast.error('请输入当前密码'); return; }
     if (form.newPassword.length < 8) { toast.error('新密码至少8位'); return; }
@@ -176,323 +82,173 @@ function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => 
       await changePassword({ oldPassword: form.oldPassword, newPassword: form.newPassword });
       toast.success('密码修改成功，请重新登录');
       setTimeout(() => { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = '/auth'; }, 1500);
-    } catch (e: any) {
-      toast.error(e.message || '修改失败');
-    } finally {
-      setSaving(false);
-    }
+    } catch { toast.error('修改失败，请稍后重试'); } finally { setSaving(false); }
   };
-
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.modalHeader}>
-          <h3>修改密码</h3>
-          <button className={styles.modalClose} onClick={onClose}>&times;</button>
-        </div>
+      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="change-password-title" onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalHeader}><h3 id="change-password-title">修改密码</h3><button className={styles.modalClose} aria-label="关闭" onClick={onClose}>&times;</button></div>
         <div className={styles.modalBody}>
-          <label className={styles.fieldLabel}>当前密码</label>
-          <input className={styles.input} type="password" placeholder="输入当前密码" value={form.oldPassword} onChange={(e) => setForm((f) => ({ ...f, oldPassword: e.target.value }))} />
-          <label className={styles.fieldLabel}>新密码</label>
-          <input className={styles.input} type="password" placeholder="至少8位，包含字母和数字" value={form.newPassword} onChange={(e) => setForm((f) => ({ ...f, newPassword: e.target.value }))} />
-          <label className={styles.fieldLabel}>确认新密码</label>
-          <input className={styles.input} type="password" placeholder="再次输入新密码" value={form.confirmPassword} onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))} />
+          <label className={styles.fieldLabel} htmlFor="old-password">当前密码</label><input id="old-password" className={styles.input} type="password" placeholder="输入当前密码" value={form.oldPassword} onChange={(e) => setForm((f) => ({ ...f, oldPassword: e.target.value }))} />
+          <label className={styles.fieldLabel} htmlFor="new-password">新密码</label><input id="new-password" className={styles.input} type="password" placeholder="至少8位，包含字母和数字" value={form.newPassword} onChange={(e) => setForm((f) => ({ ...f, newPassword: e.target.value }))} />
+          <label className={styles.fieldLabel} htmlFor="confirm-password">确认新密码</label><input id="confirm-password" className={styles.input} type="password" placeholder="再次输入新密码" value={form.confirmPassword} onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))} />
         </div>
-        <div className={styles.modalFooter}>
-          <button className={styles.btnCancel} onClick={onClose}>取消</button>
-          <button className={styles.btnPrimary} onClick={handleSave} disabled={saving}>{saving ? '修改中...' : '确认修改'}</button>
-        </div>
+        <div className={styles.modalFooter}><button className={styles.btnCancel} onClick={onClose}>取消</button><button className={styles.btnPrimary} onClick={handleSave} disabled={saving}>{saving ? '修改中…' : '确认修改'}</button></div>
       </div>
     </div>
   );
 }
 
-/* ========== Main Page ========== */
+const formatAnalysisScope = (data: ProfileAnalysisResponse) => {
+  if (data.analysisInputScope === 'recent_up_to_20') return `最近最多 20 篇笔记${data.analysisInputNoteCount == null ? '' : `（本次输入 ${data.analysisInputNoteCount} 篇）`}`;
+  if (data.analysisInputScope === 'unknown') return '范围未知的旧画像';
+  return '';
+};
 
 export default function ProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  const [data, setData] = useState<FeedResponse | null>(null);
+  const [profile, setProfile] = useState<ProfileAnalysisResponse | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState(false);
   const [stats, setStats] = useState<UserStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [aiExpanded, setAiExpanded] = useState(true);
-  const previousProfileStatusRef = useRef<FeedResponse['profileStatus']>();
+  const requestId = useRef(0);
+  const statsCache = useRef<UserStats | null>(null);
 
+  const displayedProfile = profile?.userProfile ?? profile?.historicalProfile ?? null;
   const theme = useMemo(() => {
-    if (data?.userProfile?.theme && data.userProfile.theme.cssValue) {
-      const isValid = /^linear-gradient|^radial-gradient|#|rgba?/i.test(data.userProfile.theme.cssValue.trim());
-      if (isValid) return { id: 'ai-generated' as any, background: data.userProfile.theme.cssValue.trim() };
+    const currentProfile = profile?.userProfile;
+    if (currentProfile?.theme?.cssValue && /^(linear-gradient|radial-gradient|#|rgba?)/i.test(currentProfile.theme.cssValue.trim())) {
+      return { id: 'ai-generated' as const, background: currentProfile.theme.cssValue.trim() };
     }
-    const computed = mapUserProfileToBackgroundTheme(data?.userProfile, { seed: user?.email || user?.username });
-    if (loading || !data?.userProfile || data?.profileStatus === 'analyzing') return defaultProfileBackgroundTheme;
-    return computed;
-  }, [data?.profileStatus, data?.userProfile, loading, user?.email, user?.username]);
+    return currentProfile
+      ? mapUserProfileToBackgroundTheme(currentProfile, { seed: user?.email || user?.username })
+      : defaultProfileBackgroundTheme;
+  }, [profile?.userProfile, user?.email, user?.username]);
+  const pageStyle = useMemo(() => ({ ['--profile-background' as string]: theme.background }) as CSSProperties, [theme.background]);
 
-  const pageStyle = useMemo(
-    () => ({ ['--profile-background' as any]: theme.background }) as CSSProperties,
-    [theme.background],
-  );
-
-  const loadFeedPanel = useCallback(async (options: { silent?: boolean } = {}) => {
-    const { silent = false } = options;
-
+  const loadStats = useCallback(async () => {
+    if (!statsCache.current) setStatsLoading(true);
     try {
-      if (!silent) {
-        setLoading(true);
-      }
-
-      const nextFeed = await getFeed();
-      setData(nextFeed);
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
+      const next = await getStats();
+      statsCache.current = next;
+      setStats(next);
+      setStatsError(false);
     }
+    catch { setStatsError(true); }
+    finally { setStatsLoading(false); }
   }, []);
 
-  const loadStatsBar = useCallback(async () => {
-    const nextStats = await getStats();
-    setStats(nextStats);
-  }, []);
-
-  const loadInitialData = useCallback(async () => {
-    setLoading(true);
-
+  const loadProfile = useCallback(async (silent = false) => {
+    const id = ++requestId.current;
+    if (!silent) setProfileLoading(true);
     try {
-      const [feedRes, statsRes] = await Promise.allSettled([
-        loadFeedPanel({ silent: true }),
-        loadStatsBar(),
-      ]);
-
-      if (feedRes.status === 'rejected' && statsRes.status === 'rejected') {
-        setData(null);
-        setStats(null);
-      }
+      const next = await getProfileAnalysis();
+      if (id === requestId.current) { setProfile(next); setProfileError(false); }
+    } catch {
+      if (id === requestId.current) setProfileError(true);
     } finally {
-      setLoading(false);
+      if (id === requestId.current && !silent) setProfileLoading(false);
     }
-  }, [loadFeedPanel, loadStatsBar]);
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.push('/auth'); return; }
     setUser(getUser());
-    void loadInitialData();
-  }, [loadInitialData, router]);
-
-  // Auto-collapse AI when analyzing, expand when ready
-  useEffect(() => {
-    if (data?.profileStatus === 'analyzing') setAiExpanded(false);
-  }, [data?.profileStatus]);
+    void loadProfile();
+    void loadStats();
+  }, [loadProfile, loadStats, router]);
 
   useEffect(() => {
-    const previousStatus = previousProfileStatusRef.current;
-    const currentStatus = data?.profileStatus;
-
-    if (previousStatus === 'analyzing' && currentStatus && currentStatus !== 'analyzing') {
-      void loadStatsBar();
-    }
-
-    previousProfileStatusRef.current = currentStatus;
-  }, [data?.profileStatus, loadStatsBar]);
-
-  useEffect(() => {
-    if (data?.profileStatus !== 'analyzing') return;
-
-    const timer = window.setTimeout(() => {
-      void loadFeedPanel({ silent: true });
-    }, 4000);
-
-    return () => window.clearTimeout(timer);
-  }, [data?.profileStatus, loadFeedPanel]);
+    if (profile?.profileStatus !== 'analyzing') return;
+    const timer = window.setInterval(() => { void loadProfile(true); }, 4000);
+    return () => window.clearInterval(timer);
+  }, [profile?.profileStatus, loadProfile]);
 
   const handleTriggerAnalysis = async () => {
     try {
       setAnalyzing(true);
-      toast.info('正在开始画像分析，请稍候...');
-      const result = await triggerAnalysis();
-      toast.success(result.accepted ? '分析任务已触发，分析完成后将自动刷新' : '已有画像分析任务在运行');
-      setData((prev) => ({
-        feed: prev?.feed || [],
-        userProfile: prev?.userProfile,
-        profileStatus: result.profileStatus,
-        analysisError: result.analysisError,
-      }));
-    } catch { toast.error('触发分析失败'); }
+      const result = await triggerProfileAnalysis();
+      if (result.accepted) {
+        setProfile((previous) => previous ? { ...previous, profileStatus: 'analyzing' } : previous);
+        toast.success('画像分析已开始，完成后会自动更新');
+      } else if (result.reason === 'insufficient_data') {
+        setProfile((previous) => previous ? { ...previous, profileStatus: 'insufficient_data' } : previous);
+      } else {
+        toast.info('已有画像分析任务正在运行');
+        void loadProfile(true);
+      }
+    } catch { toast.error('无法开始画像分析，请稍后重试'); }
     finally { setAnalyzing(false); }
   };
-
-  const handleFeedClick = (noteId: string) => router.push(`/notes?highlight=${noteId}`);
 
   const handleProfileSaved = (updated: { username?: string; avatar?: string }) => {
     setUser((prev: any) => ({ ...prev, ...updated }));
     const stored = localStorage.getItem('user');
-    if (stored) {
-      try { localStorage.setItem('user', JSON.stringify({ ...JSON.parse(stored), ...updated })); } catch {}
-    }
+    if (stored) { try { localStorage.setItem('user', JSON.stringify({ ...JSON.parse(stored), ...updated })); } catch {} }
   };
 
-  if (!user) {
-    return (
-      <div className={styles.page} style={pageStyle}>
-        <TopNavigation />
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 60px)', color: '#888' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 24, height: 24, border: '3px solid rgba(0,0,0,0.1)', borderTopColor: '#333', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-            <span>Loading...</span>
-          </div>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return <div className={styles.page} style={pageStyle}><TopNavigation /><div className={styles.loadingPage}>正在加载账户资料…</div></div>;
+
+  const insufficient = (profile?.noteCount ?? 0) < 5 || profile?.profileStatus === 'insufficient_data';
+  const historic = insufficient || (!profile?.userProfile && Boolean(profile?.historicalProfile));
+  const canGenerate = !insufficient && (!profile?.userProfile || profile?.profileStatus === 'failed') && profile?.profileStatus !== 'analyzing';
+  const scopeText = profile ? formatAnalysisScope(profile) : '';
 
   return (
     <div className={styles.page} style={pageStyle}>
       <TopNavigation />
-      <div className={styles.container}>
-
-        {/* Horizontal Stats Bar */}
-        <StatsBar stats={stats} />
-
-        {/* Two Column Grid */}
+      <main className={styles.container}>
+        <StatsBar stats={stats} loading={statsLoading} error={statsError} onRetry={() => void loadStats()} />
         <div className={styles.columns}>
-
-          {/* Left Column */}
           <div className={styles.leftColumn}>
-
-            {/* Account Section */}
-            <div className={`${styles.sectionGroup} ${styles.accountGroup}`}>
-              <div className={styles.sectionGroupHeader}>
-                <span className={styles.sectionGroupTitle}>账户设置</span>
-              </div>
+            <section className={`${styles.sectionGroup} ${styles.accountGroup}`} aria-labelledby="account-title">
+              <div className={styles.sectionGroupHeader}><h1 id="account-title" className={styles.sectionGroupTitle}>账户设置</h1></div>
               <div className={styles.profileHeader}>
-                <div className={styles.avatar}>
-                  {user.avatar ? (
-                    // Avatar URLs are user-provided and cannot safely be allowlisted for next/image.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={user.avatar} alt="" className={styles.avatarImg} loading="lazy" decoding="async" />
-                  ) : <span>{(user.username || 'U')[0]?.toUpperCase()}</span>}
-                </div>
-                <div className={styles.userInfo}>
-                  <h2>{user.username || '未设置用户名'}</h2>
-                  <p>{user.email}</p>
-                </div>
+                <div className={styles.avatar}>{user.avatar ? <img src={user.avatar} alt="" className={styles.avatarImg} /> : <span>{(user.username || 'U')[0]?.toUpperCase()}</span>}</div>
+                <div className={styles.userInfo}><h2>{user.username || '未设置用户名'}</h2><p>{user.email}</p></div>
               </div>
-              <div className={styles.profileActions}>
-                <button className={styles.btnOutlineSm} onClick={() => setEditOpen(true)}>编辑资料</button>
-                <button className={styles.btnOutlineSm} onClick={() => setPasswordOpen(true)}>修改密码</button>
-              </div>
-            </div>
+              <div className={styles.profileActions}><button className={styles.btnOutlineSm} onClick={() => setEditOpen(true)}>编辑资料</button><button className={styles.btnOutlineSm} onClick={() => setPasswordOpen(true)}>修改密码</button></div>
+            </section>
 
-            {/* AI Profile Section */}
-            <div className={`${styles.sectionGroup} ${styles.aiGroup}`}>
+            <section className={`${styles.sectionGroup} ${styles.aiGroup}`} aria-labelledby="profile-title">
               <div className={styles.sectionGroupHeader}>
-                <span className={styles.sectionGroupTitle}>AI 画像</span>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button
-                    className={styles.btnGhostSm}
-                    onClick={handleTriggerAnalysis}
-                    disabled={analyzing || data?.profileStatus === 'analyzing'}
-                  >
-                    {data?.profileStatus === 'analyzing' ? '分析中...' : data?.profileStatus === 'failed' ? '重新分析' : '更新画像'}
-                  </button>
-                  <button
-                    className={styles.aiGroupToggle}
-                    onClick={() => setAiExpanded((v) => !v)}
-                    title={aiExpanded ? '收起' : '展开'}
-                  >
-                    <span className={`${styles.aiGroupCollapseIcon} ${aiExpanded ? styles.open : styles.closed}`}>▼</span>
-                  </button>
+                <h2 id="profile-title" className={styles.sectionGroupTitle}>AI 画像</h2>
+                <div className={styles.profileControls}>
+                  {canGenerate && <button className={styles.btnGhostSm} onClick={handleTriggerAnalysis} disabled={analyzing}>{analyzing ? '正在提交…' : (historic || profile?.profileStatus === 'failed') ? '重新分析' : '生成画像'}</button>}
+                  {profile?.profileStatus === 'analyzing' && <span className={styles.statusPill}>分析中…</span>}
+                  <button className={styles.aiGroupToggle} onClick={() => setAiExpanded((v) => !v)} aria-expanded={aiExpanded} aria-label={aiExpanded ? '收起画像' : '展开画像'}><span className={`${styles.aiGroupCollapseIcon} ${aiExpanded ? styles.open : styles.closed}`}>▼</span></button>
                 </div>
               </div>
-              <p className={styles.sectionGroupHint}>
-                基于你的笔记内容自动生成，点击更新画像将重新分析最近笔记
-                {data?.profileStatus === 'failed' && data.analysisError ? `；最近一次失败：${data.analysisError}` : ''}
-              </p>
-
+              <p className={styles.sectionGroupHint}>基于最近一次画像分析；分析范围有限，不代表全部笔记。</p>
               <div className={`${styles.aiGroupBody} ${aiExpanded ? styles.expanded : styles.collapsed}`}>
-                {/* Interest Graph */}
-                {data?.userProfile?.interests && data.userProfile.interests.length > 0 && (
-                  <InterestGraph interests={data.userProfile.interests} />
-                )}
-
-                {/* Expertise */}
-                {data?.userProfile?.expertise && data.userProfile.expertise.length > 0 && (
-                  <div className={styles.aiSubCard}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.5rem' }}>技能领域</div>
-                    <div className={styles.expertiseList}>
-                      {data.userProfile.expertise.map((exp, idx) => (
-                        <div key={idx} className={styles.expertiseItem}>
-                          <span className={styles.expertiseArea}>{exp.area}</span>
-                          <span className={styles.expertiseLevel}>{exp.level}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Biography */}
-                {data?.userProfile?.summary && (
-                  <div className={styles.aiSubCard}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.4rem' }}>个人传记</div>
-                    <div className={styles.biography}>{data.userProfile.summary}</div>
-                  </div>
-                )}
-
-                {/* AI Theme */}
-                {data?.userProfile?.theme && data.userProfile.theme.themeName && (
-                  <div className={styles.aiSubCard}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151', marginBottom: '0.4rem' }}>专属氛围色：{data.userProfile.theme.themeName}</div>
-                    <div className={styles.themeDisplay}>{data.userProfile.theme.reasoning}</div>
-                  </div>
-                )}
-
-                {/* Empty state when no AI data yet */}
-                {!data?.userProfile?.interests?.length &&
-                  !data?.userProfile?.expertise?.length &&
-                  !data?.userProfile?.summary && (
-                  <div style={{ fontSize: '0.8rem', color: '#9ca3af', textAlign: 'center', padding: '1rem 0' }}>
-                    还没有画像数据，点击「更新画像」开始分析
-                  </div>
-                )}
+                {profileLoading && !profile && <p className={styles.stateMessage}>正在加载画像…</p>}
+                {profileError && <div className={styles.stateMessage} role="alert"><p>画像暂时无法加载，已保留此前显示的数据。</p><button className={styles.btnOutlineSm} onClick={() => void loadProfile()}>重试画像</button></div>}
+                {!profileLoading && !profile && !profileError && <p className={styles.stateMessage}>画像数据暂不可用。</p>}
+                {profile && insufficient && <p className={styles.stateMessage}>当前有 {profile.noteCount} 篇笔记，还需要 {Math.max(0, 5 - profile.noteCount)} 篇才能生成画像。当前推断不会作为有效画像展示。</p>}
+                {profile?.profileStatus === 'failed' && <div className={styles.analysisError} role="status">画像分析暂未完成，请稍后重试。</div>}
+                {profile && historic && profile.historicalProfile && <div className={styles.historyLabel}>历史画像快照</div>}
+                {profile && historic && !insufficient && profile.historicalProfile && <p className={styles.stateMessage}>当前笔记数已达到 5 篇，但画像尚未基于当前笔记重新分析。</p>}
+                {profile && displayedProfile && <>
+                  {profile.lastAnalyzedAt && <p className={styles.profileMetadata}>最近分析：{new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(profile.lastAnalyzedAt))}{scopeText ? ` · ${scopeText}` : ''}</p>}
+                  {!profile.lastAnalyzedAt && historic && scopeText && <p className={styles.profileMetadata}>{scopeText}</p>}
+                  {displayedProfile.expertise && displayedProfile.expertise.length > 0 && <div className={styles.aiSubCard}><h3 className={styles.cardHeading}>技能领域</h3><div className={styles.expertiseList}>{displayedProfile.expertise.map((item, i) => <div key={`${item.area}-${i}`} className={styles.expertiseItem}><span className={styles.expertiseArea}>{item.area}</span><span className={styles.expertiseLevel}>{item.level}</span></div>)}</div></div>}
+                  {displayedProfile.summary && <div className={styles.aiSubCard}><h3 className={styles.cardHeading}>个人传记</h3><div className={styles.biography}>{displayedProfile.summary}</div></div>}
+                  {displayedProfile.theme?.themeName && <div className={styles.aiSubCard}><h3 className={styles.cardHeading}>专属氛围色：{displayedProfile.theme.themeName}</h3><div className={styles.themeDisplay}>{displayedProfile.theme.reasoning}</div></div>}
+                </>}
+                {profile && !displayedProfile && !insufficient && profile.profileStatus !== 'failed' && <p className={styles.stateMessage}>还没有画像数据，可以在笔记达到 5 篇后生成。</p>}
               </div>
-            </div>
+            </section>
           </div>
-
-          {/* Right Column: Feed */}
-          <div className={styles.rightColumn}>
-            <h2 className={styles.pageTitle}>每日推荐 (For You)</h2>
-
-            {loading ? (
-              <SkeletonFeed />
-            ) : data?.feed && data.feed.length > 0 ? (
-              <div className={styles.feedList}>
-                {data.feed.map((item, idx) => (
-                  <div key={idx} className={styles.feedItem} onClick={() => handleFeedClick(item.noteId)}>
-                    <div className={styles.feedAccent} data-type={item.type} />
-                    <div className={styles.feedHeader}>
-                      <span className={styles.feedType} data-type={item.type}>{item.type === 'rediscover' ? '温故知新' : '最新动态'}</span>
-                      <span className={styles.feedReason}>{item.reason}</span>
-                    </div>
-                    <div className={styles.feedTitle}>{item.title || '未命名笔记'}</div>
-                    <div className={styles.feedPreview}>{item.content}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className={styles.emptyState}>
-                <p>暂无推荐内容。</p>
-                <p>多写几条笔记，或者点击左侧「更新画像」来生成推荐。</p>
-                <button onClick={() => router.push('/notes')}>去写笔记</button>
-              </div>
-            )}
-          </div>
+          <div className={styles.rightColumn} data-testid="topics-slot" aria-label="笔记话题面板预留位置" />
         </div>
-      </div>
-
+      </main>
       <EditProfileModal open={editOpen} user={user} onClose={() => setEditOpen(false)} onSaved={handleProfileSaved} />
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
     </div>

@@ -1,4 +1,4 @@
-import type { UserProfile } from '../../services/feedService'
+import type { LegacyProfileDto } from '../../services/profileService'
 
 export type ProfileBackgroundThemeId =
   | 'tech-cool'
@@ -36,7 +36,7 @@ const hsla = (h: number, s: number, l: number, a: number) =>
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 
-const stableSeedFromProfile = (userProfile?: UserProfile, extraSeed?: string) => {
+const stableSeedFromProfile = (userProfile?: LegacyProfileDto, extraSeed?: string) => {
   const interestPart = (userProfile?.interests || [])
     .slice()
     .sort((a, b) => normalize(a.topic).localeCompare(normalize(b.topic)) || b.score - a.score)
@@ -51,7 +51,7 @@ const stableSeedFromProfile = (userProfile?: UserProfile, extraSeed?: string) =>
   return [interestPart, expertisePart, summaryPart, normalize(extraSeed || '')].filter(Boolean).join('||')
 }
 
-const buildSignals = (userProfile?: UserProfile): TextSignal[] => {
+const buildSignals = (userProfile?: LegacyProfileDto): TextSignal[] => {
   const signals: TextSignal[] = []
   const interests = (userProfile?.interests || []).slice().sort((a, b) => b.score - a.score || normalize(a.topic).localeCompare(normalize(b.topic)))
   for (const i of interests) {
@@ -214,7 +214,7 @@ export const defaultProfileBackgroundTheme: ProfileBackgroundTheme = {
 }
 
 export const mapUserProfileToBackgroundTheme = (
-  userProfile?: UserProfile,
+  userProfile?: LegacyProfileDto,
   options?: { seed?: string }
 ): ProfileBackgroundTheme => {
   const signals = buildSignals(userProfile)
@@ -225,4 +225,3 @@ export const mapUserProfileToBackgroundTheme = (
   if (!seed) return defaultProfileBackgroundTheme
   return hashGeneratedBackground(seed)
 }
-

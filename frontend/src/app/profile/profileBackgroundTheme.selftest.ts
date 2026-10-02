@@ -1,7 +1,7 @@
 import { mapUserProfileToBackgroundTheme } from './profileBackgroundTheme'
-import type { UserProfile } from '../../services/feedService'
+import type { LegacyProfileDto } from '../../services/profileService'
 
-const samples: Array<{ name: string; profile?: UserProfile }> = [
+const samples: Array<{ name: string; profile?: LegacyProfileDto }> = [
   {
     name: 'tech',
     profile: {
@@ -38,4 +38,3 @@ export const __profileBackgroundThemeSelfTest = samples.map((s) => ({
   name: s.name,
   theme: mapUserProfileToBackgroundTheme(s.profile, { seed: s.name }),
 }))
-
