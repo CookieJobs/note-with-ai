@@ -3,6 +3,12 @@ import UserProfile from '../models/UserProfile';
 import { Note } from '../models/Note';
 import { ResponseHandler } from '../utils/errorHandler';
 import { profileAnalysisCoordinator } from '../services/profileAnalysisCoordinator';
+import { getUserTopicIndex, retryFailedUserTopics } from '../services/userNoteTopicIndexService';
+import type { TopicScope } from '../models/UserNoteTopicIndex';
+
+function requestedTopicScope(value: unknown): TopicScope | null {
+  return value === 'all' || value === 'year' || value === 'sixMonths' ? value : null;
+}
 
 type ProfileRecord = {
   interests?: unknown[];
@@ -79,4 +85,24 @@ export const requestProfileAnalysis = async (req: Request, res: Response) => {
     reason: requested.reason,
     analysisError: requested.status === 'failed' ? '画像生成失败，请稍后重试' : '',
   });
+};
+
+export const getProfileTopics = async (req: Request, res: Response) => {
+  const scope = requestedTopicScope(req.query.scope);
+  if (!scope) {
+    res.status(400).json({ error: '话题范围无效' });
+    return;
+  }
+  const result = await getUserTopicIndex(req.user!.userId, scope);
+  ResponseHandler.success(res, result);
+};
+
+export const retryProfileTopics = async (req: Request, res: Response) => {
+  const scope = requestedTopicScope(req.body?.scope);
+  if (!scope) {
+    res.status(400).json({ error: '话题范围无效' });
+    return;
+  }
+  const result = await retryFailedUserTopics(req.user!.userId, scope);
+  ResponseHandler.success(res, result);
 };

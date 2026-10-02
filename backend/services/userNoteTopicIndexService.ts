@@ -57,6 +57,33 @@ export interface RetryFailedResult {
   nextRetryAt: string | null;
 }
 
+export interface UserTopicIndexDto {
+  scope: TopicScope;
+  timezone: 'Asia/Shanghai';
+  rangeStart: string | null;
+  rangeEnd: string | null;
+  totalNotesInRange: number;
+  readyNotesInRange: number;
+  pendingNotesInRange: number;
+  failedNotesInRange: number;
+  lastErrorAt: string | null;
+  topics: Array<{ topic: string; noteCount: number }>;
+  staleSnapshot: {
+    noteCount: number;
+    indexedAt: string | null;
+    topics: Array<{ topic: string; noteCount: number }>;
+    label: '旧快照，不计入当前覆盖';
+  } | null;
+  indexStatus: 'empty' | 'building' | 'ready' | 'partial' | 'failed';
+  updatedAt: string | null;
+}
+
+function assertTopicScope(scope: TopicScope): void {
+  if (scope !== 'all' && scope !== 'year' && scope !== 'sixMonths') {
+    throw new Error('话题范围无效');
+  }
+}
+
 function noteProjection(note: any): TopicNote {
   return {
     _id: String(note._id), userId: String(note.userId), revision: note.revision,
@@ -104,8 +131,127 @@ export function topicScopeEndAt(now: Date): Date {
 }
 
 export function noteMatchesTopicScope(noteDate: Date, scope: TopicScope, now: Date): boolean {
+  if (scope === 'all') return true;
   const start = topicScopeStartAt(scope, now);
-  return (start === null || noteDate >= start) && noteDate < topicScopeEndAt(now);
+  return noteDate >= start! && noteDate < topicScopeEndAt(now);
+}
+
+function addTopicCounts(counts: Map<string, number>, rawTopics: readonly string[] | undefined): void {
+  const unique = new Set((rawTopics ?? []).map(normalizeTopicLabel).filter(Boolean));
+  for (const topic of unique) counts.set(topic, (counts.get(topic) ?? 0) + 1);
+}
+
+function sortedTopicCounts(counts: Map<string, number>): Array<{ topic: string; noteCount: number }> {
+  return [...counts].map(([topic, noteCount]) => ({ topic, noteCount }))
+    .sort((left, right) => right.noteCount - left.noteCount || (left.topic < right.topic ? -1 : left.topic > right.topic ? 1 : 0));
+}
+
+function snapshotMatches(snapshot: any, inputs: TopicInputs): boolean {
+  return snapshot?.sourceRevision === inputs.sourceRevision
+    && snapshot?.sourceFingerprint === inputs.sourceFingerprint
+    && Array.isArray(snapshot?.topics);
+}
+
+function laterIso(values: Array<Date | string | null | undefined>): string | null {
+  const latest = values.reduce<number>((max, value) => {
+    if (!value) return max;
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? Math.max(max, timestamp) : max;
+  }, -Infinity);
+  return Number.isFinite(latest) ? new Date(latest).toISOString() : null;
+}
+
+export async function getUserTopicIndex(userId: string, scope: TopicScope, now = new Date()): Promise<UserTopicIndexDto> {
+  assertTopicScope(scope);
+  const rangeStart = topicScopeStartAt(scope, now);
+  const rangeEnd = scope === 'all' ? null : topicScopeEndAt(now);
+  const filter: Record<string, unknown> = { userId };
+  if (scope !== 'all') filter.createdAt = { $gte: rangeStart, $lt: rangeEnd };
+  const notes: any[] = await Note.find(filter).select('+topicIndexSuccess').lean();
+  const noteIds = notes.map((note) => note._id);
+  const indexes: any[] = noteIds.length
+    ? await UserNoteTopicIndex.find({ userId, noteId: { $in: noteIds } }).lean()
+    : [];
+  const indexByNote = new Map(indexes.map((index) => [String(index.noteId), index]));
+  const currentTopics = new Map<string, number>();
+  const staleTopics = new Map<string, number>();
+  const staleSnapshots: any[] = [];
+  let ready = 0;
+  let pending = 0;
+  let failed = 0;
+  const failureTimes: Array<Date | string | null | undefined> = [];
+  const successTimes: Array<Date | string | null | undefined> = [];
+
+  for (const note of notes) {
+    const inputs = buildTopicInputs(noteProjection(note));
+    const index = indexByNote.get(String(note._id));
+    const authoritativeSuccess = note.topicIndexSuccess;
+    const projectionIsCurrent = index?.sourceRevision === inputs.sourceRevision
+      && index?.sourceFingerprint === inputs.sourceFingerprint;
+    const authoritativeIsCurrent = snapshotMatches(authoritativeSuccess, inputs);
+    const indexedSnapshotIsCurrent = !authoritativeSuccess && projectionIsCurrent
+      && index?.status === 'ready' && Array.isArray(index.topics);
+
+    if (authoritativeIsCurrent) {
+      ready++;
+      addTopicCounts(currentTopics, authoritativeSuccess.topics);
+      successTimes.push(authoritativeSuccess.indexedAt);
+      continue;
+    }
+    if (indexedSnapshotIsCurrent) {
+      ready++;
+      addTopicCounts(currentTopics, index.topics);
+      successTimes.push(index.indexedAt);
+      continue;
+    }
+
+    const isFreshFailure = projectionIsCurrent && index?.status === 'failed';
+    if (isFreshFailure) {
+      failed++;
+      failureTimes.push(index.errorAt);
+    } else {
+      pending++;
+    }
+
+    const stale = authoritativeSuccess ?? index?.lastSuccess;
+    if (stale && !snapshotMatches(stale, inputs) && Array.isArray(stale.topics)) {
+      staleSnapshots.push(stale);
+      addTopicCounts(staleTopics, stale.topics);
+    }
+  }
+
+  const total = notes.length;
+  const indexStatus: UserTopicIndexDto['indexStatus'] = total === 0
+    ? 'empty'
+    : ready === total
+      ? 'ready'
+      : ready > 0 || (failed > 0 && pending > 0)
+        ? 'partial'
+        : failed === total
+          ? 'failed'
+          : 'building';
+  const staleSnapshot = staleSnapshots.length ? {
+    noteCount: staleSnapshots.length,
+    indexedAt: laterIso(staleSnapshots.map((snapshot) => snapshot.indexedAt)),
+    topics: sortedTopicCounts(staleTopics),
+    label: '旧快照，不计入当前覆盖' as const,
+  } : null;
+
+  return {
+    scope,
+    timezone: 'Asia/Shanghai',
+    rangeStart: rangeStart?.toISOString() ?? null,
+    rangeEnd: rangeEnd?.toISOString() ?? null,
+    totalNotesInRange: total,
+    readyNotesInRange: ready,
+    pendingNotesInRange: pending,
+    failedNotesInRange: failed,
+    lastErrorAt: laterIso(failureTimes),
+    topics: sortedTopicCounts(currentTopics),
+    staleSnapshot,
+    indexStatus,
+    updatedAt: laterIso(successTimes),
+  };
 }
 
 export class MongoTopicStore implements TopicStore {
@@ -372,6 +518,7 @@ export class MongoTopicStore implements TopicStore {
   }
 
   async retryFailed(userId: string, scope: TopicScope, now: Date): Promise<RetryFailedResult> {
+    assertTopicScope(scope);
     const indexes: any[] = await UserNoteTopicIndex.find({ userId, status: { $in: ['failed', 'pending', 'processing'] } }).lean();
     const result: RetryFailedResult = { acceptedCount: 0, alreadyRunningCount: 0, rateLimitedCount: 0, nextRetryAt: null };
     let earliest = Infinity;
@@ -422,6 +569,9 @@ export function createUserNoteTopicIndexService(store: TopicStore = new MongoTop
     },
     retryFailedUserTopics(userId: string, scope: TopicScope): Promise<RetryFailedResult> {
       return store.retryFailed(userId, scope, now());
+    },
+    getUserTopicIndex(userId: string, scope: TopicScope): Promise<UserTopicIndexDto> {
+      return getUserTopicIndex(userId, scope, now());
     },
     store,
   };
