@@ -10,26 +10,6 @@ import styles from './profile.module.scss';
 import { toast } from 'sonner';
 import { defaultProfileBackgroundTheme, mapUserProfileToBackgroundTheme } from './profileBackgroundTheme';
 
-/* ========== Helpers ========== */
-
-function formatTimeAgo(dateStr: string | null): string {
-  if (!dateStr) return '';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins} 分钟前`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  return `${days} 天前`;
-}
-
-function formatWords(n: number): string {
-  if (n >= 10000) return (n / 10000).toFixed(1) + '万';
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
-  return String(n);
-}
-
 /* ========== Skeleton ========== */
 
 function SkeletonBar() {
@@ -63,10 +43,6 @@ function StatsBar({ stats }: { stats: UserStats | null }) {
   const items = [
     { value: stats.totalNotes, unit: '篇', label: '笔记' },
     { value: stats.notesThisMonth, unit: '篇', label: '本月' },
-    { value: stats.streakDays, unit: '天', label: '连续' },
-    { value: formatWords(stats.totalWords), unit: '', label: '总字数' },
-    { value: stats.avgWordsPerNote, unit: '字', label: '平均' },
-    { value: stats.interestCount, unit: '个', label: '兴趣' },
   ];
 
   return (
@@ -77,14 +53,6 @@ function StatsBar({ stats }: { stats: UserStats | null }) {
           <strong>{item.value}</strong> {item.unit} {item.label}
         </span>
       ))}
-      {stats.lastAnalyzedAt && (
-        <>
-          <span className={styles.statsBarDivider} />
-          <span className={styles.statsBarTime}>
-            画像更新于 {formatTimeAgo(stats.lastAnalyzedAt)}
-          </span>
-        </>
-      )}
     </div>
   );
 }

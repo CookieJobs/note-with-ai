@@ -62,13 +62,6 @@ export const triggerAnalysis = async (): Promise<TriggerAnalysisResponse> => {
 export interface UserStats {
   totalNotes: number;
   notesThisMonth: number;
-  notesThisWeek: number;
-  streakDays: number;
-  maxStreak: number;
-  totalWords: number;
-  avgWordsPerNote: number;
-  interestCount: number;
-  lastAnalyzedAt: string | null;
 }
 
 export const getStats = async (): Promise<UserStats> => {

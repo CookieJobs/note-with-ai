@@ -1,36 +1,18 @@
 import { Types } from 'mongoose';
 import { Note } from '../models/Note';
-import UserProfile from '../models/UserProfile';
 
-const DEFAULT_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const PRODUCT_TIMEZONE = 'Asia/Shanghai';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const SHANGHAI_UTC_OFFSET_IN_MS = 8 * 60 * 60 * 1000;
 
 export interface UserStatsDto {
   totalNotes: number;
   notesThisMonth: number;
-  notesThisWeek: number;
-  streakDays: number;
-  maxStreak: number;
-  totalWords: number;
-  avgWordsPerNote: number;
-  interestCount: number;
-  lastAnalyzedAt: Date | null;
-}
-
-interface AggregateBucket {
-  count: number;
-}
-
-interface AggregateTotals {
-  totalNotes: number;
-  totalWords: number;
 }
 
 interface AggregateResult {
-  totals: AggregateTotals[];
-  monthCount: AggregateBucket[];
-  weekCount: AggregateBucket[];
-  dailyBuckets: Array<{ _id: string }>;
+  totals: Array<{ count: number }>;
+  monthCount: Array<{ count: number }>;
 }
 
 function toDateKey(date: Date, timeZone: string): string {
@@ -56,8 +38,8 @@ function toDayNumber(dateKey: string): number {
 export function calculateStreakMetrics(
   dateKeys: string[],
   now: Date = new Date(),
-  timeZone: string = DEFAULT_TIMEZONE
-): Pick<UserStatsDto, 'streakDays' | 'maxStreak'> {
+  timeZone: string = PRODUCT_TIMEZONE
+): { streakDays: number; maxStreak: number } {
   const sortedKeys = [...dateKeys].sort();
   const keySet = new Set(sortedKeys);
 
@@ -88,112 +70,42 @@ export function calculateStreakMetrics(
   return { streakDays, maxStreak };
 }
 
-function createWordSourceExpression() {
+function getShanghaiMonthBounds(now: Date): { start: Date; end: Date } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: PRODUCT_TIMEZONE,
+    year: 'numeric',
+    month: 'numeric',
+  }).formatToParts(now);
+  const year = Number(parts.find((part) => part.type === 'year')?.value);
+  const month = Number(parts.find((part) => part.type === 'month')?.value);
+  const startUtc = Date.UTC(year, month - 1, 1);
+  const endUtc = Date.UTC(year, month, 1);
+
   return {
-    $let: {
-      vars: {
-        normalizedContentText: {
-          $trim: { input: { $ifNull: ['$contentText', ''] } },
-        },
-      },
-      in: {
-        $cond: [
-          { $gt: [{ $strLenCP: '$$normalizedContentText' }, 0] },
-          '$$normalizedContentText',
-          { $ifNull: ['$content', ''] },
-        ],
-      },
-    },
+    start: new Date(startUtc - SHANGHAI_UTC_OFFSET_IN_MS),
+    end: new Date(endUtc - SHANGHAI_UTC_OFFSET_IN_MS),
   };
 }
 
 class UserStatsService {
-  async getStats(
-    userId: string,
-    options: { now?: Date; timeZone?: string } = {}
-  ): Promise<UserStatsDto> {
-    const now = options.now ?? new Date();
-    const timeZone = options.timeZone ?? DEFAULT_TIMEZONE;
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-
-    const [aggregated, profile] = await Promise.all([
-      Note.aggregate<AggregateResult>([
-        { $match: { userId: new Types.ObjectId(userId) } },
-        {
-          $project: {
-            createdAt: 1,
-            wordSource: createWordSourceExpression(),
-          },
+  async getStats(userId: string, options: { now?: Date } = {}): Promise<UserStatsDto> {
+    const { start: monthStart, end: monthEnd } = getShanghaiMonthBounds(options.now ?? new Date());
+    const [aggregated] = await Note.aggregate<AggregateResult>([
+      { $match: { userId: new Types.ObjectId(userId) } },
+      {
+        $facet: {
+          totals: [{ $count: 'count' }],
+          monthCount: [
+            { $match: { createdAt: { $gte: monthStart, $lt: monthEnd } } },
+            { $count: 'count' },
+          ],
         },
-        {
-          $facet: {
-            totals: [
-              {
-                $group: {
-                  _id: null,
-                  totalNotes: { $sum: 1 },
-                  totalWords: { $sum: { $strLenCP: '$wordSource' } },
-                },
-              },
-              {
-                $project: {
-                  _id: 0,
-                  totalNotes: 1,
-                  totalWords: 1,
-                },
-              },
-            ],
-            monthCount: [
-              { $match: { createdAt: { $gte: monthStart } } },
-              { $count: 'count' },
-            ],
-            weekCount: [
-              { $match: { createdAt: { $gte: weekStart } } },
-              { $count: 'count' },
-            ],
-            dailyBuckets: [
-              {
-                $group: {
-                  _id: {
-                    $dateToString: {
-                      format: '%Y-%m-%d',
-                      date: '$createdAt',
-                      timezone: timeZone,
-                    },
-                  },
-                },
-              },
-              { $sort: { _id: 1 } },
-            ],
-          },
-        },
-      ]).then((result) => result[0]),
-      UserProfile.findOne({ userId }).select('interests lastAnalyzedAt').lean(),
+      },
     ]);
 
-    const totals = aggregated?.totals?.[0] ?? { totalNotes: 0, totalWords: 0 };
-    const notesThisMonth = aggregated?.monthCount?.[0]?.count ?? 0;
-    const notesThisWeek = aggregated?.weekCount?.[0]?.count ?? 0;
-    const { streakDays, maxStreak } = calculateStreakMetrics(
-      aggregated?.dailyBuckets?.map((bucket) => bucket._id) ?? [],
-      now,
-      timeZone
-    );
-
     return {
-      totalNotes: totals.totalNotes,
-      notesThisMonth,
-      notesThisWeek,
-      streakDays,
-      maxStreak,
-      totalWords: totals.totalWords,
-      avgWordsPerNote:
-        totals.totalNotes > 0 ? Math.round(totals.totalWords / totals.totalNotes) : 0,
-      interestCount: profile?.interests?.length || 0,
-      lastAnalyzedAt: profile?.lastAnalyzedAt || null,
+      totalNotes: aggregated?.totals?.[0]?.count ?? 0,
+      notesThisMonth: aggregated?.monthCount?.[0]?.count ?? 0,
     };
   }
 }
