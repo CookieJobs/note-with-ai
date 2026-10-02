@@ -1,5 +1,7 @@
 # 个人中心核心实施计划
 
+**执行状态（2026-10-03）：** 任务 1–3 已实施并验收；原计划步骤保留为设计记录，不代表需要重新执行。实际回归、最后修补和方法偏差见 `docs/superpowers/reviews/2026-10-02-profile-rework-acceptance.md`。尚未合并 main 或推送。
+
 > **供智能体执行：** 必须使用子技能 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans`，逐项执行本计划。步骤使用复选框（`- [ ]`）语法进行跟踪。
 
 **目标：** 将 `/profile` 每日推荐区域改为账户/个人资料内容、两项独立笔记统计，以及状态明确且准确的旧画像。

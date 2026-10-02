@@ -1,5 +1,7 @@
 # 个人中心预设头像实施计划
 
+**执行状态（2026-10-03）：** 任务 1–2 已实施并验收；原计划步骤保留为设计记录，不代表需要重新执行。实际回归和最后修补见 `docs/superpowers/reviews/2026-10-02-profile-rework-acceptance.md`。尚未合并 main 或推送。
+
 > **供智能体执行：** 必须使用子技能 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans`，逐项执行本计划。步骤使用复选框（`- [ ]`）语法进行跟踪。
 
 **目标：** 将新头像选择改为 8 款本地预设和姓名首字母选项，同时保留现有自定义 URL 头像，直到用户主动选择其他选项。
