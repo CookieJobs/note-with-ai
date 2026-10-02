@@ -1,8 +1,8 @@
 /*
-Input: 笔记持久化字段定义，包括富文本内容、embedding 向量与推荐缓存
+Input: 笔记持久化字段定义，包括富文本内容、embedding、推荐缓存及派生任务 fencing
 Output: Note Mongoose Schema、索引与模型导出
 Pos: 后端 数据模型模块
-Note: embeddingMetadata 为文本向量保存 provider/model/dimension/modality，并为未来图片 embedding 预留 image 扩展位
+Note: topicIndexSuccess 与 source CAS 同文档写入作为权威快照；内部 fencing 写入不改变用户 updatedAt
 */
 // backend/models/Note.ts
 import mongoose from 'mongoose';
@@ -78,6 +78,13 @@ const NoteSchema = new mongoose.Schema(
         message: 'revision 必须是正整数',
       },
     },
+    // Standalone-compatible topic-index writes use this fence to order Note and index projections.
+    topicIndexFence: { type: Number, default: 0, select: false },
+    topicIndexSuccess: { type: mongoose.Schema.Types.Mixed, default: null, select: false },
+    topicIndexClaimToken: { type: String, default: null, select: false },
+    topicIndexClaimVersion: { type: Number, default: 0, select: false },
+    topicIndexClaimUntil: { type: Date, default: null, select: false },
+    topicIndexScheduled: { type: mongoose.Schema.Types.Mixed, default: null, select: false },
     // 仅用于内部 freshness 与降级投影，不会进入普通 Note DTO。
     enrichment: { type: NoteEnrichmentSchema, default: null },
   },

@@ -1,8 +1,8 @@
 /*
-Input: DeepSeek 聊天/摘要/重排所需的消息内容、笔记文本与候选数据
-Output: 聊天文本、流式响应、标题/关键词/摘要/概念词及重排结果
+Input: DeepSeek 聊天/摘要/重排和单篇话题提取所需的消息与笔记文本
+Output: 聊天文本、流式响应、标题/关键词/摘要/概念词及话题提取结果
 Pos: 后端 模块
-Note: 统一封装 DeepSeek 惰性初始化、降级错误与调试日志收敛
+Note: 常规 DeepSeek 客户端保留默认重试；话题提取专用客户端单次 HTTP 调用以服从持久重试额度
 */
 // backend/services/llmService.ts
 import { DeepSeekApiClient } from '../utils/apiClient';
@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 import { AiUsageService, type AiTelemetryContext } from './aiUsageService';
 
 let deepSeekClient: DeepSeekApiClient | null = null;
+let deepSeekTopicClient: DeepSeekApiClient | null = null;
 
 type JsonObject = Record<string, unknown>;
 
@@ -26,6 +27,20 @@ export function getDeepSeekClient(): DeepSeekApiClient {
 
   deepSeekClient = new DeepSeekApiClient(config.DEEPSEEK_API_KEY);
   return deepSeekClient;
+}
+
+// Persistent topic retries own the retry schedule, so this client makes one HTTP attempt per job.
+export function getDeepSeekTopicClient(): DeepSeekApiClient {
+  if (deepSeekTopicClient) return deepSeekTopicClient;
+  if (!config.DEEPSEEK_API_KEY) {
+    throw ErrorHandler.createExternalApiError('AI 服务未配置，请稍后再试', 'DeepSeek');
+  }
+  deepSeekTopicClient = createDeepSeekTopicClient(config.DEEPSEEK_API_KEY);
+  return deepSeekTopicClient;
+}
+
+export function createDeepSeekTopicClient(apiKey: string): DeepSeekApiClient {
+  return new DeepSeekApiClient(apiKey, { retries: 1 });
 }
 
 /**

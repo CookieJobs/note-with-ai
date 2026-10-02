@@ -1,8 +1,8 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 后端 模块
-Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
+Input: 通用 HTTP 请求配置、DeepSeek 消息及可选 telemetry
+Output: 带供应商用量记录的 API 响应
+Pos: 后端 AI HTTP 客户端
+Note: DeepSeek 默认保留两次 HTTP 总尝试；话题索引可单独传入 retries=1 以交由持久任务队列退避
 */
 // backend/utils/apiClient.ts
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
@@ -170,7 +170,7 @@ export class ApiClient {
 export class DeepSeekApiClient extends ApiClient {
   private apiKey: string;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, options: { retries?: number } = {}) {
     super({
       baseURL: 'https://api.deepseek.com/v1',
       headers: {
@@ -178,7 +178,8 @@ export class DeepSeekApiClient extends ApiClient {
         'Content-Type': 'application/json'
       },
       timeout: 60000, // DeepSeek可能需要更长时间
-      retries: 2
+      // retries here means total HTTP attempts. Keep the existing default for all callers.
+      retries: options.retries ?? 2
     });
     this.apiKey = apiKey;
   }

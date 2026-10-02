@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 
 export const TOPIC_INDEX_STATUSES = ['pending', 'processing', 'ready', 'failed'] as const;
 export type TopicIndexStatus = typeof TOPIC_INDEX_STATUSES[number];
+export const TOPIC_SCOPES = ['all', 'year', 'sixMonths'] as const;
+export type TopicScope = typeof TOPIC_SCOPES[number];
 
 const LastSuccessSchema = new mongoose.Schema(
   {
@@ -40,6 +42,8 @@ const UserNoteTopicIndexSchema = new mongoose.Schema(
     claimToken: { type: String, default: null },
     leaseUntil: { type: Date, default: null },
     claimVersion: { type: Number, min: 0, default: 0 },
+    scheduledAt: { type: Date, default: null },
+    projectionFence: { type: Number, min: 0, default: 0 },
   },
   { timestamps: true },
 );

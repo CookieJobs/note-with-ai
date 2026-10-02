@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 export const AI_USAGE_OPERATIONS = [
   'chat', 'chat_title', 'note_meta', 'note_concepts', 'rerank', 'embedding', 'care_intro',
-  'inspiration_plan', 'inspiration_synthesis',
+  'inspiration_plan', 'inspiration_synthesis', 'topic_extraction',
 ] as const;
 
 export const AI_USAGE_PROVIDERS = ['deepseek', 'openrouter', 'dashscope'] as const;
