@@ -14,25 +14,35 @@ export class UserAnalysisService {
     return getDeepSeekClient();
   }
 
-  private async markAnalysisReadyWithoutProfileUpdate(userId: string, analysisVersion: number): Promise<boolean> {
-    const result = await UserProfile.updateOne(
+  private hasRenderableProfile(profile: Record<string, unknown>): boolean {
+    const theme = typeof profile.theme === 'object' && profile.theme !== null && !Array.isArray(profile.theme)
+      ? profile.theme as Record<string, unknown>
+      : null;
+    return Boolean(
+      (Array.isArray(profile.interests) && profile.interests.length > 0) ||
+      (Array.isArray(profile.expertise) && profile.expertise.length > 0) ||
+      (typeof profile.summary === 'string' && profile.summary.trim().length > 0) ||
+      (typeof theme?.cssValue === 'string' && theme.cssValue.trim().length > 0)
+    );
+  }
+
+  private async markAnalysisInsufficient(userId: string, analysisVersion: number): Promise<void> {
+    await UserProfile.updateOne(
       { userId, analysisVersion, analysisStatus: 'running' },
       {
         $set: {
-          analysisStatus: 'ready',
-          analysisError: '',
-          lastAnalyzedAt: new Date(),
+          analysisStatus: 'failed',
+          analysisError: '笔记数量不足，未生成画像',
         },
       }
     );
-
-    return result.matchedCount > 0;
   }
 
   private async commitProfileResult(
     userId: string,
     analysisVersion: number,
-    profileData: Record<string, unknown>
+    profileData: Record<string, unknown>,
+    inputNoteCount: number
   ): Promise<boolean> {
     const result = await UserProfile.updateOne(
       { userId, analysisVersion, analysisStatus: 'running' },
@@ -42,6 +52,8 @@ export class UserAnalysisService {
           analysisStatus: 'ready',
           analysisError: '',
           lastAnalyzedAt: new Date(),
+          analysisInputNoteCount: inputNoteCount,
+          analysisInputScope: 'recent_up_to_20',
         },
       }
     );
@@ -57,17 +69,19 @@ export class UserAnalysisService {
     try {
       logger.info(`Starting user profile analysis for user: ${userId}, version: ${analysisVersion}`);
 
-      // 1. Fetch recent data (e.g., last 20 notes)
+      // 1. Check eligibility and fetch recent data (e.g., last 20 notes)
       // TODO: Also fetch recent chat history
+      const initialNoteCount = await Note.countDocuments({ userId });
+      if (initialNoteCount < 5) {
+        await this.markAnalysisInsufficient(userId, analysisVersion);
+        return { committed: false, reason: 'insufficient_data' };
+      }
       const notes = await Note.find({ userId }).sort({ createdAt: -1 }).limit(20);
       
       if (notes.length < 5) {
         logger.info(`Not enough data to analyze for user: ${userId}`);
-        const committed = await this.markAnalysisReadyWithoutProfileUpdate(userId, analysisVersion);
-        return {
-          committed,
-          reason: committed ? 'insufficient_data' : 'stale_analysis_version',
-        };
+        await this.markAnalysisInsufficient(userId, analysisVersion);
+        return { committed: false, reason: 'insufficient_data' };
       }
 
       const notesText = notes.map(n => 
@@ -119,7 +133,16 @@ export class UserAnalysisService {
       });
 
       // 3. Parse and Update DB
-      const profileData = JSON.parse(response) as Record<string, any>;
+      const parsedProfile: unknown = JSON.parse(response);
+      if (
+        typeof parsedProfile !== 'object' ||
+        parsedProfile === null ||
+        Array.isArray(parsedProfile) ||
+        !this.hasRenderableProfile(parsedProfile as Record<string, unknown>)
+      ) {
+        throw new Error('No usable profile data was generated');
+      }
+      const profileData = parsedProfile as Record<string, any>;
       
       // Add timestamps
       if (profileData.interests) {
@@ -136,7 +159,13 @@ export class UserAnalysisService {
       delete profileData.analysisError;
       delete profileData.lastAnalyzedAt;
 
-      const committed = await this.commitProfileResult(userId, analysisVersion, profileData);
+      const currentNoteCount = await Note.countDocuments({ userId });
+      if (currentNoteCount < 5) {
+        await this.markAnalysisInsufficient(userId, analysisVersion);
+        return { committed: false, reason: 'insufficient_data' };
+      }
+
+      const committed = await this.commitProfileResult(userId, analysisVersion, profileData, notes.length);
 
       if (committed) {
         logger.info(`User profile updated for user: ${userId}, version: ${analysisVersion}`);

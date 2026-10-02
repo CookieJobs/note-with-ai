@@ -1,0 +1,78 @@
+import { Request, Response } from 'express';
+import UserProfile from '../models/UserProfile';
+import { Note } from '../models/Note';
+import { ResponseHandler } from '../utils/errorHandler';
+import { profileAnalysisCoordinator } from '../services/profileAnalysisCoordinator';
+
+type ProfileRecord = {
+  interests?: unknown[];
+  expertise?: unknown[];
+  goals?: unknown[];
+  preferences?: Record<string, unknown>;
+  summary?: string;
+  theme?: Record<string, unknown>;
+  analysisStatus?: string;
+  analysisError?: string;
+  lastAnalyzedAt?: Date | null;
+  analysisInputNoteCount?: number | null;
+  analysisInputScope?: string | null;
+};
+
+function profileFields(profile: ProfileRecord | null) {
+  if (!profile) return null;
+  return {
+    interests: profile.interests,
+    expertise: profile.expertise,
+    goals: profile.goals,
+    preferences: profile.preferences,
+    summary: profile.summary,
+    theme: profile.theme,
+  };
+}
+
+function getStatus(profile: ProfileRecord | null): 'idle' | 'analyzing' | 'ready' | 'failed' {
+  if (!profile) return 'idle';
+  if (profile.analysisStatus === 'queued' || profile.analysisStatus === 'running') return 'analyzing';
+  if (profile.analysisStatus === 'failed') return 'failed';
+  const hasResult = Boolean(
+    profile.summary?.trim() ||
+    profile.expertise?.length ||
+    profile.interests?.length ||
+    profile.theme?.cssValue
+  );
+  return hasResult ? 'ready' : 'idle';
+}
+
+export const getProfileAnalysis = async (req: Request, res: Response) => {
+  const userId = req.user!.userId;
+  const [noteCount, profile] = await Promise.all([
+    Note.countDocuments({ userId }),
+    UserProfile.findOne({ userId }).lean<ProfileRecord | null>(),
+  ]);
+  const insufficient = noteCount < 5;
+  const status = insufficient ? 'insufficient_data' : getStatus(profile);
+
+  ResponseHandler.success(res, {
+    userProfile: insufficient ? null : profileFields(profile),
+    historicalProfile: insufficient ? profileFields(profile) : null,
+    profileStatus: status,
+    noteCount,
+    analysisError: status === 'failed' ? '画像生成失败，请稍后重试' : '',
+    lastAnalyzedAt: profile?.lastAnalyzedAt ? new Date(profile.lastAnalyzedAt).toISOString() : null,
+    analysisInputNoteCount: profile?.analysisInputNoteCount ?? null,
+    analysisInputScope: profile?.analysisInputScope ?? null,
+  });
+};
+
+export const requestProfileAnalysis = async (req: Request, res: Response) => {
+  const requested = await profileAnalysisCoordinator.requestAnalysis(req.user!.userId, {
+    source: 'manual',
+    force: true,
+  });
+  ResponseHandler.success(res, {
+    accepted: requested.accepted,
+    profileStatus: requested.status,
+    reason: requested.reason,
+    analysisError: requested.status === 'failed' ? '画像生成失败，请稍后重试' : '',
+  });
+};

@@ -65,8 +65,11 @@ const UserProfileSchema = new mongoose.Schema(
     analysisStartedAt: { type: Date, default: null },
     analysisError: { type: String, default: '' },
     
-    // Track when the profile was last updated by the analysis job
-    lastAnalyzedAt: { type: Date, default: null }
+    // Track when the profile was last updated by the analysis job.
+    lastAnalyzedAt: { type: Date, default: null },
+    // Input provenance is absent on historical records and must remain unknown.
+    analysisInputNoteCount: { type: Number, default: null, min: 0 },
+    analysisInputScope: { type: String, enum: ['recent_up_to_20', null], default: null },
   },
   { timestamps: true }
 );
