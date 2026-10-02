@@ -67,7 +67,7 @@ describe('ProfilePage', () => {
     mocks.changePassword.mockResolvedValue(undefined);
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
   it('不请求或渲染每日推荐', async () => {
     render(<ProfilePage />);
@@ -114,6 +114,14 @@ describe('ProfilePage', () => {
     expect(mocks.triggerProfileAnalysis).toHaveBeenCalledWith();
   });
 
+  it('已有当前画像时仍可手动重新分析', async () => {
+    mocks.getProfileAnalysis.mockResolvedValue(analysis({ userProfile: profile, profileStatus: 'ready' }));
+    render(<ProfilePage />);
+    fireEvent.click(await screen.findByRole('button', { name: '重新分析' }));
+    await waitFor(() => expect(mocks.triggerProfileAnalysis).toHaveBeenCalledTimes(1));
+    expect(mocks.getProfileAnalysis).toHaveBeenCalledTimes(1);
+  });
+
   it('笔记少于五篇时显示数据不足说明', async () => {
     mocks.getProfileAnalysis.mockResolvedValue(analysis({ noteCount: 3, profileStatus: 'insufficient_data' }));
     render(<ProfilePage />);
@@ -137,6 +145,59 @@ describe('ProfilePage', () => {
     expect(screen.getByText(/尚未基于当前笔记重新分析/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重新分析' })).toBeInTheDocument();
     expect(screen.queryByText('还没有画像数据，可以在笔记达到 5 篇后生成。')).not.toBeInTheDocument();
+  });
+
+  it('历史画像缺少范围元数据时明确标记为范围未知', async () => {
+    mocks.getProfileAnalysis.mockResolvedValue(analysis({ noteCount: 5, profileStatus: 'idle', historicalProfile: profile, analysisInputScope: null, analysisInputNoteCount: null, lastAnalyzedAt: null }));
+    render(<ProfilePage />);
+    expect(await screen.findByText('历史画像快照')).toBeInTheDocument();
+    expect(screen.getByText('范围未知的旧画像')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新分析' })).toBeInTheDocument();
+  });
+
+  it('画像 GET 首次失败时只显示本区重试，重试仍只发 GET', async () => {
+    mocks.getProfileAnalysis.mockRejectedValueOnce(new Error('internal profile error')).mockResolvedValueOnce(analysis({ userProfile: profile, profileStatus: 'ready' }));
+    render(<ProfilePage />);
+    expect(await screen.findByText('画像加载失败，请重试。')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试画像' }));
+    expect(await screen.findByText('持续记录与复盘')).toBeInTheDocument();
+    expect(mocks.getProfileAnalysis).toHaveBeenCalledTimes(2);
+    expect(mocks.triggerProfileAnalysis).not.toHaveBeenCalled();
+    expect(mocks.getStats).toHaveBeenCalledTimes(1);
+  });
+
+  it('较早的画像轮询响应不能覆盖较新的结果', async () => {
+    vi.useFakeTimers();
+    let resolveOlder!: (value: ReturnType<typeof analysis>) => void;
+    mocks.getProfileAnalysis
+      .mockResolvedValueOnce(analysis({ profileStatus: 'analyzing' }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOlder = resolve; }))
+      .mockResolvedValueOnce(analysis({ profileStatus: 'ready', userProfile: profile }));
+    render(<ProfilePage />);
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.getProfileAnalysis).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(mocks.getProfileAnalysis).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(mocks.getProfileAnalysis).toHaveBeenCalledTimes(3);
+    expect(screen.getByText('持续记录与复盘')).toBeInTheDocument();
+    await act(async () => { resolveOlder(analysis({ profileStatus: 'analyzing' })); await Promise.resolve(); });
+    expect(screen.getByText('持续记录与复盘')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新分析' })).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    expect(mocks.getProfileAnalysis).toHaveBeenCalledTimes(3);
+  });
+
+  it('离开页面时清理画像轮询定时器', async () => {
+    vi.useFakeTimers();
+    mocks.getProfileAnalysis.mockResolvedValue(analysis({ profileStatus: 'analyzing' }));
+    const { unmount } = render(<ProfilePage />);
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.getProfileAnalysis).toHaveBeenCalledTimes(1);
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+    expect(mocks.getProfileAnalysis).toHaveBeenCalledTimes(1);
   });
 
   it('分析失败后保留缓存的旧画像并提供重试', async () => {

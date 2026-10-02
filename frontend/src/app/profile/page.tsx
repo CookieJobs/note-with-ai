@@ -101,8 +101,7 @@ function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => 
 
 const formatAnalysisScope = (data: ProfileAnalysisResponse) => {
   if (data.analysisInputScope === 'recent_up_to_20') return `最近最多 20 篇笔记${data.analysisInputNoteCount == null ? '' : `（本次输入 ${data.analysisInputNoteCount} 篇）`}`;
-  if (data.analysisInputScope === 'unknown') return '范围未知的旧画像';
-  return '';
+  return '范围未知的旧画像';
 };
 
 export default function ProfilePage() {
@@ -198,7 +197,7 @@ export default function ProfilePage() {
 
   const insufficient = (profile?.noteCount ?? 0) < 5 || profile?.profileStatus === 'insufficient_data';
   const historic = insufficient || (!profile?.userProfile && Boolean(profile?.historicalProfile));
-  const canGenerate = !insufficient && (!profile?.userProfile || profile?.profileStatus === 'failed') && profile?.profileStatus !== 'analyzing';
+  const canGenerate = !insufficient && profile?.profileStatus !== 'analyzing';
   const scopeText = profile ? formatAnalysisScope(profile) : '';
 
   return (
@@ -221,7 +220,7 @@ export default function ProfilePage() {
               <div className={styles.sectionGroupHeader}>
                 <h2 id="profile-title" className={styles.sectionGroupTitle}>AI 画像</h2>
                 <div className={styles.profileControls}>
-                  {canGenerate && <button className={styles.btnGhostSm} onClick={handleTriggerAnalysis} disabled={analyzing}>{analyzing ? '正在提交…' : (historic || profile?.profileStatus === 'failed') ? '重新分析' : '生成画像'}</button>}
+                  {canGenerate && <button className={styles.btnGhostSm} onClick={handleTriggerAnalysis} disabled={analyzing}>{analyzing ? '正在提交…' : (historic || profile?.userProfile || profile?.profileStatus === 'failed') ? '重新分析' : '生成画像'}</button>}
                   {profile?.profileStatus === 'analyzing' && <span className={styles.statusPill}>分析中…</span>}
                   <button className={styles.aiGroupToggle} onClick={() => setAiExpanded((v) => !v)} aria-expanded={aiExpanded} aria-label={aiExpanded ? '收起画像' : '展开画像'}><span className={`${styles.aiGroupCollapseIcon} ${aiExpanded ? styles.open : styles.closed}`}>▼</span></button>
                 </div>
@@ -229,15 +228,14 @@ export default function ProfilePage() {
               <p className={styles.sectionGroupHint}>基于最近一次画像分析；分析范围有限，不代表全部笔记。</p>
               <div className={`${styles.aiGroupBody} ${aiExpanded ? styles.expanded : styles.collapsed}`}>
                 {profileLoading && !profile && <p className={styles.stateMessage}>正在加载画像…</p>}
-                {profileError && <div className={styles.stateMessage} role="alert"><p>画像暂时无法加载，已保留此前显示的数据。</p><button className={styles.btnOutlineSm} onClick={() => void loadProfile()}>重试画像</button></div>}
+                {profileError && <div className={styles.stateMessage} role="alert"><p>{profile ? '画像刷新失败，已保留上次成功显示的数据。' : '画像加载失败，请重试。'}</p><button className={styles.btnOutlineSm} onClick={() => void loadProfile()}>重试画像</button></div>}
                 {!profileLoading && !profile && !profileError && <p className={styles.stateMessage}>画像数据暂不可用。</p>}
                 {profile && insufficient && <p className={styles.stateMessage}>当前有 {profile.noteCount} 篇笔记，还需要 {Math.max(0, 5 - profile.noteCount)} 篇才能生成画像。当前推断不会作为有效画像展示。</p>}
                 {profile?.profileStatus === 'failed' && <div className={styles.analysisError} role="status">画像分析暂未完成，请稍后重试。</div>}
                 {profile && historic && profile.historicalProfile && <div className={styles.historyLabel}>历史画像快照</div>}
                 {profile && historic && !insufficient && profile.historicalProfile && <p className={styles.stateMessage}>当前笔记数已达到 5 篇，但画像尚未基于当前笔记重新分析。</p>}
                 {profile && displayedProfile && <>
-                  {profile.lastAnalyzedAt && <p className={styles.profileMetadata}>最近分析：{new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(profile.lastAnalyzedAt))}{scopeText ? ` · ${scopeText}` : ''}</p>}
-                  {!profile.lastAnalyzedAt && historic && scopeText && <p className={styles.profileMetadata}>{scopeText}</p>}
+                  <p className={styles.profileMetadata}>{profile.lastAnalyzedAt ? `最近分析：${new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(profile.lastAnalyzedAt))} · ` : ''}{scopeText}</p>
                   {displayedProfile.expertise && displayedProfile.expertise.length > 0 && <div className={styles.aiSubCard}><h3 className={styles.cardHeading}>技能领域</h3><div className={styles.expertiseList}>{displayedProfile.expertise.map((item, i) => <div key={`${item.area}-${i}`} className={styles.expertiseItem}><span className={styles.expertiseArea}>{item.area}</span><span className={styles.expertiseLevel}>{item.level}</span></div>)}</div></div>}
                   {displayedProfile.summary && <div className={styles.aiSubCard}><h3 className={styles.cardHeading}>个人传记</h3><div className={styles.biography}>{displayedProfile.summary}</div></div>}
                   {displayedProfile.theme?.themeName && <div className={styles.aiSubCard}><h3 className={styles.cardHeading}>专属氛围色：{displayedProfile.theme.themeName}</h3><div className={styles.themeDisplay}>{displayedProfile.theme.reasoning}</div></div>}
