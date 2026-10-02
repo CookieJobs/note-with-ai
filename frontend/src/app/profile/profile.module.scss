@@ -460,7 +460,7 @@ h1.sectionGroupTitle, h2.sectionGroupTitle { margin: 0; }
   &:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 
-:where(button, input):focus-visible {
+.page :where(button, input):focus-visible {
   outline: 3px solid rgba(59, 130, 246, 0.7);
   outline-offset: 2px;
 }
