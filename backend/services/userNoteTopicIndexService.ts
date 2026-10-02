@@ -13,6 +13,15 @@ export interface TopicNote extends TopicInputNote {
   _id: string;
   userId: string;
   createdAt?: Date;
+  topicIndexFence?: number;
+  topicIndexSuccess?: {
+    sourceRevision: number;
+    sourceFingerprint: string;
+    topics: string[];
+    source: TopicInputs['source'];
+    indexedAt: Date;
+  } | null;
+  topicIndexScheduled?: { sourceRevision: number; sourceFingerprint: string } | null;
 }
 
 export interface TopicJob {
@@ -53,6 +62,9 @@ function noteProjection(note: any): TopicNote {
     _id: String(note._id), userId: String(note.userId), revision: note.revision,
     title: note.title, content: note.content, contentText: note.contentText,
     summary: note.summary, keywords: note.keywords, createdAt: note.createdAt,
+    topicIndexFence: note.topicIndexFence,
+    topicIndexSuccess: note.topicIndexSuccess,
+    topicIndexScheduled: note.topicIndexScheduled,
   };
 }
 
@@ -98,8 +110,86 @@ export function noteMatchesTopicScope(noteDate: Date, scope: TopicScope, now: Da
 
 export class MongoTopicStore implements TopicStore {
   async getNote(userId: string, noteId: string): Promise<TopicNote | null> {
-    const note = await Note.findOne({ _id: noteId, userId }).lean();
+    const note = await Note.findOne({ _id: noteId, userId })
+      .select('+topicIndexFence +topicIndexSuccess +topicIndexScheduled')
+      .lean();
     return note ? noteProjection(note) : null;
+  }
+
+  async getIndex(userId: string, noteId: string): Promise<any | null> {
+    return UserNoteTopicIndex.findOne({ userId, noteId }).lean();
+  }
+
+  async recoverSuccessProjection(userId: string, noteId: string, now: Date): Promise<boolean> {
+    const note = await this.getNote(userId, noteId);
+    if (!note || !note.topicIndexSuccess || !note.topicIndexScheduled) return false;
+    const inputs = buildTopicInputs(note);
+    const success = note.topicIndexSuccess;
+    if (
+      success.sourceRevision !== inputs.sourceRevision
+      || success.sourceFingerprint !== inputs.sourceFingerprint
+      || note.topicIndexScheduled.sourceRevision !== inputs.sourceRevision
+      || note.topicIndexScheduled.sourceFingerprint !== inputs.sourceFingerprint
+      || typeof note.topicIndexFence !== 'number'
+    ) return false;
+
+    const fence = note.topicIndexFence;
+    const snapshot = {
+      sourceRevision: success.sourceRevision,
+      sourceFingerprint: success.sourceFingerprint,
+      topics: success.topics,
+      source: success.source,
+      indexedAt: success.indexedAt,
+    };
+    const current = await this.getIndex(userId, noteId);
+    const sameTopics = (left: unknown, right: unknown) => Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((topic, index) => topic === right[index]);
+    const sameDate = (left: unknown, right: unknown) => new Date(String(left)).getTime() === new Date(String(right)).getTime();
+    const currentSuccess = current?.lastSuccess;
+    if (
+      current?.status === 'ready'
+      && current.sourceRevision === inputs.sourceRevision
+      && current.sourceFingerprint === inputs.sourceFingerprint
+      && current.projectionFence === fence
+      && current.source === success.source
+      && sameTopics(current.topics, success.topics)
+      && sameDate(current.indexedAt, success.indexedAt)
+      && currentSuccess?.sourceRevision === success.sourceRevision
+      && currentSuccess?.sourceFingerprint === success.sourceFingerprint
+      && currentSuccess?.source === success.source
+      && sameTopics(currentSuccess?.topics, success.topics)
+      && sameDate(currentSuccess?.indexedAt, success.indexedAt)
+    ) return true;
+
+    const projectable = { $lte: [{ $ifNull: ['$projectionFence', 0] }, { $literal: fence }] };
+    await UserNoteTopicIndex.findOneAndUpdate(
+      { userId: new mongoose.Types.ObjectId(userId), noteId: new mongoose.Types.ObjectId(noteId) },
+      [{ $set: {
+        sourceRevision: { $cond: [projectable, { $literal: inputs.sourceRevision }, '$sourceRevision'] },
+        sourceFingerprint: { $cond: [projectable, { $literal: inputs.sourceFingerprint }, '$sourceFingerprint'] },
+        status: { $cond: [projectable, 'ready', '$status'] },
+        topics: { $cond: [projectable, { $literal: success.topics }, '$topics'] },
+        source: { $cond: [projectable, { $literal: success.source }, '$source'] },
+        indexedAt: { $cond: [projectable, { $literal: success.indexedAt }, '$indexedAt'] },
+        errorAt: { $cond: [projectable, null, '$errorAt'] },
+        lastErrorCode: { $cond: [projectable, null, '$lastErrorCode'] },
+        retryMode: { $cond: [projectable, null, '$retryMode'] },
+        nextAttemptAt: { $cond: [projectable, null, '$nextAttemptAt'] },
+        claimToken: { $cond: [projectable, null, '$claimToken'] },
+        leaseUntil: { $cond: [projectable, null, '$leaseUntil'] },
+        lastSuccess: { $cond: [projectable, { $literal: snapshot }, '$lastSuccess'] },
+        projectionFence: { $cond: [projectable, { $literal: fence }, { $ifNull: ['$projectionFence', 0] }] },
+        createdAt: { $ifNull: ['$createdAt', { $literal: now }] },
+        updatedAt: { $literal: now },
+        userId: { $ifNull: ['$userId', { $literal: new mongoose.Types.ObjectId(userId) }] },
+        noteId: { $ifNull: ['$noteId', { $literal: new mongoose.Types.ObjectId(noteId) }] },
+      } }],
+      { upsert: true, new: true },
+    );
+    const projected = await this.getIndex(userId, noteId);
+    return projected?.projectionFence === fence && projected?.status === 'ready';
   }
 
   async schedule(userId: string, note: TopicNote, inputs: TopicInputs, now: Date): Promise<void> {
@@ -128,6 +218,10 @@ export class MongoTopicStore implements TopicStore {
       { $eq: ['$sourceRevision', { $literal: inputs.sourceRevision }] },
       { $eq: ['$sourceFingerprint', { $literal: inputs.sourceFingerprint }] },
     ] };
+    const stuckPending = { $and: [
+      { $eq: ['$status', 'pending'] },
+      { $eq: [{ $ifNull: ['$nextAttemptAt', null] }, null] },
+    ] };
     const canProject = { $lt: [{ $ifNull: ['$projectionFence', 0] }, { $literal: fence }] };
     await UserNoteTopicIndex.findOneAndUpdate(
       { userId: uid, noteId: id },
@@ -135,18 +229,30 @@ export class MongoTopicStore implements TopicStore {
         userId: { $ifNull: ['$userId', { $literal: uid }] }, noteId: { $ifNull: ['$noteId', { $literal: id }] },
         sourceRevision: { $cond: [canProject, { $literal: inputs.sourceRevision }, '$sourceRevision'] },
         sourceFingerprint: { $cond: [canProject, { $literal: inputs.sourceFingerprint }, '$sourceFingerprint'] },
-        status: { $cond: [canProject, { $cond: [samePair, { $ifNull: ['$status', 'pending'] }, 'pending'] }, '$status'] },
+        status: { $cond: [canProject, { $cond: [
+          samePair,
+          { $cond: [
+            { $and: [stuckPending, { $gte: [{ $ifNull: ['$automaticAttemptCount', 0] }, 3] }] },
+            'failed',
+            { $ifNull: ['$status', 'pending'] },
+          ] },
+          'pending',
+        ] }, '$status'] },
         topics: { $cond: [canProject, { $cond: [samePair, { $ifNull: ['$topics', []] }, { $literal: [] }] }, '$topics'] },
         source: { $cond: [canProject, { $literal: inputs.source }, '$source'] },
         automaticAttemptCount: { $cond: [canProject, { $cond: [{ $eq: ['$automaticAttemptFingerprint', { $literal: inputs.sourceFingerprint }] }, { $ifNull: ['$automaticAttemptCount', 0] }, 0] }, '$automaticAttemptCount'] },
         automaticAttemptFingerprint: { $cond: [canProject, { $literal: inputs.sourceFingerprint }, '$automaticAttemptFingerprint'] },
-        nextAttemptAt: { $cond: [canProject, { $cond: [samePair, '$nextAttemptAt', { $literal: now }] }, '$nextAttemptAt'] },
+        nextAttemptAt: { $cond: [canProject, { $cond: [samePair, { $cond: [
+          stuckPending,
+          { $cond: [{ $gte: [{ $ifNull: ['$automaticAttemptCount', 0] }, 3] }, null, { $literal: now }] },
+          '$nextAttemptAt',
+        ] }, { $literal: now }] }, '$nextAttemptAt'] },
         scheduledAt: { $cond: [canProject, { $literal: now }, '$scheduledAt'] }, updatedAt: { $literal: now }, createdAt: { $ifNull: ['$createdAt', { $literal: now }] },
         projectionFence: { $cond: [canProject, { $literal: fence }, { $ifNull: ['$projectionFence', 0] }] },
         manualAttemptTimestamps: { $ifNull: ['$manualAttemptTimestamps', []] },
         retryMode: { $cond: [canProject, { $cond: [samePair, { $ifNull: ['$retryMode', null] }, null] }, '$retryMode'] },
-        claimToken: { $cond: [canProject, { $cond: [samePair, { $ifNull: ['$claimToken', null] }, null] }, '$claimToken'] },
-        leaseUntil: { $cond: [canProject, { $cond: [samePair, { $ifNull: ['$leaseUntil', null] }, null] }, '$leaseUntil'] },
+        claimToken: { $cond: [canProject, { $cond: [samePair, { $cond: [stuckPending, null, { $ifNull: ['$claimToken', null] }] }, null] }, '$claimToken'] },
+        leaseUntil: { $cond: [canProject, { $cond: [samePair, { $cond: [stuckPending, null, { $ifNull: ['$leaseUntil', null] }] }, null] }, '$leaseUntil'] },
       } }],
       { upsert: true, new: true },
     );
@@ -195,12 +301,12 @@ export class MongoTopicStore implements TopicStore {
     if (!index) return null;
     const note = await this.getNote(String(index.userId), String(index.noteId));
     if (!note) {
-      await UserNoteTopicIndex.updateOne({ _id: index._id, claimToken: token }, { $set: { status: 'pending', claimToken: null, leaseUntil: null, nextAttemptAt: null } });
+      await UserNoteTopicIndex.deleteOne({ _id: index._id, claimToken: token, status: 'processing' });
       return null;
     }
     const inputs = buildTopicInputs(note);
     if (inputs.sourceRevision !== index.sourceRevision || inputs.sourceFingerprint !== index.sourceFingerprint) {
-      await UserNoteTopicIndex.updateOne({ _id: index._id, claimToken: token }, { $set: { status: 'pending', claimToken: null, leaseUntil: null, nextAttemptAt: null } });
+      await this.schedule(userId, note, inputs, now);
       return null;
     }
     const modeNow = index.retryMode === 'manual' ? 'manual' : 'automatic';
@@ -219,9 +325,15 @@ export class MongoTopicStore implements TopicStore {
 
   async finish(job: TopicJob, topics: string[], now: Date): Promise<boolean> {
     const note = await this.getNote(job.userId, job.noteId);
-    if (!note) return false;
+    if (!note) {
+      await UserNoteTopicIndex.deleteOne({ userId: job.userId, noteId: job.noteId, claimToken: job.claimToken, status: 'processing' });
+      return false;
+    }
     const inputs = buildTopicInputs(note);
-    if (inputs.sourceRevision !== job.sourceRevision || inputs.sourceFingerprint !== job.sourceFingerprint) return false;
+    if (inputs.sourceRevision !== job.sourceRevision || inputs.sourceFingerprint !== job.sourceFingerprint) {
+      await this.schedule(job.userId, note, inputs, now);
+      return false;
+    }
     const normalizedTopics = [...new Set(topics.map(normalizeTopicLabel).filter(Boolean))];
     const snapshot = { sourceRevision: job.sourceRevision, sourceFingerprint: job.sourceFingerprint, topics: normalizedTopics, source: job.source, indexedAt: now };
     // Note is authoritative; this single-document CAS is compatible with standalone Mongo.
@@ -243,9 +355,15 @@ export class MongoTopicStore implements TopicStore {
     const exhausted = job.mode === 'manual' || job.attemptNumber >= 3;
     const delay = job.attemptNumber === 1 ? 30_000 : 120_000;
     const note = await this.getNote(job.userId, job.noteId);
-    if (!note) return;
+    if (!note) {
+      await UserNoteTopicIndex.deleteOne({ userId: job.userId, noteId: job.noteId, claimToken: job.claimToken, status: 'processing' });
+      return;
+    }
     const inputs = buildTopicInputs(note);
-    if (inputs.sourceRevision !== job.sourceRevision || inputs.sourceFingerprint !== job.sourceFingerprint) return;
+    if (inputs.sourceRevision !== job.sourceRevision || inputs.sourceFingerprint !== job.sourceFingerprint) {
+      await this.schedule(job.userId, note, inputs, now);
+      return;
+    }
     const owned = await Note.updateOne({ ...sourceFilter(note, inputs), topicIndexClaimToken: job.claimToken, topicIndexClaimVersion: job.claimVersion, topicIndexClaimUntil: { $gt: now } }, { $set: { topicIndexClaimToken: null, topicIndexClaimUntil: null } }, { timestamps: false });
     if (owned.matchedCount !== 1) return;
     await UserNoteTopicIndex.updateOne({ userId: job.userId, noteId: job.noteId, sourceRevision: job.sourceRevision, sourceFingerprint: job.sourceFingerprint, status: 'processing', claimToken: job.claimToken }, {

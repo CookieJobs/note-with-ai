@@ -102,7 +102,9 @@ test('Mongo claim 只取匹配 retryMode 的任务，成功写入受 Note source
   assert.equal(await store.finish(currentJob!, ['过期'], now), false);
   await store.fail(currentJob!, 'OLD_FAILURE', now);
   row = await UserNoteTopicIndex.findOne({ userId, noteId }).lean();
-  assert.equal(row.status, 'processing', 'stale failure must not mutate the current projection');
+  assert.equal(row.status, 'pending', 'a stale source claim must schedule the current source');
+  assert.ok(row.nextAttemptAt instanceof Date);
+  assert.equal(row.sourceFingerprint, buildTopicInputs({ revision: 3, content: '正文', title: '$title', keywords: ['$topic'], summary: 'edit after claim' }).sourceFingerprint);
   assert.equal(row.lastErrorCode, null);
   const finalNote: any = await Note.findById(noteId).select('+topicIndexFence +topicIndexSuccess +topicIndexClaimToken').lean();
   assert.deepEqual(finalNote.topicIndexSuccess.topics, ['人工智能']);

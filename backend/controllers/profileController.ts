@@ -16,6 +16,7 @@ type ProfileRecord = {
   lastAnalyzedAt?: Date | null;
   analysisInputNoteCount?: number | null;
   analysisInputScope?: string | null;
+  profileInvalidatedAt?: Date | null;
 };
 
 function profileFields(profile: ProfileRecord | null) {
@@ -34,6 +35,7 @@ function getStatus(profile: ProfileRecord | null): 'idle' | 'analyzing' | 'ready
   if (!profile) return 'idle';
   if (profile.analysisStatus === 'queued' || profile.analysisStatus === 'running') return 'analyzing';
   if (profile.analysisStatus === 'failed') return 'failed';
+  if (profile.profileInvalidatedAt) return 'idle';
   const hasResult = Boolean(
     profile.summary?.trim() ||
     profile.expertise?.length ||
@@ -50,17 +52,19 @@ export const getProfileAnalysis = async (req: Request, res: Response) => {
     UserProfile.findOne({ userId }).lean<ProfileRecord | null>(),
   ]);
   const insufficient = noteCount < 5;
+  const historical = insufficient || Boolean(profile?.profileInvalidatedAt);
   const status = insufficient ? 'insufficient_data' : getStatus(profile);
 
   ResponseHandler.success(res, {
-    userProfile: insufficient ? null : profileFields(profile),
-    historicalProfile: insufficient ? profileFields(profile) : null,
+    userProfile: historical ? null : profileFields(profile),
+    historicalProfile: historical ? profileFields(profile) : null,
     profileStatus: status,
     noteCount,
     analysisError: status === 'failed' ? '画像生成失败，请稍后重试' : '',
     lastAnalyzedAt: profile?.lastAnalyzedAt ? new Date(profile.lastAnalyzedAt).toISOString() : null,
     analysisInputNoteCount: profile?.analysisInputNoteCount ?? null,
     analysisInputScope: profile?.analysisInputScope ?? null,
+    profileInvalidatedAt: profile?.profileInvalidatedAt ? new Date(profile.profileInvalidatedAt).toISOString() : null,
   });
 };
 

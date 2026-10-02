@@ -7,6 +7,8 @@ import {
   type JsonDocument,
 } from './noteContentNormalizer';
 import { createProductionNoteEnrichmentScheduler } from './noteEnrichmentWorker';
+import { scheduleUserNoteTopicIndex } from './userNoteTopicIndexService';
+import { logger } from '../utils/logger';
 
 export type NoteBodyInput =
   | { kind: 'rich-text'; document: JsonDocument; fallbackMarkdown?: string }
@@ -290,9 +292,15 @@ function equalStringArrays(left: string[], right: string[]): boolean {
 
 export class NoteUpdateOrchestrator {
   private readonly scheduler: EnrichmentScheduler;
+  private readonly scheduleTopicIndex: (userId: string, noteId: string) => void;
 
-  constructor(dependencies: { scheduler: EnrichmentScheduler }) {
+  constructor(dependencies: { scheduler: EnrichmentScheduler; scheduleTopicIndex?: (userId: string, noteId: string) => void }) {
     this.scheduler = dependencies.scheduler;
+    this.scheduleTopicIndex = dependencies.scheduleTopicIndex ?? ((userId, noteId) => {
+      void scheduleUserNoteTopicIndex(userId, noteId).catch((error: unknown) => {
+        logger.warn('Could not schedule the note topic index', { noteId, error: error instanceof Error ? error.message : String(error) });
+      });
+    });
   }
 
   async create(input: CreateNoteInput): Promise<NoteWriteResult> {
@@ -324,6 +332,7 @@ export class NoteUpdateOrchestrator {
       throw writeFailed(error);
     }
     const result = this.toResult(created);
+    this.scheduleTopicIndex(input.userId, result.note._id);
     trackProductEventBestEffort({ name: 'note_created', userId: input.userId, source: 'server', properties: {} });
     for (const artifact of ARTIFACTS) {
       this.scheduler.schedule({ noteId: result.note._id, userId: input.userId, sourceRevision: revision, artifact });
@@ -414,6 +423,7 @@ export class NoteUpdateOrchestrator {
     }
 
     const result = this.toResult(updated);
+    if (bodyChanged || titleChanged || keywordsChanged) this.scheduleTopicIndex(input.userId, result.note._id);
     for (const artifact of ARTIFACTS) {
       if (invalidated.has(artifact) || getArtifactState(current.enrichment, artifact, input.expectedRevision).status === 'pending') {
         this.scheduler.schedule({ noteId: result.note._id, userId: input.userId, sourceRevision: nextRevision, artifact });

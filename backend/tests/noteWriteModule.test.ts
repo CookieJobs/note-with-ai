@@ -103,7 +103,16 @@ function makeModule() {
     update: { $set: Record<string, unknown>; $inc?: Record<string, number> },
   ) => notes.findOneAndUpdate(filter, update)) as unknown as typeof Note.findOneAndUpdate);
   const scheduler = new CollectingScheduler();
-  return { notes, scheduler, module: new NoteUpdateOrchestrator({ scheduler }) };
+  const topicSchedules: Array<{ userId: string; noteId: string }> = [];
+  return {
+    notes,
+    scheduler,
+    topicSchedules,
+    module: new NoteUpdateOrchestrator({
+      scheduler,
+      scheduleTopicIndex: (userId, noteId) => topicSchedules.push({ userId, noteId }),
+    }),
+  };
 }
 
 describe('NoteUpdateOrchestrator public create/update contract', () => {
@@ -147,7 +156,7 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
   });
 
   it('creates a normalized plain-text note at revision one and schedules each initial artifact once', async () => {
-    const { module, notes, scheduler } = makeModule();
+    const { module, notes, scheduler, topicSchedules } = makeModule();
 
     const result = await module.create({
       userId: 'user-1',
@@ -174,6 +183,7 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
 
     const persistedEnrichment = notes.notes.get('note-1')?.enrichment as Record<string, { attemptedAt?: string }>;
     assert.ok(Object.values(persistedEnrichment).every((artifact) => typeof artifact.attemptedAt === 'string'));
+    assert.deepEqual(topicSchedules, [{ userId: 'user-1', noteId: 'note-1' }]);
   });
 
   it('derives rich-text semantic text on the server rather than accepting a caller contentText', async () => {
@@ -241,7 +251,7 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
   });
 
   it('clears an invalidated recommendation cache and only requeues recommendations for a title-only change', async () => {
-    const { module, notes, scheduler } = makeModule();
+    const { module, notes, scheduler, topicSchedules } = makeModule();
     notes.seed({
       _id: 'note-1', userId: 'user-1', content: '正文', contentText: '正文', contentJson: null,
       title: '标题', summary: '摘要', concepts: ['概念'], keywords: ['关键词'], revision: 1,
@@ -263,10 +273,11 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
     assert.deepEqual(scheduler.tasks, [{
       noteId: 'note-1', userId: 'user-1', sourceRevision: 2, artifact: 'recommendations',
     }]);
+    assert.deepEqual(topicSchedules, [{ userId: 'user-1', noteId: 'note-1' }]);
   });
 
   it('preserves derived artifacts for a JSON-only body change and a keyword-only change', async () => {
-    const { module, notes, scheduler } = makeModule();
+    const { module, notes, scheduler, topicSchedules } = makeModule();
     notes.seed({
       _id: 'note-1', userId: 'user-1', content: '正文', contentText: '正文',
       contentJson: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文' }] }] },
@@ -297,6 +308,10 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
     assert.equal(afterKeywords.note.revision, 5);
     assert.equal(afterKeywords.note.recommendCache?.sourceRevision, 5);
     assert.equal(scheduler.tasks.length, 0);
+    assert.deepEqual(topicSchedules, [
+      { userId: 'user-1', noteId: 'note-1' },
+      { userId: 'user-1', noteId: 'note-1' },
+    ]);
     assert.deepEqual(
       Object.values(notes.notes.get('note-1')?.enrichment as Record<string, { status: string; sourceRevision: number }>),
       [

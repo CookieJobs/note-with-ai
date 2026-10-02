@@ -4,6 +4,8 @@ import { summarizeNoteMeta, expandNoteConcepts } from './llmService';
 import { noteEmbeddingService } from './noteEmbeddingService';
 import { updateNoteRecommendations, type RecommendationOptions, type RecommendationResult } from './recommendService';
 import { InProcessNoteEnrichmentScheduler } from './noteEnrichmentScheduler';
+import { scheduleUserNoteTopicIndex } from './userNoteTopicIndexService';
+import { logger } from '../utils/logger';
 
 type EnrichmentWorkerNote = {
   _id: unknown;
@@ -25,6 +27,7 @@ type WorkerDependencies = {
   generateEmbedding: (task: EnrichmentTask) => Promise<'saved' | 'stale' | 'failed'>;
   refreshRecommendations: (task: EnrichmentTask) => Promise<'saved' | 'stale' | 'failed' | void>;
   now?: () => Date;
+  scheduleTopicIndex?: (userId: string, noteId: string) => void;
 };
 
 export type EnrichmentTaskStatus = 'saved' | 'stale' | 'failed';
@@ -70,6 +73,11 @@ function createProductionWorker(options: ProductionTaskOptions = {}): NoteEnrich
       });
       options.onRecommendationResult?.(result);
       return result.meta.diagnostics?.reason === 'stale_source_revision' ? 'stale' : 'saved';
+    },
+    scheduleTopicIndex: (userId, noteId) => {
+      void scheduleUserNoteTopicIndex(userId, noteId).catch((error: unknown) => {
+        logger.warn('Could not schedule topic indexing after note metadata update', { noteId, error: error instanceof Error ? error.message : String(error) });
+      });
     },
   });
 }
@@ -152,6 +160,9 @@ export class NoteEnrichmentWorker {
       { $set: { ...values, [`enrichment.${task.artifact}`]: artifactState } },
       { timestamps: false },
     );
+    if (result.matchedCount > 0 && status === 'ready' && task.artifact === 'meta') {
+      this.dependencies.scheduleTopicIndex?.(task.userId, task.noteId);
+    }
     return result.matchedCount > 0 ? (status === 'ready' ? 'saved' : 'failed') : 'stale';
   }
 }

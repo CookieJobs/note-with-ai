@@ -125,6 +125,7 @@ describe('userAnalysisService', () => {
     assert.equal(committedUpdate?.$set.analysisInputScope, 'recent_up_to_20');
     assert.ok(committedUpdate?.$set.lastAnalyzedAt instanceof Date);
     assert.equal(committedUpdate?.$set.summary, '生成结果');
+    assert.deepEqual(committedUpdate?.$unset, { profileInvalidatedAt: 1 });
   });
 
   it('模型没有生成可展示画像时不提交或更新时间', async () => {
@@ -218,5 +219,40 @@ describe('userAnalysisService', () => {
       committed: false,
       reason: 'stale_analysis_version',
     });
+  });
+
+  it('只提交画像白名单字段并仅在真实成功CAS时清除失效标记', async () => {
+    const { Note, UserProfile, userAnalysisService } = await loadModules();
+    const notes = Array.from({ length: 5 }, (_, index) => ({
+      createdAt: new Date(`2026-01-0${index + 1}T00:00:00.000Z`),
+      title: `Note ${index + 1}`,
+      content: `内容${index + 1}`,
+    }));
+    mock.method(Note, 'countDocuments', async () => 5);
+    mock.method(Note, 'find', () => ({ sort() { return this; }, limit: async () => notes }) as any);
+    replaceMethod(userAnalysisService as any, 'getApiClient', (() => ({
+      chatCompletion: async () => JSON.stringify({
+        summary: '新画像',
+        profileInvalidatedAt: null,
+        analysisVersion: 999,
+        analysisStatus: 'failed',
+        userId: 'attacker-controlled',
+      }),
+    })) as any);
+    let update: Record<string, any> | undefined;
+    mock.method(UserProfile, 'updateOne', async (_filter: Record<string, unknown>, value: Record<string, any>) => {
+      update = value;
+      return { matchedCount: 1 } as any;
+    });
+
+    const result = await userAnalysisService.analyzeUserProfile({ userId: 'user-1', analysisVersion: 14 });
+
+    assert.deepEqual(result, { committed: true, reason: 'updated' });
+    assert.deepEqual(Object.keys(update?.$set).sort(), [
+      'analysisError', 'analysisInputNoteCount', 'analysisInputScope', 'analysisStatus', 'lastAnalyzedAt', 'summary',
+    ].sort());
+    assert.deepEqual(update?.$unset, { profileInvalidatedAt: 1 });
+    assert.equal(update?.$set.analysisVersion, undefined);
+    assert.equal(update?.$set.profileInvalidatedAt, undefined);
   });
 });

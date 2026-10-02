@@ -119,6 +119,27 @@ describe('Note enrichment worker and scheduler', () => {
     assert.deepEqual(values.keywords, ['自动关键词']);
   });
 
+  it('成功的元数据写入以相同用户和笔记修订号排队索引', async () => {
+    const model = new MemoryWorkerModel({
+      _id: 'note-1', userId: 'user-1', revision: 3, content: '正文', contentText: '正文', enrichment: {},
+      titleOrigin: 'user', keywordsOrigin: 'user',
+    } as WorkerNote);
+    useMemoryWorkerModel(model);
+    const scheduled: Array<{ userId: string; noteId: string }> = [];
+    const worker = new NoteEnrichmentWorker({
+      summarizeMeta: async () => ({ summary: '摘要', concepts: ['概念'] }),
+      generateEmbedding: async () => 'saved',
+      refreshRecommendations: async () => undefined,
+      scheduleTopicIndex: (userId, noteId) => scheduled.push({ userId, noteId }),
+    });
+
+    const status = await worker.run(metaTask);
+
+    assert.equal(status, 'saved');
+    assert.deepEqual(scheduled, [{ userId: 'user-1', noteId: 'note-1' }]);
+    assert.deepEqual(model.updates[0].options, { timestamps: false });
+  });
+
   it('never overwrites user-owned title or keywords during a later meta write', async () => {
     const model = new MemoryWorkerModel({
       _id: 'note-1', userId: 'user-1', revision: 3, content: '正文', contentText: '正文',

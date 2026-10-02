@@ -55,6 +55,7 @@ export class UserAnalysisService {
           analysisInputNoteCount: inputNoteCount,
           analysisInputScope: 'recent_up_to_20',
         },
+        $unset: { profileInvalidatedAt: 1 },
       }
     );
 
@@ -142,7 +143,13 @@ export class UserAnalysisService {
       ) {
         throw new Error('No usable profile data was generated');
       }
-      const profileData = parsedProfile as Record<string, any>;
+      const modelProfile = parsedProfile as Record<string, any>;
+      // The model returns untrusted JSON. Commit only user-facing profile fields so it
+      // cannot alter coordinator state or the durable historical invalidation marker.
+      const profileData: Record<string, any> = {};
+      for (const field of ['interests', 'expertise', 'goals', 'preferences', 'summary', 'theme']) {
+        if (Object.prototype.hasOwnProperty.call(modelProfile, field)) profileData[field] = modelProfile[field];
+      }
       
       // Add timestamps
       if (profileData.interests) {

@@ -1,5 +1,7 @@
 import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import mongoose from 'mongoose';
+import UserNoteTopicIndex from '../models/UserNoteTopicIndex';
 import { createServer, type Server } from 'node:http';
 
 process.env.NODE_ENV = 'test';
@@ -23,6 +25,8 @@ async function startApp() {
     import('../models/UserProfile').then(m => m.default),
   ]);
   replaceMethod(User, 'findById', (() => ({
+    _id: '507f1f77bcf86cd799439011',
+    isActive: true,
     select() { return this; },
     lean: async () => ({ _id: '507f1f77bcf86cd799439011', isActive: true }),
   })) as any);
@@ -58,6 +62,7 @@ describe('profile analysis routes', () => {
   it('个人资料 GET 只读并返回旧字段和范围', async () => {
     const app = await startApp();
     const lastAnalyzedAt = '2026-09-01T02:00:00.000Z';
+    const profileInvalidatedAt = '2026-09-20T02:00:00.000Z';
     let profileReads = 0;
     let profileWrites = 0;
     mock.method(app.Note, 'countDocuments', async (filter: Record<string, unknown>) => {
@@ -77,6 +82,7 @@ describe('profile analysis routes', () => {
         lastAnalyzedAt: new Date(lastAnalyzedAt),
         analysisInputNoteCount: 12,
         analysisInputScope: 'recent_up_to_20',
+        profileInvalidatedAt: new Date(profileInvalidatedAt),
       }) } as any;
     });
     mock.method(app.UserProfile, 'findOneAndUpdate', async () => {
@@ -103,6 +109,7 @@ describe('profile analysis routes', () => {
         lastAnalyzedAt,
         analysisInputNoteCount: 12,
         analysisInputScope: 'recent_up_to_20',
+        profileInvalidatedAt,
       });
       assert.equal(profileReads, 1);
       assert.equal(profileWrites, 0);
@@ -167,6 +174,138 @@ describe('profile analysis routes', () => {
       assert.equal(body.data.analysisInputScope, null);
     } finally {
       await closeServer(app.server);
+    }
+  });
+
+  it('重新达到五篇后失效画像仍只作为历史快照返回，直到新分析成功', async () => {
+    const app = await startApp();
+    const invalidatedAt = new Date('2026-10-01T03:00:00.000Z');
+    mock.method(app.Note, 'countDocuments', async () => 5);
+    mock.method(app.UserProfile, 'findOne', () => ({ lean: async () => ({
+      userId: '507f1f77bcf86cd799439011',
+      expertise: [{ area: '旧能力', level: 'Advanced' }],
+      summary: '旧画像',
+      analysisStatus: 'idle',
+      profileInvalidatedAt: invalidatedAt,
+      lastAnalyzedAt: new Date('2026-09-01T00:00:00.000Z'),
+      analysisInputNoteCount: 8,
+      analysisInputScope: 'recent_up_to_20',
+    }) }) as any);
+
+    try {
+      const response = await fetch(`${app.baseUrl}/api/profile/analysis`, {
+        headers: { authorization: `Bearer ${app.token}` },
+      });
+      const body = await response.json() as any;
+      assert.equal(response.status, 200);
+      assert.equal(body.data.profileStatus, 'idle');
+      assert.equal(body.data.userProfile, null);
+      assert.deepEqual(body.data.historicalProfile, {
+        expertise: [{ area: '旧能力', level: 'Advanced' }],
+        summary: '旧画像',
+      });
+      assert.equal(body.data.profileInvalidatedAt, invalidatedAt.toISOString());
+    } finally {
+      await closeServer(app.server);
+    }
+  });
+
+  it('失效标记存在时保留新分析的运行状态并继续轮询', async () => {
+    const app = await startApp();
+    mock.method(app.Note, 'countDocuments', async () => 5);
+    mock.method(app.UserProfile, 'findOne', () => ({ lean: async () => ({
+      userId: '507f1f77bcf86cd799439011',
+      summary: '历史画像',
+      analysisStatus: 'running',
+      profileInvalidatedAt: new Date('2026-10-01T03:00:00.000Z'),
+    }) }) as any);
+
+    try {
+      const response = await fetch(`${app.baseUrl}/api/profile/analysis`, {
+        headers: { authorization: `Bearer ${app.token}` },
+      });
+      const body = await response.json() as any;
+      assert.equal(body.data.profileStatus, 'analyzing');
+      assert.equal(body.data.userProfile, null);
+      assert.equal(body.data.historicalProfile.summary, '历史画像');
+    } finally {
+      await closeServer(app.server);
+    }
+  });
+
+  it('真实API验证五篇删至四篇再回五篇的历史快照与分析CAS', { skip: process.env.PROFILE_TOPIC_MONGO_TEST !== '1' }, async () => {
+    const uri = 'mongodb://127.0.0.1:27017/note_with_ai_profile_topic_test_20261002_b3';
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5_000 });
+    assert.equal(mongoose.connection.name, 'note_with_ai_profile_topic_test_20261002_b3');
+    const app = await startApp();
+    const userId = new mongoose.Types.ObjectId('507f1f77bcf86cd799439011');
+    const ownedNotes: mongoose.Types.ObjectId[] = [];
+    const originalAnalyzedAt = new Date('2026-08-01T00:00:00.000Z');
+    try {
+      await app.UserProfile.create({
+        userId,
+        summary: '历史画像',
+        expertise: [{ area: '旧能力', level: 'Advanced' }],
+        analysisStatus: 'running',
+        analysisVersion: 8,
+        lastAnalyzedAt: originalAnalyzedAt,
+      });
+      const notes = await app.Note.create(Array.from({ length: 5 }, (_, index) => ({
+        userId,
+        content: `生命周期笔记${index}`,
+        title: `笔记${index}`,
+        revision: 1,
+      })));
+      ownedNotes.push(...notes.map((note: any) => note._id));
+
+      const headers = { authorization: `Bearer ${app.token}` };
+      const before = await (await fetch(`${app.baseUrl}/api/profile/analysis`, { headers })).json() as any;
+      assert.equal(before.data.userProfile.summary, '历史画像');
+
+      const priorEnvironment = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'development';
+      const deleted = await fetch(`${app.baseUrl}/api/notes/${notes[0]._id}`, { method: 'DELETE', headers });
+      process.env.NODE_ENV = priorEnvironment;
+      assert.equal(deleted.status, 200, await deleted.text());
+      const fourNotes = await (await fetch(`${app.baseUrl}/api/profile/analysis`, { headers })).json() as any;
+      assert.equal(fourNotes.data.noteCount, 4);
+      assert.equal(fourNotes.data.profileStatus, 'insufficient_data');
+      assert.equal(fourNotes.data.userProfile, null);
+      assert.equal(fourNotes.data.historicalProfile.summary, '历史画像');
+      assert.ok(fourNotes.data.profileInvalidatedAt);
+
+      const fifth = await app.Note.create({ userId, content: '重新达到五篇', title: '第五篇', revision: 1 });
+      ownedNotes.push(fifth._id);
+      const backToFive = await (await fetch(`${app.baseUrl}/api/profile/analysis`, { headers })).json() as any;
+      assert.equal(backToFive.data.noteCount, 5);
+      assert.equal(backToFive.data.userProfile, null);
+      assert.equal(backToFive.data.historicalProfile.summary, '历史画像');
+      assert.equal(backToFive.data.profileStatus, 'idle');
+
+      const { userAnalysisService } = await import('../services/userAnalysisService');
+      replaceMethod(userAnalysisService as any, 'getApiClient', (() => ({
+        chatCompletion: async () => JSON.stringify({ summary: '新画像', profileInvalidatedAt: null, analysisVersion: 999 }),
+      })) as any);
+      const stale = await userAnalysisService.analyzeUserProfile({ userId: String(userId), analysisVersion: 8 });
+      assert.deepEqual(stale, { committed: false, reason: 'stale_analysis_version' });
+      let profile: any = await app.UserProfile.findOne({ userId }).lean();
+      assert.ok(profile.profileInvalidatedAt instanceof Date);
+      assert.equal(profile.lastAnalyzedAt.getTime(), originalAnalyzedAt.getTime());
+      assert.equal(profile.summary, '历史画像');
+
+      await app.UserProfile.updateOne({ userId, analysisVersion: 9 }, { $set: { analysisStatus: 'running' } });
+      const fresh = await userAnalysisService.analyzeUserProfile({ userId: String(userId), analysisVersion: 9 });
+      assert.deepEqual(fresh, { committed: true, reason: 'updated' });
+      profile = await app.UserProfile.findOne({ userId }).lean();
+      assert.ok(profile.profileInvalidatedAt == null);
+      assert.equal(profile.summary, '新画像');
+      assert.ok(profile.lastAnalyzedAt.getTime() > originalAnalyzedAt.getTime());
+    } finally {
+      await app.Note.deleteMany({ _id: { $in: ownedNotes } });
+      await UserNoteTopicIndex.deleteMany({ noteId: { $in: ownedNotes } });
+      await app.UserProfile.deleteOne({ userId });
+      await closeServer(app.server);
+      await mongoose.disconnect();
     }
   });
 

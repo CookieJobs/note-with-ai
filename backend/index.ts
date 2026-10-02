@@ -23,6 +23,7 @@ import eventRoutes from './routes/events';
 import feedbackRoutes from './routes/feedback';
 import adminFeedbackRoutes from './routes/admin/feedback';
 import inspirationRoutes from './routes/inspirations';
+import { startUserNoteTopicRuntime } from './services/userNoteTopicRuntime';
 
 dotenv.config();
 
@@ -80,6 +81,7 @@ const connectDB = async () => {
   const g = globalThis as any;
 
   if (mongoose.connection.readyState >= 1) {
+    startUserNoteTopicRuntime();
     return;
   }
 
@@ -88,6 +90,7 @@ const connectDB = async () => {
       .connect(MONGODB_URI)
       .then(() => {
         logger.info('✅ MongoDB 连接成功');
+        startUserNoteTopicRuntime();
       })
       .catch((err: unknown) => {
         g.__mongoConnectPromise = undefined;
