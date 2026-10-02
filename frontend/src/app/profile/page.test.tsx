@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   getProfileAnalysis: vi.fn(),
   triggerProfileAnalysis: vi.fn(),
   getStats: vi.fn(),
+  getProfileTopics: vi.fn(),
+  retryFailedProfileTopics: vi.fn(),
   updateProfile: vi.fn(),
   changePassword: vi.fn(),
   toastInfo: vi.fn(),
@@ -24,6 +26,10 @@ vi.mock('../../services/profileService', () => ({
   getProfileAnalysis: mocks.getProfileAnalysis,
   triggerProfileAnalysis: mocks.triggerProfileAnalysis,
   getStats: mocks.getStats,
+}));
+vi.mock('../../services/profileTopicsService', () => ({
+  getProfileTopics: mocks.getProfileTopics,
+  retryFailedProfileTopics: mocks.retryFailedProfileTopics,
 }));
 vi.mock('../../services/userService', () => ({ updateProfile: mocks.updateProfile, changePassword: mocks.changePassword }));
 vi.mock('../../components/TopNavigation', () => ({ default: () => <div data-testid="top-navigation" /> }));
@@ -62,6 +68,7 @@ describe('ProfilePage', () => {
     mocks.getUser.mockReturnValue({ id: 'user-1', username: '测试用户', email: 'test@example.com', createdAt: '2026-01-01T00:00:00.000Z' });
     mocks.getProfileAnalysis.mockResolvedValue(analysis());
     mocks.getStats.mockResolvedValue(stats());
+    mocks.getProfileTopics.mockResolvedValue({ scope: 'all', timezone: 'Asia/Shanghai', rangeStart: null, rangeEnd: null, totalNotesInRange: 0, readyNotesInRange: 0, pendingNotesInRange: 0, failedNotesInRange: 0, lastErrorAt: null, topics: [], staleSnapshot: null, indexStatus: 'empty', updatedAt: null });
     mocks.triggerProfileAnalysis.mockResolvedValue({ accepted: true, profileStatus: 'analyzing', reason: 'accepted', analysisError: '' });
     mocks.updateProfile.mockResolvedValue({ username: '更新用户' });
     mocks.changePassword.mockResolvedValue(undefined);
@@ -76,6 +83,13 @@ describe('ProfilePage', () => {
     expect(screen.queryByText(/For You/)).not.toBeInTheDocument();
     expect(mocks.getProfileAnalysis).toHaveBeenCalledTimes(1);
     expect(mocks.getStats).toHaveBeenCalledTimes(1);
+  });
+
+  it('个人中心独立加载话题面板，不影响统计和画像', async () => {
+    render(<ProfilePage />);
+    expect(await screen.findByRole('heading', { name: '笔记话题' })).toBeInTheDocument();
+    expect(mocks.getProfileTopics).toHaveBeenCalledWith('all', expect.anything());
+    expect(await screen.findByRole('link', { name: '创建第一篇笔记' })).toHaveAttribute('href', '/notes');
   });
 
   it('分别加载统计和个人资料', async () => {

@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { defaultProfileBackgroundTheme, mapUserProfileToBackgroundTheme } from './profileBackgroundTheme';
 import AvatarPicker from './AvatarPicker';
 import { AVATAR_PRESETS, resolveAvatarDisplay, type AvatarSelection } from './avatarPresets';
+import ProfileTopicsSection from './ProfileTopicsSection';
 
 function StatsBar({ stats, loading, error, onRetry }: {
   stats: UserStats | null; loading: boolean; error: boolean; onRetry: () => void;
@@ -264,7 +265,7 @@ export default function ProfilePage() {
               </div>
             </section>
           </div>
-          <div className={styles.rightColumn} data-testid="topics-slot" aria-label="笔记话题面板预留位置" />
+          <div className={styles.rightColumn} data-testid="topics-slot"><ProfileTopicsSection /></div>
         </div>
       </main>
       <EditProfileModal open={editOpen} user={user} onClose={() => setEditOpen(false)} onSaved={handleProfileSaved} />
