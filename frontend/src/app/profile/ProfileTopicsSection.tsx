@@ -168,13 +168,13 @@ export default function ProfileTopicsSection() {
         </div>}
         {data.totalNotesInRange > 0 && <>
           {data.topics.length > 0 ? <ul className={styles.topicList} aria-label="当前已整理的话题">
-            {data.topics.map((topic) => <li key={topic.topic} className={styles.topicChip}><span>{topic.topic}</span><span className={styles.topicCount}>{topic.noteCount} 篇</span></li>)}
+            {data.topics.map((topic) => <li key={topic.topic} className={styles.topicChip}><span className={styles.topicLabel}>{topic.topic}</span><span className={styles.topicCount}>{topic.noteCount} 篇</span></li>)}
           </ul> : data.indexStatus === 'ready' ? <p className={styles.stateMessage}>当前笔记还没有可展示的话题。</p> : null}
 
           {data.staleSnapshot && <div className={styles.topicSnapshot}>
             <p className={styles.topicSnapshotLabel}>{data.staleSnapshot.label} · {data.staleSnapshot.noteCount} 篇笔记{data.staleSnapshot.indexedAt ? ` · 最近整理 ${formatDate(data.staleSnapshot.indexedAt)}` : ''}</p>
             {data.staleSnapshot.topics.length > 0 && <ul className={styles.topicList} aria-label={`旧快照话题，${data.staleSnapshot.noteCount} 篇笔记，不计入当前覆盖`}>
-              {data.staleSnapshot.topics.map((topic) => <li key={topic.topic} className={styles.topicChip}><span>{topic.topic}</span><span className={styles.topicCount}>{topic.noteCount} 篇</span></li>)}
+              {data.staleSnapshot.topics.map((topic) => <li key={topic.topic} className={styles.topicChip}><span className={styles.topicLabel}>{topic.topic}</span><span className={styles.topicCount}>{topic.noteCount} 篇</span></li>)}
             </ul>}
           </div>}
 

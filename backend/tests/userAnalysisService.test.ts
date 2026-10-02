@@ -68,6 +68,7 @@ describe('userAnalysisService', () => {
     });
     assert.equal(updateCalls[0].update.$set.analysisStatus, 'failed');
     assert.equal(updateCalls[0].update.$set.analysisError, '笔记数量不足，未生成画像');
+    assert.ok(updateCalls[0].update.$set.analysisFailedAt instanceof Date);
     assert.equal('lastAnalyzedAt' in updateCalls[0].update.$set, false);
   });
 
@@ -96,6 +97,7 @@ describe('userAnalysisService', () => {
     assert.equal(countCalls, 2);
     assert.equal(updates.length, 1);
     assert.equal(updates[0].update.$set.analysisStatus, 'failed');
+    assert.ok(updates[0].update.$set.analysisFailedAt instanceof Date);
     assert.equal('summary' in updates[0].update.$set, false);
     assert.equal('lastAnalyzedAt' in updates[0].update.$set, false);
   });
@@ -124,6 +126,7 @@ describe('userAnalysisService', () => {
     assert.equal(committedUpdate?.$set.analysisInputNoteCount, 7);
     assert.equal(committedUpdate?.$set.analysisInputScope, 'recent_up_to_20');
     assert.ok(committedUpdate?.$set.lastAnalyzedAt instanceof Date);
+    assert.equal(committedUpdate?.$set.analysisFailedAt, null);
     assert.equal(committedUpdate?.$set.summary, '生成结果');
     assert.deepEqual(committedUpdate?.$unset, { profileInvalidatedAt: 1 });
   });
@@ -233,6 +236,7 @@ describe('userAnalysisService', () => {
     replaceMethod(userAnalysisService as any, 'getApiClient', (() => ({
       chatCompletion: async () => JSON.stringify({
         summary: '新画像',
+        analysisFailedAt: new Date('2026-09-01T00:00:00.000Z'),
         profileInvalidatedAt: null,
         analysisVersion: 999,
         analysisStatus: 'failed',
@@ -249,10 +253,11 @@ describe('userAnalysisService', () => {
 
     assert.deepEqual(result, { committed: true, reason: 'updated' });
     assert.deepEqual(Object.keys(update?.$set).sort(), [
-      'analysisError', 'analysisInputNoteCount', 'analysisInputScope', 'analysisStatus', 'lastAnalyzedAt', 'summary',
+      'analysisError', 'analysisFailedAt', 'analysisInputNoteCount', 'analysisInputScope', 'analysisStatus', 'lastAnalyzedAt', 'summary',
     ].sort());
     assert.deepEqual(update?.$unset, { profileInvalidatedAt: 1 });
     assert.equal(update?.$set.analysisVersion, undefined);
     assert.equal(update?.$set.profileInvalidatedAt, undefined);
+    assert.equal(update?.$set.analysisFailedAt, null);
   });
 });

@@ -106,6 +106,7 @@ describe('profile analysis routes', () => {
         profileStatus: 'insufficient_data',
         noteCount: 4,
         analysisError: '',
+        analysisFailedAt: null,
         lastAnalyzedAt,
         analysisInputNoteCount: 12,
         analysisInputScope: 'recent_up_to_20',
@@ -153,6 +154,7 @@ describe('profile analysis routes', () => {
       summary: '缓存摘要仍可见',
       analysisStatus: 'failed',
       analysisError: 'vendor secret: do-not-show',
+      analysisFailedAt: new Date('2026-10-01T01:00:00.000Z'),
       lastAnalyzedAt: null,
       analysisInputNoteCount: null,
       analysisInputScope: null,
@@ -169,6 +171,7 @@ describe('profile analysis routes', () => {
         summary: '缓存摘要仍可见',
       });
       assert.equal(body.data.analysisError, '画像生成失败，请稍后重试');
+      assert.equal(body.data.analysisFailedAt, '2026-10-01T01:00:00.000Z');
       assert.equal(JSON.stringify(body).includes('do-not-show'), false);
       assert.equal(body.data.analysisInputNoteCount, null);
       assert.equal(body.data.analysisInputScope, null);

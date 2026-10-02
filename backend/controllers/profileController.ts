@@ -19,6 +19,7 @@ type ProfileRecord = {
   theme?: Record<string, unknown>;
   analysisStatus?: string;
   analysisError?: string;
+  analysisFailedAt?: Date | null;
   lastAnalyzedAt?: Date | null;
   analysisInputNoteCount?: number | null;
   analysisInputScope?: string | null;
@@ -67,6 +68,7 @@ export const getProfileAnalysis = async (req: Request, res: Response) => {
     profileStatus: status,
     noteCount,
     analysisError: status === 'failed' ? '画像生成失败，请稍后重试' : '',
+    analysisFailedAt: profile?.analysisFailedAt ? new Date(profile.analysisFailedAt).toISOString() : null,
     lastAnalyzedAt: profile?.lastAnalyzedAt ? new Date(profile.lastAnalyzedAt).toISOString() : null,
     analysisInputNoteCount: profile?.analysisInputNoteCount ?? null,
     analysisInputScope: profile?.analysisInputScope ?? null,

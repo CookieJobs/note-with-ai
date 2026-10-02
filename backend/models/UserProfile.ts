@@ -64,6 +64,7 @@ const UserProfileSchema = new mongoose.Schema(
     analysisRequestedAt: { type: Date, default: null },
     analysisStartedAt: { type: Date, default: null },
     analysisError: { type: String, default: '' },
+    analysisFailedAt: { type: Date, default: null },
     // A deletion below the analysis threshold keeps prior generated fields as historical data.
     // Only a successfully committed new analysis clears this marker.
     profileInvalidatedAt: { type: Date, default: null },

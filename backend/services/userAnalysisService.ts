@@ -33,6 +33,7 @@ export class UserAnalysisService {
         $set: {
           analysisStatus: 'failed',
           analysisError: '笔记数量不足，未生成画像',
+          analysisFailedAt: new Date(),
         },
       }
     );
@@ -51,6 +52,7 @@ export class UserAnalysisService {
           ...profileData,
           analysisStatus: 'ready',
           analysisError: '',
+          analysisFailedAt: null,
           lastAnalyzedAt: new Date(),
           analysisInputNoteCount: inputNoteCount,
           analysisInputScope: 'recent_up_to_20',

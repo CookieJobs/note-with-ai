@@ -121,12 +121,20 @@ const formatAnalysisScope = (data: ProfileAnalysisResponse) => {
   return '范围未知的旧画像';
 };
 
+const formatAnalysisTime = (value: string) => new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short',
+}).format(new Date(value));
+
+const PROFILE_POLL_INTERVAL_MS = 4000;
+const PROFILE_POLL_MAX_ATTEMPTS = 15;
+
 export default function ProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<ProfileAnalysisResponse | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
+  const [profilePollExhausted, setProfilePollExhausted] = useState(false);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState(false);
@@ -135,8 +143,23 @@ export default function ProfilePage() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [failedAvatarSrc, setFailedAvatarSrc] = useState<string>();
   const [aiExpanded, setAiExpanded] = useState(true);
-  const requestId = useRef(0);
+  const profileRequestId = useRef(0);
+  const statsRequestId = useRef(0);
+  const profileController = useRef<AbortController | null>(null);
+  const statsController = useRef<AbortController | null>(null);
+  const analysisController = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
   const statsCache = useRef<UserStats | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      profileController.current?.abort();
+      statsController.current?.abort();
+      analysisController.current?.abort();
+    };
+  }, []);
 
   const displayedProfile = profile?.userProfile ?? profile?.historicalProfile ?? null;
   const theme = useMemo(() => {
@@ -153,27 +176,42 @@ export default function ProfilePage() {
 
   const loadStats = useCallback(async () => {
     if (!statsCache.current) setStatsLoading(true);
+    const id = ++statsRequestId.current;
+    statsController.current?.abort();
+    const controller = new AbortController();
+    statsController.current = controller;
     try {
-      const next = await getStats();
+      const next = await getStats(controller.signal);
+      if (!mounted.current || id !== statsRequestId.current || controller.signal.aborted) return;
       statsCache.current = next;
       setStats(next);
       setStatsError(false);
     }
-    catch { setStatsError(true); }
-    finally { setStatsLoading(false); }
+    catch { if (mounted.current && id === statsRequestId.current && !controller.signal.aborted) setStatsError(true); }
+    finally { if (mounted.current && id === statsRequestId.current) setStatsLoading(false); }
   }, []);
 
   const loadProfile = useCallback(async (silent = false) => {
-    const id = ++requestId.current;
+    const id = ++profileRequestId.current;
+    profileController.current?.abort();
+    const controller = new AbortController();
+    profileController.current = controller;
+    if (!silent) setProfilePollExhausted(false);
     if (!silent) setProfileLoading(true);
+    if (mounted.current) setProfileError(false);
     try {
-      const next = await getProfileAnalysis();
-      if (id === requestId.current) { setProfile(next); setProfileError(false); }
+      const next = await getProfileAnalysis(controller.signal);
+      if (mounted.current && id === profileRequestId.current && !controller.signal.aborted) {
+        setProfile(next);
+        setProfileError(false);
+        return next;
+      }
     } catch {
-      if (id === requestId.current) setProfileError(true);
+      if (mounted.current && id === profileRequestId.current && !controller.signal.aborted) setProfileError(true);
     } finally {
-      if (id === requestId.current && !silent) setProfileLoading(false);
+      if (mounted.current && id === profileRequestId.current && !silent) setProfileLoading(false);
     }
+    return null;
   }, []);
 
   useEffect(() => {
@@ -184,26 +222,52 @@ export default function ProfilePage() {
   }, [loadProfile, loadStats, router]);
 
   useEffect(() => {
-    if (profile?.profileStatus !== 'analyzing') return;
-    const timer = window.setInterval(() => { void loadProfile(true); }, 4000);
-    return () => window.clearInterval(timer);
-  }, [profile?.profileStatus, loadProfile]);
+    if (profile?.profileStatus !== 'analyzing' || profileError || profilePollExhausted || profileLoading) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    let attempts = 0;
+    const scheduleNext = () => {
+      timer = window.setTimeout(async () => {
+        if (cancelled) return;
+        attempts += 1;
+        const next = await loadProfile(true);
+        if (cancelled || !next || next.profileStatus !== 'analyzing') return;
+        if (attempts >= PROFILE_POLL_MAX_ATTEMPTS) {
+          setProfilePollExhausted(true);
+          return;
+        }
+        scheduleNext();
+      }, PROFILE_POLL_INTERVAL_MS);
+    };
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [profile?.profileStatus, profileError, profilePollExhausted, profileLoading, loadProfile]);
 
   const handleTriggerAnalysis = async () => {
+    analysisController.current?.abort();
+    const controller = new AbortController();
+    analysisController.current = controller;
     try {
       setAnalyzing(true);
-      const result = await triggerProfileAnalysis();
+      const result = await triggerProfileAnalysis(controller.signal);
+      if (!mounted.current || controller.signal.aborted) return;
       if (result.accepted) {
         setProfile((previous) => previous ? { ...previous, profileStatus: 'analyzing' } : previous);
+        setProfileError(false);
+        setProfilePollExhausted(false);
         toast.success('画像分析已开始，完成后会自动更新');
       } else if (result.reason === 'insufficient_data') {
         setProfile((previous) => previous ? { ...previous, profileStatus: 'insufficient_data' } : previous);
       } else {
         toast.info('已有画像分析任务正在运行');
-        void loadProfile(true);
+        setProfilePollExhausted(false);
+        void loadProfile();
       }
-    } catch { toast.error('无法开始画像分析，请稍后重试'); }
-    finally { setAnalyzing(false); }
+    } catch { if (mounted.current && !controller.signal.aborted) toast.error('无法开始画像分析，请稍后重试'); }
+    finally { if (mounted.current) setAnalyzing(false); }
   };
 
   const handleProfileSaved = (updated: { username?: string; avatar?: string }) => {
@@ -217,6 +281,7 @@ export default function ProfilePage() {
   const insufficient = (profile?.noteCount ?? 0) < 5 || profile?.profileStatus === 'insufficient_data';
   const historic = insufficient || (!profile?.userProfile && Boolean(profile?.historicalProfile));
   const canGenerate = !insufficient && profile?.profileStatus !== 'analyzing';
+  const canRecoverAnalysis = profile?.profileStatus === 'analyzing' && profilePollExhausted;
   const scopeText = profile ? formatAnalysisScope(profile) : '';
 
   return (
@@ -242,6 +307,7 @@ export default function ProfilePage() {
                 <h2 id="profile-title" className={styles.sectionGroupTitle}>AI 画像</h2>
                 <div className={styles.profileControls}>
                   {canGenerate && <button className={styles.btnGhostSm} onClick={handleTriggerAnalysis} disabled={analyzing}>{analyzing ? '正在提交…' : (historic || profile?.userProfile || profile?.profileStatus === 'failed') ? '重新分析' : '生成画像'}</button>}
+                  {canRecoverAnalysis && <><button className={styles.btnGhostSm} onClick={() => void loadProfile()} disabled={profileLoading}>检查进度</button><button className={styles.btnGhostSm} onClick={() => void handleTriggerAnalysis()} disabled={analyzing}>{analyzing ? '正在提交…' : '恢复分析'}</button></>}
                   {profile?.profileStatus === 'analyzing' && <span className={styles.statusPill}>分析中…</span>}
                   <button className={styles.aiGroupToggle} onClick={() => setAiExpanded((v) => !v)} aria-expanded={aiExpanded} aria-label={aiExpanded ? '收起画像' : '展开画像'}><span className={`${styles.aiGroupCollapseIcon} ${aiExpanded ? styles.open : styles.closed}`}>▼</span></button>
                 </div>
@@ -253,6 +319,8 @@ export default function ProfilePage() {
                 {!profileLoading && !profile && !profileError && <p className={styles.stateMessage}>画像数据暂不可用。</p>}
                 {profile && insufficient && <p className={styles.stateMessage}>当前有 {profile.noteCount} 篇笔记，还需要 {Math.max(0, 5 - profile.noteCount)} 篇才能生成画像。当前推断不会作为有效画像展示。</p>}
                 {profile?.profileStatus === 'failed' && <div className={styles.analysisError} role="status">画像分析暂未完成，请稍后重试。</div>}
+                {profile?.profileStatus === 'failed' && profile.analysisFailedAt && <p className={styles.profileMetadata}>最近失败：{formatAnalysisTime(profile.analysisFailedAt)}</p>}
+                {canRecoverAnalysis && <div className={styles.stateMessage} role="status">画像仍未完成，可检查进度或恢复分析。</div>}
                 {profile && historic && profile.historicalProfile && <div className={styles.historyLabel}>历史画像快照</div>}
                 {profile && historic && !insufficient && profile.historicalProfile && <p className={styles.stateMessage}>当前笔记数已达到 5 篇，但画像尚未基于当前笔记重新分析。</p>}
                 {profile && displayedProfile && <>

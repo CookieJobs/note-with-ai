@@ -32,6 +32,7 @@ type LeanUserProfile = {
   analysisRequestedAt?: Date | null;
   analysisStartedAt?: Date | null;
   analysisError?: string;
+  analysisFailedAt?: Date | null;
   lastAnalyzedAt?: Date | null;
 };
 
@@ -187,6 +188,7 @@ export class ProfileAnalysisCoordinator {
           $set: {
             analysisStatus: 'failed',
             analysisError: '画像生成失败，请稍后重试',
+            analysisFailedAt: new Date(),
           },
         }
       );
