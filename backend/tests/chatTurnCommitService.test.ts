@@ -1,4 +1,4 @@
-import { afterEach, describe, it, mock } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.NODE_ENV = 'test';
@@ -36,6 +36,11 @@ function replaceMethod<T extends object, K extends keyof T>(target: T, key: K, v
 }
 
 describe('chatTurnCommitService', () => {
+  beforeEach(async () => {
+    // Source/ownership resolution is exercised with the real service in chatSingleNote.test.ts.
+    const { chatService } = await loadModules();
+    replaceMethod(chatService, 'prepareTurn', (async (_userId: string, messages: unknown[]) => ({ messages })) as any);
+  });
   afterEach(() => {
     mock.restoreAll();
     while (manualRestores.length > 0) {
@@ -219,8 +224,76 @@ describe('chatTurnCommitService', () => {
         { role: 'assistant', content: '收到' },
       ],
       title: '原始标题',
-      relatedNotes: [],
+      relatedNotes: undefined,
     });
     assert.equal(result.fullReply, '收到');
+  });
+
+  it('可选标题与关联笔记富化一直 pending 时仍先落库并完成提交', async () => {
+    const { chatService, chatRelatedNoteRecallService, chatTurnCommitService } = await loadModules();
+    mock.timers.enable({ apis: ['setTimeout'] });
+
+    replaceMethod(chatService, 'streamChat', (async () => {
+      async function* generator() { yield '已生成的回复'; }
+      return generator();
+    }) as any);
+
+    let finishEnrichment!: () => void;
+    let markEnrichmentStarted!: () => void;
+    const enrichmentStarted = new Promise<void>((resolve) => { markEnrichmentStarted = resolve; });
+    const enrichmentPending = new Promise<void>((resolve) => { finishEnrichment = resolve; });
+    replaceMethod(chatService, 'summarizeTitle', (() => {
+      markEnrichmentStarted();
+      return enrichmentPending.then(() => '晚到标题');
+    }) as any);
+    replaceMethod(chatRelatedNoteRecallService, 'recallFromMessages', (() => enrichmentPending.then(() => [])) as any);
+
+    let saveCalls = 0;
+    replaceMethod(chatService, 'saveSession', (async (_userId: string, _sessionId: string | undefined, messages: unknown[], title?: string, relatedNotes?: unknown[]) => {
+      saveCalls += 1;
+      return { _id: 'chat-pending', title, messages, relatedNotes };
+    }) as any);
+    replaceMethod(chatService, 'formatSession', ((session: Record<string, unknown>) => session) as any);
+
+    const completion = chatTurnCommitService.streamAndCommit({
+      userId: 'user-pending',
+      sessionId: 'session-pending',
+      title: '原始标题',
+      messages: [{ role: 'user', content: '只应保存必要对话' }],
+      onChunk: () => true,
+    });
+    await enrichmentStarted;
+    mock.timers.tick(3000);
+    const result = await completion;
+    finishEnrichment();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(saveCalls, 1);
+    assert.equal(result.fullReply, '已生成的回复');
+    assert.equal(result.session.title, '原始标题');
+    assert.equal(result.session.relatedNotes, undefined);
+  });
+
+  it('持久化失败时拒绝提交结果', async () => {
+    const { chatService, chatTurnCommitService } = await loadModules();
+
+    replaceMethod(chatService, 'streamChat', (async () => {
+      async function* generator() { yield '回复'; }
+      return generator();
+    }) as any);
+    replaceMethod(chatService, 'summarizeTitle', (async () => '标题') as any);
+    replaceMethod(chatService, 'saveSession', (async () => {
+      throw new Error('persistence failed');
+    }) as any);
+
+    await assert.rejects(
+      chatTurnCommitService.streamAndCommit({
+        userId: 'user-save-failure',
+        messages: [{ role: 'user', content: '保存失败测试' }],
+        onChunk: () => true,
+      }),
+      /persistence failed/,
+    );
   });
 });

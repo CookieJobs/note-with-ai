@@ -4,7 +4,7 @@ import InspirationRun from '../models/InspirationRun';
 import InspirationDailyBudget from '../models/InspirationDailyBudget';
 import InspirationWorkerSlot from '../models/InspirationWorkerSlot';
 import { config } from '../config';
-import type { InspirationWorkerStore, WorkerRun, WorkerSlot } from './inspirationWorker';
+import type { InspirationWorkerStore, WorkerFinishMetadata, WorkerRun, WorkerSlot } from './inspirationWorker';
 
 const DAY_MS = 86_400_000;
 const LEASE_MS = 20 * 60_000;
@@ -42,7 +42,7 @@ export class MongoInspirationWorkerStore implements InspirationWorkerStore {
   async claimDue(userId: string, now: Date): Promise<WorkerRun | null> {
     const previous = await InspirationSettings.findOneAndUpdate(
       { userId, enabled: true, nextEligibleAt: { $lte: now } },
-      { $set: { lastAttemptAt: now, nextEligibleAt: new Date(now.getTime() + DAY_MS), lastStatus: 'failed' } },
+      { $set: { lastAttemptAt: now, nextEligibleAt: new Date(now.getTime() + DAY_MS), lastStatus: 'failed', lastReason: null, lastContextReason: null } },
       { new: false },
     ) as unknown as { nextEligibleAt: Date } | null;
     if (!previous) return null;
@@ -74,11 +74,11 @@ export class MongoInspirationWorkerStore implements InspirationWorkerStore {
     for (const run of expiredPaid) {
       const result = await InspirationRun.updateOne(
         { _id: run._id, state: 'provider_started', token: run.token },
-        { $set: { state: 'failed', leaseUntil: null } },
+        { $set: { state: 'failed', leaseUntil: null, reason: null, contextReason: null } },
       );
       if (result.modifiedCount) {
         await InspirationSettings.updateOne(
-          { userId: run.userId, lastAttemptAt: run.attemptAt }, { $set: { lastStatus: 'failed' } },
+          { userId: run.userId, lastAttemptAt: run.attemptAt }, { $set: { lastStatus: 'failed', lastReason: null, lastContextReason: null } },
         );
       }
     }
@@ -135,7 +135,7 @@ export class MongoInspirationWorkerStore implements InspirationWorkerStore {
   async defer(userId: string, next: Date): Promise<void> {
     await InspirationSettings.updateOne(
       { userId, enabled: true },
-      { $max: { nextEligibleAt: next }, $set: { lastStatus: 'deferred' } },
+      { $max: { nextEligibleAt: next }, $set: { lastStatus: 'deferred', lastReason: null, lastContextReason: null } },
     );
   }
 
@@ -147,14 +147,16 @@ export class MongoInspirationWorkerStore implements InspirationWorkerStore {
     return Boolean(updated);
   }
 
-  async finish(run: WorkerRun, status: 'completed' | 'no_result' | 'failed' | 'cancelled'): Promise<void> {
+  async finish(run: WorkerRun, status: 'completed' | 'no_result' | 'failed' | 'cancelled', metadata?: WorkerFinishMetadata): Promise<void> {
+    const reason = status === 'no_result' && metadata?.reason === 'note_context_unavailable' ? metadata.reason : null;
+    const contextReason = reason ? metadata?.contextReason || null : null;
     const result = await InspirationRun.updateOne(
       { _id: run.id, token: run.token, state: { $in: ['claimed', 'provider_started'] } },
-      { $set: { state: status, leaseUntil: null } },
+      { $set: { state: status, leaseUntil: null, reason, contextReason } },
     );
     if (result.modifiedCount) {
       await InspirationSettings.updateOne(
-        { userId: run.userId, lastAttemptAt: run.attemptAt }, { $set: { lastStatus: status } },
+        { userId: run.userId, lastAttemptAt: run.attemptAt }, { $set: { lastStatus: status, lastReason: reason, lastContextReason: contextReason } },
       );
     }
   }

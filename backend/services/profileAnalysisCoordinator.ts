@@ -21,12 +21,6 @@ type LeanUserProfile = {
     feedbackMode?: string;
   };
   summary?: string;
-  theme?: {
-    themeName?: string;
-    cssType?: string;
-    cssValue?: string;
-    reasoning?: string;
-  };
   analysisStatus?: 'idle' | 'queued' | 'running' | 'ready' | 'failed';
   analysisVersion?: number;
   analysisRequestedAt?: Date | null;
@@ -45,8 +39,7 @@ export class ProfileAnalysisCoordinator {
     return Boolean(
       (Array.isArray(profile.interests) && profile.interests.length > 0) ||
       (Array.isArray(profile.expertise) && profile.expertise.length > 0) ||
-      (typeof profile.summary === 'string' && profile.summary.trim().length > 0) ||
-      (profile.theme && typeof profile.theme.cssValue === 'string' && profile.theme.cssValue.trim().length > 0)
+      (typeof profile.summary === 'string' && profile.summary.trim().length > 0)
     );
   }
 

@@ -7,8 +7,6 @@ import {
   type JsonDocument,
 } from './noteContentNormalizer';
 import { createProductionNoteEnrichmentScheduler } from './noteEnrichmentWorker';
-import { scheduleUserNoteTopicIndex } from './userNoteTopicIndexService';
-import { logger } from '../utils/logger';
 
 export type NoteBodyInput =
   | { kind: 'rich-text'; document: JsonDocument; fallbackMarkdown?: string }
@@ -34,7 +32,6 @@ export type NoteDto = {
   title: string;
   summary: string;
   concepts: string[];
-  keywords: string[];
   recommendCache: Record<string, unknown> | null;
   revision: number;
   createdAt: string;
@@ -54,6 +51,7 @@ export type NoteWriteResult = {
 export type CreateNoteInput = {
   userId: string;
   body: NoteBodyInput;
+  title?: string;
 };
 
 export type UpdateNoteInput = {
@@ -63,7 +61,6 @@ export type UpdateNoteInput = {
   changes: {
     body?: NoteBodyInput;
     title?: string;
-    keywords?: string[];
   };
 };
 
@@ -101,6 +98,8 @@ export type NoteWriteErrorCode =
   | 'NOTE_BODY_EMPTY'
   | 'NOTE_BODY_INVALID'
   | 'NOTE_PATCH_EMPTY'
+  | 'NOTE_TITLE_INVALID'
+  | 'NOTE_TAGS_RETIRED'
   | 'NOTE_NOT_FOUND'
   | 'NOTE_WRITE_CONFLICT'
   | 'NOTE_WRITE_FAILED';
@@ -162,18 +161,21 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function normalizeKeywords(value: string[]): string[] {
-  return value.map((keyword) => keyword.trim()).filter(Boolean);
-}
-
 function advanceRecommendCache(value: unknown, sourceRevision: number): Record<string, unknown> | null | undefined {
   const cache = asRecord(value);
   if (!cache) return undefined;
   return { ...cache, sourceRevision };
 }
 
-function firstLineTitle(contentText: string): string {
-  return contentText.split('\n')[0].trim().slice(0, 100);
+function normalizeTitle(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new NoteWriteError('NOTE_TITLE_INVALID', '标题必须是单行且不超过100字', 400);
+  }
+  const title = value.trim();
+  if (/[\r\n\u2028\u2029]/u.test(title) || Array.from(title).length > 100) {
+    throw new NoteWriteError('NOTE_TITLE_INVALID', '标题必须是单行且不超过100字', 400);
+  }
+  return title;
 }
 
 function newArtifactState(sourceRevision: number, status: ArtifactStatus = 'pending'): ArtifactState {
@@ -237,7 +239,6 @@ export function toNoteDto(value: NoteRecord): NoteDto {
     title: asString(value.title),
     summary: asString(value.summary),
     concepts: asStringArray(value.concepts),
-    keywords: asStringArray(value.keywords),
     recommendCache,
     revision: asRevision(value.revision),
     createdAt: toIsoDate(value.createdAt),
@@ -278,7 +279,7 @@ function prepareBody(body: NoteBodyInput): PreparedBody {
 }
 
 function hasOwnChanges(changes: UpdateNoteInput['changes']): boolean {
-  return changes.body !== undefined || changes.title !== undefined || changes.keywords !== undefined;
+  return changes.body !== undefined || changes.title !== undefined;
 }
 
 function writeFailed(error: unknown): NoteWriteError {
@@ -286,25 +287,16 @@ function writeFailed(error: unknown): NoteWriteError {
   return new NoteWriteError('NOTE_WRITE_FAILED', '笔记写入失败', 500);
 }
 
-function equalStringArrays(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((item, index) => item === right[index]);
-}
-
 export class NoteUpdateOrchestrator {
   private readonly scheduler: EnrichmentScheduler;
-  private readonly scheduleTopicIndex: (userId: string, noteId: string) => void;
 
-  constructor(dependencies: { scheduler: EnrichmentScheduler; scheduleTopicIndex?: (userId: string, noteId: string) => void }) {
+  constructor(dependencies: { scheduler: EnrichmentScheduler }) {
     this.scheduler = dependencies.scheduler;
-    this.scheduleTopicIndex = dependencies.scheduleTopicIndex ?? ((userId, noteId) => {
-      void scheduleUserNoteTopicIndex(userId, noteId).catch((error: unknown) => {
-        logger.warn('Could not schedule the note topic index', { noteId, error: error instanceof Error ? error.message : String(error) });
-      });
-    });
   }
 
   async create(input: CreateNoteInput): Promise<NoteWriteResult> {
     const body = prepareBody(input.body);
+    const title = normalizeTitle(input.title === undefined ? '' : input.title);
     const revision = 1;
     const enrichment: NoteEnrichmentState = {
       meta: newArtifactState(revision),
@@ -318,12 +310,9 @@ export class NoteUpdateOrchestrator {
         content: body.content,
         contentText: body.contentText,
         contentJson: body.contentJson,
-        title: firstLineTitle(body.contentText),
-        titleOrigin: 'default',
+        title,
         summary: '',
         concepts: [],
-        keywords: [],
-        keywordsOrigin: 'default',
         recommendCache: null,
         revision,
         enrichment,
@@ -332,7 +321,6 @@ export class NoteUpdateOrchestrator {
       throw writeFailed(error);
     }
     const result = this.toResult(created);
-    this.scheduleTopicIndex(input.userId, result.note._id);
     trackProductEventBestEffort({ name: 'note_created', userId: input.userId, source: 'server', properties: {} });
     for (const artifact of ARTIFACTS) {
       this.scheduler.schedule({ noteId: result.note._id, userId: input.userId, sourceRevision: revision, artifact });
@@ -341,6 +329,9 @@ export class NoteUpdateOrchestrator {
   }
 
   async update(input: UpdateNoteInput): Promise<NoteWriteResult> {
+    if (Object.prototype.hasOwnProperty.call(input.changes, 'keywords')) {
+      throw new NoteWriteError('NOTE_TAGS_RETIRED', '笔记标签功能已退役', 400);
+    }
     if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1) {
       throw new NoteWriteError('NOTE_BODY_INVALID', 'expectedRevision 无效', 400);
     }
@@ -361,10 +352,7 @@ export class NoteUpdateOrchestrator {
     }
 
     const currentDto = toNoteDto(current);
-    const nextTitle = input.changes.title === undefined ? currentDto.title : input.changes.title.trim();
-    const nextKeywords = input.changes.keywords === undefined
-      ? currentDto.keywords
-      : normalizeKeywords(input.changes.keywords);
+    const nextTitle = input.changes.title === undefined ? currentDto.title : normalizeTitle(input.changes.title);
     const bodyChanged = body !== undefined && (
       body.content !== currentDto.content
       || body.contentText !== currentDto.contentText
@@ -372,9 +360,7 @@ export class NoteUpdateOrchestrator {
     );
     const contentTextChanged = body !== undefined && body.contentText !== currentDto.contentText;
     const titleChanged = nextTitle !== currentDto.title;
-    const keywordsChanged = !equalStringArrays(nextKeywords, currentDto.keywords);
-
-    if (!bodyChanged && !titleChanged && !keywordsChanged) return this.toResult(current);
+    if (!bodyChanged && !titleChanged) return this.toResult(current);
 
     const nextRevision = input.expectedRevision + 1;
     const invalidated = new Set<NoteArtifact>();
@@ -398,9 +384,6 @@ export class NoteUpdateOrchestrator {
           $set: {
             ...(bodyChanged && body ? body : {}),
             ...(titleChanged ? { title: nextTitle } : {}),
-            ...(titleChanged ? { titleOrigin: 'user' } : {}),
-            ...(keywordsChanged ? { keywords: nextKeywords } : {}),
-            ...(keywordsChanged ? { keywordsOrigin: 'user' } : {}),
             ...(nextRecommendCache !== undefined ? { recommendCache: nextRecommendCache } : {}),
             enrichment: nextEnrichment,
           },
@@ -423,7 +406,6 @@ export class NoteUpdateOrchestrator {
     }
 
     const result = this.toResult(updated);
-    if (bodyChanged || titleChanged || keywordsChanged) this.scheduleTopicIndex(input.userId, result.note._id);
     for (const artifact of ARTIFACTS) {
       if (invalidated.has(artifact) || getArtifactState(current.enrichment, artifact, input.expectedRevision).status === 'pending') {
         this.scheduler.schedule({ noteId: result.note._id, userId: input.userId, sourceRevision: nextRevision, artifact });

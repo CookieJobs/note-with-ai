@@ -59,6 +59,46 @@ afterEach(() => {
 });
 
 describe('profile analysis routes', () => {
+  it('rejects explicit keywords before body validation on canonical and legacy note writes', async () => {
+    const app = await startApp();
+    try {
+      for (const [path, method, body] of [
+        ['/api/notes', 'POST', { body: { kind: 'plain-text', text: 5 }, keywords: [] }],
+        ['/api/notes/note-1', 'PATCH', { expectedRevision: 1, changes: { body: { kind: 'plain-text', text: 5 }, keywords: [] } }],
+        ['/api/notes/note-1', 'POST', { title: 5, keywords: [] }],
+      ] as const) {
+        const response = await fetch(`${app.baseUrl}${path}`, { method,
+          headers: { authorization: `Bearer ${app.token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+        assert.equal(response.status, 400);
+        assert.equal(((await response.json()) as any).code, 'NOTE_TAGS_RETIRED');
+      }
+    } finally { await closeServer(app.server); }
+  });
+  it('retires authenticated topic and legacy recommendation routes before any note query', async () => {
+    const app = await startApp();
+    mock.method(app.Note, 'find', () => { throw new Error('retired route queried notes'); });
+    mock.method(app.Note, 'aggregate', () => { throw new Error('retired route aggregated notes'); });
+    mock.method(UserNoteTopicIndex, 'find', () => { throw new Error('retired route queried topics'); });
+    try {
+      for (const [path, method] of [
+        ['/api/profile/topics?scope=invalid', 'GET'],
+        ['/api/profile/topics/retry', 'POST'],
+        ['/api/recommend', 'GET'],
+      ] as const) {
+        const response = await fetch(`${app.baseUrl}${path}`, {
+          method, headers: { authorization: `Bearer ${app.token}`, 'content-type': 'application/json' },
+          ...(method === 'POST' ? { body: JSON.stringify({ scope: 'invalid' }) } : {}),
+        });
+        const body = await response.json() as any;
+        assert.equal(response.status, 410);
+        assert.equal(body.code, 'NOTE_TAGS_RETIRED');
+      }
+      assert.equal((await fetch(`${app.baseUrl}/api/profile/topics`)).status, 401);
+      assert.equal((await fetch(`${app.baseUrl}/api/profile/topics/retry`, { method: 'POST' })).status, 401);
+    } finally {
+      await closeServer(app.server);
+    }
+  });
   it('个人资料 GET 只读并返回旧字段和范围', async () => {
     const app = await startApp();
     const lastAnalyzedAt = '2026-09-01T02:00:00.000Z';
@@ -77,6 +117,7 @@ describe('profile analysis routes', () => {
         interests: [{ topic: '历史兴趣', score: 0.8 }],
         expertise: [{ area: '复盘', level: 'Advanced' }],
         summary: '历史摘要',
+        theme: { themeName: '旧配色', cssType: 'linear-gradient', cssValue: 'linear-gradient(#eee, #ddd)', reasoning: '已退役' },
         analysisStatus: 'ready',
         analysisError: '',
         lastAnalyzedAt: new Date(lastAnalyzedAt),

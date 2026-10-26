@@ -1,6 +1,7 @@
 import InspirationSettings from '../models/InspirationSettings';
 import { config } from '../config';
 import { inspirationError } from './inspirationTypes';
+import type { NoteContextReason } from './inspirationTypes';
 
 const DAY_MS = 86_400_000;
 export type InspirationSettingsDto = {
@@ -9,6 +10,8 @@ export type InspirationSettingsDto = {
   nextEligibleAt: string | null;
   lastAttemptAt: string | null;
   lastStatus: string | null;
+  lastReason: 'note_context_unavailable' | null;
+  lastContextReason: NoteContextReason | null;
 };
 
 function dateString(value: unknown): string | null {
@@ -24,6 +27,8 @@ function toDto(record: Record<string, unknown> | null): InspirationSettingsDto {
     nextEligibleAt: dateString(record?.nextEligibleAt),
     lastAttemptAt: dateString(record?.lastAttemptAt),
     lastStatus: typeof record?.lastStatus === 'string' ? record.lastStatus : null,
+    lastReason: record?.lastReason === 'note_context_unavailable' ? record.lastReason : null,
+    lastContextReason: record?.lastContextReason === 'no_notes' || record?.lastContextReason === 'summary_pending' || record?.lastContextReason === 'context_unavailable' ? record.lastContextReason : null,
   };
 }
 
@@ -49,7 +54,7 @@ export class InspirationScheduleService {
     if (enabled) {
       await InspirationSettings.findOneAndUpdate(
         { userId, enabled: false },
-        { $set: { enabled: true, consentedAt: now, nextEligibleAt: new Date(now.getTime() + DAY_MS), lastStatus: null } },
+        { $set: { enabled: true, consentedAt: now, nextEligibleAt: new Date(now.getTime() + DAY_MS), lastStatus: null, lastReason: null, lastContextReason: null } },
         { new: true },
       );
     } else {

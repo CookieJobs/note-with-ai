@@ -3,7 +3,7 @@
   grid-template-columns: 5rem minmax(0, 1fr);
   align-items: start;
   gap: 1rem;
-  color: #1f2937;
+  color: var(--ws-ink, #0d0d0d);
 }
 
 .preview {
@@ -12,10 +12,10 @@
   aspect-ratio: 1;
   place-items: center;
   overflow: hidden;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ws-line, #ddd);
   border-radius: 50%;
-  background: #eef2ff;
-  color: #3730a3;
+  background: var(--ws-accent-soft, #edf3fc);
+  color: var(--ws-accent-ink, #1d5bc0);
   font-size: 1.25rem;
   font-weight: 650;
 
@@ -31,7 +31,7 @@
   legend {
     margin-bottom: 0.55rem;
     padding: 0;
-    color: #374151;
+    color: var(--ws-secondary, #525252);
     font-size: 0.82rem;
     font-weight: 600;
   }
@@ -57,13 +57,13 @@
   white-space: nowrap;
 
   &:checked + .optionLabel {
-    border-color: #4338ca;
-    background: #eef2ff;
-    color: #312e81;
+    border-color: var(--ws-accent, #266fe1);
+    background: var(--ws-accent-soft, #edf3fc);
+    color: var(--ws-accent-ink, #1d5bc0);
   }
 
   &:focus-visible + .optionLabel {
-    outline: 3px solid #2563eb;
+    outline: 3px solid var(--ws-focus, #266fe1);
     outline-offset: 2px;
   }
 }
@@ -76,17 +76,17 @@
   justify-content: center;
   gap: 0.35rem;
   padding: 0.4rem 0.2rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ws-line, #ddd);
   border-radius: 0.65rem;
-  background: #fff;
-  color: #374151;
+  background: var(--ws-bg, #fff);
+  color: var(--ws-secondary, #525252);
   cursor: pointer;
   font-size: 0.7rem;
   line-height: 1.2;
   text-align: center;
   transition: border-color 150ms ease-out, background-color 150ms ease-out;
 
-  &:hover { border-color: #818cf8; }
+  &:hover { border-color: var(--ws-accent, #266fe1); }
 
   > img, .swatchInitials {
     display: block;
@@ -101,8 +101,8 @@
 .swatchInitials {
   display: grid !important;
   place-items: center;
-  background: #e0e7ff;
-  color: #3730a3;
+  background: var(--ws-accent-soft, #edf3fc);
+  color: var(--ws-accent-ink, #1d5bc0);
   font-size: 0.85rem;
   font-weight: 650;
 }
@@ -110,3 +110,5 @@
 @media (prefers-reduced-motion: reduce) {
   .optionLabel { transition: none; }
 }
+
+:global(fieldset:disabled) .optionLabel { cursor: wait; opacity: .65; }

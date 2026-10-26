@@ -30,6 +30,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
   try {
     const decoded = verifyToken(token);
     const user = await User.findById(decoded.userId).select('_id isActive').lean() as { isActive?: boolean } | null;
+    if (res.writableEnded || res.destroyed) return;
     if (!user || user.isActive === false) {
       res.status(401).json({ error: '登录已失效或账号已被禁用' });
       return;
@@ -37,6 +38,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     req.user = decoded;
     next();
   } catch (error) {
+    if (res.writableEnded || res.destroyed) return;
     res.status(403).json({ error: '无效的访问令牌' });
     return;
   }

@@ -1,17 +1,20 @@
+/*
+Input: 共享或独立账户身份、真实统计与画像服务
+Output: 保留认证守卫的个人资料页，等待共享身份初始化并隔离迟到响应
+Pos: profile 页面入口；修改时同步 ./README.md。
+*/
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getUser, isAuthenticated } from '../../utils/auth';
+import { getUser, isAuthenticated, type User } from '../../utils/auth';
 import { getProfileAnalysis, getStats, triggerProfileAnalysis, type ProfileAnalysisResponse, type UserStats } from '../../services/profileService';
-import { updateProfile, changePassword } from '../../services/userService';
 import TopNavigation from '../../components/TopNavigation';
 import styles from './profile.module.scss';
+import WorkspaceAccountDialogs from './components/WorkspaceAccountDialogs';
+import { useWorkspace, type WorkspaceAccountDialogKind } from '../../components/workspace/WorkspaceContext';
 import { toast } from 'sonner';
-import { defaultProfileBackgroundTheme, mapUserProfileToBackgroundTheme } from './profileBackgroundTheme';
-import AvatarPicker from './AvatarPicker';
-import { AVATAR_PRESETS, resolveAvatarDisplay, type AvatarSelection } from './avatarPresets';
-import ProfileTopicsSection from './ProfileTopicsSection';
+import { resolveAvatarDisplay } from './avatarPresets';
 
 function StatsBar({ stats, loading, error, onRetry }: {
   stats: UserStats | null; loading: boolean; error: boolean; onRetry: () => void;
@@ -30,92 +33,6 @@ function StatsBar({ stats, loading, error, onRetry }: {
   );
 }
 
-function EditProfileModal({ open, user, onClose, onSaved }: {
-  open: boolean; user: { username?: string; email: string; avatar?: string };
-  onClose: () => void; onSaved: (u: { username?: string; avatar?: string }) => void;
-}) {
-  const [username, setUsername] = useState('');
-  const [avatarSelection, setAvatarSelection] = useState<AvatarSelection | null>(null);
-  const [avatarChanged, setAvatarChanged] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const usernameInputRef = useRef<HTMLInputElement>(null);
-  const focusReturnRef = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    focusReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setUsername(user.username || '');
-    const hasStoredAvatar = Boolean(user.avatar);
-    const isStoredPreset = user.avatar === 'preset:initials' || AVATAR_PRESETS.some((preset) => preset.id === user.avatar);
-    setAvatarSelection(isStoredPreset ? user.avatar as AvatarSelection : hasStoredAvatar ? null : 'preset:initials');
-    setAvatarChanged(false);
-    usernameInputRef.current?.focus();
-    return () => focusReturnRef.current?.focus();
-  }, [user.username, user.avatar, open]);
-  if (!open) return null;
-  const handleSave = async () => {
-    if (!username.trim()) { toast.error('用户名不能为空'); return; }
-    try {
-      setSaving(true);
-      const request: { username: string; avatar?: AvatarSelection } = { username: username.trim() };
-      if (avatarChanged && avatarSelection) request.avatar = avatarSelection;
-      const updated = await updateProfile(request);
-      toast.success('资料更新成功');
-      const saved: { username?: string; avatar?: string } = { username: updated.username };
-      if (avatarChanged && updated.avatar !== undefined) saved.avatar = updated.avatar;
-      onSaved(saved);
-      onClose();
-    } catch { toast.error('更新失败，请稍后重试'); } finally { setSaving(false); }
-  };
-  return (
-    <div className={styles.modalOverlay} onClick={() => { if (!saving) onClose(); }}>
-      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-profile-title" onClick={(e) => e.stopPropagation()} onKeyDown={(event) => { if (event.key === 'Escape' && !saving) onClose(); }}>
-        <div className={styles.modalHeader}><h3 id="edit-profile-title">编辑资料</h3><button className={styles.modalClose} aria-label="关闭" onClick={onClose} disabled={saving}>&times;</button></div>
-        <div className={styles.modalBody}>
-          <AvatarPicker value={avatarSelection} legacyAvatarUrl={user.avatar} username={username || user.username || ''} onChange={(value) => { setAvatarSelection(value); setAvatarChanged(true); }} />
-          <label className={styles.fieldLabel} htmlFor="profile-username">用户名</label>
-          <input ref={usernameInputRef} id="profile-username" className={styles.input} placeholder="设置用户名" value={username} maxLength={20} onChange={(e) => setUsername(e.target.value)} />
-          <label className={styles.fieldLabel} htmlFor="profile-email">邮箱</label>
-          <input id="profile-email" className={styles.input} value={user.email} readOnly disabled />
-          <p className={styles.fieldHint}>邮箱暂不支持修改</p>
-        </div>
-        <div className={styles.modalFooter}><button className={styles.btnCancel} onClick={onClose} disabled={saving}>取消</button><button className={styles.btnPrimary} onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存'}</button></div>
-      </div>
-    </div>
-  );
-}
-
-function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [form, setForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
-  const [saving, setSaving] = useState(false);
-  useEffect(() => { if (open) setForm({ oldPassword: '', newPassword: '', confirmPassword: '' }); }, [open]);
-  if (!open) return null;
-  const handleSave = async () => {
-    if (!form.oldPassword) { toast.error('请输入当前密码'); return; }
-    if (form.newPassword.length < 8) { toast.error('新密码至少8位'); return; }
-    if (!/(?=.*[A-Za-z])(?=.*\d)/.test(form.newPassword)) { toast.error('密码必须包含字母和数字'); return; }
-    if (form.newPassword !== form.confirmPassword) { toast.error('两次密码输入不一致'); return; }
-    try {
-      setSaving(true);
-      await changePassword({ oldPassword: form.oldPassword, newPassword: form.newPassword });
-      toast.success('密码修改成功，请重新登录');
-      setTimeout(() => { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = '/auth'; }, 1500);
-    } catch { toast.error('修改失败，请稍后重试'); } finally { setSaving(false); }
-  };
-  return (
-    <div className={styles.modalOverlay} onClick={onClose}>
-      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="change-password-title" onClick={(e) => e.stopPropagation()}>
-        <div className={styles.modalHeader}><h3 id="change-password-title">修改密码</h3><button className={styles.modalClose} aria-label="关闭" onClick={onClose}>&times;</button></div>
-        <div className={styles.modalBody}>
-          <label className={styles.fieldLabel} htmlFor="old-password">当前密码</label><input id="old-password" className={styles.input} type="password" placeholder="输入当前密码" value={form.oldPassword} onChange={(e) => setForm((f) => ({ ...f, oldPassword: e.target.value }))} />
-          <label className={styles.fieldLabel} htmlFor="new-password">新密码</label><input id="new-password" className={styles.input} type="password" placeholder="至少8位，包含字母和数字" value={form.newPassword} onChange={(e) => setForm((f) => ({ ...f, newPassword: e.target.value }))} />
-          <label className={styles.fieldLabel} htmlFor="confirm-password">确认新密码</label><input id="confirm-password" className={styles.input} type="password" placeholder="再次输入新密码" value={form.confirmPassword} onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))} />
-        </div>
-        <div className={styles.modalFooter}><button className={styles.btnCancel} onClick={onClose}>取消</button><button className={styles.btnPrimary} onClick={handleSave} disabled={saving}>{saving ? '修改中…' : '确认修改'}</button></div>
-      </div>
-    </div>
-  );
-}
-
 const formatAnalysisScope = (data: ProfileAnalysisResponse) => {
   if (data.analysisInputScope === 'recent_up_to_20') return `最近最多 20 篇笔记${data.analysisInputNoteCount == null ? '' : `（本次输入 ${data.analysisInputNoteCount} 篇）`}`;
   return '范围未知的旧画像';
@@ -130,7 +47,9 @@ const PROFILE_POLL_MAX_ATTEMPTS = 15;
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const workspace = useWorkspace();
+  const [fallbackUser, setUser] = useState<User | null>(null);
+  const user = workspace ? workspace.user : fallbackUser;
   const [profile, setProfile] = useState<ProfileAnalysisResponse | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
@@ -139,8 +58,8 @@ export default function ProfilePage() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [accountDialog, setAccountDialog] = useState<WorkspaceAccountDialogKind | null>(null);
+  const openAccountDialog = workspace?.openAccountDialog ?? setAccountDialog;
   const [failedAvatarSrc, setFailedAvatarSrc] = useState<string>();
   const [aiExpanded, setAiExpanded] = useState(true);
   const profileRequestId = useRef(0);
@@ -162,16 +81,6 @@ export default function ProfilePage() {
   }, []);
 
   const displayedProfile = profile?.userProfile ?? profile?.historicalProfile ?? null;
-  const theme = useMemo(() => {
-    const currentProfile = profile?.userProfile;
-    if (currentProfile?.theme?.cssValue && /^(linear-gradient|radial-gradient|#|rgba?)/i.test(currentProfile.theme.cssValue.trim())) {
-      return { id: 'ai-generated' as const, background: currentProfile.theme.cssValue.trim() };
-    }
-    return currentProfile
-      ? mapUserProfileToBackgroundTheme(currentProfile, { seed: user?.email || user?.username })
-      : defaultProfileBackgroundTheme;
-  }, [profile?.userProfile, user?.email, user?.username]);
-  const pageStyle = useMemo(() => ({ ['--profile-background' as string]: theme.background }) as CSSProperties, [theme.background]);
   const avatarDisplay = resolveAvatarDisplay(user?.avatar, user?.username || '');
 
   const loadStats = useCallback(async () => {
@@ -216,10 +125,34 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!isAuthenticated()) { router.push('/auth'); return; }
+    if (workspace) return;
     setUser(getUser());
-    void loadProfile();
-    void loadStats();
-  }, [loadProfile, loadStats, router]);
+  }, [workspace, router]);
+
+  useEffect(() => {
+    profileRequestId.current += 1;
+    statsRequestId.current += 1;
+    profileController.current?.abort();
+    statsController.current?.abort();
+    analysisController.current?.abort();
+    statsCache.current = null;
+    setProfile(null);
+    setStats(null);
+    setProfileLoading(true);
+    setStatsLoading(true);
+    setProfileError(false);
+    setStatsError(false);
+    setProfilePollExhausted(false);
+    setAnalyzing(false);
+    if (user?.id) { void loadProfile(); void loadStats(); }
+    return () => {
+      profileRequestId.current += 1;
+      statsRequestId.current += 1;
+      profileController.current?.abort();
+      statsController.current?.abort();
+      analysisController.current?.abort();
+    };
+  }, [user?.id, loadProfile, loadStats]);
 
   useEffect(() => {
     if (profile?.profileStatus !== 'analyzing' || profileError || profilePollExhausted || profileLoading) return;
@@ -267,16 +200,16 @@ export default function ProfilePage() {
         void loadProfile();
       }
     } catch { if (mounted.current && !controller.signal.aborted) toast.error('无法开始画像分析，请稍后重试'); }
-    finally { if (mounted.current) setAnalyzing(false); }
+    finally { if (mounted.current && analysisController.current === controller) setAnalyzing(false); }
   };
 
-  const handleProfileSaved = (updated: { username?: string; avatar?: string }) => {
-    setUser((prev: any) => ({ ...prev, ...updated }));
+  const handleProfileSaved = (updated: User) => {
+    setUser((prev) => prev?.id === updated.id ? { ...prev, ...updated } : prev);
     const stored = localStorage.getItem('user');
-    if (stored) { try { localStorage.setItem('user', JSON.stringify({ ...JSON.parse(stored), ...updated })); } catch {} }
+    if (stored) { try { localStorage.setItem('user', JSON.stringify(JSON.parse(stored).id === updated.id ? { ...JSON.parse(stored), ...updated } : JSON.parse(stored))); } catch {} }
   };
 
-  if (!user) return <div className={styles.page} style={pageStyle}><TopNavigation /><div className={styles.loadingPage}>正在加载账户资料…</div></div>;
+  if (!user) return <div className={styles.page}><TopNavigation /><div className={styles.loadingPage}>正在加载账户资料…</div></div>;
 
   const insufficient = (profile?.noteCount ?? 0) < 5 || profile?.profileStatus === 'insufficient_data';
   const historic = insufficient || (!profile?.userProfile && Boolean(profile?.historicalProfile));
@@ -285,35 +218,29 @@ export default function ProfilePage() {
   const scopeText = profile ? formatAnalysisScope(profile) : '';
 
   return (
-    <div className={styles.page} style={pageStyle}>
+    <div className={styles.page}>
       <TopNavigation />
       <main className={styles.container}>
-        <StatsBar stats={stats} loading={statsLoading} error={statsError} onRetry={() => void loadStats()} />
-        <div className={styles.columns}>
-          <div className={styles.leftColumn}>
-            <section className={`${styles.sectionGroup} ${styles.accountGroup}`} aria-labelledby="account-title">
-              <div className={styles.sectionGroupHeader}><h1 id="account-title" className={styles.sectionGroupTitle}>账户设置</h1></div>
-              <div className={styles.profileHeader}>
+        <section className={styles.profileHeader} aria-labelledby="account-title">
                 <div className={styles.avatar}>{avatarDisplay.src && avatarDisplay.src !== failedAvatarSrc
                   ? <img src={avatarDisplay.src} alt="" className={styles.avatarImg} onError={() => setFailedAvatarSrc(avatarDisplay.src)} />
                   : <span>{avatarDisplay.initials}</span>}</div>
-                <div className={styles.userInfo}><h2>{user.username || '未设置用户名'}</h2><p>{user.email}</p></div>
-              </div>
-              <div className={styles.profileActions}><button className={styles.btnOutlineSm} onClick={() => setEditOpen(true)}>编辑资料</button><button className={styles.btnOutlineSm} onClick={() => setPasswordOpen(true)}>修改密码</button></div>
-            </section>
-
-            <section className={`${styles.sectionGroup} ${styles.aiGroup}`} aria-labelledby="profile-title">
+                <div className={styles.userInfo}><h1 id="account-title">{user.username || '未设置用户名'}</h1><p>{user.email}</p></div>
+          <button className={styles.btnOutlineSm} onClick={() => openAccountDialog('profile')}>编辑资料</button>
+        </section>
+        <StatsBar stats={stats} loading={statsLoading} error={statsError} onRetry={() => void loadStats()} />
+        <section className={styles.sectionGroup} aria-labelledby="profile-title">
               <div className={styles.sectionGroupHeader}>
                 <h2 id="profile-title" className={styles.sectionGroupTitle}>AI 画像</h2>
                 <div className={styles.profileControls}>
                   {canGenerate && <button className={styles.btnGhostSm} onClick={handleTriggerAnalysis} disabled={analyzing}>{analyzing ? '正在提交…' : (historic || profile?.userProfile || profile?.profileStatus === 'failed') ? '重新分析' : '生成画像'}</button>}
                   {canRecoverAnalysis && <><button className={styles.btnGhostSm} onClick={() => void loadProfile()} disabled={profileLoading}>检查进度</button><button className={styles.btnGhostSm} onClick={() => void handleTriggerAnalysis()} disabled={analyzing}>{analyzing ? '正在提交…' : '恢复分析'}</button></>}
                   {profile?.profileStatus === 'analyzing' && <span className={styles.statusPill}>分析中…</span>}
-                  <button className={styles.aiGroupToggle} onClick={() => setAiExpanded((v) => !v)} aria-expanded={aiExpanded} aria-label={aiExpanded ? '收起画像' : '展开画像'}><span className={`${styles.aiGroupCollapseIcon} ${aiExpanded ? styles.open : styles.closed}`}>▼</span></button>
+                  <button className={styles.aiGroupToggle} onClick={() => setAiExpanded((v) => !v)} aria-expanded={aiExpanded} aria-label={aiExpanded ? '收起画像' : '展开画像'}><span className={`${styles.aiGroupCollapseIcon} ${!aiExpanded ? styles.closed : ''}`}>▼</span></button>
                 </div>
               </div>
-              <p className={styles.sectionGroupHint}>基于最近一次画像分析；分析范围有限，不代表全部笔记。</p>
-              <div className={`${styles.aiGroupBody} ${aiExpanded ? styles.expanded : styles.collapsed}`}>
+              <p className={styles.sectionGroupHint}>基于最近一次画像分析；技能等级由 AI 归纳，分析范围有限，不代表全部笔记。</p>
+              <div className={styles.aiGroupBody} hidden={!aiExpanded}>
                 {profileLoading && !profile && <p className={styles.stateMessage}>正在加载画像…</p>}
                 {profileError && <div className={styles.stateMessage} role="alert"><p>{profile ? '画像刷新失败，已保留上次成功显示的数据。' : '画像加载失败，请重试。'}</p><button className={styles.btnOutlineSm} onClick={() => void loadProfile()}>重试画像</button></div>}
                 {!profileLoading && !profile && !profileError && <p className={styles.stateMessage}>画像数据暂不可用。</p>}
@@ -327,17 +254,20 @@ export default function ProfilePage() {
                   <p className={styles.profileMetadata}>{profile.lastAnalyzedAt ? `最近分析：${new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(profile.lastAnalyzedAt))} · ` : ''}{scopeText}</p>
                   {displayedProfile.expertise && displayedProfile.expertise.length > 0 && <div className={styles.aiSubCard}><h3 className={styles.cardHeading}>技能领域</h3><div className={styles.expertiseList}>{displayedProfile.expertise.map((item, i) => <div key={`${item.area}-${i}`} className={styles.expertiseItem}><span className={styles.expertiseArea}>{item.area}</span><span className={styles.expertiseLevel}>{item.level}</span></div>)}</div></div>}
                   {displayedProfile.summary && <div className={styles.aiSubCard}><h3 className={styles.cardHeading}>个人传记</h3><div className={styles.biography}>{displayedProfile.summary}</div></div>}
-                  {displayedProfile.theme?.themeName && <div className={styles.aiSubCard}><h3 className={styles.cardHeading}>专属氛围色：{displayedProfile.theme.themeName}</h3><div className={styles.themeDisplay}>{displayedProfile.theme.reasoning}</div></div>}
                 </>}
                 {profile && !displayedProfile && !insufficient && profile.profileStatus !== 'failed' && <p className={styles.stateMessage}>还没有画像数据，可以在笔记达到 5 篇后生成。</p>}
               </div>
-            </section>
+        </section>
+        <section className={styles.sectionGroup} aria-labelledby="account-settings-title">
+          <div className={styles.sectionGroupHeader}><h2 id="account-settings-title" className={styles.sectionGroupTitle}>账户设置</h2></div>
+          <div className={styles.accountList}>
+            <div className={styles.accountRow}><span>邮箱</span><span className={styles.accountValue}>{user.email} · 只读</span></div>
+            <div className={styles.accountRow}><span>密码</span><button className={styles.btnGhostSm} onClick={() => openAccountDialog('password')}>修改密码</button></div>
+            {workspace?.openSettings && <div className={styles.accountRow}><span>外观</span><button className={styles.btnGhostSm} onClick={() => workspace.openSettings?.('appearance')}>外观设置</button></div>}
           </div>
-          <div className={styles.rightColumn} data-testid="topics-slot"><ProfileTopicsSection /></div>
-        </div>
+        </section>
       </main>
-      <EditProfileModal open={editOpen} user={user} onClose={() => setEditOpen(false)} onSaved={handleProfileSaved} />
-      <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
+      {!workspace && <WorkspaceAccountDialogs kind={accountDialog} user={user} onClose={() => setAccountDialog(null)} onSaved={handleProfileSaved} />}
     </div>
   );
 }

@@ -5,14 +5,17 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import cardStyles from '../styles/note-card.module.scss';
 import editorStyles from '../styles/rich-editor.module.scss';
 import TrashIcon from '../../../components/icons/TrashIcon';
-import PlusIcon from '../../../components/icons/PlusIcon';
 import type { Note, UpdateNoteCommand } from '../hooks/useNotes';
 import { focusProseMirrorWithin } from './focusProseMirror';
 import RichTextViewer from './RichTextViewer';
 import { useNoteEditor } from '../hooks/useNoteEditor';
-import { JSONContent } from '@tiptap/react';
 import { flomoEditorChromeProps } from './richTextEditorPresets';
 import { loadRichTextEditor } from './richTextEditorLoader';
+import { useNoteTitleSuggestion } from '../../../hooks/useNoteTitleSuggestion';
+import type { NoteEditDraft } from '../hooks/useNoteEditor';
+import NoteTitleField from './NoteTitleField';
+import { hasTitleSourceText } from '../utils/titleValidation';
+import { Pencil } from 'lucide-react';
 
 function EditorLoadingPlaceholder() {
   return (
@@ -30,12 +33,14 @@ const RichTextEditor = dynamic(loadRichTextEditor, {
 
 interface NoteCardProps {
   note: Note;
+  userId?: string | null;
+  onRegisterInvalidate?: (noteId: string, invalidate: () => void) => () => void;
   onRequestDelete: (id: string) => void;
   isHighlighted?: boolean;
   updateNote: (command: UpdateNoteCommand) => Promise<Note>;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
-  draft?: { json: JSONContent; text: string; dirty: boolean };
-  onDraftChange?: (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => void;
+  draft?: NoteEditDraft;
+  onDraftChange?: (id: string, draft: NoteEditDraft | null) => void;
   isContentEditingActive?: boolean;
   onClick?: () => void;
   isSelected?: boolean;
@@ -47,7 +52,7 @@ function useFocusCursorToEnd(
 ) {
   useEffect(() => {
     if (!isActive) return;
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       const el = ref.current;
       if (!el) return;
       el.focus();
@@ -58,6 +63,7 @@ function useFocusCursorToEnd(
         // ignore
       }
     });
+    return () => cancelAnimationFrame(frame);
   }, [isActive, ref]);
 }
 
@@ -74,6 +80,8 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 
 export default function ModernNoteCard({
   note,
+  userId = null,
+  onRegisterInvalidate,
   onRequestDelete,
   isHighlighted,
   updateNote,
@@ -90,28 +98,29 @@ export default function ModernNoteCard({
     contentJsonDraft,
     contentTextDraft,
     contentSavedFlash,
-    activeKeywordIndex,
-    tagEditValue,
-    setTagEditValue,
-    keywordError,
     beginTitleEdit,
-    beginKeywordEdit,
-    cancelKeywordEdit,
-    handleSaveTitle,
+    changeTitle,
     handleSaveContent,
     handleCancelContent,
-    deleteKeywordAt,
-    commitKeywordAt,
     enterContentEdit,
     onEditorChange,
   } = useNoteEditor({
     note,
+    userId,
     updateNote,
     onContentEditingChange,
     draft,
     onDraftChange,
     isContentEditingActive,
   });
+  const suggestion = useNoteTitleSuggestion({
+    userId, editorSessionId: note._id, open: state.content.isEditing,
+    getBody: () => (contentJsonDraft ?? note.contentJson) ? { kind: 'rich-text', document: (contentJsonDraft ?? note.contentJson) as Record<string, unknown> }
+      : { kind: 'plain-text', text: note.contentText ?? note.content },
+    getTitle: () => state.title.value,
+    onApply: changeTitle,
+  });
+  useEffect(() => onRegisterInvalidate?.(note._id, suggestion.invalidate), [onRegisterInvalidate, note._id, suggestion.invalidate]);
 
   // 控制高亮动画的生命周期
   const [activeHighlight, setActiveHighlight] = useState(false);
@@ -131,12 +140,25 @@ export default function ModernNoteCard({
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
-  const titleSaveInProgressRef = useRef(false);
+  const titleEditorRef = useRef<HTMLDivElement | null>(null);
   const contentAreaRef = useRef<HTMLDivElement | null>(null);
   const contentEditActionsRef = useRef<HTMLDivElement | null>(null);
+  const editTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const titleEditTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const editOriginRef = useRef<'title' | 'content'>('content');
+  const [restoreEditFocus, setRestoreEditFocus] = useState(false);
   const textRef = useRef<HTMLParagraphElement | null>(null);
   const anchorRef = useRef<'top' | 'bottom'>('top');
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!restoreEditFocus || state.content.isEditing) return;
+    const trigger = editOriginRef.current === 'title'
+      ? titleEditTriggerRef.current ?? editTriggerRef.current
+      : editTriggerRef.current;
+    trigger?.focus();
+    setRestoreEditFocus(false);
+  }, [restoreEditFocus, state.content.isEditing]);
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '';
@@ -247,9 +269,9 @@ export default function ModernNoteCard({
   }, [applyTextareaSize, state.content.isEditing]);
 
   useEffect(() => {
-    if (!state.content.isEditing) return;
+    if (!state.content.isEditing || state.title.isEditing) return;
     return focusProseMirrorWithin(rootRef.current);
-  }, [state.content.isEditing]);
+  }, [state.content.isEditing, state.title.isEditing]);
 
 
   // 仅依据“内容的总高度”和“6行高度”判断是否可展开（编辑态不展示）
@@ -360,58 +382,42 @@ export default function ModernNoteCard({
       if (mo) mo.disconnect();
       if (ro) ro.disconnect();
     };
-  }, [
-    dispatch,
-    state.expanded,
-    state.content.isEditing,
-    // 富文本内容变化可能不体现在 note.content 上
-    note.content,
-    note.contentText,
-    note.contentJson,
-  ]);
+  }, [dispatch, state.expanded, state.content.isEditing, note.content, note.contentText, note.contentJson]);
+
+  const cancelEdit = () => {
+    suggestion.invalidate();
+    handleCancelContent();
+    setRestoreEditFocus(true);
+  };
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter') {
       e.preventDefault();
-      beginTitleSave();
+      if (e.metaKey || e.ctrlKey) {
+        saveEdit();
+      } else {
+        dispatch({ type: 'BLUR_TITLE_EXIT' });
+        focusProseMirrorWithin(rootRef.current);
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' });
+      cancelEdit();
     }
   };
 
-  const beginTitleSave = () => {
-    if (titleSaveInProgressRef.current) return;
-    titleSaveInProgressRef.current = true;
-    void handleSaveTitle().finally(() => {
-      titleSaveInProgressRef.current = false;
-    });
-  };
-
-  const handleTitleSaveMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Keep the input focused until its async write settles. This also makes a trailing
-    // blur harmless in browsers that dispatch it despite the prevented default.
-    e.preventDefault();
-    e.stopPropagation();
-    beginTitleSave();
-  };
-
-  const handleTitleBlur = () => {
-    if (titleSaveInProgressRef.current) return;
-    dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' });
+  const saveEdit = () => {
+    suggestion.invalidate();
+    void handleSaveContent();
   };
 
   const cardClassName = [
     cardStyles.noteCard,
     activeHighlight ? cardStyles.noteCardHighlight : '',
     state.content.isEditing ? cardStyles.noteCardEditing : '',
-    // 当处于高亮状态时，移除 !bg-white 和 !shadow-none 强制覆盖，让 CSS Module 中的动画样式接管
-    !activeHighlight ? '!bg-white !shadow-none' : '',
-    '!border',
-    isSelected ? '!border-blue-500 !ring-1 !ring-blue-500' : '!border-gray-100',
-    '!rounded-xl'
+    isSelected ? cardStyles.noteCardSelected : '',
   ].filter(Boolean).join(' ');
-  const hasUnsavedDraft = !!draft?.dirty;
+  const visibleTitle = state.title.value.trim();
 
   return (
     <div
@@ -419,89 +425,38 @@ export default function ModernNoteCard({
       className={cardClassName}
       data-note-id={note._id}
     >
-      {/* 右侧悬浮把手 */}
-      <button
-        className={`${cardStyles.relatedHandle} ${isSelected ? cardStyles.relatedHandleActive : ''}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick?.();
-        }}
-        title="查看相关笔记"
-        aria-label="查看相关笔记"
-      >
-        <div className={cardStyles.relatedHandleIcon}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="15" y1="3" x2="15" y2="21"></line>
-          </svg>
-        </div>
-      </button>
 
-      <div
-        className={cardStyles.noteHeader}
-        onClick={() => dispatch({ type: 'TOGGLE_EXPANDED' })}
-      >
-        {state.title.isEditing ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-              <input
-                autoFocus
-                ref={titleInputRef}
-                type="text"
-                value={state.title.value}
-                onChange={(e) => dispatch({ type: 'CHANGE_TITLE', value: e.target.value })}
-                onKeyDown={handleTitleKeyDown}
-                onBlur={handleTitleBlur}
-                className={cardStyles.noteTitleInput}
-                placeholder="添加标题..."
-                maxLength={100}
-              />
-            </div>
-            {state.title.error && (
-              <div className={cardStyles.keywordErrorInline} role="alert">
-                {state.title.error}
-                {state.title.conflictCurrentTitle ? ` 服务端标题：${state.title.conflictCurrentTitle}` : ''}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div
-            className={`${cardStyles.noteTitle} !font-semibold !text-gray-900 !text-lg`}
+      {!state.content.isEditing && visibleTitle && (
+        <div className={cardStyles.noteHeader}>
+          <button
+            ref={titleEditTriggerRef}
+            type="button"
+            aria-label={`编辑笔记标题：${visibleTitle}`}
+            className={cardStyles.noteTitle}
             onClick={(e) => {
               e.stopPropagation();
+              editOriginRef.current = 'title';
               beginTitleEdit();
             }}
           >
-          {note.enrichment?.status === 'pending' && (!note.title || note.title.trim().length === 0) ? (
-              <div className={cardStyles.titleSkeleton} />
-            ) : (
-              note.title || '点击添加标题'
-            )}
-          </div>
-        )}
-        <div className={`${cardStyles.noteActions} !gap-2`}>
-          {state.title.isEditing && (
-            <button
-              onMouseDown={handleTitleSaveMouseDown}
-              className={`${cardStyles.noteEditTitleConfirm} !bg-gray-100 hover:!bg-gray-200 !text-gray-600`}
-              aria-label="保存标题"
-              disabled={state.title.saving}
-            >
-              ✓
-            </button>
-          )}
-          <span className={`${cardStyles.noteDate} !bg-transparent !text-gray-400 !border-none !p-0 !text-sm`}>{formatDate(note.createdAt)}</span>
-          <button
-            className={`${cardStyles.deleteButton} !bg-transparent !text-gray-400 hover:!text-red-500 hover:!bg-gray-100 !rounded-md !border-none !shadow-none !p-1`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRequestDelete(note._id);
-            }}
-          >
-            <TrashIcon />
+            {visibleTitle}
           </button>
         </div>
-      </div>
+      )}
+
+      {state.content.isEditing && (
+        <div ref={titleEditorRef}>
+          <NoteTitleField
+            value={state.title.value}
+            inputRef={titleInputRef}
+            onChange={(value) => { suggestion.invalidate('title'); changeTitle(value); }}
+            onKeyDown={handleTitleKeyDown}
+            suggestion={suggestion}
+            hasBodyText={hasTitleSourceText(contentJsonDraft ?? note.contentJson, contentTextDraft)}
+            saving={state.content.saving}
+          />
+        </div>
+      )}
 
       <div className={cardStyles.noteContent} ref={contentAreaRef}>
         <div
@@ -513,25 +468,30 @@ export default function ModernNoteCard({
                 ? undefined
                 : state.layout.maxHeight,
           }}
-          onClick={state.content.isEditing ? undefined : (e) => enterContentEdit(e)}
+          onClick={state.content.isEditing ? undefined : (e) => {
+            editOriginRef.current = 'content';
+            enterContentEdit(e);
+          }}
         >
           {state.content.isEditing ? (
             <div className={cardStyles.noteContentInput}>
               <RichTextEditor
                 value={contentJsonDraft}
-                onChange={onEditorChange}
-                autoFocus="end"
+                onChange={(next) => { suggestion.invalidate('body'); onEditorChange(next); }}
+                autoFocus={state.title.isEditing ? false : 'end'}
                   {...flomoEditorChromeProps}
                 onBlur={() => {
+                  suggestion.invalidate();
                   dispatch({ type: 'BLUR_CONTENT_EXIT' });
                 }}
-                insideRefs={[contentEditActionsRef]}
+                insideRefs={[titleEditorRef, contentEditActionsRef]}
+                onModEnter={saveEdit}
               />
             </div>
           ) : (
             <div
               ref={textRef as React.RefObject<HTMLDivElement>}
-              className={`${cardStyles.noteText} !leading-relaxed !text-gray-600`}
+              className={cardStyles.noteText}
             >
               {(() => {
                 const draftText = draft?.dirty ? draft?.text : contentTextDraft;
@@ -560,160 +520,70 @@ export default function ModernNoteCard({
 
       </div>
 
-      <div className={cardStyles.noteKeywords}>
-        <div className={cardStyles.keywordsWrap}>
-        {note.enrichment?.status === 'pending' && (!(note.keywords && note.keywords.length)) ? (
-          <>
-            <span className={cardStyles.chipSkeleton} />
-            <span className={cardStyles.chipSkeleton} />
-            <span className={cardStyles.chipSkeleton} />
-          </>
-        ) : (
-          <>
-            {(() => {
-              const kws = note.keywords || [];
-              const addingIndex = kws.length;
-              return (
-                <>
-                  {kws.length > 0 ? (
-                    kws.map((kw, idx) => (
-                activeKeywordIndex === idx ? (
-                  <input
-                    key={idx}
-                    className={`${cardStyles.keywordEditInput} !rounded-full !text-xs !px-3 !py-1 !border-gray-300 focus:!border-blue-400 focus:!ring-2 focus:!ring-blue-100`}
-                    value={tagEditValue}
-                    autoFocus
-                    onChange={(e) => setTagEditValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        commitKeywordAt(idx);
-                      } else if (e.key === 'Escape') {
-                        cancelKeywordEdit();
-                      }
-                    }}
-                    onBlur={() => {
-                      commitKeywordAt(idx);
-                    }}
-                  />
-                ) : (
-                  <span
-                    key={idx}
-                    className={`${cardStyles.keyword} !bg-gray-100 hover:!bg-gray-200 !text-gray-600 !rounded-full !text-xs !border-none !px-3 !py-1`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => beginKeywordEdit(idx, kw)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') beginKeywordEdit(idx, kw); }}
-                  >
-                    {kw}
-                    <button
-                      type="button"
-                      className={`${cardStyles.keywordDeleteBtn} !bg-white !text-gray-500 hover:!text-red-500 !border-gray-200`}
-                      aria-label="删除关键词"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteKeywordAt(idx);
-                      }}
-                    >
-                      ×
-                    </button>
-                  </span>
-                )
-              ))
-                  ) : null}
-
-                  {/* 添加态输入框：idx === keywords.length（即新增） */}
-                  {activeKeywordIndex === addingIndex && (
-                    <input
-                      key="__add_keyword__"
-                      className={`${cardStyles.keywordEditInput} !rounded-full !text-xs !px-3 !py-1 !border-gray-300 focus:!border-blue-400 focus:!ring-2 focus:!ring-blue-100`}
-                      value={tagEditValue}
-                      autoFocus
-                      onChange={(e) => setTagEditValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          commitKeywordAt(addingIndex);
-                        } else if (e.key === 'Escape') {
-                          cancelKeywordEdit();
-                        }
-                      }}
-                      onBlur={() => commitKeywordAt(addingIndex)}
-                      placeholder="新增关键词"
-                    />
-                  )}
-
-                  {/* 常驻添加按钮 */}
-                  {activeKeywordIndex !== addingIndex && (
-                    <button
-                      type="button"
-                      className={`${cardStyles.keywordAddBtn} flex items-center justify-center !bg-transparent !border !border-dashed !border-gray-300 hover:!border-gray-400 !text-gray-400 hover:!text-gray-600 !rounded-full !w-6 !h-6`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        beginKeywordEdit(addingIndex, '');
-                      }}
-                      aria-label="添加关键词"
-                    >
-                      <span className={cardStyles.keywordAddIcon}>
-                        <PlusIcon size={14} strokeWidth={2} />
-                      </span>
-                    </button>
-                  )}
-                </>
-              );
-            })()}
-          </>
-        )}
-        </div>
-
-        <div className={cardStyles.noteKeywordsRight}>
-          {keywordError && <div className={cardStyles.keywordErrorInline} role="alert">{keywordError}</div>}
-          {/* 草稿提示：固定在 keywords 行尾（编辑/非编辑都显示） */}
-          {contentSavedFlash ? (
-            <div className={cardStyles.draftSavedInline}>修改已提交 ✔</div>
-          ) : (
-            hasUnsavedDraft && <div className={cardStyles.draftUnsavedInline}>草稿未保存 ！</div>
-          )}
-
-          {/* 编辑态操作：放在 keywords 行尾（在草稿提示之后），避免占用正文高度 */}
-          {state.content.isEditing && (
-            <div
-              className={cardStyles.noteEditActions}
-              ref={contentEditActionsRef}
-              data-note-editor-inside="true"
-            >
-              <button
-                type="button"
-                className={`${cardStyles.noteEditCancel} !bg-white hover:!bg-gray-50 !text-gray-600 !border !border-gray-200 !rounded-lg !px-3 !py-1 !text-sm`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onClick={handleCancelContent}
-                disabled={state.content.saving}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className={`${cardStyles.noteEditSave} !bg-blue-600 hover:!bg-blue-700 !text-white !rounded-lg !px-3 !py-1 !border-none !text-sm`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onClick={handleSaveContent}
-                disabled={state.content.saving}
-              >
-                保存
-              </button>
-              {state.content.error && <span className={cardStyles.errorInline}>{state.content.error}</span>}
-              {state.content.conflictCurrentText && (
-                <span className={cardStyles.errorInline}>服务端当前正文：{state.content.conflictCurrentText}</span>
-              )}
+      <div className={cardStyles.noteFooter}>
+        <time className={cardStyles.noteDate} dateTime={note.createdAt}>{formatDate(note.createdAt)}</time>
+        {!state.content.isEditing && <div className={cardStyles.noteActions}>
+          <button
+            ref={editTriggerRef}
+            type="button"
+            className={cardStyles.relatedHandle}
+            aria-label="编辑笔记"
+            title="编辑笔记"
+            onClick={(event) => {
+              event.stopPropagation();
+              editOriginRef.current = 'content';
+              enterContentEdit();
+            }}
+          >
+            <Pencil size={15} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className={`${cardStyles.relatedHandle} ${isSelected ? cardStyles.relatedHandleActive : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick?.();
+            }}
+            title="查看相关笔记"
+            aria-label="查看相关笔记"
+          >
+            <div className={cardStyles.relatedHandleIcon}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="15" y1="3" x2="15" y2="21"></line>
+              </svg>
             </div>
-          )}
-        </div>
+          </button>
+          <button
+            className={cardStyles.deleteButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              suggestion.invalidate();
+              onRequestDelete(note._id);
+            }}
+          >
+            <TrashIcon />
+          </button>
+        </div>}
       </div>
+
+      {(state.title.isEditing || state.content.isEditing || draft?.dirty || state.title.error || state.content.error || suggestion.error) && (
+        <div className={cardStyles.noteEditOperation} ref={contentEditActionsRef} data-note-editor-inside="true">
+          {contentSavedFlash ? <span className={cardStyles.draftSavedInline}>已保存</span>
+            : draft?.dirty ? <span className={cardStyles.draftUnsavedInline}>草稿未保存</span> : null}
+          {state.content.isEditing && <span className={cardStyles.noteEditHint}>Cmd/Ctrl + Enter 保存</span>}
+          <button type="button" className={cardStyles.noteEditCancel} onMouseDown={(e) => e.preventDefault()}
+            onClick={cancelEdit}>取消</button>
+          <button type="button" className={cardStyles.noteEditSave} onMouseDown={(e) => e.preventDefault()}
+            onClick={saveEdit} disabled={state.content.saving}>{state.content.saving ? '保存中…' : '保存'}</button>
+          {(state.title.error || state.content.error) && <span className={cardStyles.errorInline} role="alert">
+            {state.title.error || state.content.error}
+            {state.title.conflictCurrentTitle ? ` 服务端标题：${state.title.conflictCurrentTitle}` : ''}
+          </span>}
+          {state.content.conflictCurrentText && <span className={cardStyles.errorInline}>服务端当前正文：{state.content.conflictCurrentText}</span>}
+        </div>
+      )}
+
     </div>
   );
 }

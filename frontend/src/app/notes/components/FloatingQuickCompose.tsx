@@ -2,11 +2,14 @@
 
 import dynamic from 'next/dynamic';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { PencilLine, Plus } from 'lucide-react';
 import composeStyles from '../styles/floating-compose.module.scss';
 import { focusProseMirrorWithin } from './focusProseMirror';
 import { flomoEditorChromeProps } from './richTextEditorPresets';
 import { loadRichTextEditor } from './richTextEditorLoader';
+import NoteTitleField from './NoteTitleField';
+import { hasTitleSourceText } from '../utils/titleValidation';
 
 function EditorLoadingPlaceholder() {
   return (
@@ -23,11 +26,16 @@ const RichTextEditor = dynamic(loadRichTextEditor, {
 });
 
 import { JSONContent } from '@tiptap/react';
+import { useNoteTitleSuggestion } from '../../../hooks/useNoteTitleSuggestion';
 
 type FloatingQuickComposeProps = {
   open: boolean;
   valueJson: JSONContent | null;
   valueText: string;
+  title: string;
+  userId: string | null;
+  onRegisterInvalidate?: (invalidate: () => void) => () => void;
+  onTitleChange: (title: string) => void;
   onOpen: () => void;
   onChange: (next: { json: JSONContent; text: string }) => void;
   onSubmit: () => void | Promise<void>;
@@ -42,6 +50,10 @@ export default function FloatingQuickCompose({
   open,
   valueJson,
   valueText,
+  title,
+  userId,
+  onRegisterInvalidate,
+  onTitleChange,
   onOpen,
   onChange,
   onSubmit,
@@ -49,11 +61,21 @@ export default function FloatingQuickCompose({
   loading = false,
   status = '',
 }: FloatingQuickComposeProps) {
+  const reduceMotion = useReducedMotion();
   const expandedRef = useRef<HTMLDivElement | null>(null);
+  const restoreCaptureFocus = useRef(false);
   const [shellPhase, setShellPhase] = useState<ShellPhase>(open ? 'expanded' : 'collapsed');
+  const suggestion = useNoteTitleSuggestion({
+    userId, editorSessionId: 'quick-compose', open,
+    getBody: () => valueJson ? { kind: 'rich-text', document: valueJson as Record<string, unknown> } : { kind: 'plain-text', text: valueText },
+    getTitle: () => title,
+    onApply: onTitleChange,
+  });
+  useEffect(() => onRegisterInvalidate?.(suggestion.invalidate), [onRegisterInvalidate, suggestion.invalidate]);
 
   useEffect(() => {
     if (!open) return;
+    restoreCaptureFocus.current = false;
     return focusProseMirrorWithin(expandedRef.current);
   }, [open]);
 
@@ -68,53 +90,68 @@ export default function FloatingQuickCompose({
 
   const disabled = loading;
   const canSubmit = !disabled && (valueText || '').trim().length > 0;
-  const hasDraft = (valueText || '').trim().length > 0;
+  const hasDraft = Boolean((valueText || '').trim() || title.trim());
   const isClosing = shellPhase === 'closing';
   const shellExpanded = shellPhase !== 'collapsed';
   const shellLayoutTransition = {
     type: 'tween',
-    duration: 0.16,
+    duration: reduceMotion ? 0 : 0.16,
     ease: [0.2, 0.9, 0.2, 1] as const,
   } as const;
   const shellVisualTransition = {
-    duration: 0.14,
+    duration: reduceMotion ? 0 : 0.14,
     ease: [0.2, 0.9, 0.2, 1] as const,
   };
 
   const collapsedTransition = {
-    duration: 0.09,
+    duration: reduceMotion ? 0 : 0.09,
     ease: [0.2, 0.9, 0.2, 1] as const,
   };
 
   const panelTransition = {
-    duration: 0.12,
+    duration: reduceMotion ? 0 : 0.12,
     ease: [0.2, 0.9, 0.2, 1] as const,
   };
 
   const closingPanelTransition = {
-    duration: 0.12,
+    duration: reduceMotion ? 0 : 0.12,
     ease: [0.4, 0, 0.2, 1] as const,
   };
 
   const editorTransition = {
-    duration: 0.12,
+    duration: reduceMotion ? 0 : 0.12,
     delay: 0,
     ease: [0.2, 0.9, 0.2, 1] as const,
   };
 
   const actionsTransition = {
-    duration: 0.1,
-    delay: 0.01,
+    duration: reduceMotion ? 0 : 0.1,
+    delay: reduceMotion ? 0 : 0.01,
     ease: [0.2, 0.9, 0.2, 1] as const,
   };
 
   const submitAndClose = () => {
     if (!canSubmit) return;
+    suggestion.invalidate();
     onSubmit();
   };
 
   const handleCancel = () => {
+    restoreCaptureFocus.current = true;
+    suggestion.invalidate();
     onCancel();
+  };
+
+  const handleTitleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (event.metaKey || event.ctrlKey) submitAndClose();
+      else focusProseMirrorWithin(expandedRef.current);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      handleCancel();
+    }
   };
 
   const renderContent = () => {
@@ -125,16 +162,14 @@ export default function FloatingQuickCompose({
         className={`${composeStyles.floatingComposeShell}`}
         initial={false}
         animate={{
-          borderRadius: shellExpanded ? 20 : 12,
-          minHeight: shellPhase === 'expanded' ? 156 : 54,
-          paddingTop: shellPhase === 'expanded' ? 20 : 14,
+          borderRadius: 14,
+          minHeight: shellPhase === 'expanded' ? 156 : 76,
+          paddingTop: shellPhase === 'expanded' ? 20 : 16,
           paddingRight: 24,
-          paddingBottom: shellPhase === 'expanded' ? 20 : 14,
+          paddingBottom: shellPhase === 'expanded' ? 20 : 16,
           paddingLeft: 24,
-          borderColor: shellExpanded ? 'rgba(0, 0, 0, 0.06)' : 'rgba(0, 0, 0, 0.04)',
-          boxShadow: shellExpanded
-              ? '0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.045)'
-              : '0 1px 3px rgba(0, 0, 0, 0.04), 0 3px 10px rgba(0, 0, 0, 0.035)',
+          borderColor: shellExpanded ? '#b9cbed' : '#dce3ee',
+          boxShadow: 'none',
         }}
         transition={{
           layout: shellLayoutTransition,
@@ -150,6 +185,12 @@ export default function FloatingQuickCompose({
           {shellPhase === 'collapsed' && (
             <motion.button
               key="collapsed"
+              ref={(element) => {
+                if (element && restoreCaptureFocus.current) {
+                  element.focus();
+                  restoreCaptureFocus.current = false;
+                }
+              }}
               type="button"
               className={`${composeStyles.floatingComposeBarInner} w-full`}
               onClick={onOpen}
@@ -159,6 +200,7 @@ export default function FloatingQuickCompose({
                 exit={{ opacity: 0, y: -2 }}
                 transition={collapsedTransition}
             >
+              <span className={composeStyles.composeEntryIcon}><PencilLine size={20} aria-hidden="true" /></span>
               <motion.span
                 className={composeStyles.floatingComposeBarText}
                   initial={{ opacity: 0, y: 1 }}
@@ -166,8 +208,9 @@ export default function FloatingQuickCompose({
                   exit={{ opacity: 0, y: -1 }}
                 transition={collapsedTransition}
               >
-                {hasDraft ? '继续编辑草稿…' : '发送消息...'}
+                {hasDraft ? '继续编辑草稿…' : '记下一个想法…'}
               </motion.span>
+              {!hasDraft && <Plus size={18} className={composeStyles.composeEntryPlus} aria-hidden="true" />}
               {hasDraft && (
                 <motion.span
                   initial={{ opacity: 0, scale: 0.9 }}
@@ -221,11 +264,19 @@ export default function FloatingQuickCompose({
                       y: -2,
                       transition: {
                         height: closingPanelTransition,
-                        opacity: { duration: 0.1, ease: [0.4, 0, 1, 1] as const },
-                        y: { duration: 0.1, ease: [0.4, 0, 1, 1] as const },
+                        opacity: { duration: reduceMotion ? 0 : 0.1, ease: [0.4, 0, 1, 1] as const },
+                        y: { duration: reduceMotion ? 0 : 0.1, ease: [0.4, 0, 1, 1] as const },
                       },
                     }}
                   >
+                    <NoteTitleField
+                      value={title}
+                      onChange={(value) => { suggestion.invalidate('title'); onTitleChange(value); }}
+                      onKeyDown={handleTitleKeyDown}
+                      suggestion={suggestion}
+                      hasBodyText={hasTitleSourceText(valueJson, valueText)}
+                      saving={loading}
+                    />
                     <motion.div
                       initial={{ opacity: 0, y: 3 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -234,7 +285,7 @@ export default function FloatingQuickCompose({
                     >
                       <RichTextEditor
                         value={valueJson}
-                        onChange={onChange}
+                        onChange={(next) => { suggestion.invalidate('body'); onChange(next); }}
                         placeholder="此刻的想法、待办或总结..."
                         showToolbar
                         autoFocus="end"
@@ -256,7 +307,7 @@ export default function FloatingQuickCompose({
                       transition={isClosing ? closingPanelTransition : actionsTransition}
                       className={composeStyles.floatingComposeActions}
                     >
-                      {status && <p role="status">{status}</p>}
+                      {status && <p className={composeStyles.composeActionStatus} role="status">{status}</p>}
                       <div className={composeStyles.floatingComposeHint}>Cmd/Ctrl + Enter 保存</div>
                       <button
                         type="button"

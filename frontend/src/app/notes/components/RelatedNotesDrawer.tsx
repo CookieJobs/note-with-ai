@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { FileSearch, Loader2, X } from 'lucide-react';
+import ReferenceNote from '../../../components/ReferenceNote';
+import styles from '../../../components/RelatedNotes.module.scss';
+import { usePanelDismiss } from '../../../hooks/usePanelDismiss';
 import type { Note } from '../hooks/useNotes';
 import { getRecommendCacheState, hasCandidateS1 } from '../utils/recommendCache';
 import { authFetch } from '../../../utils/auth';
 import { fetchRelatedNoteSummaries } from '../services/relatedNotes';
+import { noteReferenceDisplay } from '../../../utils/noteReference';
 
 interface RelatedNotesDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenNote?: (noteId: string) => void;
   selectedNoteId: string | null;
   allNotes: Note[];
   onRefreshRecommendCache?: (noteId: string) => Promise<void>;
@@ -22,12 +28,14 @@ interface RelatedNoteItem {
 
 export default function RelatedNotesDrawer({ 
   isOpen, 
-  onClose, 
+  onClose,
+  onOpenNote,
   selectedNoteId,
   allNotes,
   onRefreshRecommendCache,
 }: RelatedNotesDrawerProps) {
   const router = useRouter();
+  const { panelRef, isModal } = usePanelDismiss(isOpen, onClose, 1199);
   const [refreshState, setRefreshState] = useState<'idle' | 'refreshing' | 'success' | 'error'>('idle');
   const [remoteRelated, setRemoteRelated] = useState<RelatedNoteItem[] | null>(null);
   const lastAttemptKeyRef = useRef<string | null>(null);
@@ -61,14 +69,14 @@ export default function RelatedNotesDrawer({
         if (cancelled) return;
         setRemoteRelated(summaries.map((item) => ({
           id: item.noteId,
-          note: { _id: item.noteId, title: item.title, contentText: item.contentText, content: item.contentText } as Note,
+          note: { _id: item.noteId, title: item.title, contentText: item.contentText, content: item.contentText, excerpt: item.excerpt, createdAt: item.createdAt, sourceType: item.sourceType, imageCount: item.imageCount, firstImageSrc: item.firstImageSrc } as Note,
           type: item.type,
           reason: item.reason,
         })));
       })
       .catch(() => { if (!cancelled) setRemoteRelated([]); });
     return () => { cancelled = true; };
-  }, [isOpen, selectedNoteId, currentNote?.revision]);
+  }, [isOpen, selectedNoteId, currentNote?.revision, currentNote?.recommendCache?.generatedAt]);
 
   useEffect(() => {
     if (!isOpen || !currentNote || !onRefreshRecommendCache || !cacheState.needsRefresh) return;
@@ -141,104 +149,35 @@ export default function RelatedNotesDrawer({
   const showRefreshingMessage = refreshState === 'refreshing';
   const showRefreshSuccess = refreshState === 'success' && cacheState.status !== 'current-empty';
   const showRefreshError = refreshState === 'error';
-  const showLoadingState = relatedNotes.length === 0 && (showRefreshingMessage || cacheState.status === 'missing');
+  const showLoadingState = relatedNotes.length === 0 && (showRefreshingMessage || (cacheState.status === 'missing' && !showRefreshError));
   const showResolvedEmptyState = relatedNotes.length === 0 && !showLoadingState;
+
+  if (!isOpen) return null;
 
   return (
     <>
-      {/* 遮罩层：点击外部关闭抽屉 */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 z-[1000] bg-black/10 backdrop-blur-[2px] transition-opacity" 
-          onClick={onClose}
-        />
-      )}
-      {/* 侧边栏抽屉本体 — 浮出卡片效果 */}
-      <div
-        className={`fixed top-3 right-3 bottom-3 w-[360px] md:w-[400px] bg-white/85 backdrop-blur-xl border border-gray-200/30 shadow-xl z-[1001] transform transition-transform duration-300 ease-in-out flex flex-col rounded-2xl overflow-hidden ${isOpen ? 'translate-x-0' : 'translate-x-[calc(100%+12px)]'}`}
-      >
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">相关笔记</h2>
-          <button 
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors border-none bg-transparent outline-none"
-            aria-label="关闭"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+      <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />
+      <aside ref={panelRef} tabIndex={-1} className={`${styles.panel} ${styles.drawer}`} role={isModal ? 'dialog' : 'complementary'} aria-modal={isModal || undefined} aria-label="相关笔记">
+        <div className={styles.header}>
+          <h2>相关笔记 <span className={styles.count}>{relatedNotes.length || ''}</span></h2>
+          <button type="button" onClick={onClose} className={styles.close} aria-label="关闭"><X size={18} /></button>
         </div>
+        <p className={styles.intro}>沿着一条记录，发现更多联系。{currentNote && <span className={styles.source}>{noteReferenceDisplay(currentNote).label}</span>}</p>
         {(showRefreshingMessage || showRefreshSuccess || showRefreshError) && (
-          <div className={`mx-6 mt-4 rounded-xl px-4 py-3 text-sm ${
-            showRefreshError
-              ? 'bg-amber-50 text-amber-700'
-              : showRefreshSuccess
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'bg-blue-50 text-blue-700'
-          }`}>
-            {showRefreshError
-              ? '推荐刷新失败，请稍后重试'
-              : showRefreshSuccess
-                ? '相关推荐已更新'
-                : '正在刷新相关推荐...'}
+          <div role="status" className={`${styles.status} ${showRefreshError ? styles.statusError : ''}`}>
+            {showRefreshError ? '推荐刷新失败，请稍后重试' : showRefreshSuccess ? '相关推荐已更新' : '正在刷新相关推荐...'}
           </div>
         )}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
-          {relatedNotes.length > 0 ? (
-            relatedNotes.map(item => (
-              <div 
-                key={item.id} 
-                className="p-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-white hover:shadow-sm hover:border-gray-200 transition-all cursor-pointer flex flex-col gap-2"
-                onClick={() => {
-                  onClose();
-                  router.push(`/notes?highlight=${item.id}`);
-                }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-medium text-gray-900 truncate flex-1">{item.note.title || '无标题'}</div>
-                  {item.type && (
-                    <span className="shrink-0 bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 text-[10px] font-medium border-none">
-                      {item.type}
-                    </span>
-                  )}
-                </div>
-                <div className="text-sm text-gray-600 line-clamp-3">
-                  {item.note.contentText || item.note.content || '暂无内容...'}
-                </div>
-                {item.reason && (
-                  <div className="mt-2 text-xs text-gray-400 bg-gray-100/50 p-2 rounded-lg leading-relaxed">
-                    <span className="font-medium text-gray-600">关联理由</span>
-                    <p className="mt-1">{item.reason}</p>
-                  </div>
-                )}
-              </div>
-            ))
-          ) : showLoadingState ? (
-            <div className="flex flex-col items-center justify-center text-center mt-20 gap-3">
-              <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-gray-500" />
-              <div className="text-gray-600 font-medium">正在计算相关推荐</div>
-              <div className="text-xs text-gray-400 max-w-[220px]">
-                正在整理与这条笔记有关的内容，完成后会在这里显示。
-              </div>
-            </div>
+        <div className={styles.list}>
+          {relatedNotes.length > 0 ? relatedNotes.map(item => (
+            <ReferenceNote key={item.id} title={item.note.title} excerpt={item.note.excerpt} contentText={item.note.contentText || item.note.content} contentJson={item.note.contentJson} sourceType={item.note.sourceType} imageCount={item.note.imageCount} firstImageSrc={item.note.firstImageSrc} createdAt={item.note.createdAt} relation={item.type} reason={item.reason} onOpen={() => { if (onOpenNote) onOpenNote(item.id); else { onClose(); router.push(`/notes?highlight=${item.id}`); } }} />
+          )) : showLoadingState ? (
+            <div className={styles.empty} role="status"><Loader2 className={styles.spinner} size={24} /><h3>正在计算相关推荐</h3><p>正在整理与这条笔记有关的内容，完成后会在这里显示。</p></div>
           ) : showResolvedEmptyState ? (
-            <div className="flex flex-col items-center justify-center text-center mt-20 gap-3">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-300" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <circle cx="10" cy="13" r="2"></circle>
-                <line x1="11.4" y1="14.4" x2="15" y2="18"></line>
-              </svg>
-              <div className="text-gray-500 font-medium">暂无关联笔记</div>
-              <div className="text-xs text-gray-400 max-w-[200px]">
-                当前没有可展示的关联内容，之后可以再试一次。
-              </div>
-            </div>
+            <div className={styles.empty}><FileSearch size={24} strokeWidth={1.5} /><h3>暂无关联笔记</h3><p>还没有找到合适的关联。继续记录想法，新的联系会在这里出现。</p></div>
           ) : null}
         </div>
-      </div>
+      </aside>
     </>
   );
 }

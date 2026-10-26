@@ -60,6 +60,7 @@ describe('useCreateNote', () => {
 
     expect(createNote).toHaveBeenCalledTimes(1);
     expect(createNote).toHaveBeenCalledWith({
+      title: '',
       body: { kind: 'plain-text', text: '正文' },
       optimistic: { contentText: '正文', contentJson: null },
     });
@@ -84,6 +85,7 @@ describe('useCreateNote', () => {
     });
 
     expect(createNote).toHaveBeenCalledWith({
+      title: '',
       body: { kind: 'rich-text', document: richText },
       optimistic: { contentText: '富文本正文', contentJson: richText },
     });
@@ -142,5 +144,56 @@ describe('useCreateNote', () => {
 
     expect(result.current.newContentText).toBe('第一段，继续写');
     expect(localStorage.getItem('quick-capture-draft:user-a')).toContain('第一段，继续写');
+  });
+
+  it('restores a v2 title-only draft and submits the title with the body snapshot', async () => {
+    localStorage.setItem('quick-capture-draft:user-a', JSON.stringify({ version: 2, title: '草稿标题', text: '', json: null }));
+    const createNote = vi.fn().mockResolvedValue(createdNote);
+    const { result } = renderHook(() => useCreateNote(createNote, { userId: 'user-a' }));
+    expect(result.current.newTitle).toBe('草稿标题');
+    expect(result.current.draftRestored).toBe(true);
+    expect(await result.current.handleSubmit()).toBe(false);
+    act(() => result.current.setNewContentText('正文'));
+    await act(async () => { await result.current.handleSubmit(); });
+    expect(createNote).toHaveBeenCalledWith(expect.objectContaining({ title: '草稿标题' }));
+  });
+
+  it('preserves a later title edit while the submitted snapshot saves', async () => {
+    let finish!: (note: typeof createdNote) => void;
+    const createNote = vi.fn(() => new Promise<typeof createdNote>((resolve) => { finish = resolve; }));
+    const { result } = renderHook(() => useCreateNote(createNote, { userId: 'user-a' }));
+    act(() => { result.current.setNewContentText('正文'); result.current.setNewTitle('第一标题'); });
+    let save!: Promise<boolean>;
+    act(() => { save = result.current.handleSubmit(); });
+    act(() => result.current.setNewTitle('后来标题'));
+    await act(async () => { finish(createdNote); await save; });
+    expect(result.current.newTitle).toBe('后来标题');
+    expect(localStorage.getItem('quick-capture-draft:user-a')).toContain('后来标题');
+  });
+
+  it('reports storage failure for a title-only draft without promising recovery', () => {
+    const createNote = vi.fn().mockResolvedValue(createdNote);
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+    const { result } = renderHook(() => useCreateNote(createNote, { userId: 'user-a' }));
+    act(() => result.current.setNewTitle('只写标题'));
+    expect(result.current.newTitle).toBe('只写标题');
+    expect(result.current.localDraftState).toBe('unavailable');
+    expect(result.current.saveError).toContain('无法恢复');
+    write.mockRestore();
+  });
+
+  it('keeps the local draft visible when cloud save succeeds but local cleanup fails', async () => {
+    const createNote = vi.fn().mockResolvedValue(createdNote);
+    const { result } = renderHook(() => useCreateNote(createNote, { userId: 'user-a' }));
+    act(() => { result.current.setNewTitle('标题'); result.current.setNewContentText('正文'); });
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('storage blocked'); });
+    let saved!: boolean;
+    await act(async () => { saved = await result.current.handleSubmit(); });
+    expect(saved).toBe(false);
+    expect(result.current.newTitle).toBe('标题');
+    expect(result.current.newContentText).toBe('正文');
+    expect(result.current.localDraftState).toBe('unavailable');
+    expect(result.current.saveError).toContain('未能清除');
+    remove.mockRestore();
   });
 });

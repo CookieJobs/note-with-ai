@@ -181,6 +181,11 @@ export const globalErrorHandler = (
   res: Response,
   next: NextFunction
 ): void => {
+  if (res.writableEnded || res.destroyed) return;
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
   let appError: AppError;
 
   // 如果不是AppError，转换为AppError
@@ -228,6 +233,15 @@ export const globalErrorHandler = (
   const code = appError.details?.code;
   if (typeof code === 'string') response.code = code;
   if (appError.details?.current !== undefined) response.current = appError.details.current;
+  if (appError.details?.code === 'NOTE_TITLE_RATE_LIMITED' && typeof appError.details.retryAfterSeconds === 'number') {
+    response.details = { retryAfterSeconds: appError.details.retryAfterSeconds };
+  }
+  if (appError.details?.code === 'INSPIRATION_NOTE_CONTEXT_UNAVAILABLE'
+    && (appError.details.reason === 'no_notes'
+      || appError.details.reason === 'summary_pending'
+      || appError.details.reason === 'context_unavailable')) {
+    response.details = { reason: appError.details.reason };
+  }
 
   // 在开发环境中包含更多错误信息
   if (process.env.NODE_ENV === 'development') {

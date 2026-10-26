@@ -15,14 +15,10 @@ export class UserAnalysisService {
   }
 
   private hasRenderableProfile(profile: Record<string, unknown>): boolean {
-    const theme = typeof profile.theme === 'object' && profile.theme !== null && !Array.isArray(profile.theme)
-      ? profile.theme as Record<string, unknown>
-      : null;
     return Boolean(
       (Array.isArray(profile.interests) && profile.interests.length > 0) ||
       (Array.isArray(profile.expertise) && profile.expertise.length > 0) ||
-      (typeof profile.summary === 'string' && profile.summary.trim().length > 0) ||
-      (typeof theme?.cssValue === 'string' && theme.cssValue.trim().length > 0)
+      (typeof profile.summary === 'string' && profile.summary.trim().length > 0)
     );
   }
 
@@ -91,11 +87,11 @@ export class UserAnalysisService {
         `[${n.createdAt.toISOString().split('T')[0]}] ${n.title || 'Untitled'}: ${n.content.substring(0, 500)}`
       ).join('\n---\n');
 
-      // 2. Call LLM to extract profile and generate background theme
+      // 2. Call LLM to extract the user profile
       const prompt = `
-        You are a user profiling expert and a top-tier UI/UX designer. Based on the following user notes, extract a structured user profile AND generate a personalized CSS background theme.
+        You are a user profiling expert. Based on the following user notes, extract a structured user profile.
         
-        CRITICAL INSTRUCTION: All output text (including topics, areas, descriptions, summary, themeName, and reasoning) MUST be in Chinese (简体中文).
+        CRITICAL INSTRUCTION: All output text (including topics, areas, descriptions, and summary) MUST be in Chinese (简体中文).
         
         Output strictly in JSON format with the following structure:
         {
@@ -107,21 +103,8 @@ export class UserAnalysisService {
             "contentFocus": string[],
             "feedbackMode": "Gentle" | "Direct"
           },
-          "summary": string (100-200 words biography),
-          "theme": {
-            "themeName": "颜色的诗意命名（如：迷雾森林、冰川晨曦）",
-            "cssType": "linear-gradient",
-            "cssValue": "标准的 CSS background 属性值（必须使用 HEX 或 RGBA 格式，如 linear-gradient(135deg, #E3FDF5 0%, #FFE6FA 100%)）",
-            "reasoning": "简短解释为什么选择这个颜色，它是如何体现用户特质的（50字以内）"
-          }
+          "summary": string (100-200 words biography)
         }
-        
-        THEME GENERATION CONSTRAINTS (Strictly Follow):
-        1. Visual Comfort: DO NOT use high-saturation, high-brightness glaring colors (e.g., pure red #FF0000, neon green).
-        2. Color Space: MUST use Morandi colors, Macaron colors, or low-saturation pastel colors. Lightness (L in HSL) should be between 85% and 95% to ensure a clean background.
-        3. Contrast with White Card: The background CANNOT be pure white (#FFFFFF). It must have enough contrast to distinguish boundaries with a pure white content card floating in the center, but not so dark that it feels oppressive.
-        4. Format: Prefer 2-3 colors soft linear-gradient, angle around 120deg to 145deg.
-        5. Emotional Mapping: Analyze the user's traits and map them to colors (e.g., tech -> very pale ice blue, literary -> oatmeal or light tea, lively -> pale peach and cream yellow).
   
         Notes:
         ${notesText}
@@ -131,7 +114,7 @@ export class UserAnalysisService {
         { role: 'system', content: 'You are a helpful assistant that outputs JSON. You MUST use Chinese (简体中文) for all text content.' },
         { role: 'user', content: prompt }
       ], {
-        temperature: 0.3, // Slightly higher for more creative theme generation
+        temperature: 0.3,
         response_format: { type: 'json_object' }
       });
 
@@ -149,7 +132,7 @@ export class UserAnalysisService {
       // The model returns untrusted JSON. Commit only user-facing profile fields so it
       // cannot alter coordinator state or the durable historical invalidation marker.
       const profileData: Record<string, any> = {};
-      for (const field of ['interests', 'expertise', 'goals', 'preferences', 'summary', 'theme']) {
+      for (const field of ['interests', 'expertise', 'goals', 'preferences', 'summary']) {
         if (Object.prototype.hasOwnProperty.call(modelProfile, field)) profileData[field] = modelProfile[field];
       }
       

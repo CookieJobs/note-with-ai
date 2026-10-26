@@ -5,6 +5,28 @@ import { ErrorHandler } from '../utils/errorHandler';
 import { chatWithDeepSeekStream, summarizeChatTitle, chatWithDeepSeek } from './llmService';
 import { AiUsageService } from './aiUsageService';
 import mongoose from 'mongoose';
+import { sourceMetadata } from './noteSourceMetadata';
+import { buildChatModelMessages, loadChatNoteSource } from './chatNoteContextService';
+import type { ChatSourceSnapshot } from '../types/chatSource';
+
+type SaveSessionOptions = {
+  sourceNoteId?: string;
+  trustedSourceSnapshots?: boolean;
+};
+
+type PreparedChatTurn = {
+  messages: IMessage[];
+  sourceNoteId?: string;
+  sourceSnapshot?: ChatSourceSnapshot;
+};
+
+function cleanMessages(messages: IMessage[], trusted = false): IMessage[] {
+  return messages
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .map(m => ({ role: m.role, content: m.content.trim(),
+      ...(trusted && m.role === 'assistant' && m.sourceSnapshot ? { sourceSnapshot: m.sourceSnapshot } : {}),
+    }));
+}
 
 type RelatedNoteRecord = Omit<IRelatedNote, 'noteId'> & {
   noteId: string | { _id?: string | null } | null;
@@ -36,6 +58,7 @@ function normalizeRelatedNotes(relatedNotes?: unknown): IRelatedNote[] | undefin
 
       const rawCreatedAt = noteRecord.createdAt;
       const createdAt = rawCreatedAt ? new Date(String(rawCreatedAt)) : undefined;
+      const isLegacyCareDate = noteRecord.matchType === 'care_source' && noteRecord.createdAtSource !== 'note';
       const score = typeof noteRecord.score === 'number'
         ? noteRecord.score
         : (typeof noteRecord.similarity === 'number' ? noteRecord.similarity : undefined);
@@ -44,10 +67,15 @@ function normalizeRelatedNotes(relatedNotes?: unknown): IRelatedNote[] | undefin
         noteId: new mongoose.Types.ObjectId(noteId),
         title: typeof noteRecord.title === 'string' ? noteRecord.title : undefined,
         content: typeof noteRecord.content === 'string' ? noteRecord.content : undefined,
+        excerpt: typeof noteRecord.excerpt === 'string' ? noteRecord.excerpt : undefined,
+        sourceType: ['text', 'image', 'mixed'].includes(String(noteRecord.sourceType)) ? noteRecord.sourceType : undefined,
+        imageCount: typeof noteRecord.imageCount === 'number' ? noteRecord.imageCount : undefined,
+        firstImageSrc: typeof noteRecord.firstImageSrc === 'string' ? noteRecord.firstImageSrc : undefined,
+        createdAtSource: noteRecord.createdAtSource === 'note' ? 'note' : undefined,
         score,
         matchType: typeof noteRecord.matchType === 'string' ? noteRecord.matchType : undefined,
         reason: typeof noteRecord.reason === 'string' ? noteRecord.reason : undefined,
-        createdAt: createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : undefined,
+        createdAt: !isLegacyCareDate && createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : undefined,
       } as IRelatedNote;
     })
     .filter((note): note is IRelatedNote => note !== null);
@@ -63,6 +91,7 @@ function normalizeSessionRecord(session: ChatSessionSource): ChatSessionRecord {
         .filter((rn) => rn.noteId !== null)
         .map((rn) => ({
           ...rn,
+          createdAt: rn.matchType === 'care_source' && rn.createdAtSource !== 'note' ? undefined : rn.createdAt,
           noteId: typeof rn.noteId === 'object' && rn.noteId !== null && '_id' in rn.noteId
             ? String(rn.noteId._id)
             : String(rn.noteId),
@@ -71,11 +100,43 @@ function normalizeSessionRecord(session: ChatSessionSource): ChatSessionRecord {
 
   return {
     ...(sessionRecord as Record<string, unknown>),
+    ...(sessionRecord.sourceNoteId ? { sourceNoteId: String(sessionRecord.sourceNoteId) } : {}),
     relatedNotes,
   } as ChatSessionRecord;
 }
 
 class ChatService {
+  private async getOwnedSession(userId: string, sessionId: string): Promise<IChat> {
+    if (!mongoose.Types.ObjectId.isValid(sessionId)) throw ErrorHandler.createValidationError('会话 ID 无效');
+    const session = await Chat.findOne({ _id: sessionId, userId }).lean();
+    if (!session) throw ErrorHandler.createNotFoundError('会话不存在或无权限');
+    return session as unknown as IChat;
+  }
+
+  /** Resolve the persisted binding before any model call. Client history cannot rewrite sourced answers. */
+  async prepareTurn(userId: string, messages: IMessage[], sessionId?: string, sourceNoteId?: string): Promise<PreparedChatTurn> {
+    const session = sessionId ? await this.getOwnedSession(userId, sessionId) : undefined;
+    const storedSourceId = session?.sourceNoteId ? String(session.sourceNoteId) : undefined;
+    if (session && sourceNoteId && sourceNoteId !== storedSourceId) {
+      throw ErrorHandler.createValidationError('会话绑定的笔记不能更换，请从这条笔记开启新对话');
+    }
+    const boundNoteId = storedSourceId || (!session ? sourceNoteId : undefined);
+    if (!boundNoteId) return { messages: cleanMessages(messages) };
+
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.role !== 'user' || !lastMessage.content?.trim()) {
+      throw ErrorHandler.createValidationError('请发送一个问题以继续笔记对话');
+    }
+    const sourceSnapshot = await loadChatNoteSource(userId, boundNoteId);
+    return {
+      sourceNoteId: boundNoteId,
+      sourceSnapshot,
+      messages: session
+        ? [...cleanMessages(session.messages, true), { role: 'user', content: lastMessage.content.trim() }]
+        : cleanMessages(messages),
+    };
+  }
+
   /**
    * Save or update a chat session
    */
@@ -84,18 +145,34 @@ class ChatService {
     sessionId: string | undefined,
     messages: IMessage[],
     title?: string,
-    relatedNotes?: unknown
+    relatedNotes?: unknown,
+    options: SaveSessionOptions = {},
   ): Promise<IChat> {
-    // Sanitize messages
-    const cleanedMessages = messages
-      .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
-      .map(m => ({ role: m.role, content: m.content.trim() }));
+    const cleanedMessages = cleanMessages(messages, options.trustedSourceSnapshots);
+    if (!options.trustedSourceSnapshots) {
+      const existing = sessionId ? await this.getOwnedSession(userId, sessionId) : undefined;
+      if (existing) {
+        const boundId = existing.sourceNoteId ? String(existing.sourceNoteId) : undefined;
+        if (options.sourceNoteId && options.sourceNoteId !== boundId) {
+          throw ErrorHandler.createValidationError('会话绑定的笔记不能更换');
+        }
+        if (boundId) {
+          if (JSON.stringify(cleanMessages(existing.messages)) !== JSON.stringify(cleanedMessages)) {
+            throw ErrorHandler.createValidationError('笔记对话请通过聊天继续，不能直接修改已有回答');
+          }
+          return existing;
+        }
+      } else if (options.sourceNoteId) {
+        await loadChatNoteSource(userId, options.sourceNoteId);
+      }
+    }
 
     let chat;
     const cleanedRelatedNotes = normalizeRelatedNotes(relatedNotes);
     const updateData: Partial<IChat> = { messages: cleanedMessages, updatedAt: new Date() };
     if (title) updateData.title = title;
     if (cleanedRelatedNotes) updateData.relatedNotes = cleanedRelatedNotes;
+    if (options.sourceNoteId) updateData.sourceNoteId = options.sourceNoteId;
 
     if (sessionId && mongoose.Types.ObjectId.isValid(sessionId)) {
       // Update existing session
@@ -123,6 +200,7 @@ class ChatService {
         userId,
         messages: cleanedMessages,
         title: title || '新对话',
+        sourceNoteId: options.sourceNoteId,
         relatedNotes: cleanedRelatedNotes || []
       });
       await chat.save();
@@ -159,7 +237,7 @@ class ChatService {
   /**
    * Stream chat response from DeepSeek
    */
-  async streamChat(messages: IMessage[], userId?: string): Promise<AsyncIterable<string>> {
+  async streamChat(messages: IMessage[], userId?: string, sourceSnapshot?: ChatSourceSnapshot): Promise<AsyncIterable<string>> {
     // Sanitize messages
     const cleanedMessages = messages
       .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim().length > 0)
@@ -169,7 +247,7 @@ class ChatService {
        throw ErrorHandler.createValidationError('有效消息为空');
     }
 
-    return chatWithDeepSeekStream(cleanedMessages, AiUsageService.newContext('chat', userId));
+    return chatWithDeepSeekStream(buildChatModelMessages(cleanedMessages, sourceSnapshot), AiUsageService.newContext('chat', userId));
   }
 
   /**
@@ -204,6 +282,17 @@ class ChatService {
 
     const randomNote = notes[Math.floor(Math.random() * notes.length)];
     const content = randomNote.content || '';
+    const source = sourceMetadata(randomNote);
+    const reference = {
+      noteId: randomNote._id.toString(),
+      noteTitle: typeof randomNote.title === 'string' ? randomNote.title : '',
+      excerpt: source.excerpt,
+      sourceType: source.sourceType,
+      imageCount: source.imageCount,
+      firstImageSrc: source.firstImageSrc,
+      createdAt: source.createdAt,
+      createdAtSource: 'note' as const,
+    };
     
     // Split content logic
     const splitContentIntoNodes = (content: string): string[] => {
@@ -227,15 +316,13 @@ class ChatService {
           { role: 'user', content: prompt }
         ], AiUsageService.newContext('care_intro', userId));
         return {
-          noteId: randomNote._id.toString(),
-          noteTitle: randomNote.title,
+          ...reference,
           snippet: fallbackSnippet,
           aiOpening
         };
       } catch (_e) {
         return {
-          noteId: randomNote._id.toString(),
-          noteTitle: randomNote.title,
+          ...reference,
           snippet: fallbackSnippet,
           aiOpening: '最近还好吗？我注意到你曾记录了一些重要事项，想关心一下你的近况。'
         };
@@ -252,8 +339,7 @@ class ChatService {
         { role: 'user', content: userMsg }
       ], AiUsageService.newContext('care_intro', userId));
       return {
-        noteId: randomNote._id.toString(),
-        noteTitle: randomNote.title,
+        ...reference,
         snippet,
         aiOpening
       };
@@ -263,8 +349,7 @@ class ChatService {
         aiOpening = '您的膝盖恢复情况如何？有没有感觉好一些？';
       }
       return {
-        noteId: randomNote._id.toString(),
-        noteTitle: randomNote.title,
+        ...reference,
         snippet,
         aiOpening
       };

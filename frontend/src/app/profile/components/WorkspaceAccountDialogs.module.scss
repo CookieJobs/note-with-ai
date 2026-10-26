@@ -1,0 +1,23 @@
+.dialog {
+  width: min(520px, calc(100vw - 48px));
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--ws-line, #e7e7e7);
+  border-radius: 16px;
+  background: var(--ws-bg, #fff);
+  color: var(--ws-ink, #0d0d0d);
+  box-shadow: 0 20px 56px rgb(0 0 0 / 18%);
+  &::backdrop { background: var(--ws-scrim, rgb(0 0 0 / 32%)); }
+  :focus-visible { outline: 2px solid var(--ws-focus, #266fe1); outline-offset: 3px; }
+}
+.header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 24px 16px; border-bottom: 1px solid var(--ws-line, #e7e7e7); h2 { font-size: 19px; font-weight: 600; margin: 0; } }
+button.close { display: grid; place-items: center; min-width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--ws-muted, #6f6f6f); font-size: 24px; &:hover:not(:disabled) { background: var(--ws-hover, #f7f7f7); } }
+.fields { display: flex; flex-direction: column; gap: 10px; min-width: 0; border: 0; padding: 22px 24px; margin: 0; label { font-size: 13px; color: var(--ws-secondary, #525252); } > input { width: 100%; min-height: 40px; padding: 9px 12px; border: 1px solid var(--ws-line, #ddd); border-radius: 8px; color: var(--ws-ink, #0d0d0d); background: var(--ws-bg, #fff); font-size: 14px; &:disabled { background: var(--ws-subtle, #f7f7f7); color: var(--ws-muted, #6f6f6f); } } }
+.hint { font-size: 12px; color: var(--ws-muted, #6f6f6f); margin: -2px 0 0; }
+.footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px; border-top: 1px solid var(--ws-line, #e7e7e7); }
+button.secondary, button.primary { min-height: 36px; padding: 8px 15px; border: 1px solid var(--ws-line, #ddd); border-radius: 8px; background: var(--ws-bg, #fff); color: var(--ws-ink, #0d0d0d); font-size: 13px; cursor: pointer; &:disabled { opacity: .55; cursor: wait; } &:hover:not(:disabled) { background: var(--ws-hover, #f7f7f7); } }
+button.primary { color: #fff; background: var(--ws-accent, #266fe1); border-color: var(--ws-accent, #266fe1); &:hover:not(:disabled) { background: var(--ws-accent-hover, #1d5bc0); } }
+.confirm { padding: 24px 24px 0; h3 { margin: 0 0 10px; font-size: 17px; } p { font-size: 14px; color: var(--ws-secondary, #525252); line-height: 1.8; } .footer { margin: 20px -24px 0; } }
+.error { color: var(--ws-danger, #b3261e); font-size: 13px; margin: 4px 0; }

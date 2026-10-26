@@ -17,7 +17,6 @@ const staleNote: Note = {
   contentJson: null,
   summary: '旧摘要',
   concepts: ['旧概念'],
-  keywords: ['旧关键词'],
   recommendCache: {
     sourceRevision: 4,
     byCandidateId: {},
@@ -33,7 +32,6 @@ const canonicalNote = {
   title: '服务端标题',
   summary: '服务端摘要',
   concepts: ['服务端概念'],
-  keywords: ['服务端关键词'],
   recommendCache: null,
   revision: 5,
   updatedAt: '2026-08-19T00:01:00.000Z',
@@ -683,7 +681,7 @@ describe('useNotes recommendation refresh', () => {
     queryClient.setQueryData<Note[]>(['notes'], [staleNote]);
     const { result } = renderHook(() => useNotes(null), { wrapper });
 
-    let refreshPromise: Promise<void> | undefined;
+    let refreshPromise: Promise<unknown> | undefined;
     act(() => {
       refreshPromise = result.current.refreshRecommendCache('note-1');
     });
@@ -712,6 +710,30 @@ describe('useNotes recommendation refresh', () => {
 
     await expect(result.current.refreshRecommendCache('note-1')).rejects.toThrow('推荐响应无效');
     expect(queryClient.getQueryData<Note[]>(['notes'])?.[0]).toEqual(staleNote);
+  });
+
+  it('refreshes a focused note outside the feed without changing feed membership or order', async () => {
+    const focusedSource: Note = { ...staleNote, _id: 'outside', recommendCache: null };
+    authFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { meta: {}, recommendations: [{ note: { _id: 'related', updatedAt: staleNote.updatedAt }, s1: 0.8, s2: 0.9, type: '强关联', reason: '同题' }] } }),
+    });
+    const { queryClient, wrapper } = makeHarness();
+    queryClient.setQueryData<Note[]>(['notes'], [staleNote]);
+    const { result } = renderHook(() => useNotes(null), { wrapper });
+
+    let cache!: Awaited<ReturnType<typeof result.current.refreshRecommendCache>>;
+    await act(async () => {
+      cache = await result.current.refreshRecommendCache('outside', focusedSource);
+    });
+
+    expect(authFetch).toHaveBeenCalledWith('/api/recommend/semantic-notes', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ noteId: 'outside', writeMode: 'await' }),
+    }));
+    expect(cache.sourceRevision).toBe(4);
+    expect(cache.byCandidateId?.related?.reason).toBe('同题');
+    expect(queryClient.getQueryData<Note[]>(['notes'])).toEqual([staleNote]);
   });
 });
 
@@ -793,7 +815,7 @@ describe('useNotes list and write races', () => {
       ? list.promise
       : recommendation.promise);
     let refetch!: Promise<unknown>;
-    let refresh!: Promise<void>;
+    let refresh!: Promise<unknown>;
     act(() => {
       refetch = result.current.refetchNotes();
       refresh = result.current.refreshRecommendCache('note-1');

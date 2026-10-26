@@ -6,16 +6,7 @@ export interface LegacyProfileDto {
   expertise?: { area: string; level: string }[];
   goals?: { description: string; timeframe: string; status: string }[];
   preferences?: Record<string, unknown>;
-  theme?: {
-    themeName: string;
-    cssType: string;
-    cssValue: string;
-    reasoning: string;
-  };
 }
-
-// Keep a descriptive alias for existing profile theme helpers during the migration.
-export type UserProfile = LegacyProfileDto;
 
 export interface ProfileAnalysisResponse {
   userProfile: LegacyProfileDto | null;

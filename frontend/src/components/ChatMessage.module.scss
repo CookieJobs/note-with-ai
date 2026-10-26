@@ -1,7 +1,7 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 前端 样式
+Input: 聊天开场、Markdown 表格与实际来源快照
+Output: AI 开场身份、消息排版、表格滚动及来源原文展开样式
+Pos: 前端聊天消息组件样式
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 .messageWrapper {
@@ -9,7 +9,6 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   display: flex;
   flex-direction: column;
   gap: 12px;
-  animation: messageSlideIn 0.4s ease-out;
 }
 
 /* 用户消息卡片容器 */
@@ -20,36 +19,38 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 }
 
 /* 用户消息样式 - 卡片形式，右对齐 */
-.userMessage {
-  background: linear-gradient(135deg, #e0f2fe, #bbdefb);
-  color: #1565c0;
-  padding: 12px 16px;
-  border-radius: 18px 18px 18px 18px;
-  max-width: 70%;
-  font-size: 15px;
-  line-height: 1.6;
-  word-wrap: break-word;
-  border: 1px solid rgba(33, 150, 243, 0.2);
-  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.1);
-  font-weight: 500;
-  position: relative;
-  
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent);
-    border-radius: inherit;
-    pointer-events: none;
-  }
+.userMessage { background: var(--workspace-surface); color: var(--workspace-ink); padding: 12px 16px; border-radius: 14px; max-width: 80%; font-size: 15px; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
+
+.openingMessage {
+  margin-top: 20px;
+}
+
+.openingIdentity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+  color: var(--workspace-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.aiMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--workspace-ink);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 /* AI消息样式 - 直接渲染，左对齐，无卡片 */
 .assistantMessage {
-  color: #2d3748;
+  color: var(--workspace-ink);
   font-size: 15px;
   line-height: 1.7;
   word-wrap: break-word;
@@ -57,6 +58,32 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   margin-left: 0;
   margin-right: 0;
   margin-bottom: 8px;
+
+  .markdownTableWrapper {
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 12px 0;
+    border: 1px solid #e7e9ec;
+    border-radius: 8px;
+  }
+
+  table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  th, td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #e7e9ec;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  th { background: #f6f7f8; font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
   
   /* 支持Markdown格式 */
   p {
@@ -265,70 +292,59 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
   }
 }
 
+.sourceBasis {
+  border-top: 1px solid var(--workspace-line);
+  padding-top: 12px;
+  color: var(--workspace-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sourceBasisHeader { margin-bottom: 4px; font-size: 12px; font-weight: 500; }
+.sourceNoteLink {
+  color: var(--workspace-ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+
+  &:hover { color: var(--workspace-accent); text-decoration-color: currentColor; }
+  &:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 4px; border-radius: 2px; }
+}
+
+.sourceMetadata { display: flex; flex-wrap: wrap; column-gap: 12px; margin-top: 3px; font-size: 12px; }
+.sourceLimitation { margin: 4px 0 0; font-size: 12px; }
+.sourceDetails {
+  margin-top: 8px;
+
+  summary {
+    width: fit-content;
+    cursor: pointer;
+    font-size: 12px;
+
+    &:hover { color: var(--workspace-ink); }
+    &:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 4px; border-radius: 2px; }
+  }
+}
+
+.sourceText {
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--workspace-line);
+  color: var(--workspace-ink);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* 相关笔记样式 */
-.relatedNotesContainer {
-  margin-top: 16px;
-  background: rgba(248, 250, 252, 0.8);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(226, 232, 240, 0.5);
-  border-radius: 16px;
-  padding: 16px;
-  max-width: 75%;
-  animation: slideInUp 0.3s ease-out;
-}
-
-.relatedNotesHeader {
-  font-size: 14px;
-  font-weight: 600;
-  color: #475569;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-  &::before {
-    content: '';
-    width: 3px;
-    height: 16px;
-    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-    border-radius: 2px;
-  }
-}
-
-.relatedNotesList {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.relatedNoteItem {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(226, 232, 240, 0.3);
-  border-radius: 12px;
-  padding: 14px;
-  transition: all 0.2s ease;
-  cursor: pointer;
-  /* 使整卡区域为块级并移除默认链接样式 */
-  display: block;
-  text-decoration: none;
-  color: inherit;
-  
-  &:hover {
-    background: rgba(255, 255, 255, 0.9);
-    border-color: rgba(59, 130, 246, 0.3);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    text-decoration: none; /* 悬停时也不显示下划线 */
-  }
-  
-  &:visited,
-  &:active,
-  &:focus,
-  &:focus-visible {
-    text-decoration: none;
-    outline: none;
-    color: inherit;
-  }
+.relatedNotesContainer { margin-top: 16px; max-width: 100%; }
+.relatedNotesHeader { font-size: 12px; font-weight: 500; color: var(--workspace-muted); margin-bottom: 10px; }
+.relatedNotesList { display: flex; flex-direction: column; }
+.relatedNoteItem { display: block; padding: 16px 0; border-top: 1px solid var(--workspace-line); text-decoration: none; color: inherit; cursor: pointer;
+  &:hover .noteTitle { color: var(--workspace-accent); }
+  &:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 4px; border-radius: 4px; }
 }
 
 .noteHeader {
@@ -449,3 +465,8 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
     opacity: 0;
   }
 }
+
+@media (prefers-reduced-motion: reduce) { .loadingDots span, .blinkingCursor, .searchingNotesContainer { animation: none; } }
+
+.assistantIdentity { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--workspace-muted); font-size: 12px; font-weight: 500; }
+.assistantIdentity span { color: var(--workspace-accent); font-size: 16px; }

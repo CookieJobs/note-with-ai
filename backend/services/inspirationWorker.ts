@@ -11,7 +11,8 @@ export type WorkerRun = {
   leaseUntil?: Date;
 };
 export type WorkerSlot = { slot: number; token: string };
-export type WorkerOutcome = { status: 'created' | 'no_result' | 'cancelled' };
+export type WorkerOutcome = { status: 'created' | 'no_result' | 'cancelled'; reason?: 'note_context_unavailable'; contextReason?: import('./inspirationTypes').NoteContextReason };
+export type WorkerFinishMetadata = Pick<WorkerOutcome, 'reason' | 'contextReason'>;
 
 export interface InspirationWorkerStore {
   scanDue(now: Date): Promise<string[]>;
@@ -23,7 +24,7 @@ export interface InspirationWorkerStore {
   refundBudget(now: Date): Promise<void>;
   defer(userId: string, next: Date): Promise<void>;
   markProviderStarted(run: WorkerRun): Promise<boolean>;
-  finish(run: WorkerRun, status: 'completed' | 'no_result' | 'failed' | 'cancelled'): Promise<void>;
+  finish(run: WorkerRun, status: 'completed' | 'no_result' | 'failed' | 'cancelled', metadata?: WorkerFinishMetadata): Promise<void>;
 }
 
 type WorkerOptions = {
@@ -78,7 +79,7 @@ export class InspirationWorker {
       const result = await this.options.runResearch(run.userId,
         async () => this.options.store.markProviderStarted(run));
       const status = result.status === 'created' ? 'completed' : result.status;
-      await this.options.store.finish(run, status);
+      await this.options.store.finish(run, status, result.status === 'no_result' ? result : undefined);
     } catch {
       await this.options.store.finish(run, 'failed');
     }

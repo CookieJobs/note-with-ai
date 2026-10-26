@@ -8,6 +8,7 @@ import { tavilySearchProvider } from './tavilySearchProvider';
 import { planResearch, sanitizeMetadata, synthesizeResearch } from './inspirationLlm';
 import {
   inspirationError,
+  type NoteContextReason,
   type InspirationDto,
   type LimitedNoteContext,
   type ResearchPlan,
@@ -18,8 +19,8 @@ type NoteRecord = {
   _id: { toString(): string } | string;
   revision?: number;
   title?: unknown;
-  keywords?: unknown;
   summary?: unknown;
+  enrichment?: { meta?: { status?: string; sourceRevision?: number } } | null;
 };
 
 type InspirationServiceDependencies = {
@@ -29,7 +30,8 @@ type InspirationServiceDependencies = {
 };
 
 type ManualResult = { status: 'created'; item: InspirationDto } | { status: 'no_result' };
-type ScheduledResult = ManualResult | { status: 'cancelled' };
+type ContextUnavailableResult = { status: 'no_result'; reason: 'note_context_unavailable'; contextReason: NoteContextReason };
+type ScheduledResult = ManualResult | ContextUnavailableResult | { status: 'cancelled' };
 
 const defaultDependencies: InspirationServiceDependencies = {
   planner: planResearch,
@@ -46,17 +48,23 @@ function idString(value: unknown): string {
 
 function buildLimitedNotes(records: NoteRecord[]): LimitedNoteContext[] {
   return records.map((note) => {
-    const keywords = Array.isArray(note.keywords)
-      ? note.keywords.slice(0, 3).map((keyword) => sanitizeMetadata(keyword, 40)).filter(Boolean)
-      : [];
+    const revision = typeof note.revision === 'number' && Number.isInteger(note.revision) && note.revision > 0 ? note.revision : 1;
+    const meta = note.enrichment?.meta;
+    const summaryIsStale = typeof meta?.sourceRevision === 'number' && meta.sourceRevision !== revision;
     return {
       noteId: idString(note._id),
-      revision: typeof note.revision === 'number' && Number.isInteger(note.revision) && note.revision > 0 ? note.revision : 1,
+      revision,
       title: sanitizeMetadata(note.title, 80),
-      keywords,
-      summary: sanitizeMetadata(note.summary, 120),
+      summary: summaryIsStale ? '' : sanitizeMetadata(note.summary, 120),
     };
-  }).filter((note) => note.title || note.keywords.length || note.summary);
+  }).filter((note) => note.title || note.summary);
+}
+
+function unavailableReason(records: NoteRecord[]): NoteContextReason {
+  if (!records.length) return 'no_notes';
+  return records.some((note) => (note.enrichment?.meta?.status === 'pending' || note.enrichment?.meta?.status === 'missing')
+    && (note.enrichment.meta.sourceRevision === undefined || note.enrichment.meta.sourceRevision === note.revision))
+    ? 'summary_pending' : 'context_unavailable';
 }
 
 function errorCode(error: unknown): number | undefined {
@@ -98,6 +106,9 @@ class InspirationService {
     try {
       await inspirationScheduleService.recordManualStart(userId);
       const result = await this.performResearch(userId, 'manual');
+      if (result.status === 'no_result' && 'reason' in result) {
+        throw inspirationError('INSPIRATION_NOTE_CONTEXT_UNAVAILABLE', 409, result.contextReason);
+      }
       return result.status === 'cancelled' ? { status: 'no_result' } : result;
     } finally {
       await inspirationResearchGate.release(userId, token);
@@ -116,10 +127,10 @@ class InspirationService {
     const records = await Note.find({ userId })
       .sort({ updatedAt: -1 })
       .limit(5)
-      .select('_id revision title keywords summary updatedAt')
+      .select('_id revision title summary enrichment.meta updatedAt')
       .lean() as NoteRecord[];
     const notes = buildLimitedNotes(records);
-    if (!notes.length) return { status: 'no_result' };
+    if (!notes.length) return { status: 'no_result', reason: 'note_context_unavailable', contextReason: unavailableReason(records) };
 
     if (canContinue && !await canContinue()) return { status: 'cancelled' };
     const plan: ResearchPlan = await this.dependencies.planner(notes, userId);

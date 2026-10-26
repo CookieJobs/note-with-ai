@@ -2,6 +2,9 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ProfilePage from './page';
+import Providers from '../providers';
+import WorkspaceRoot from '../../components/workspace/WorkspaceRoot';
+import { WorkspaceContext, type WorkspaceContextValue } from '../../components/workspace/WorkspaceContext';
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
@@ -11,8 +14,6 @@ const mocks = vi.hoisted(() => ({
   getProfileAnalysis: vi.fn(),
   triggerProfileAnalysis: vi.fn(),
   getStats: vi.fn(),
-  getProfileTopics: vi.fn(),
-  retryFailedProfileTopics: vi.fn(),
   updateProfile: vi.fn(),
   changePassword: vi.fn(),
   toastInfo: vi.fn(),
@@ -20,19 +21,17 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
-vi.mock('next/navigation', () => ({ useRouter: () => mocks.router }));
-vi.mock('../../utils/auth', () => ({ isAuthenticated: mocks.isAuthenticated, getUser: mocks.getUser }));
+vi.mock('next/navigation', () => ({ useRouter: () => mocks.router, usePathname: () => '/profile' }));
+vi.mock('../../utils/auth', () => ({ isAuthenticated: mocks.isAuthenticated, getUser: mocks.getUser, getToken: () => 'profile-test-token', logout: vi.fn(), authFetch: async () => ({ ok: true, json: async () => ({ success: true, data: { notes: [] } }) }) }));
 vi.mock('../../services/profileService', () => ({
   getProfileAnalysis: mocks.getProfileAnalysis,
   triggerProfileAnalysis: mocks.triggerProfileAnalysis,
   getStats: mocks.getStats,
 }));
-vi.mock('../../services/profileTopicsService', () => ({
-  getProfileTopics: mocks.getProfileTopics,
-  retryFailedProfileTopics: mocks.retryFailedProfileTopics,
-}));
 vi.mock('../../services/userService', () => ({ updateProfile: mocks.updateProfile, changePassword: mocks.changePassword }));
 vi.mock('../../components/TopNavigation', () => ({ default: () => <div data-testid="top-navigation" /> }));
+vi.mock('../../services/inspirationService', () => ({ getUnviewedInspirationCount: async () => 0 }));
+vi.mock('../../hooks/useInspirationSettings', () => ({ useInspirationSettings: () => ({ settings: null, loading: false, saving: false, error: null, refetch: vi.fn(), setEnabled: vi.fn() }) }));
 vi.mock('sonner', () => ({ toast: { info: mocks.toastInfo, success: mocks.toastSuccess, error: mocks.toastError } }));
 
 const profile = {
@@ -64,18 +63,37 @@ function stats(overrides: Record<string, unknown> = {}) {
 describe('ProfilePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })) });
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
     mocks.router.push = mocks.push;
     mocks.isAuthenticated.mockReturnValue(true);
     mocks.getUser.mockReturnValue({ id: 'user-1', username: '测试用户', email: 'test@example.com', createdAt: '2026-01-01T00:00:00.000Z' });
     mocks.getProfileAnalysis.mockResolvedValue(analysis());
     mocks.getStats.mockResolvedValue(stats());
-    mocks.getProfileTopics.mockResolvedValue({ scope: 'all', timezone: 'Asia/Shanghai', rangeStart: null, rangeEnd: null, totalNotesInRange: 0, readyNotesInRange: 0, pendingNotesInRange: 0, failedNotesInRange: 0, lastErrorAt: null, topics: [], staleSnapshot: null, indexStatus: 'empty', updatedAt: null });
     mocks.triggerProfileAnalysis.mockResolvedValue({ accepted: true, profileStatus: 'analyzing', reason: 'accepted', analysisError: '' });
     mocks.updateProfile.mockResolvedValue({ username: '更新用户' });
     mocks.changePassword.mockResolvedValue(undefined);
   });
 
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  it('真实 Provider/WorkspaceRoot 下未登录个人页仍引导认证 (final F3)', async () => {
+    mocks.isAuthenticated.mockReturnValue(false);
+    mocks.getUser.mockReturnValue(null);
+    render(<Providers><WorkspaceRoot><ProfilePage /></WorkspaceRoot></Providers>);
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/auth'));
+    expect(mocks.getProfileAnalysis).not.toHaveBeenCalled();
+    expect(mocks.getStats).not.toHaveBeenCalled();
+  });
+
+  it('真实 Provider/WorkspaceRoot 初始化共享身份时不误跳，随后显示有效账户 (final F3)', async () => {
+    render(<Providers><WorkspaceRoot><ProfilePage /></WorkspaceRoot></Providers>);
+    expect(await screen.findByRole('heading', { name: '测试用户', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByText('使用统计')).toBeInTheDocument();
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.getStats).toHaveBeenCalledTimes(1);
+  });
 
   it('不请求或渲染每日推荐', async () => {
     render(<ProfilePage />);
@@ -86,11 +104,25 @@ describe('ProfilePage', () => {
     expect(mocks.getStats).toHaveBeenCalledTimes(1);
   });
 
-  it('个人中心独立加载话题面板，不影响统计和画像', async () => {
+  it('个人中心不再渲染话题面板，统计和画像继续加载', async () => {
     render(<ProfilePage />);
-    expect(await screen.findByRole('heading', { name: '笔记话题' })).toBeInTheDocument();
-    expect(mocks.getProfileTopics).toHaveBeenCalledWith('all', expect.anything());
-    expect(await screen.findByRole('link', { name: '创建第一篇笔记' })).toHaveAttribute('href', '/notes');
+    await screen.findByText('使用统计');
+    expect(screen.queryByRole('heading', { name: '笔记话题' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { userProfile: profile, profileStatus: 'ready' },
+    { userProfile: { ...profile, theme: undefined }, profileStatus: 'ready' },
+    { historicalProfile: profile, noteCount: 4, profileStatus: 'insufficient_data' },
+  ])('忽略画像中的旧配色数据并继续展示画像内容：%j', async (result) => {
+    mocks.getProfileAnalysis.mockResolvedValue(analysis(result));
+    const { container } = render(<ProfilePage />);
+
+    expect(await screen.findByText('持续记录与复盘')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '技能领域' })).toBeInTheDocument();
+    expect(container.firstElementChild).not.toHaveAttribute('style');
+    expect(screen.queryByText(/专属氛围色/)).not.toBeInTheDocument();
+    expect(screen.queryByText('柔和配色')).not.toBeInTheDocument();
   });
 
   it('分别加载统计和个人资料', async () => {
@@ -343,7 +375,7 @@ describe('ProfilePage', () => {
     expect(container.querySelector('section[aria-labelledby="account-title"] img')).toHaveAttribute('src', unknownLegacyValue);
   });
 
-  it('取消或关闭时丢弃头像草稿', async () => {
+  it('明确放弃后才丢弃头像草稿', async () => {
     const legacyUrl = 'https://legacy.example/avatar.png';
     mocks.getUser.mockReturnValue({ id: 'user-1', username: '测试用户', email: 'test@example.com', avatar: legacyUrl });
     render(<ProfilePage />);
@@ -351,11 +383,14 @@ describe('ProfilePage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '编辑资料' }));
     fireEvent.click(screen.getByRole('radio', { name: '预设头像 3' }));
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.getByText('放弃未保存的修改？')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '放弃修改' }));
     fireEvent.click(screen.getByRole('button', { name: '编辑资料' }));
     expect(screen.getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
     expect(screen.getByAltText('头像预览：现有头像')).toHaveAttribute('src', legacyUrl);
     fireEvent.click(screen.getByRole('radio', { name: '预设头像 4' }));
     fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+    fireEvent.click(screen.getByRole('button', { name: '放弃修改' }));
 
     fireEvent.click(screen.getByRole('button', { name: '编辑资料' }));
     expect(screen.getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
@@ -407,10 +442,55 @@ describe('ProfilePage', () => {
   it('修改密码弹窗仍可打开并提交有效凭据', async () => {
     render(<ProfilePage />);
     fireEvent.click(await screen.findByRole('button', { name: '修改密码' }));
+    vi.useFakeTimers();
+    fireEvent.change(screen.getByPlaceholderText('输入当前密码'), { target: { value: 'current123' } });
+    fireEvent.change(screen.getByPlaceholderText('至少8位，包含字母和数字'), { target: { value: 'newpass123' } });
+    fireEvent.change(screen.getByPlaceholderText('再次输入新密码'), { target: { value: 'newpass123' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '确认修改' })); });
+    expect(mocks.changePassword).toHaveBeenCalledWith({ oldPassword: 'current123', newPassword: 'newpass123' });
+    await act(async () => { vi.advanceTimersByTime(1500); });
+  });
+  it('密码保存期间禁关闭且连续提交只发送一次', async () => {
+    mocks.changePassword.mockReturnValue(new Promise(() => {}));
+    render(<ProfilePage />);
+    fireEvent.click(await screen.findByRole('button', { name: '修改密码' }));
     fireEvent.change(screen.getByPlaceholderText('输入当前密码'), { target: { value: 'current123' } });
     fireEvent.change(screen.getByPlaceholderText('至少8位，包含字母和数字'), { target: { value: 'newpass123' } });
     fireEvent.change(screen.getByPlaceholderText('再次输入新密码'), { target: { value: 'newpass123' } });
     fireEvent.click(screen.getByRole('button', { name: '确认修改' }));
-    await waitFor(() => expect(mocks.changePassword).toHaveBeenCalledWith({ oldPassword: 'current123', newPassword: 'newpass123' }));
+    expect(screen.getByRole('button', { name: '关闭' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '取消' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '修改中…' }));
+    expect(mocks.changePassword).toHaveBeenCalledTimes(1);
   });
+
+  it('工作区身份切换清除旧统计与画像，迟到旧响应不串账户', async () => {
+    let resolveOld!: (value: ReturnType<typeof analysis>) => void;
+    mocks.getProfileAnalysis.mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce(analysis({ userProfile: { ...profile, summary: '新账户画像' }, profileStatus: 'ready' }));
+    mocks.getStats.mockResolvedValueOnce(stats({ totalNotes: 80 })).mockResolvedValueOnce(stats({ totalNotes: 6 }));
+    const value: WorkspaceContextValue = { user: mocks.getUser(), navigate: vi.fn(), requestAction: vi.fn(), registerEditor: vi.fn(), setRecentNotes: vi.fn(), openSettings: vi.fn(), openAccountDialog: vi.fn() };
+    const { rerender } = render(<WorkspaceContext.Provider value={value}><ProfilePage /></WorkspaceContext.Provider>);
+    expect(await screen.findByText('80')).toBeInTheDocument();
+    rerender(<WorkspaceContext.Provider value={{ ...value, user: { ...value.user!, id: 'user-2', username: '新账户' } }}><ProfilePage /></WorkspaceContext.Provider>);
+    expect(await screen.findByText('新账户画像')).toBeInTheDocument();
+    expect(screen.queryByText('80')).not.toBeInTheDocument();
+    await act(async () => resolveOld(analysis({ userProfile: profile, profileStatus: 'ready' })));
+    expect(screen.queryByText('持续记录与复盘')).not.toBeInTheDocument();
+    expect(screen.getByText('新账户画像')).toBeInTheDocument();
+  });
+
+  it('工作区个人页通过共享动作打开账户及外观，不重复挂载表单', async () => {
+    const value: WorkspaceContextValue = { user: { ...mocks.getUser(), username: '共享身份' }, navigate: vi.fn(), requestAction: vi.fn(), registerEditor: vi.fn(), setRecentNotes: vi.fn(), openSettings: vi.fn(), openAccountDialog: vi.fn() };
+    render(<WorkspaceContext.Provider value={value}><ProfilePage /></WorkspaceContext.Provider>);
+    expect(await screen.findByRole('heading', { level: 1, name: '共享身份' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '编辑资料' }));
+    fireEvent.click(screen.getByRole('button', { name: '修改密码' }));
+    fireEvent.click(screen.getByRole('button', { name: '外观设置' }));
+    expect(value.openAccountDialog).toHaveBeenNthCalledWith(1, 'profile');
+    expect(value.openAccountDialog).toHaveBeenNthCalledWith(2, 'password');
+    expect(value.openSettings).toHaveBeenCalledWith('appearance');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
 });

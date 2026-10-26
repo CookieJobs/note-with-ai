@@ -1,137 +1,179 @@
 'use client';
 
-import React from 'react';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
-import { Plus, Trash2, MessageSquare, MessageSquarePlus } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import React, { useState } from 'react';
+import {
+  Search,
+  SquarePen,
+  Trash2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
+} from 'lucide-react';
 import { IChat } from '../types';
+import { usePanelDismiss } from '../hooks/usePanelDismiss';
+import {
+  getChatHistoryLabel,
+  matchesChatHistoryQuery,
+} from '../utils/chatHistory';
+import styles from './ChatHistoryPanel.module.scss';
 
 interface ChatHistoryPanelProps {
   sessions: IChat[];
   currentSessionId: string;
   isClient: boolean;
-  isOpen: boolean;
-  onClose: () => void;
+  embedded?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
   onSessionSelect: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (e: React.MouseEvent, sessionId: string) => void;
 }
 
-const ChatHistoryPanel: React.FC<ChatHistoryPanelProps> = ({
+export default function ChatHistoryPanel({
+  embedded = false,
   sessions,
   currentSessionId,
   isClient,
-  isOpen,
-  onClose,
+  isOpen = false,
+  onClose = () => {},
   onSessionSelect,
   onNewSession,
   onDeleteSession,
-}) => {
-  // ... rest of the component
+}: ChatHistoryPanelProps) {
+  const [query, setQuery] = useState('');
+  const [collapsed, setCollapsed] = useState(false);
+  const { panelRef, isModal } = usePanelDismiss(!embedded && isOpen, onClose, 767);
+  const visibleSessions = sessions.filter((session) =>
+    matchesChatHistoryQuery(session, query),
+  );
+  const newChat = () => {
+    onNewSession();
+    onClose();
+  };
+
+  if (!embedded && collapsed && !isOpen)
+    return (
+      <aside className={styles.rail} aria-label="聊天历史">
+        <button
+          type="button"
+          className={styles.iconButton}
+          aria-label="展开聊天侧栏"
+          onClick={() => setCollapsed(false)}
+        >
+          <PanelLeftOpen size={18} />
+        </button>
+        <button
+          type="button"
+          className={styles.iconButton}
+          aria-label="开启新对话"
+          onClick={newChat}
+        >
+          <SquarePen size={18} />
+        </button>
+      </aside>
+    );
+
   return (
     <>
-      {/* Mobile Overlay */}
-      {isOpen && (
-        <div 
-          className="absolute inset-0 bg-black/20 z-20 md:hidden transition-opacity"
-          onClick={onClose}
-        />
+      {!embedded && isOpen && (
+        <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />
       )}
-      
-      <aside className={cn(
-        "flex flex-col bg-card/80 backdrop-blur-xl z-30 transition-transform duration-300 shrink-0 overflow-hidden",
-        "w-left-panel xl:w-left-panel-xl",
-        // 在移动端使用 absolute 悬浮在内容上方，在桌面端（md及以上）使用 relative 作为 flex 布局的一部分
-        "absolute md:relative inset-y-0 left-0",
-        // 移动端：全高覆盖层 + 右侧细线分隔
-        "border-r border-border/40 shadow-[2px_0_8px_rgba(0,0,0,0.05)]",
-        // 桌面端：浮出卡片效果
-        "md:border md:border-border/20 md:shadow-md md:rounded-2xl",
-        isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-      )}>
-      {/* Header Area */}
-      <div className="flex flex-col gap-4 px-4 py-4 shrink-0">
-        <Button 
-          onClick={() => {
-            onNewSession();
-            onClose();
-          }} 
-          variant="ghost"
-          className="w-full justify-start gap-2 h-10 px-2 hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-all duration-200"
-        >
-          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary">
-            <Plus className="h-4 w-4" />
-          </div>
-          <span className="font-medium">开启新对话</span>
-        </Button>
-        
-        <div className="px-1 text-xs font-medium text-muted-foreground/60 tracking-wider uppercase">
-          你的聊天
+      <aside
+        ref={panelRef}
+        tabIndex={-1}
+        className={`${styles.sidebar} ${embedded ? styles.embedded : ''} ${isOpen ? styles.open : ''}`}
+        aria-label="聊天历史"
+        role={!embedded && isOpen && isModal ? 'dialog' : undefined}
+        aria-modal={!embedded && isOpen && isModal ? true : undefined}
+      >
+        {!embedded && <div className={styles.toolbar}>
+          <button type="button" className={styles.newChat} onClick={newChat}>
+            <SquarePen size={18} />
+            开启新对话
+          </button>
+          <button
+            type="button"
+            className={`${styles.iconButton} ${styles.desktopCollapse}`}
+            aria-label="收起聊天侧栏"
+            onClick={() => setCollapsed(true)}
+          >
+            <PanelLeftClose size={18} />
+          </button>
+          <button
+            type="button"
+            className={`${styles.iconButton} ${styles.mobileClose}`}
+            aria-label="关闭聊天侧栏"
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </div>}
+        <label className={styles.search}>
+          <Search size={15} aria-hidden="true" />
+          <input
+            type="search"
+            placeholder="搜索已加载的对话"
+            aria-label="搜索聊天"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        <div className={styles.listHeading}>
+          <h2>你的聊天</h2>
+          <span>{sessions.length}</span>
         </div>
-      </div>
-      
-      {/* List Area */}
-      <ScrollArea className="flex-1 px-3 py-2">
-        <div className="space-y-1 pb-4">
-          {!isClient || sessions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center px-4 select-none">
-              <div className="bg-muted/30 p-4 rounded-full mb-4 ring-1 ring-border/50">
-                <MessageSquarePlus className="h-6 w-6 text-muted-foreground/40" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground mb-1.5">开启新话题</p>
-              <p className="text-xs text-muted-foreground/50 max-w-[180px] leading-relaxed">
-                点击右上角的 &quot;+&quot; 按钮开始一个新的对话
+        <nav className={styles.list} aria-label="历史对话">
+          {!isClient ? (
+            <p className={styles.empty}>正在加载聊天…</p>
+          ) : visibleSessions.length === 0 ? (
+            <div className={styles.empty}>
+              <p>{query.trim() ? '没有找到这个话题' : '还没有聊天记录'}</p>
+              <p>
+                {query.trim()
+                  ? '换个关键词试试。'
+                  : '开启新对话，聊聊你的笔记或想法。'}
               </p>
             </div>
           ) : (
-            sessions.map((session) => (
-              <div
-                key={session.id}
-                onClick={() => {
-                  onSessionSelect(session.id);
-                  onClose();
-                }}
-                className={cn(
-                  "group relative flex items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium rounded-md cursor-pointer transition-all duration-200 border border-transparent select-none text-muted-foreground hover:text-foreground",
-                  session.id === currentSessionId 
-                    ? "bg-primary/10" 
-                    : "hover:bg-muted/60"
-                )}
-              >
-                <span className="truncate flex-1 transition-colors">
-                  {session.title || "新对话"}
-                </span>
-                
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-200 focus:opacity-100",
-                    session.id === currentSessionId 
-                      ? "hover:bg-primary/20 hover:text-primary" 
-                      : "hover:bg-destructive/10 hover:text-destructive"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteSession(e, session.id);
-                  }}
-                  title="删除对话"
+            visibleSessions.map((session) => {
+              const label = getChatHistoryLabel(session);
+              return (
+                <div
+                  key={session.id}
+                  className={`${styles.session} ${session.id === currentSessionId ? styles.selected : ''}`}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span className="sr-only">删除对话</span>
-                </Button>
-              </div>
-            ))
+                  <button
+                    type="button"
+                    className={styles.selectSession}
+                    aria-current={
+                      session.id === currentSessionId ? 'page' : undefined
+                    }
+                    title={label}
+                    onClick={() => {
+                      onSessionSelect(session.id);
+                      onClose();
+                    }}
+                  >
+                    {label}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.deleteButton}
+                    aria-label={`删除对话：${label}`}
+                    title={`删除对话：${label}`}
+                    onClick={(event) => {
+                      onClose();
+                      onDeleteSession(event, session.id);
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              );
+            })
           )}
-        </div>
-      </ScrollArea>
-      
-      {/* Bottom Gradient/Fade (Optional aesthetic touch) */}
-      <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background/80 to-transparent pointer-events-none" />
-    </aside>
+        </nav>
+      </aside>
     </>
   );
-};
-
-export default ChatHistoryPanel;
+}

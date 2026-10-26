@@ -9,8 +9,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('../../../utils/auth', () => ({ authFetch }));
 
 const source: Note = {
-  _id: 'source', title: '源笔记', content: '源内容', contentText: '源内容', contentJson: null,
-  summary: '', concepts: [], keywords: [], revision: 4,
+  _id: 'source', revision: 4, title: '源笔记', content: '源内容', contentText: '源内容', contentJson: null,
   recommendCache: { sourceRevision: 4, byCandidateId: { stale: { s2: 0.9 } } },
   enrichment: { sourceRevision: 4, status: 'ready' },
   createdAt: '2026-09-20T00:00:00.000Z', updatedAt: '2026-09-20T00:00:00.000Z',
@@ -43,11 +42,29 @@ describe('RelatedNotesDrawer independent summaries', () => {
     await waitFor(() => expect(authFetch).toHaveBeenCalledTimes(2));
   });
 
+  it('rereads the summary projection after same-revision focused refresh', async () => {
+    authFetch.mockClear();
+    authFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true, data: { notes: [] } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ success: true, data: { notes: [{ noteId: 'related', title: '', contentText: '关联原文', type: '强关联', reason: '同题', revision: 1 }] } }) });
+    const focusedSource: Note = { ...source, _id: 'outside', recommendCache: null };
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNoteId="outside" allNotes={[focusedSource]} onRefreshRecommendCache={refresh} />);
+    await waitFor(() => expect(refresh).toHaveBeenCalledWith('outside'));
+
+    rerender(<RelatedNotesDrawer isOpen onClose={vi.fn()} selectedNoteId="outside" allNotes={[{
+      ...focusedSource,
+      recommendCache: { sourceRevision: 4, generatedAt: '2026-10-13T00:00:00.000Z', byCandidateId: { related: { s1: 0.8, s2: 0.9 } } },
+    }]} onRefreshRecommendCache={refresh} />);
+
+    await waitFor(() => expect(authFetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText('关联原文')).toBeInTheDocument());
+  });
+
   it('explains a locally available relationship without exposing scoring internals while the summary request is pending', () => {
     authFetch.mockImplementation(() => new Promise(() => {}));
     const related: Note = {
-      _id: 'local-related', title: '同一主题的笔记', content: '相关内容', contentText: '相关内容', contentJson: null,
-      summary: '', concepts: [], keywords: [], revision: 2,
+      _id: 'local-related', revision: 2, title: '同一主题的笔记', content: '相关内容', contentText: '相关内容', contentJson: null,
       enrichment: { sourceRevision: 2, status: 'ready' },
       createdAt: '2026-09-19T00:00:00.000Z', updatedAt: '2026-09-19T00:00:00.000Z',
     };
@@ -82,8 +99,7 @@ describe('RelatedNotesDrawer independent summaries', () => {
   it('does not turn a low-confidence cached candidate into a visible relationship', () => {
     authFetch.mockImplementation(() => new Promise(() => {}));
     const lowConfidenceTarget: Note = {
-      _id: 'low-confidence', title: '不该展示的候选', content: '候选内容', contentText: '候选内容', contentJson: null,
-      summary: '', concepts: [], keywords: [], revision: 1,
+      _id: 'low-confidence', revision: 1, title: '不该展示的候选', content: '候选内容', contentText: '候选内容', contentJson: null,
       enrichment: { sourceRevision: 1, status: 'ready' },
       createdAt: '2026-09-19T00:00:00.000Z', updatedAt: '2026-09-19T00:00:00.000Z',
     };
@@ -104,8 +120,7 @@ describe('RelatedNotesDrawer independent summaries', () => {
   it('keeps the existing cached ranking while hiding the ranking diagnostics', () => {
     authFetch.mockImplementation(() => new Promise(() => {}));
     const lowerRanked: Note = {
-      _id: 'lower-ranked', title: '原本排在后面的笔记', content: '后面的内容', contentText: '后面的内容', contentJson: null,
-      summary: '', concepts: [], keywords: [], revision: 1,
+      _id: 'lower-ranked', revision: 1, title: '原本排在后面的笔记', content: '后面的内容', contentText: '后面的内容', contentJson: null,
       enrichment: { sourceRevision: 1, status: 'ready' },
       createdAt: '2026-09-19T00:00:00.000Z', updatedAt: '2026-09-19T00:00:00.000Z',
     };

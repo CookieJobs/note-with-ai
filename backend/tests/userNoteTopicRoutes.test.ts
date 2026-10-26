@@ -182,8 +182,8 @@ test('同一 revision 的话题来源变化会使原 ready 记录变为 pending'
   assert.deepEqual(result.topics, []);
 });
 
-test('Note 当前成功快照优先于旧 processing 投影且 GET 不改写二者', { skip: !enabled }, async () => {
-  const { userId, token } = await fixture();
+test('历史索引服务优先读取 Note 当前成功快照且不改写旧 processing 投影', { skip: !enabled }, async () => {
+  const { userId } = await fixture();
   const note = await addNote(userId, {
     keywords: ['权威话题'],
     authoritativeTopics: ['权威话题'],
@@ -191,11 +191,24 @@ test('Note 当前成功快照优先于旧 processing 投影且 GET 不改写二�
   });
   const beforeNote = await Note.collection.findOne({ _id: note._id });
   const beforeIndex = await UserNoteTopicIndex.findOne({ noteId: note._id }).lean();
+  const result = await createUserNoteTopicIndexService().getUserTopicIndex(userId, 'all');
+  assert.equal(result.readyNotesInRange, 1);
+  assert.deepEqual(result.topics, [{ topic: '权威话题', noteCount: 1 }]);
+  assert.equal(result.pendingNotesInRange, 0);
+  assert.deepEqual(await Note.collection.findOne({ _id: note._id }), beforeNote);
+  assert.deepEqual(await UserNoteTopicIndex.findOne({ noteId: note._id }).lean(), beforeIndex);
+});
+
+test('退役的话题 HTTP 返回 410 且不改写实际历史笔记与索引', { skip: !enabled }, async () => {
+  const { userId, token } = await fixture();
+  const note = await addNote(userId, { authoritativeTopics: ['历史话题'], index: { status: 'ready', topics: ['历史话题'] } });
+  const beforeNote = await Note.collection.findOne({ _id: note._id });
+  const beforeIndex = await UserNoteTopicIndex.findOne({ noteId: note._id }).lean();
   const response = await api(token, '/api/profile/topics?scope=all');
+  assert.equal(response.status, 410);
   const body = await response.json() as any;
-  assert.equal(body.data.readyNotesInRange, 1);
-  assert.deepEqual(body.data.topics, [{ topic: '权威话题', noteCount: 1 }]);
-  assert.equal(body.data.pendingNotesInRange, 0);
+  assert.equal(body.code, 'NOTE_TAGS_RETIRED');
+  assert.equal('data' in body, false);
   assert.deepEqual(await Note.collection.findOne({ _id: note._id }), beforeNote);
   assert.deepEqual(await UserNoteTopicIndex.findOne({ noteId: note._id }).lean(), beforeIndex);
 });
@@ -252,105 +265,7 @@ test('将月末回溯限制在该月最后一个日历日', { skip: !enabled }, 
   assert.equal(topicScopeStartAt('year', leapDay)?.toISOString(), '2023-02-27T16:00:00.000Z');
 });
 
-test('拒绝未知范围', { skip: !enabled }, async () => {
+test('历史话题索引服务仍拒绝未知范围', { skip: !enabled }, async () => {
   const { userId } = await fixture();
   await assert.rejects(() => createUserNoteTopicIndexService().getUserTopicIndex(userId, 'quarter' as TopicScope), /范围/);
-  const { token } = await fixture();
-  const response = await api(token, '/api/profile/topics?scope=quarter');
-  assert.equal(response.status, 400);
-  const invalidRetry = await api(token, '/api/profile/topics/retry', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope: 'quarter' }) });
-  assert.equal(invalidRetry.status, 400);
-});
-
-test('话题 GET 和重试 POST 都要求身份认证', { skip: !enabled }, async () => {
-  const getResponse = await fetch(`${baseUrl}/api/profile/topics?scope=all`);
-  const postResponse = await fetch(`${baseUrl}/api/profile/topics/retry`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope: 'all' }) });
-  assert.equal(getResponse.status, 401);
-  assert.equal(postResponse.status, 401);
-});
-
-test('话题 GET 接口不返回其他用户的笔记', { skip: !enabled }, async () => {
-  const owner = await fixture();
-  const other = await fixture();
-  await addNote(owner.userId, { keywords: ['只属于本人'], index: { status: 'ready', topics: ['只属于本人'] } });
-  await addNote(other.userId, { keywords: ['私密内容'], index: { status: 'ready', topics: ['私密内容'] } });
-  const response = await api(owner.token, '/api/profile/topics?scope=all');
-  const body = await response.json() as any;
-  assert.equal(response.status, 200);
-  assert.deepEqual(body.data.topics, [{ topic: '只属于本人', noteCount: 1 }]);
-  assert.equal(JSON.stringify(body).includes('私密内容'), false);
-});
-
-test('重试路由不能将其他用户的失败笔记加入队列', { skip: !enabled }, async () => {
-  const caller = await fixture();
-  const other = await fixture();
-  const callerNote = await addNote(caller.userId, { index: { status: 'failed' } });
-  const otherNote = await addNote(other.userId, { index: { status: 'failed' } });
-  const response = await api(caller.token, '/api/profile/topics/retry', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope: 'all' }) });
-  const body = await response.json() as any;
-  assert.equal(response.status, 200);
-  assert.equal(body.data.acceptedCount, 1);
-  assert.equal((await UserNoteTopicIndex.findOne({ noteId: callerNote._id })).status, 'pending');
-  assert.equal((await UserNoteTopicIndex.findOne({ noteId: otherNote._id })).status, 'failed');
-});
-
-test('重试路由返回冷却和限流计数', { skip: !enabled }, async () => {
-  const { userId, token } = await fixture();
-  const allowed = await addNote(userId, { index: { status: 'failed' } });
-  const limited = await addNote(userId, { index: { status: 'failed' } });
-  const now = new Date();
-  const limitedInput = buildTopicInputs(limited);
-  await UserNoteTopicIndex.updateOne({ noteId: limited._id }, { $set: {
-    lastManualAttemptAt: now,
-    manualAttemptTimestamps: [now],
-    sourceRevision: limitedInput.sourceRevision,
-    sourceFingerprint: limitedInput.sourceFingerprint,
-  } });
-  const response = await api(token, '/api/profile/topics/retry', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope: 'all' }) });
-  const body = await response.json() as any;
-  assert.equal(body.data.acceptedCount, 1);
-  assert.equal(body.data.rateLimitedCount, 1);
-  assert.ok(body.data.nextRetryAt);
-  assert.equal((await UserNoteTopicIndex.findOne({ noteId: allowed._id })).status, 'pending');
-  assert.equal((await UserNoteTopicIndex.findOne({ noteId: limited._id })).status, 'failed');
-});
-
-test('重试路由不会等待 AI', { skip: !enabled }, async () => {
-  const { userId, token } = await fixture();
-  const note = await addNote(userId, { index: { status: 'failed' } });
-  const beforeNote: any = await Note.findById(note._id).lean();
-  const startedAt = Date.now();
-  const response = await api(token, '/api/profile/topics/retry', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope: 'all' }) });
-  const body = await response.json() as any;
-  assert.equal(response.status, 200);
-  assert.equal(body.data.acceptedCount, 1);
-  assert.ok(Date.now() - startedAt < 1_000);
-  assert.equal((await UserNoteTopicIndex.findOne({ noteId: note._id })).status, 'pending');
-  const afterNote: any = await Note.findById(note._id).lean();
-  assert.deepEqual(afterNote?.topicIndexScheduled, beforeNote?.topicIndexScheduled);
-});
-
-test('all 范围包含未来创建的笔记且 GET 不写入调度状态', { skip: !enabled }, async () => {
-  const { userId, token } = await fixture();
-  const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const note = await addNote(userId, { createdAt: future, keywords: ['未来'], index: { status: 'ready', topics: ['未来'] } });
-  const beforeNote = await Note.findById(note._id).lean();
-  const response = await api(token, '/api/profile/topics?scope=all');
-  const body = await response.json() as any;
-  assert.equal(response.status, 200);
-  assert.equal(body.data.rangeStart, null);
-  assert.equal(body.data.rangeEnd, null);
-  assert.equal(body.data.totalNotesInRange, 1);
-  assert.deepEqual(body.data.topics, [{ topic: '未来', noteCount: 1 }]);
-  const afterNote = await Note.findById(note._id).lean();
-  assert.deepEqual(afterNote, beforeNote);
-});
-
-test('all 范围的重试也包含未来创建的失败笔记', { skip: !enabled }, async () => {
-  const { userId, token } = await fixture();
-  const note = await addNote(userId, { createdAt: new Date(Date.now() + 24 * 60 * 60 * 1000), index: { status: 'failed' } });
-  const response = await api(token, '/api/profile/topics/retry', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope: 'all' }) });
-  const body = await response.json() as any;
-  assert.equal(body.data.acceptedCount, 1);
-  assert.equal((await UserNoteTopicIndex.findOne({ noteId: note._id })).status, 'pending');
 });

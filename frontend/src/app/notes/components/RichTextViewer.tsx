@@ -10,7 +10,7 @@ import {
   type RichTextValue,
 } from './tiptap/richTextPreset';
 
-export default function RichTextViewer({ value }: { value: string | JSONContent | null | undefined }) {
+export default function RichTextViewer({ value, preserveLineBreaks = false }: { value: string | JSONContent | null | undefined; preserveLineBreaks?: boolean }) {
   const [mounted, setMounted] = useState(false);
   const initialContentRef = useRef<RichTextValue>(value);
   const lastUpdateRef = useRef<string | null>(serializeRichTextValue(value));
@@ -19,7 +19,7 @@ export default function RichTextViewer({ value }: { value: string | JSONContent 
     setMounted(true);
   }, []);
 
-  const memoizedExtensions = React.useMemo(() => createRichTextExtensions(), []);
+  const memoizedExtensions = React.useMemo(() => createRichTextExtensions({ preserveLineBreaks }), [preserveLineBreaks]);
 
   const editor = useEditor({
     extensions: memoizedExtensions,

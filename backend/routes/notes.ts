@@ -5,14 +5,25 @@ Pos: 后端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 // backend/routes/notes.ts
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { asyncHandler } from '../utils/errorHandler';
 import { noteController } from '../controllers/noteController';
+import { suggestNoteTitle } from '../controllers/noteTitleSuggestionController';
 import { validate } from '../middleware/validate';
 import { createNoteSchema, updateTitleSchema, chatNoteSchema, ensureSchema, updateNoteSchema, noteIdParamSchema } from '../schemas/noteSchemas';
+import { ErrorHandler } from '../utils/errorHandler';
 
 const router = express.Router();
+
+function rejectRetiredKeywords(req: Request, _res: Response, next: NextFunction): void {
+  if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'keywords')
+    || Object.prototype.hasOwnProperty.call(req.body?.changes ?? {}, 'keywords')) {
+    next(ErrorHandler.createValidationError('笔记标签功能已退役', { code: 'NOTE_TAGS_RETIRED' }));
+    return;
+  }
+  next();
+}
 
 router.get('/test', (req, res) => {
   res.json({ message: 'notes 路由已挂载' });
@@ -22,10 +33,12 @@ router.get('/test', (req, res) => {
 router.get('/', authenticateToken, asyncHandler((req, res, next) => noteController.getNotes(req, res, next)));
 
 // 添加笔记
-router.post('/', authenticateToken, validate(createNoteSchema), asyncHandler((req, res, next) => noteController.createNote(req, res, next)));
+router.post('/', authenticateToken, rejectRetiredKeywords, validate(createNoteSchema), asyncHandler((req, res, next) => noteController.createNote(req, res, next)));
 
 // 聊天接口 (必须在 /:id 之前)
 router.post('/chat', authenticateToken, validate(chatNoteSchema), asyncHandler((req, res, next) => noteController.chat(req, res, next)));
+
+router.post('/title-suggestions', authenticateToken, asyncHandler(suggestNoteTitle));
 
 // 当前用户 embedding 统计
 router.get('/embedding/stats', authenticateToken, asyncHandler((req, res, next) => noteController.getEmbeddingStats(req, res, next)));
@@ -48,9 +61,9 @@ router.post('/:id/embed', authenticateToken, validate(noteIdParamSchema), asyncH
 router.post('/:id/summary', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.regenerateSummary(req, res, next)));
 
 // 更新笔记标题
-router.post('/:id', authenticateToken, validate(updateTitleSchema), asyncHandler((req, res, next) => noteController.updateTitle(req, res, next)));
+router.post('/:id', authenticateToken, rejectRetiredKeywords, validate(updateTitleSchema), asyncHandler((req, res, next) => noteController.updateTitle(req, res, next)));
 
 // 局部更新笔记（正文/标题/关键词），支持乐观并发控制
-router.patch('/:id', authenticateToken, validate(updateNoteSchema), asyncHandler((req, res, next) => noteController.updateNote(req, res, next)));
+router.patch('/:id', authenticateToken, rejectRetiredKeywords, validate(updateNoteSchema), asyncHandler((req, res, next) => noteController.updateNote(req, res, next)));
 
 export default router;

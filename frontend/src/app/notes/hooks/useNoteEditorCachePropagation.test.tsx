@@ -25,7 +25,6 @@ const initialNote: Note = {
   title: '正文',
   summary: '',
   concepts: [],
-  keywords: ['旧关键词'],
   recommendCache: {
     sourceRevision: 4,
     sourceUpdatedAt: '2026-08-18T00:00:00.000Z',
@@ -83,31 +82,6 @@ describe('canonical recommendCache propagation after a Note PATCH', () => {
     act(() => result.current.editor.onEditorChange({ json: canonicalNote.contentJson!, text: '正文' }));
     await act(async () => {
       await result.current.editor.handleSaveContent();
-    });
-
-    const stored = queryClient.getQueryData<Note[]>(['notes'])?.[0];
-    expect(stored).toEqual(canonicalNote);
-    expect(getRecommendCacheState(stored).needsRefresh).toBe(false);
-  });
-
-  it('keeps the canonical cache after a keyword-only update without positional propagation', async () => {
-    const canonicalNote: Note = {
-      ...initialNote,
-      keywords: ['新关键词'],
-      revision: 5,
-      updatedAt: '2026-08-18T00:01:00.000Z',
-      recommendCache: cacheAtRevisionFive,
-      enrichment: { sourceRevision: 5, status: 'ready' },
-    };
-    authFetch.mockResolvedValue(canonicalResponse(canonicalNote));
-    const { queryClient, wrapper } = makeHarness();
-    const { result } = renderHook(useEditorWithNotesStore, { wrapper });
-
-    act(() => queryClient.setQueryData<Note[]>(['notes'], [initialNote]));
-    act(() => result.current.editor.beginKeywordEdit(0, '旧关键词'));
-    act(() => result.current.editor.setTagEditValue('新关键词'));
-    await act(async () => {
-      await result.current.editor.commitKeywordAt(0);
     });
 
     const stored = queryClient.getQueryData<Note[]>(['notes'])?.[0];

@@ -5,17 +5,14 @@ import { useRouter } from 'next/navigation';
 import { authFetch } from '../utils/auth';
 import { Button } from '@/components/ui/button';
 import { Sparkles, RefreshCw, FileText, Loader2, ArrowRight } from 'lucide-react';
+import type { CareIntro } from '../types';
+import { noteReferenceDisplay } from '../utils/noteReference';
+import styles from '../app/chat/chat.module.scss';
 
-interface CareIntro {
-  noteId: string | null;
-  noteTitle: string;
-  snippet: string;
-  aiOpening: string;
-}
 
 interface Props {
   onInsert: (text: string) => void;
-  onSend: (text: string, introData?: CareIntro) => void;
+  onSend: (text: string, introData?: CareIntro) => void | Promise<void>;
   auto?: boolean;
   cacheKey?: string;
 }
@@ -25,6 +22,7 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
   const [intro, setIntro] = useState<CareIntro | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [starting, setStarting] = useState(false);
 
   const fetchIntro = useCallback(async () => {
     setLoading(true);
@@ -38,7 +36,13 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
         noteId: payload?.noteId ?? null,
         noteTitle: payload?.noteTitle || '',
         snippet: payload?.snippet || '',
-        aiOpening: payload?.aiOpening || ''
+        aiOpening: payload?.aiOpening || '',
+        excerpt: typeof payload?.excerpt === 'string' ? payload.excerpt : undefined,
+        sourceType: payload?.sourceType,
+        imageCount: payload?.imageCount,
+        firstImageSrc: payload?.firstImageSrc,
+        createdAt: payload?.createdAt,
+        createdAtSource: payload?.createdAtSource,
       };
       setIntro(data);
       try {
@@ -81,11 +85,11 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
 
   // Skeleton
   if (loading || !intro) return (
-    <div className="w-full max-w-[680px] mx-auto">
-      <div className="relative flex flex-col gap-4 p-5 rounded-3xl border border-gray-200/60 bg-gradient-to-b from-gray-50/80 via-white to-white shadow-[0_4px_24px_rgba(0,0,0,0.04)] cursor-wait select-none">
+    <div className="w-full">
+      <div className="relative flex flex-col gap-4 rounded-xl border border-[var(--workspace-line)] p-6 bg-[var(--workspace-canvas)] cursor-wait select-none">
         {/* Header row: icon + refresh */}
         <div className="flex items-start justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100/60 ring-1 ring-gray-200/40">
+          <div className="flex h-7 w-7 items-center justify-center">
             <Sparkles className="h-4 w-4 text-gray-300/60 animate-pulse" />
           </div>
           <div className="h-8 w-8 rounded-full bg-muted/30" />
@@ -98,41 +102,44 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
         </div>
 
         {/* Snippet + source link placeholder */}
-        <div className="flex flex-col gap-1.5 pl-4 border-l-2 border-gray-200/30">
+        <div className="flex flex-col gap-1.5">
           <div className="h-3 w-16 rounded bg-gray-200/40" />
           <div className="h-10 w-full rounded-lg bg-muted/20" />
           <div className="h-3 w-24 rounded bg-muted/20" />
         </div>
 
         {/* CTA placeholder */}
-        <div className="h-8 w-32 mx-auto rounded-full bg-muted/30 skeletonShimmer" />
+        <div className="h-8 w-32 self-end rounded-md bg-muted/30 skeletonShimmer" />
 
-        <Loader2 className="absolute top-5 right-5 h-4 w-4 animate-spin text-gray-300/60" />
+        <Loader2 className="absolute top-5 right-4 sm:top-6 sm:right-6 h-4 w-4 animate-spin text-gray-300/60" />
       </div>
     </div>
   );
 
+  const sourceDisplay = noteReferenceDisplay({ title: intro.noteTitle, excerpt: intro.excerpt, content: intro.snippet, sourceType: intro.sourceType, imageCount: intro.imageCount, firstImageSrc: intro.firstImageSrc, createdAt: intro.createdAt, createdAtSource: intro.createdAtSource });
+
   return (
-    <div className="w-full max-w-[680px] mx-auto">
+    <div className="w-full">
       <div
-        className="group relative flex flex-col gap-4 p-5 rounded-3xl border border-gray-200/60 bg-gradient-to-b from-gray-50/70 via-white to-white shadow-[0_4px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] hover:border-gray-300/70 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-        onClick={() => onSend(intro.aiOpening, intro)}
+        className={`${styles.careSuggestion} group relative flex flex-col gap-3 rounded-xl border border-[var(--workspace-line)] break-words bg-[var(--workspace-canvas)]`}
       >
         {/* Header: icon + refresh */}
         <div className="flex items-start justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 ring-1 ring-gray-300/40 shadow-[0_4px_16px_rgba(0,0,0,0.06)] group-hover:shadow-[0_6px_20px_rgba(0,0,0,0.1)] group-hover:scale-105 transition-all duration-300">
-            <Sparkles className="h-4 w-4 text-gray-600" />
+          <div className="flex min-h-7 items-center gap-2 text-sm font-medium text-[var(--workspace-ink)]">
+            <Sparkles className="h-4 w-4 text-[var(--workspace-accent)]" />
+            <span>{intro.noteId?.trim() ? '从你的笔记继续' : '聊聊最近'}</span>
           </div>
 
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-full border border-gray-200/50 bg-white/80 text-gray-400 hover:text-gray-700 hover:border-gray-300/80 hover:bg-gray-50 transition-all"
+            className="h-7 w-7 rounded-md text-[var(--workspace-muted)] hover:text-[var(--workspace-accent)] hover:bg-[var(--workspace-accent-soft)] transition-colors"
             onClick={(e) => {
               e.stopPropagation();
               fetchIntro();
             }}
             title="换一个话题"
+            disabled={starting}
           >
             <RefreshCw className="h-4 w-4" />
             <span className="sr-only">换一个话题</span>
@@ -140,42 +147,53 @@ export default function CareAssistantPanel({ onInsert, onSend, auto = true, cach
         </div>
 
         {/* Hero: AI opening quote */}
-        <div className="text-[16px] font-medium text-gray-800 leading-relaxed tracking-[-0.01em]">
+        <div className="text-[16px] font-medium text-[var(--workspace-ink)] leading-relaxed">
           {intro.aiOpening}
         </div>
 
         {/* Note snippet + source link */}
-        {intro.snippet && (
-          <div className="flex flex-col gap-1 pl-4 border-l-2 border-gray-300/50">
-            <span className="text-[11px] font-medium text-gray-500/70 uppercase tracking-wider">
-              笔记片段
-            </span>
-            <p className="text-[13px] text-gray-500 leading-relaxed line-clamp-2">
+        {(intro.snippet || intro.noteId) && (
+          <div className="flex flex-col gap-1">
+            {intro.snippet && <p className="text-[14px] text-[var(--workspace-muted)] leading-relaxed line-clamp-2">
               {intro.snippet}
-            </p>
-            {intro.noteTitle && intro.noteId && (
+            </p>}
+            {intro.noteId && (
               <button
-                className="flex items-center gap-1 mt-0.5 text-[12px] text-gray-400 hover:text-gray-600 transition-colors self-start"
+                className="flex max-w-full items-start gap-1 mt-0.5 text-left text-[12px] text-[var(--workspace-muted)] hover:text-gray-600 transition-colors self-start"
                 onClick={(e) => {
                   e.stopPropagation();
-                  router.push(`/notes?highlight=${intro.noteId}`);
+                  router.push(`/notes?highlight=${encodeURIComponent(intro.noteId!)}`);
                 }}
                 title="查看来源笔记"
               >
-                <FileText className="h-3 w-3" />
-                <span className="truncate max-w-[200px]">{intro.noteTitle}</span>
+                <FileText className="mt-0.5 h-3 w-3 shrink-0" />
+                {sourceDisplay.firstImageSrc && <img src={sourceDisplay.firstImageSrc} alt="笔记首图" width={28} height={28} className="shrink-0 rounded object-cover" />}
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="line-clamp-2 break-words">{sourceDisplay.label}</span>
+                  {sourceDisplay.dateLabel && <time dateTime={intro.createdAt} className="whitespace-nowrap">{sourceDisplay.dateLabel}</time>}
+                </span>
               </button>
             )}
           </div>
         )}
 
-        {/* CTA: centered button */}
-        <div className="flex justify-center">
-          <span className="inline-flex items-center gap-2 text-[13px] px-4 py-2 rounded-full bg-gray-100 text-gray-700 font-medium border border-gray-200 group-hover:bg-gray-200 group-hover:border-gray-300 group-hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all">
+        {intro.noteId?.trim() && (
+          <p className="text-[12px] text-[var(--workspace-muted)] leading-relaxed">
+            开始后，每次提问会读取这篇笔记最新保存的文字。{(intro.imageCount || 0) > 0 || intro.sourceType === 'image' || intro.sourceType === 'mixed' ? '图片内容暂不识别。' : ''}
+          </p>
+        )}
+
+        {/* CTA: secondary to the free-form composer */}
+        <div className="flex justify-end">
+          <button type="button" disabled={starting} onClick={async () => {
+            setStarting(true);
+            try { await onSend(intro.aiOpening, intro); }
+            finally { setStarting(false); }
+          }} className="inline-flex items-center gap-2 text-[13px] px-4 py-2 rounded-lg bg-[var(--workspace-accent-soft)] text-[var(--workspace-accent)] font-medium border-none hover:bg-blue-100 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
             <Sparkles className="h-3.5 w-3.5" />
-            点击开始对话
+            {intro.noteId?.trim() ? '从这条笔记聊起' : '开始聊天'}
             <ArrowRight className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
-          </span>
+          </button>
         </div>
       </div>
     </div>

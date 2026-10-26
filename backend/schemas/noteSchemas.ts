@@ -22,12 +22,14 @@ const noteBodySchema = z.discriminatedUnion('kind', [richTextBodySchema, plainTe
 const changesSchema = z.object({
   body: noteBodySchema.optional(),
   title: z.string().optional(),
-  keywords: z.array(z.string()).optional(),
-}).refine((changes) => changes.body !== undefined || changes.title !== undefined || changes.keywords !== undefined, {
+  keywords: z.unknown().optional(),
+}).refine((changes) => changes.body !== undefined || changes.title !== undefined || Object.prototype.hasOwnProperty.call(changes, 'keywords'), {
   message: '笔记更新不能为空',
 });
 
 const legacyCreateSchema = z.object({
+  title: z.string().optional(),
+  keywords: z.unknown().optional(),
   content: z.string().optional(),
   contentJson: z.record(z.string(), z.unknown()).optional(),
   contentText: z.string().optional(),
@@ -40,7 +42,7 @@ const legacyUpdateSchema = z.object({
   content: z.string().optional(),
   contentJson: z.record(z.string(), z.unknown()).optional(),
   contentText: z.string().optional(),
-  keywords: z.array(z.string()).optional(),
+  keywords: z.unknown().optional(),
   updatedAt: z.string().or(z.date()).optional(),
   autoSummarize: z.boolean().optional(),
   summaryCheck: z.boolean().optional(),
@@ -49,21 +51,21 @@ const legacyUpdateSchema = z.object({
   || data.content !== undefined
   || data.contentJson !== undefined
   || data.contentText !== undefined
-  || data.keywords !== undefined
+  || Object.prototype.hasOwnProperty.call(data, 'keywords')
   || data.autoSummarize !== undefined
   || data.summaryCheck !== undefined,
 { message: '笔记更新不能为空' });
 
 export const createNoteSchema = z.object({
   body: z.union([
-    z.object({ body: noteBodySchema }),
+    z.object({ body: noteBodySchema, title: z.string().optional(), keywords: z.unknown().optional() }),
     legacyCreateSchema,
   ]),
 });
 
 export const updateTitleSchema = z.object({
   body: z.object({
-    title: z.string().min(1, '标题不能为空'),
+    title: z.string(),
   }),
   params: z.object({
     id: z.string().min(1, '缺少笔记ID'),

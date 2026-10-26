@@ -148,6 +148,9 @@ describe('userAnalysisService', () => {
         expertise: [],
         theme: { themeName: '空', cssType: 'linear-gradient', cssValue: '  ', reasoning: '' },
       }),
+      JSON.stringify({
+        theme: { themeName: '旧配色', cssType: 'linear-gradient', cssValue: 'linear-gradient(#eee, #ddd)', reasoning: '已退役' },
+      }),
     ];
     let output = '';
     mock.method(Note, 'countDocuments', async () => 5);
@@ -236,6 +239,7 @@ describe('userAnalysisService', () => {
     replaceMethod(userAnalysisService as any, 'getApiClient', (() => ({
       chatCompletion: async () => JSON.stringify({
         summary: '新画像',
+        theme: { themeName: '旧配色', cssType: 'linear-gradient', cssValue: 'linear-gradient(#eee, #ddd)', reasoning: '已退役' },
         analysisFailedAt: new Date('2026-09-01T00:00:00.000Z'),
         profileInvalidatedAt: null,
         analysisVersion: 999,

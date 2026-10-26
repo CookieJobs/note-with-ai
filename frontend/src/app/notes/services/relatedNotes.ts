@@ -2,6 +2,11 @@ export type RelatedNoteSummary = {
   noteId: string;
   title: string;
   contentText: string;
+  excerpt?: string;
+  sourceType?: 'text' | 'image' | 'mixed';
+  imageCount?: number;
+  firstImageSrc?: string;
+  createdAt?: string;
   type: string;
   reason: string;
   revision: number;
@@ -30,6 +35,11 @@ function asSummary(value: unknown): RelatedNoteSummary | null {
     noteId: item.noteId,
     title: item.title,
     contentText: item.contentText,
+    excerpt: typeof item.excerpt === 'string' ? item.excerpt : undefined,
+    sourceType: item.sourceType === 'image' || item.sourceType === 'mixed' || item.sourceType === 'text' ? item.sourceType : undefined,
+    imageCount: typeof item.imageCount === 'number' ? item.imageCount : undefined,
+    firstImageSrc: typeof item.firstImageSrc === 'string' ? item.firstImageSrc : undefined,
+    createdAt: typeof item.createdAt === 'string' ? item.createdAt : undefined,
     type: item.type,
     reason: item.reason,
     revision: Number(item.revision),

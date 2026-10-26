@@ -179,15 +179,17 @@ test('Mongo 并发人工重试只追加一次配额记录', { skip: !RUN_MONGO }
   assert.equal(row.manualAttemptTimestamps.length, 1);
 });
 
-test('过期 claim 不能把结果写成 Note 权威成功快照', { skip: !RUN_MONGO }, async () => {
-  const { userId, noteId } = await noteFixture(); const user = String(userId); const id = String(noteId);
+for (const explicitNull of [false, true]) test(`过期 claim 不改写 Note 权威记录（成功字段${explicitNull ? '为 null' : '缺失'}）`, { skip: !RUN_MONGO }, async () => {
+  const { userId, noteId } = await noteFixture(explicitNull ? { topicIndexSuccess: null } : {}); const user = String(userId); const id = String(noteId);
   const now = new Date('2026-10-02T00:00:00Z'); const note = await store.getNote(user, id);
   await store.schedule(user, note!, buildTopicInputs(note!), now);
   const job = await store.claimNext(user, 'expiring-worker', now, 'automatic'); assert.ok(job);
   await Note.updateOne({ _id: noteId }, { $set: { topicIndexClaimUntil: now } }, { timestamps: false });
+  const before = await Note.collection.findOne({ _id: noteId });
   assert.equal(await store.finish(job!, ['过期结果'], new Date(now.getTime() + 1)), false);
-  const authoritative: any = await Note.findById(noteId).select('+topicIndexSuccess +topicIndexClaimToken +topicIndexClaimVersion +topicIndexClaimUntil').lean();
-  assert.equal(authoritative.topicIndexSuccess, null);
+  const authoritative = await Note.collection.findOne({ _id: noteId });
+  assert.deepEqual(authoritative, before);
+  assert.ok(authoritative);
   assert.equal(authoritative.topicIndexClaimToken, 'expiring-worker');
 });
 

@@ -3,12 +3,6 @@ import UserProfile from '../models/UserProfile';
 import { Note } from '../models/Note';
 import { ResponseHandler } from '../utils/errorHandler';
 import { profileAnalysisCoordinator } from '../services/profileAnalysisCoordinator';
-import { getUserTopicIndex, retryFailedUserTopics } from '../services/userNoteTopicIndexService';
-import type { TopicScope } from '../models/UserNoteTopicIndex';
-
-function requestedTopicScope(value: unknown): TopicScope | null {
-  return value === 'all' || value === 'year' || value === 'sixMonths' ? value : null;
-}
 
 type ProfileRecord = {
   interests?: unknown[];
@@ -16,7 +10,6 @@ type ProfileRecord = {
   goals?: unknown[];
   preferences?: Record<string, unknown>;
   summary?: string;
-  theme?: Record<string, unknown>;
   analysisStatus?: string;
   analysisError?: string;
   analysisFailedAt?: Date | null;
@@ -34,7 +27,6 @@ function profileFields(profile: ProfileRecord | null) {
     goals: profile.goals,
     preferences: profile.preferences,
     summary: profile.summary,
-    theme: profile.theme,
   };
 }
 
@@ -46,8 +38,7 @@ function getStatus(profile: ProfileRecord | null): 'idle' | 'analyzing' | 'ready
   const hasResult = Boolean(
     profile.summary?.trim() ||
     profile.expertise?.length ||
-    profile.interests?.length ||
-    profile.theme?.cssValue
+    profile.interests?.length
   );
   return hasResult ? 'ready' : 'idle';
 }
@@ -90,21 +81,9 @@ export const requestProfileAnalysis = async (req: Request, res: Response) => {
 };
 
 export const getProfileTopics = async (req: Request, res: Response) => {
-  const scope = requestedTopicScope(req.query.scope);
-  if (!scope) {
-    res.status(400).json({ error: '话题范围无效' });
-    return;
-  }
-  const result = await getUserTopicIndex(req.user!.userId, scope);
-  ResponseHandler.success(res, result);
+  res.status(410).json({ success: false, error: '笔记话题功能已退役', message: '笔记话题功能已退役', type: 'VALIDATION_ERROR', code: 'NOTE_TAGS_RETIRED' });
 };
 
 export const retryProfileTopics = async (req: Request, res: Response) => {
-  const scope = requestedTopicScope(req.body?.scope);
-  if (!scope) {
-    res.status(400).json({ error: '话题范围无效' });
-    return;
-  }
-  const result = await retryFailedUserTopics(req.user!.userId, scope);
-  ResponseHandler.success(res, result);
+  res.status(410).json({ success: false, error: '笔记话题功能已退役', message: '笔记话题功能已退役', type: 'VALIDATION_ERROR', code: 'NOTE_TAGS_RETIRED' });
 };

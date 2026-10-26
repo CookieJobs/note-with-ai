@@ -80,9 +80,13 @@ describe('chatRelatedNoteRecallService', () => {
         noteId: 'note-1',
         title: '相关笔记',
         content: '命中的内容',
+        excerpt: '命中的内容',
+        sourceType: 'text',
+        imageCount: 0,
+        firstImageSrc: undefined,
         score: 0.88,
         matchType: 'vector',
-        createdAt: '2026-06-01T00:00:00.000Z',
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
       },
     ]);
     assert.equal(requests.length, 1);

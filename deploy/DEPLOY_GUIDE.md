@@ -17,18 +17,23 @@ ADMIN_ENCRYPTION_KEY=<base64-encoded-32-byte-key>
 
 ## 备份、构建和切换
 
-先创建带时间戳的目录，备份当前提交、镜像、`.env`、`docker-compose.yml` 及 MongoDB archive。然后 `git fetch origin codex/admin-production-release`，校验 fetched commit，再以 detached HEAD 切换到该 commit；不要用 `git reset`，也不要覆盖服务器上已有的 Compose 变量。
+先创建权限受限、带时间戳的目录，备份当前提交、实际运行镜像、`.env`、`docker-compose.yml` 及 MongoDB archive。给旧镜像保留独立回滚标签并归档校验；发布期间不要清理旧镜像或构建缓存。拉取 `origin main`，核对本次批准发布的精确 commit 后再以 detached HEAD 切换；不要用 `git reset`，也不要覆盖服务器上已有的 Compose 变量。旧后台发布分支不再作为后续版本的默认发布入口。
+
+工作区版本需要配套的笔记写入与来源对话接口，不能只因前端构建成功就单独切换。先只读检查历史笔记 revision；只有缺失/无效时才在备份和演练后运行已编译的 `node dist/scripts/backfill_note_revisions.js`，已有有效 revision 不重复回填。标签/话题退场的版本不要同时保留旧自动写入实例。
 
 切换后运行：
 
 ```bash
 docker compose config
-docker compose up -d --build
+docker compose build backend
+docker compose build frontend
+# 构建和候选检查通过后再切换；构建期间旧服务继续运行。
+docker compose up -d --no-deps backend frontend
 docker compose ps
 curl -fsS http://127.0.0.1:3001/api/health
 ```
 
-确认健康检查和容器状态后，再创建首位 owner。使用已编译的 CLI，而不是 `ts-node`：
+确认健康检查和容器状态后，仅首次安装的新环境需要创建首位 owner；已有后台账号的日常发布跳过此步。使用已编译的 CLI，而不是 `ts-node`：
 
 ```bash
 docker compose exec -T \
@@ -68,7 +73,7 @@ curl -I https://bloomy16.com/admin
 
 ## 回滚
 
-停止前记录正在运行的镜像。若发布失败，恢复备份的 `.env` 和 Compose 文件，切换回备份 commit，使用原镜像或 `docker compose up -d --build` 恢复服务。数据库只在确认需要时才从 MongoDB archive 恢复；一般代码回滚不应恢复数据库。
+停止前记录并保留正在运行的镜像。若发布失败，按备份记录切回原 commit/配套镜像；只恢复本次确实变更过的配置，优先使用已保留的旧镜像恢复服务，避免临时依赖重新构建。数据库只在确认需要时才从 MongoDB archive 恢复；一般代码回滚不应恢复数据库，以免抹去发布后的新用户数据。不要执行删除数据卷的清理命令。
 
 ## P16＋P17 灵感主动发现（独立验收后才启用）
 

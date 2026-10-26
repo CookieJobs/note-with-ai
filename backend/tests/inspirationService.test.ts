@@ -24,7 +24,7 @@ function makeNoteQuery(records: unknown[] = [noteFixture]) {
   const query = {
     sort: (value: unknown) => { assert.deepEqual(value, { updatedAt: -1 }); return query; },
     limit: (value: number) => { assert.equal(value, 5); return query; },
-    select: (value: string) => { assert.equal(value, '_id revision title keywords summary updatedAt'); return query; },
+    select: (value: string) => { assert.equal(value, '_id revision title summary enrichment.meta updatedAt'); return query; },
     lean: async () => records,
   };
   return query;
@@ -95,9 +95,9 @@ describe('P15 inspiration service', () => {
     assert.equal(result.item.userState, 'regular');
     assert.equal(result.item.origin, 'manual');
     assert.equal(result.item.viewedAt, null);
-    assert.equal(JSON.stringify(plannerInputs).includes('必须永远不读取'), false);
+    assert.doesNotMatch(JSON.stringify(plannerInputs), /必须永远不读取|keywords|整理.*如何/);
     assert.deepEqual(plannerInputs[0], [{
-      noteId: 'note-1', revision: 4, title: '知识管理', keywords: ['整理'], summary: '如何把记录形成可复用知识',
+      noteId: 'note-1', revision: 4, title: '知识管理', summary: '如何把记录形成可复用知识',
     }]);
     assert.equal(models.created[0].status, 'draft');
     assert.equal(models.registered[0].length, 1);
@@ -107,7 +107,7 @@ describe('P15 inspiration service', () => {
     assert.equal(models.deletedItems.length, 0);
   });
 
-  it('returns no result without calling providers when the user has no usable note metadata', async () => {
+  it('returns a directed 409 without calling providers when the user has no notes', async () => {
     const models = installModelDoubles([]);
     const service = createInspirationService({
       planner: async () => { throw new Error('planner must not run'); },
@@ -115,8 +115,51 @@ describe('P15 inspiration service', () => {
       synthesizer: async () => { throw new Error('synthesis must not run'); },
     });
 
-    assert.deepEqual(await service.request('user-1'), { status: 'no_result' });
+    await assert.rejects(service.request('user-1'), (error: any) => error.statusCode === 409
+      && error.details?.code === 'INSPIRATION_NOTE_CONTEXT_UNAVAILABLE' && error.details?.reason === 'no_notes');
     assert.equal(models.created.length, 0);
+  });
+
+  it('uses an untitled summary and skips individually unusable recent notes', async () => {
+    installModelDoubles([
+      { ...noteFixture, _id: 'pending', title: '', summary: '', enrichment: { meta: { status: 'pending', sourceRevision: 4 } } },
+      { ...noteFixture, _id: 'untitled', title: '', summary: '可用的短摘要', enrichment: { meta: { status: 'ready', sourceRevision: 4 } } },
+      { ...noteFixture, _id: 'stale', title: '', summary: '过期摘要', enrichment: { meta: { status: 'ready', sourceRevision: 3 } } },
+      { ...noteFixture, _id: 'legacy', title: '', summary: '历史摘要', enrichment: null },
+    ]);
+    let selected: LimitedNoteContext[] = [];
+    const service = createInspirationService({
+      planner: async (notes) => { selected = notes; return plan; },
+      search: async () => [source], synthesizer: async () => draft,
+    });
+    assert.equal((await service.request('user-1')).status, 'created');
+    assert.deepEqual(selected.map((note) => [note.noteId, note.title, note.summary]), [
+      ['untitled', '', '可用的短摘要'], ['legacy', '', '历史摘要'],
+    ]);
+  });
+
+  it('keeps a title when its summary provenance is stale', async () => {
+    installModelDoubles([{ ...noteFixture, summary: '过期摘要', enrichment: { meta: { status: 'ready', sourceRevision: 3 } } }]);
+    let selected: LimitedNoteContext[] = [];
+    const service = createInspirationService({ planner: async (notes) => { selected = notes; return plan; }, search: async () => [source], synthesizer: async () => draft });
+    assert.equal((await service.request('user-1')).status, 'created');
+    assert.deepEqual(selected.map(({ title, summary }) => ({ title, summary })), [{ title: '知识管理', summary: '' }]);
+  });
+
+  it('classifies current pending or missing metadata and terminal empty summaries honestly', async () => {
+    for (const [status, sourceRevision, expected] of [
+      ['pending', 4, 'summary_pending'],
+      ['missing', 4, 'summary_pending'],
+      ['missing', 3, 'context_unavailable'],
+      ['failed', 4, 'context_unavailable'],
+      ['ready', 4, 'context_unavailable'],
+    ] as const) {
+      mock.restoreAll();
+      installModelDoubles([{ ...noteFixture, title: '', summary: '', enrichment: { meta: { status, sourceRevision } } }]);
+      const service = createInspirationService({ planner: async () => { throw new Error('planner called'); }, search: async () => { throw new Error('search called'); }, synthesizer: async () => { throw new Error('synthesis called'); } });
+      await assert.rejects(service.request('user-1'), (error: any) => error.details?.reason === expected);
+      assert.deepEqual(await service.runScheduled('user-1', async () => true), { status: 'no_result', reason: 'note_context_unavailable', contextReason: expected });
+    }
   });
 
   it('deletes an incomplete result and its registered sources after a duplicate-source race', async () => {

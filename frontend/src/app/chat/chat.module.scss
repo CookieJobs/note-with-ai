@@ -1,22 +1,22 @@
 /*
-Input: /chat page shell, message list, composer, related notes drawer, delete confirmation modal
-Output: scoped layout and interaction styles for the chat experience
+Input: /chat page shell, source binding, message list, composer, related notes drawer, delete confirmation modal
+Output: 820px chat column with 28px opening and 26px composer; themed history, drawers, errors and async confirmation states
 Pos: frontend/src/app/chat
 Note: Keep this file limited to classes used by the chat page and its direct chat components.
 */
 
 .container {
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
-  background: #f8fafc;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Inter", sans-serif;
+  background: var(--workspace-canvas, #fff);
+  font-family: inherit;
   display: flex;
   flex-direction: column;
   position: relative;
 }
 
 .emptyContainer {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  background: var(--workspace-background, #fff);
 }
 
 .bodyWrapper {
@@ -29,8 +29,8 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 
 @media (min-width: 768px) {
   .bodyWrapper {
-    padding: 12px;
-    gap: 12px;
+    padding: 0;
+    gap: 0;
   }
 }
 
@@ -52,6 +52,74 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   flex-direction: column;
 }
 
+.sourceContext,
+.scopeHint {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 18px 48px 0;
+  color: var(--workspace-muted, #6f6f6f);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.sourceContext {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+
+  a {
+    color: var(--workspace-ink, #0d0d0d);
+    overflow-wrap: anywhere;
+    text-decoration: underline;
+    text-decoration-color: var(--workspace-line, rgba(13, 13, 13, .09));
+    text-underline-offset: 3px;
+
+    &:hover { color: var(--workspace-accent, #266fe1); }
+    &:focus-visible { outline: 2px solid var(--workspace-accent, #266fe1); outline-offset: 3px; }
+  }
+}
+
+.sourceContextHint { font-size: 11px; }
+
+.openingContext {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 36px 24px 0;
+
+  h1 { margin: 0; color: var(--workspace-ink, #0d0d0d); font-size: 28px; line-height: 1.5; font-weight: 600; }
+}
+
+.openingContext + .mainContent .cardList { padding-top: 12px; }
+
+.chatError {
+  width: calc(100% - 48px);
+  max-width: 772px;
+  margin: 0 auto 16px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--workspace-surface, #f7f7f7);
+  color: var(--ws-danger, #b3261e);
+  border: 1px solid var(--workspace-line, rgba(13, 13, 13, .09));
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  button {
+    margin-left: 8px;
+    padding: 4px 9px;
+    border: 1px solid var(--workspace-line, #ddd);
+    border-radius: 8px;
+    background: var(--workspace-canvas, #fff);
+    color: var(--ws-ink, #171717);
+    cursor: pointer;
+    &:hover:not(:disabled) { background: var(--ws-hover, #eee); }
+    &:focus-visible { outline: 2px solid var(--ws-accent, #266FE1); outline-offset: 2px; }
+    &:disabled { opacity: .55; cursor: wait; }
+  }
+}
+
 .messagesContainer {
   flex: 1;
   min-height: 0;
@@ -60,7 +128,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   padding-right: 8px;
   scroll-behavior: smooth;
   scrollbar-width: thin;
-  scrollbar-color: rgba(15, 23, 42, 0.18) transparent;
+  scrollbar-color: var(--workspace-line, rgba(13, 13, 13, .09)) transparent;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -71,11 +139,11 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgba(15, 23, 42, 0.16);
+    background: var(--workspace-line, rgba(13, 13, 13, .09));
     border-radius: 999px;
 
     &:hover {
-      background: rgba(15, 23, 42, 0.28);
+      background: var(--workspace-muted, #6f6f6f);
     }
   }
 }
@@ -84,7 +152,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   flex: 1;
   display: flex;
   flex-direction: column;
-  max-width: 800px;
+  max-width: 820px;
   width: 100%;
   margin: 0 auto;
 }
@@ -108,17 +176,18 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 }
 
 .promptTitle {
+  width: 100%;
   text-align: center;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 600;
   letter-spacing: 0;
-  color: #111827;
-  margin: 0 0 12px;
+  color: var(--workspace-ink, #0d0d0d);
+  margin: 0 0 24px;
 }
 
 .inputContainer {
   width: 100%;
-  max-width: 800px;
+  max-width: 820px;
   margin: 0 auto;
   padding: 0 24px 24px;
   z-index: 20;
@@ -126,48 +195,55 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 
 .inputContainerCentered {
   width: 100%;
-  max-width: 800px;
+  max-width: 820px;
   margin: auto !important;
-  padding: 0 24px;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 48px 24px;
   z-index: 20;
+}
+
+.suggestionSlot {
+  width: 100%;
+  margin-top: 24px;
+}
+
+.emptyContainer .composer {
+  background: var(--workspace-canvas, #fff);
+  border-color: var(--workspace-line, rgba(13, 13, 13, .09));
+  padding: 18px 16px;
 }
 
 .disclaimer {
   text-align: center;
   font-size: 12px;
-  color: #9ca3af;
-  padding: 8px 16px 12px;
+  color: var(--workspace-muted, #6f6f6f);
+  padding: 12px 16px 0;
 }
 
 .rightPanel {
-  width: var(--right-panel-width);
+  width: 330px;
   flex-shrink: 0;
-  z-index: 10;
-  border: 1px solid rgba(226, 232, 240, 0.3);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  border-left: 1px solid var(--workspace-line, rgba(13, 13, 13, .09));
 }
 
-.relatedNotesFab {
+button.relatedNotesFab {
   display: none;
   position: fixed;
   right: 16px;
   bottom: 152px;
-  z-index: 40;
+  z-index: 20;
   align-items: center;
   gap: 8px;
   height: 40px;
   padding: 0 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--workspace-line, rgba(13, 13, 13, .09));
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
-  color: #111827;
+  background: var(--workspace-canvas, #fff);
+  color: var(--workspace-ink, #0d0d0d);
   font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
-  backdrop-filter: blur(14px);
+
   cursor: pointer;
 
   strong {
@@ -178,8 +254,8 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     height: 20px;
     padding: 0 6px;
     border-radius: 999px;
-    background: #111827;
-    color: #ffffff;
+    background: var(--workspace-ink, #0d0d0d);
+    color: var(--workspace-canvas, #fff);
     font-size: 11px;
     line-height: 1;
   }
@@ -188,8 +264,8 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 .relatedNotesOverlay {
   position: fixed;
   inset: 0;
-  z-index: 70;
-  background: rgba(15, 23, 42, 0.35);
+  z-index: var(--z-panel);
+  background: var(--ws-scrim, rgba(0, 0, 0, .32));
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -199,28 +275,28 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   position: relative;
   width: min(100%, 520px);
   height: min(78vh, 680px);
-  border-radius: 20px 20px 0 0;
+  border-radius: 14px 14px 0 0;
   overflow: hidden;
-  background: #ffffff;
-  box-shadow: 0 -18px 60px rgba(15, 23, 42, 0.24);
+  background: var(--workspace-canvas, #fff);
+
 }
 
-.relatedNotesClose {
+button.relatedNotesClose {
   position: absolute;
   top: 14px;
   right: 14px;
   z-index: 2;
   width: 34px;
   height: 34px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #374151;
+  border: none;
+  border-radius: 6px;
+  background: var(--workspace-surface, #f7f7f7);
+  color: var(--ws-secondary, var(--workspace-ink, #525252));
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+
 }
 
 .relatedNotesDrawerPanel {
@@ -230,19 +306,17 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 .confirmModal {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.42);
-  backdrop-filter: blur(8px);
+  background: var(--ws-scrim, rgba(0, 0, 0, .32));
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: var(--z-modal);
   animation: fadeIn 0.2s ease;
 }
 
 .confirmDialog {
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: var(--workspace-canvas, #fff);
+
   border-radius: 12px;
   padding: 28px;
   max-width: 420px;
@@ -254,12 +328,12 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     margin: 0 0 14px;
     font-size: 20px;
     font-weight: 700;
-    color: #111827;
+    color: var(--workspace-ink, #0d0d0d);
   }
 
   p {
     margin: 0 0 24px;
-    color: #475569;
+    color: var(--ws-secondary, var(--workspace-ink, #525252));
     font-size: 15px;
     line-height: 1.6;
   }
@@ -270,7 +344,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   gap: 12px;
   justify-content: flex-end;
 
-  button {
+  button.confirmCancel, button.confirmDelete {
     min-width: 80px;
     padding: 10px 18px;
     border: none;
@@ -281,11 +355,11 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     transition: background-color 0.2s ease, transform 0.2s ease;
 
     &:first-child {
-      background: #f1f5f9;
-      color: #475569;
+      background: var(--workspace-surface, #f7f7f7);
+      color: var(--ws-secondary, var(--workspace-ink, #525252));
 
-      &:hover {
-        background: #e2e8f0;
+      &:hover:not(:disabled) {
+        background: var(--workspace-hover, rgba(13, 13, 13, .045));
       }
     }
 
@@ -293,7 +367,7 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
       background: #dc2626;
       color: #ffffff;
 
-      &:hover {
+      &:hover:not(:disabled) {
         background: #b91c1c;
         transform: translateY(-1px);
       }
@@ -312,9 +386,9 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     transform: translateX(-100%);
     background: linear-gradient(
       90deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0.75) 50%,
-      rgba(255, 255, 255, 0) 100%
+      transparent 0%,
+      var(--workspace-hover, rgba(13, 13, 13, .045)) 50%,
+      transparent 100%
     );
     animation: shimmer 2s infinite;
   }
@@ -341,17 +415,17 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   to { transform: translateX(100%); }
 }
 
-@media (max-width: 1279px) {
+@media (max-width: 1199px) {
   .rightPanel {
     display: none !important;
   }
 
-  .relatedNotesFab {
+  button.relatedNotesFab {
     display: flex;
   }
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1200px) {
   .relatedNotesOverlay {
     display: none;
   }
@@ -385,8 +459,38 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
     padding: 0 16px 16px;
   }
 
-  .relatedNotesFab {
+  button.relatedNotesFab {
     right: 14px;
     bottom: 136px;
   }
 }
+
+.composer { display: flex; align-items: flex-end; gap: 10px; width: 100%; padding: 12px; border-radius: 26px; background: var(--workspace-canvas, #fff); border: 1px solid var(--workspace-line, rgba(13, 13, 13, .09)); transition: border-color 140ms ease;
+  &:focus-within { border-color: var(--workspace-accent, #266fe1); box-shadow: 0 0 0 3px var(--workspace-accent-soft, #edf3fc); }
+}
+.composerTextarea { min-height: 36px; max-height: 200px; width: 100%; resize: none; border: none; background: transparent; padding: 7px 8px; color: var(--workspace-ink, #0d0d0d); font: inherit; font-size: 15px; line-height: 1.6; box-shadow: none;
+  &::placeholder { color: var(--workspace-muted, #6f6f6f); }
+  &:focus { outline: none; box-shadow: none; }
+}
+button.sendButton { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border: none; border-radius: 50%; background: var(--workspace-accent, #266fe1); color: #fff; cursor: pointer;
+  &:hover:not(:disabled) { background: var(--ws-accent-hover, #1d5bc0); }
+  &:disabled { background: var(--ws-active, var(--workspace-surface, #f7f7f7)); color: var(--workspace-muted, #6f6f6f); cursor: default; }
+  &:focus-visible { outline: 2px solid var(--workspace-accent, #266fe1); outline-offset: 3px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .messagesContainer { scroll-behavior: auto; }
+  .composer, .confirmButtons button { transition: none; }
+  .confirmModal, .confirmDialog, .container :global(.skeletonShimmer)::after { animation: none; }
+}
+
+@media (max-width: 767px) { .composerTextarea { font-size: 16px; } }
+
+.streamNotice { width: 100%; max-width: 820px; margin: 10px auto; padding: 0 24px; color: var(--workspace-muted, #6f6f6f); font-size: 12px; line-height: 1.6; }
+button.confirmCancel:disabled, button.confirmDelete:disabled { opacity: .6; cursor: wait; }
+.careSuggestion { padding: 16px 18px; font-size: 13px; }
+
+button.relatedNotesFab, button.relatedNotesClose, button.confirmCancel, button.confirmDelete {
+  &:focus-visible { outline: 2px solid var(--ws-focus, var(--workspace-accent, #266fe1)); outline-offset: 3px; }
+}
+button.relatedNotesFab:hover, button.relatedNotesClose:hover { background: var(--workspace-hover, rgba(13, 13, 13, .045)); }
+.confirmDialog p[role='alert'] { color: var(--ws-danger, #b3261e); }

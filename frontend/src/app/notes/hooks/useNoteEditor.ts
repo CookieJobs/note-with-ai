@@ -1,736 +1,273 @@
-import { useReducer, useRef, useEffect, useState } from 'react';
-import { JSONContent } from '@tiptap/react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { JSONContent } from '@tiptap/react';
 import type { Note, UpdateNoteCommand } from './useNotes';
 import { NoteWriteConflict } from './useNotes';
-import { WORKSPACE_ANIM_DELAY_MS } from '../animationTimings';
+import { validateNoteTitle } from '../utils/titleValidation';
 
-export type EditorNote = Note;
-
-interface UseNoteEditorProps {
-  note: EditorNote;
+export type NoteEditDraft = {
+  title: string;
+  json: JSONContent;
+  text: string;
+  dirty: boolean;
+  baseline: { title: string; json: JSONContent; text: string; revision: number };
+};
+type Props = {
+  note: Note;
+  userId?: string | null;
   updateNote: (command: UpdateNoteCommand) => Promise<Note>;
   onContentEditingChange?: (id: string, isEditing: boolean) => void;
-  draft?: { json: JSONContent; text: string; dirty: boolean };
-  onDraftChange?: (id: string, draft: { json: JSONContent; text: string; dirty: boolean }) => void;
+  draft?: NoteEditDraft;
+  onDraftChange?: (id: string, draft: NoteEditDraft | null) => void;
   isContentEditingActive?: boolean;
-}
-
+};
 type State = {
   expanded: boolean;
-  title: {
-    isEditing: boolean;
-    value: string;
-    saving: boolean;
-    error: string;
-    conflictCurrentTitle: string | null;
-  };
-  content: {
-    isEditing: boolean;
-    value: string;
-    original: string;
-    draft: string | null;
-    saving: boolean;
-    error: string;
-    conflictCurrentText: string | null;
-  };
-  layout: {
-    canExpand: boolean;
-    maxHeight: string;
-  };
+  title: { isEditing: boolean; value: string; saving: boolean; error: string; conflictCurrentTitle: string | null };
+  content: { isEditing: boolean; value: string; original: string; draft: string | null; saving: boolean; error: string; conflictCurrentText: string | null };
+  layout: { canExpand: boolean; maxHeight: string };
 };
-
 type Action =
+  | { type: 'CHANGE_TITLE'; value: string }
   | { type: 'TOGGLE_EXPANDED' }
   | { type: 'SET_EXPANDED'; value: boolean }
-  | { type: 'ENTER_TITLE_EDIT'; value: string }
-  | { type: 'CHANGE_TITLE'; value: string }
-  | { type: 'CANCEL_TITLE_EDIT'; value: string }
-  | { type: 'SAVE_TITLE_START' }
-  | { type: 'SAVE_TITLE_SUCCESS'; value: string }
-  | { type: 'SAVE_TITLE_FAIL'; error: string; conflictCurrentTitle?: string }
-  | { type: 'SYNC_TITLE_FROM_NOTE'; value: string }
-  | { type: 'ENTER_CONTENT_EDIT'; original: string; value: string }
-  | { type: 'CHANGE_CONTENT'; value: string }
-  | { type: 'BLUR_CONTENT_EXIT' }
-  | { type: 'CANCEL_CONTENT_EDIT'; value: string }
-  | { type: 'SAVE_CONTENT_START' }
-  | { type: 'SAVE_CONTENT_SUCCESS'; value: string }
-  | { type: 'SAVE_CONTENT_FAIL'; error: string; conflictCurrentText?: string }
-  | { type: 'SYNC_CONTENT_FROM_NOTE'; value: string }
   | { type: 'SET_CAN_EXPAND'; value: boolean }
-  | { type: 'SET_MAX_HEIGHT'; value: string };
+  | { type: 'SET_MAX_HEIGHT'; value: string }
+  | { type: 'BLUR_CONTENT_EXIT' }
+  | { type: 'BLUR_TITLE_EXIT' };
 
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case 'TOGGLE_EXPANDED':
-      return { ...state, expanded: !state.expanded };
+const fromPlain = (text: string): JSONContent => ({ type: 'doc', content: text.split('\n').map((line) => ({
+  type: 'paragraph', content: line ? [{ type: 'text', text: line }] : [],
+})) });
+const noteText = (note: Note) => note.contentText ?? note.content ?? '';
+const noteJson = (note: Note) => (note.contentJson as JSONContent | null) ?? fromPlain(noteText(note));
+const makeDraft = (note: Note): NoteEditDraft => {
+  const title = note.title ?? '';
+  const text = noteText(note);
+  const json = noteJson(note);
+  return { title, text, json, dirty: false, baseline: { title, text, json, revision: note.revision } };
+};
+const bodyDirty = (draft: NoteEditDraft) => draft.text !== draft.baseline.text
+  || JSON.stringify(draft.json) !== JSON.stringify(draft.baseline.json);
+const titleDirty = (draft: NoteEditDraft) => draft.title.trim() !== draft.baseline.title.trim();
+const withDirty = (draft: NoteEditDraft) => ({ ...draft, dirty: bodyDirty(draft) || titleDirty(draft) });
 
-    case 'SET_EXPANDED':
-      return { ...state, expanded: action.value };
-
-    case 'ENTER_TITLE_EDIT':
-      return {
-        ...state,
-        title: { ...state.title, isEditing: true, value: action.value, saving: false, error: '', conflictCurrentTitle: null },
-      };
-
-    case 'CHANGE_TITLE':
-      return { ...state, title: { ...state.title, value: action.value } };
-
-    case 'CANCEL_TITLE_EDIT':
-      return { ...state, title: { ...state.title, isEditing: false, value: action.value, saving: false, error: '', conflictCurrentTitle: null } };
-
-    case 'SAVE_TITLE_START':
-      return { ...state, title: { ...state.title, saving: true, error: '', conflictCurrentTitle: null } };
-
-    case 'SAVE_TITLE_SUCCESS':
-      return { ...state, title: { isEditing: false, value: action.value, saving: false, error: '', conflictCurrentTitle: null } };
-
-    case 'SAVE_TITLE_FAIL':
-      return {
-        ...state,
-        title: {
-          ...state.title,
-          saving: false,
-          error: action.error,
-          conflictCurrentTitle: action.conflictCurrentTitle ?? null,
-        },
-      };
-
-    case 'SYNC_TITLE_FROM_NOTE':
-      if (state.title.isEditing) return state;
-      return { ...state, title: { ...state.title, value: action.value, error: '', conflictCurrentTitle: null } };
-
-    case 'ENTER_CONTENT_EDIT':
-      return {
-        ...state,
-        content: {
-          ...state.content,
-          isEditing: true,
-          original: action.original,
-          value: action.value,
-          error: '',
-          saving: false,
-          conflictCurrentText: null,
-        },
-        layout: { ...state.layout, canExpand: false },
-      };
-
-    case 'CHANGE_CONTENT':
-      return {
-        ...state,
-        content: { ...state.content, value: action.value, draft: action.value },
-      };
-
-    case 'BLUR_CONTENT_EXIT':
-      return {
-        ...state,
-        content: { ...state.content, isEditing: false },
-      };
-
-    case 'CANCEL_CONTENT_EDIT':
-      return {
-        ...state,
-        content: {
-          ...state.content,
-          isEditing: false,
-          value: action.value,
-          original: action.value,
-          draft: null,
-          error: '',
-          conflictCurrentText: null,
-        },
-      };
-
-    case 'SAVE_CONTENT_START':
-      return { ...state, content: { ...state.content, saving: true, error: '', conflictCurrentText: null } };
-
-    case 'SAVE_CONTENT_SUCCESS':
-      return {
-        ...state,
-        content: {
-          ...state.content,
-          isEditing: false,
-          saving: false,
-          value: action.value,
-          original: action.value,
-          draft: null,
-          error: '',
-          conflictCurrentText: null,
-        },
-      };
-
-    case 'SAVE_CONTENT_FAIL':
-      return {
-        ...state,
-        content: {
-          ...state.content,
-          saving: false,
-          error: action.error,
-          conflictCurrentText: action.conflictCurrentText ?? null,
-        },
-      };
-
-    case 'SYNC_CONTENT_FROM_NOTE':
-      if (state.content.isEditing) return state;
-      if (state.content.draft !== null) return state;
-      return {
-        ...state,
-        content: { ...state.content, value: action.value, original: action.value, error: '', conflictCurrentText: null },
-      };
-
-    case 'SET_CAN_EXPAND':
-      return { ...state, layout: { ...state.layout, canExpand: action.value } };
-
-    case 'SET_MAX_HEIGHT':
-      return { ...state, layout: { ...state.layout, maxHeight: action.value } };
-
-    default:
-      return state;
-  }
-}
-
-function initState(note: EditorNote): State {
-  return {
+export function useNoteEditor({ note, userId = null, updateNote, onContentEditingChange, draft, onDraftChange,
+  isContentEditingActive = false }: Props) {
+  const [state, setState] = useState<State>(() => ({
     expanded: false,
-    title: { isEditing: false, value: note.title || '', saving: false, error: '', conflictCurrentTitle: null },
-    content: {
-      isEditing: false,
-      value: note.content || '',
-      original: note.content || '',
-      draft: null,
-      saving: false,
-      error: '',
-      conflictCurrentText: null,
-    },
+    title: { isEditing: false, value: draft?.title ?? note.title ?? '', saving: false, error: '', conflictCurrentTitle: null },
+    content: { isEditing: false, value: draft?.text ?? noteText(note), original: noteText(note), draft: null, saving: false, error: '', conflictCurrentText: null },
     layout: { canExpand: false, maxHeight: '' },
-  };
-}
-
-type KeywordOperation =
-  | { kind: 'edit'; originalValue: string; occurrence: number }
-  | { kind: 'add' }
-  | { kind: 'delete'; originalValue: string; occurrence: number };
-
-function occurrenceAt(keywords: string[], index: number): number {
-  return keywords.slice(0, index).filter((keyword) => keyword === keywords[index]).length;
-}
-
-function findKeywordOccurrence(keywords: string[], value: string, occurrence: number): number | null {
-  let seen = 0;
-  for (let index = 0; index < keywords.length; index += 1) {
-    if (keywords[index] !== value) continue;
-    if (seen === occurrence) return index;
-    seen += 1;
-  }
-  return null;
-}
-
-function applyKeywordOperation(keywords: string[], operation: KeywordOperation, value: string): string[] | null {
-  if (operation.kind === 'add') {
-    return value ? [...keywords, value] : keywords;
-  }
-
-  const index = findKeywordOccurrence(keywords, operation.originalValue, operation.occurrence);
-  if (index === null) return null;
-  if (operation.kind === 'delete' || !value) {
-    return [...keywords.slice(0, index), ...keywords.slice(index + 1)];
-  }
-  return [...keywords.slice(0, index), value, ...keywords.slice(index + 1)];
-}
-
-export function useNoteEditor({
-  note,
-  updateNote,
-  onContentEditingChange,
-  draft,
-  onDraftChange,
-  isContentEditingActive = false,
-}: UseNoteEditorProps) {
-  const [state, dispatch] = useReducer(reducer, note, initState);
-
-  const [contentJsonDraft, setContentJsonDraft] = useState<JSONContent | null>(null);
-  const [contentTextDraft, setContentTextDraft] = useState<string>('');
-  const draftMetaRef = useRef<{ noteId: string | null; dirty: boolean }>({ noteId: null, dirty: false });
-  const contentEditBaselineRef = useRef<{ noteId: string | null; jsonStr: string; text: string } | null>(null);
-  const titleEditRevisionRef = useRef<number | null>(null);
-  const titleRetryRevisionRef = useRef<number | null>(null);
-  const contentEditRevisionRef = useRef<number | null>(null);
-  const contentRetryRevisionRef = useRef<number | null>(null);
-  const keywordEditRevisionRef = useRef<number | null>(null);
-  const keywordRetryRevisionRef = useRef<number | null>(null);
-  const keywordOperationRef = useRef<KeywordOperation | null>(null);
-  const contentEditIgnoreFirstChangeRef = useRef<{ noteId: string | null; ignore: boolean }>({ noteId: null, ignore: false });
+  }));
+  const [contentJsonDraft, setContentJsonDraft] = useState<JSONContent | null>(draft?.json ?? null);
+  const [contentTextDraft, setContentTextDraft] = useState(draft?.text ?? '');
   const [contentSavedFlash, setContentSavedFlash] = useState(false);
-  const contentSavedTimerRef = useRef<number | null>(null);
-  const saveExitTimerRef = useRef<number | null>(null);
-
-  const [activeKeywordIndex, setActiveKeywordIndex] = useState<number | null>(null);
-  const [tagEditValue, setTagEditValue] = useState<string>('');
-  const [keywordError, setKeywordError] = useState<string>('');
-  const contentEditActiveAckRef = useRef(false);
-
-
-  // Sync with props
+  const sessionRef = useRef<NoteEditDraft>(draft ?? makeDraft(note));
+  const noteRef = useRef(note);
+  noteRef.current = note;
+  const saveRef = useRef(false);
+  const activeAck = useRef(false);
+  const sessionEpoch = useRef(0);
+  const owner = `${userId ?? ''}:${note._id}`;
+  const ownerRef = useRef(owner);
+  const mountedRef = useRef(true);
+  if (ownerRef.current !== owner) {
+    ownerRef.current = owner;
+    sessionEpoch.current += 1;
+    sessionRef.current = makeDraft(note);
+  }
   useEffect(() => {
-    dispatch({ type: 'SYNC_TITLE_FROM_NOTE', value: note.title || '' });
-  }, [note.title]);
-
-  useEffect(() => {
-    dispatch({ type: 'SYNC_CONTENT_FROM_NOTE', value: note.content || '' });
-  }, [note.content]);
-
-  useEffect(() => {
-    const operation = keywordOperationRef.current;
-    if (!operation || operation.kind === 'delete') return;
-    if (operation.kind === 'add') {
-      setActiveKeywordIndex((note.keywords || []).length);
-      return;
-    }
-    const index = findKeywordOccurrence(note.keywords || [], operation.originalValue, operation.occurrence);
-    if (index !== null) setActiveKeywordIndex(index);
-  }, [note.keywords]);
-
-  useEffect(() => {
-    if (draft && draft.dirty && draft.json) {
-      setContentJsonDraft(draft.json);
-      setContentTextDraft(draft.text || '');
-      draftMetaRef.current = { noteId: note._id, dirty: true };
-      return;
-    }
-
-    if (draft && !draft.dirty && draftMetaRef.current.noteId === note._id) {
-      draftMetaRef.current = { noteId: note._id, dirty: false };
-    }
-  }, [draft, note._id]);
-
-  useEffect(() => {
-    if (!state.content.isEditing) {
-      contentEditActiveAckRef.current = false;
-      return;
-    }
-
-    // 进入编辑态时，卡片本地 state 会先于页面层 activeEditor 更新。
-    // 只有页面层明确接管过当前卡片的编辑态之后，才允许“外部关闭”把它收起。
-    if (isContentEditingActive) {
-      contentEditActiveAckRef.current = true;
-      return;
-    }
-
-    if (!contentEditActiveAckRef.current) return;
-    dispatch({ type: 'BLUR_CONTENT_EXIT' });
-  }, [isContentEditingActive, state.content.isEditing]);
-
-  useEffect(() => {
-    onContentEditingChange?.(note._id, state.content.isEditing);
-  }, [note._id, onContentEditingChange, state.content.isEditing]);
-
-  useEffect(() => {
-      return () => {
-        if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
-        if (saveExitTimerRef.current) window.clearTimeout(saveExitTimerRef.current);
-      };
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; sessionEpoch.current += 1; };
   }, []);
 
+  const emit = useCallback((next: NoteEditDraft) => {
+    sessionRef.current = withDirty(next);
+    onDraftChange?.(note._id, sessionRef.current.dirty ? sessionRef.current : null);
+  }, [note._id, onDraftChange]);
 
-  const getNotePlainText = () => {
-    const t = note.contentText;
-    if (typeof t === 'string' && t.trim().length > 0) return t;
-    return note.content || '';
-  };
-
-  const buildJsonFromPlain = (text: string) => {
-    if (!text) {
-      return {
-        type: 'doc',
-        content: [
-          {
-            type: 'paragraph',
-            content: [],
-          },
-        ],
-      };
+  useEffect(() => {
+    if (saveRef.current) return;
+    if (sessionRef.current.dirty) {
+      const current = sessionRef.current;
+      if (current.baseline.revision === note.revision) return;
+      const refreshed = makeDraft(note);
+      const next = withDirty({
+        ...current,
+        title: titleDirty(current) ? current.title : refreshed.title,
+        text: bodyDirty(current) ? current.text : refreshed.text,
+        json: bodyDirty(current) ? current.json : refreshed.json,
+        baseline: { ...current.baseline,
+          title: titleDirty(current) ? current.baseline.title : refreshed.title,
+          text: bodyDirty(current) ? current.baseline.text : refreshed.text,
+          json: bodyDirty(current) ? current.baseline.json : refreshed.json,
+        },
+      });
+      sessionRef.current = next;
+      setContentJsonDraft(next.json);
+      setContentTextDraft(next.text);
+      onDraftChange?.(note._id, next);
+      setState((old) => ({ ...old,
+        title: { ...old.title, value: next.title },
+        content: { ...old.content, value: next.text },
+      }));
+      return;
     }
+    const clean = makeDraft(note);
+    sessionRef.current = clean;
+    setContentJsonDraft(clean.json);
+    setContentTextDraft(clean.text);
+    setState((current) => ({ ...current,
+      title: { ...current.title, value: clean.title },
+      content: { ...current.content, value: clean.text, original: clean.text },
+    }));
+  }, [note.revision, note.title, note.content, note.contentText, note.contentJson]);
 
-    // 将纯文本按换行符分割为多个段落，以保证兼容旧版单换行文本
-    const lines = text.split('\n');
-    return {
-      type: 'doc',
-      content: lines.map(line => ({
-        type: 'paragraph',
-        content: line ? [{ type: 'text', text: line }] : [],
-      })),
-    };
-  };
+  useEffect(() => {
+    if (!state.content.isEditing) { activeAck.current = false; return; }
+    if (isContentEditingActive) { activeAck.current = true; return; }
+    if (activeAck.current) setState((current) => ({ ...current,
+      title: { ...current.title, isEditing: false }, content: { ...current.content, isEditing: false } }));
+  }, [isContentEditingActive, state.content.isEditing]);
+  useEffect(() => { onContentEditingChange?.(note._id, state.content.isEditing); }, [note._id, onContentEditingChange, state.content.isEditing]);
 
-  const safeStringify = (v: unknown) => {
-    try {
-      return JSON.stringify(v ?? null);
-    } catch {
-      return '';
-    }
-  };
-
-  const extractPlainTextFromJson = (doc: JSONContent): string => {
-    const out: string[] = [];
-    const walk = (node: JSONContent) => {
-      if (!node || typeof node !== 'object') return;
-      const type = node.type;
-      if (type === 'text' && typeof node.text === 'string') {
-        out.push(node.text);
-        return;
+  const changeTitle = useCallback((value: string) => {
+    emit({ ...sessionRef.current, title: value });
+    setState((current) => ({ ...current, title: { ...current.title, value, error: '', conflictCurrentTitle: null } }));
+  }, [emit]);
+  const dispatch = useCallback((action: Action) => {
+    if (action.type === 'CHANGE_TITLE') { changeTitle(action.value); return; }
+    setState((current) => {
+      switch (action.type) {
+        case 'TOGGLE_EXPANDED': return { ...current, expanded: !current.expanded };
+        case 'SET_EXPANDED': return { ...current, expanded: action.value };
+        case 'SET_CAN_EXPAND': return { ...current, layout: { ...current.layout, canExpand: action.value } };
+        case 'SET_MAX_HEIGHT': return { ...current, layout: { ...current.layout, maxHeight: action.value } };
+        case 'BLUR_CONTENT_EXIT': return { ...current,
+          title: { ...current.title, isEditing: false }, content: { ...current.content, isEditing: false } };
+        case 'BLUR_TITLE_EXIT': return { ...current, title: { ...current.title, isEditing: false } };
       }
-      if (type === 'image') {
-        if (out.length > 0 && !out[out.length - 1].endsWith('\n')) out.push('\n');
-        out.push('[图片]');
-        out.push('\n');
-        return;
-      }
-      if (type === 'hardBreak') {
-        out.push('\n');
-        return;
-      }
-      const content = Array.isArray(node.content) ? node.content : [];
-      for (const c of content) walk(c);
-      if (type === 'paragraph' || type === 'heading' || type === 'blockquote' || type === 'listItem') {
-        if (out.length > 0 && !out[out.length - 1].endsWith('\n')) out.push('\n');
-      }
-    };
-    walk(doc);
-    return out.join('').replace(/\n{3,}/g, '\n\n').trim();
-  };
-
-  const getNoteTextForEditor = () => {
-    if (note.contentJson) {
-      const t = extractPlainTextFromJson(note.contentJson);
-      if (t) return t;
-    }
-    return getNotePlainText();
-  };
+    });
+  }, [changeTitle]);
 
   const beginTitleEdit = () => {
-    titleEditRevisionRef.current = note.revision;
-    titleRetryRevisionRef.current = null;
-    dispatch({ type: 'ENTER_TITLE_EDIT', value: note.title || '' });
+    const draft = sessionRef.current;
+    setContentJsonDraft(draft.json);
+    setContentTextDraft(draft.text);
+    setState((current) => ({ ...current,
+      title: { ...current.title, isEditing: true, error: '', conflictCurrentTitle: null },
+      content: { ...current.content, isEditing: true, value: draft.text, error: '' },
+      layout: { ...current.layout, canExpand: false },
+    }));
   };
-
-  const handleSaveTitle = async () => {
-    const next = state.title.value.trim();
-    if (next === (note.title || '')) {
-      dispatch({ type: 'CANCEL_TITLE_EDIT', value: note.title || '' });
-      return;
-    }
-
-    dispatch({ type: 'SAVE_TITLE_START' });
-    try {
-      const updatedNote = await updateNote({
-        noteId: note._id,
-        expectedRevision: titleRetryRevisionRef.current ?? titleEditRevisionRef.current ?? note.revision,
-        changes: { title: next },
-      });
-      dispatch({ type: 'SAVE_TITLE_SUCCESS', value: updatedNote.title ?? next });
-      titleEditRevisionRef.current = null;
-      titleRetryRevisionRef.current = null;
-    } catch (error) {
-      if (error instanceof NoteWriteConflict) {
-        titleRetryRevisionRef.current = error.current.revision;
-      }
-      dispatch({
-        type: 'SAVE_TITLE_FAIL',
-        error: error instanceof NoteWriteConflict
-          ? `笔记已被其他写入更新。本地标题已保留，当前服务端版本为 ${error.current.revision}。`
-          : error instanceof Error ? error.message : '保存标题失败，请重试。',
-        conflictCurrentTitle: error instanceof NoteWriteConflict ? error.current.title ?? '' : undefined,
-      });
-    }
-  };
-
-  const handleSaveContent = async () => {
-    const valText = (contentTextDraft || '').trim();
-    const prevText = getNotePlainText().trim();
-    const prevJson = note.contentJson ?? buildJsonFromPlain(getNotePlainText());
-    const nextJson = contentJsonDraft ?? buildJsonFromPlain(contentTextDraft || '');
-    const prevJsonStr = safeStringify(prevJson);
-    const nextJsonStr = safeStringify(nextJson);
-
-    if (valText === prevText && prevJsonStr === nextJsonStr) {
-      dispatch({ type: 'BLUR_CONTENT_EXIT' });
-      return;
-    }
-
-    dispatch({ type: 'SAVE_CONTENT_START' });
-    try {
-      const updated = await updateNote({
-        noteId: note._id,
-        expectedRevision: contentRetryRevisionRef.current ?? contentEditRevisionRef.current ?? note.revision,
-        changes: { body: { kind: 'rich-text', document: nextJson as Record<string, unknown> } },
-      });
-      const nextText = (updated.contentText ?? updated.content ?? contentTextDraft) as string;
-      const updatedJson = updated.contentJson ?? contentJsonDraft;
-
-      draftMetaRef.current = { noteId: note._id, dirty: false };
-      onDraftChange?.(note._id, { json: updatedJson as JSONContent, text: nextText, dirty: false });
-      contentEditRevisionRef.current = null;
-      contentRetryRevisionRef.current = null;
-
-      setContentSavedFlash(true);
-      if (contentSavedTimerRef.current) window.clearTimeout(contentSavedTimerRef.current);
-      contentSavedTimerRef.current = window.setTimeout(() => setContentSavedFlash(false), 2000);
-
-      if (saveExitTimerRef.current) window.clearTimeout(saveExitTimerRef.current);
-      saveExitTimerRef.current = window.setTimeout(() => {
-        dispatch({ type: 'SAVE_CONTENT_SUCCESS', value: nextText });
-        saveExitTimerRef.current = null;
-      }, WORKSPACE_ANIM_DELAY_MS);
-    } catch (e: unknown) {
-      if (saveExitTimerRef.current) {
-        window.clearTimeout(saveExitTimerRef.current);
-        saveExitTimerRef.current = null;
-      }
-      const current = e instanceof NoteWriteConflict ? e.current : null;
-      if (current) contentRetryRevisionRef.current = current.revision;
-      dispatch({
-        type: 'SAVE_CONTENT_FAIL',
-        error: current
-          ? `笔记已被其他写入更新。本地草稿已保留，当前服务端版本为 ${current.revision}。`
-          : e instanceof Error ? e.message : '保存失败',
-        conflictCurrentText: current
-          ? typeof current.contentText === 'string' ? current.contentText : current.content
-          : undefined,
-      });
-    }
-  };
-
-  const deleteKeywordAt = async (idx: number) => {
-    const keywords = [...(note.keywords || [])];
-    let operation = keywordOperationRef.current;
-    if (!operation || operation.kind !== 'delete') {
-      if (idx < 0 || idx >= keywords.length) return;
-      operation = { kind: 'delete', originalValue: keywords[idx], occurrence: occurrenceAt(keywords, idx) };
-      keywordOperationRef.current = operation;
-      keywordEditRevisionRef.current = note.revision;
-      keywordRetryRevisionRef.current = null;
-    }
-    const nextKeywords = applyKeywordOperation(keywords, operation, '');
-    if (!nextKeywords) {
-      setKeywordError('关键词已发生变化，请重新操作。');
-      return;
-    }
-    setKeywordError('');
-
-    try {
-      await updateNote({
-        noteId: note._id,
-        expectedRevision: keywordRetryRevisionRef.current ?? keywordEditRevisionRef.current ?? note.revision,
-        changes: { keywords: nextKeywords },
-      });
-      setActiveKeywordIndex(null);
-      setTagEditValue('');
-      setKeywordError('');
-      keywordEditRevisionRef.current = null;
-      keywordRetryRevisionRef.current = null;
-      keywordOperationRef.current = null;
-    } catch (error) {
-      if (error instanceof NoteWriteConflict) keywordRetryRevisionRef.current = error.current.revision;
-      setKeywordError(error instanceof NoteWriteConflict
-        ? '关键词已被其他写入更新。本地编辑已保留，请重试。'
-        : error instanceof Error ? error.message : '保存关键词失败，请重试。');
-      setActiveKeywordIndex(null);
-    }
-  };
-
-  const commitKeywordAt = async (idx: number) => {
-    const v = tagEditValue.trim();
-    const keywords = [...(note.keywords || [])];
-    let operation = keywordOperationRef.current;
-    if (!operation) {
-      if (idx < keywords.length) {
-        operation = { kind: 'edit', originalValue: keywords[idx], occurrence: occurrenceAt(keywords, idx) };
-      } else if (idx === keywords.length) {
-        operation = { kind: 'add' };
-      } else {
-        return;
-      }
-      keywordOperationRef.current = operation;
-      keywordEditRevisionRef.current = note.revision;
-      keywordRetryRevisionRef.current = null;
-    }
-    const nextKeywords = applyKeywordOperation(keywords, operation, v);
-    if (!nextKeywords) {
-      setKeywordError('关键词已发生变化，请重新操作。');
-      return;
-    }
-    if (operation.kind === 'add' && !v) {
-      setActiveKeywordIndex(null);
-      setTagEditValue('');
-      keywordOperationRef.current = null;
-      return;
-    }
-    setKeywordError('');
-
-    try {
-      await updateNote({
-        noteId: note._id,
-        expectedRevision: keywordRetryRevisionRef.current ?? keywordEditRevisionRef.current ?? note.revision,
-        changes: { keywords: nextKeywords },
-      });
-      setActiveKeywordIndex(null);
-      setTagEditValue('');
-      setKeywordError('');
-      keywordEditRevisionRef.current = null;
-      keywordRetryRevisionRef.current = null;
-      keywordOperationRef.current = null;
-    } catch (error) {
-      if (error instanceof NoteWriteConflict) keywordRetryRevisionRef.current = error.current.revision;
-      setKeywordError(error instanceof NoteWriteConflict
-        ? '关键词已被其他写入更新。本地编辑已保留，请重试。'
-        : error instanceof Error ? error.message : '保存关键词失败，请重试。');
-    }
-  };
-
-  const beginKeywordEdit = (idx: number, value: string) => {
-    const keywords = note.keywords || [];
-    setKeywordError('');
-    keywordEditRevisionRef.current = note.revision;
-    keywordRetryRevisionRef.current = null;
-    keywordOperationRef.current = idx < keywords.length
-      ? { kind: 'edit', originalValue: keywords[idx], occurrence: occurrenceAt(keywords, idx) }
-      : { kind: 'add' };
-    setActiveKeywordIndex(idx);
-    setTagEditValue(value);
-  };
-
-  const cancelKeywordEdit = () => {
-    setKeywordError('');
-    keywordEditRevisionRef.current = null;
-    keywordRetryRevisionRef.current = null;
-    keywordOperationRef.current = null;
-    setActiveKeywordIndex(null);
-    setTagEditValue('');
-  };
-
-  const enterContentEdit = (e?: React.MouseEvent) => {
+  const enterContentEdit = (event?: React.MouseEvent) => {
+    const target = event?.target as Element | undefined;
+    if (target?.closest('button, input, textarea, select, [role="button"]')) return;
+    if (target?.closest('a')) { if (event?.metaKey || event?.ctrlKey) return; event?.preventDefault(); }
     if (state.content.isEditing) return;
-
-    const t = (e?.target ?? null) as Element | null;
-    if (t) {
-      if (t.closest('button, input, textarea, select, [role="button"]')) return;
-      const a = t.closest('a');
-      if (a) {
-        if (e && (e.metaKey || e.ctrlKey)) return;
-        e?.preventDefault();
-      }
-    }
-
-    const sel = window.getSelection?.();
-    if (sel && !sel.isCollapsed && String(sel).trim().length > 0) {
-      return;
-    }
-
-    if (draftMetaRef.current.noteId === note._id && draftMetaRef.current.dirty && contentJsonDraft) {
-      // keep draft
-    } else {
-      const baseJson = note.contentJson ?? buildJsonFromPlain(getNotePlainText());
-      const baseText = extractPlainTextFromJson(baseJson) || getNoteTextForEditor();
-      setContentJsonDraft(baseJson);
-      setContentTextDraft(baseText);
-      draftMetaRef.current = { noteId: note._id, dirty: false };
-      onDraftChange?.(note._id, { json: baseJson, text: baseText, dirty: false });
-      contentEditBaselineRef.current = {
-        noteId: note._id,
-        jsonStr: safeStringify(baseJson),
-        text: baseText,
-      };
-      contentEditRevisionRef.current = note.revision;
-      contentRetryRevisionRef.current = null;
-      contentEditIgnoreFirstChangeRef.current = { noteId: note._id, ignore: true };
-    }
-
-    dispatch({
-      type: 'ENTER_CONTENT_EDIT',
-      original: getNoteTextForEditor(),
-      value: getNoteTextForEditor(),
-    });
+    const current = sessionRef.current;
+    setContentJsonDraft(current.json);
+    setContentTextDraft(current.text);
+    setState((old) => ({ ...old, content: { ...old.content, isEditing: true, value: current.text, error: '' },
+      layout: { ...old.layout, canExpand: false } }));
   };
-
   const onEditorChange = ({ json, text }: { json: JSONContent; text: string }) => {
-    const jsonStr = safeStringify(json);
-    const baseline = contentEditBaselineRef.current;
-    
-    if (
-      baseline &&
-      baseline.noteId === note._id &&
-      baseline.jsonStr === jsonStr &&
-      baseline.text === text
-    ) {
-      setContentJsonDraft(json);
-      setContentTextDraft(text);
-      return;
-    }
-
-    const ig = contentEditIgnoreFirstChangeRef.current;
-    if (ig && ig.noteId === note._id && ig.ignore) {
-      ig.ignore = false;
-      setContentJsonDraft(json);
-      setContentTextDraft(text);
-      contentEditBaselineRef.current = { noteId: note._id, jsonStr, text };
-      return;
-    }
-
+    const current = sessionRef.current;
+    if (current.text === text && JSON.stringify(current.json) === JSON.stringify(json)) return;
+    emit({ ...current, json, text });
     setContentJsonDraft(json);
     setContentTextDraft(text);
-    draftMetaRef.current = { noteId: note._id, dirty: true };
-    onDraftChange?.(note._id, { json, text, dirty: true });
-    if (contentSavedFlash) setContentSavedFlash(false);
-    if (contentSavedTimerRef.current) {
-      window.clearTimeout(contentSavedTimerRef.current);
-      contentSavedTimerRef.current = null;
+    setContentSavedFlash(false);
+    setState((old) => ({ ...old, content: { ...old.content, value: text, draft: text, error: '' } }));
+  };
+
+  const cancel = () => {
+    sessionEpoch.current += 1;
+    const clean = makeDraft(noteRef.current);
+    sessionRef.current = clean;
+    onDraftChange?.(note._id, null);
+    setContentJsonDraft(clean.json);
+    setContentTextDraft(clean.text);
+    setState((current) => ({ ...current,
+      title: { isEditing: false, value: clean.title, saving: false, error: '', conflictCurrentTitle: null },
+      content: { isEditing: false, value: clean.text, original: clean.text, draft: null, saving: false, error: '', conflictCurrentText: null },
+    }));
+  };
+
+  const save = async (): Promise<boolean> => {
+    if (saveRef.current) return false;
+    const snapshot = sessionRef.current;
+    const titleError = titleDirty(snapshot) ? validateNoteTitle(snapshot.title) : null;
+    if (titleError) {
+      setState((old) => ({ ...old, title: { ...old.title, error: titleError } }));
+      return false;
     }
-    dispatch({ type: 'CHANGE_CONTENT', value: text });
+    const changes: UpdateNoteCommand['changes'] = {};
+    if (titleDirty(snapshot)) changes.title = snapshot.title.trim();
+    if (bodyDirty(snapshot)) changes.body = { kind: 'rich-text', document: snapshot.json as Record<string, unknown> };
+    if (!Object.keys(changes).length) {
+      setState((current) => ({ ...current, title: { ...current.title, isEditing: false }, content: { ...current.content, isEditing: false } }));
+      return false;
+    }
+    saveRef.current = true;
+    const submittedOwner = ownerRef.current;
+    const submittedEpoch = sessionEpoch.current;
+    setState((current) => ({ ...current,
+      title: { ...current.title, saving: true, error: '', conflictCurrentTitle: null },
+      content: { ...current.content, saving: true, error: '', conflictCurrentText: null },
+    }));
+    try {
+      const accepted = await updateNote({ noteId: note._id, expectedRevision: snapshot.baseline.revision, changes });
+      if (!mountedRef.current || ownerRef.current !== submittedOwner) return false;
+      const current = sessionRef.current;
+      const wasCanceled = sessionEpoch.current !== submittedEpoch;
+      const acceptedBaseline = {
+        title: accepted.title ?? (changes.title ?? snapshot.baseline.title),
+        text: accepted.contentText ?? (changes.body ? snapshot.text : snapshot.baseline.text),
+        json: accepted.contentJson ? accepted.contentJson as JSONContent : changes.body ? snapshot.json : snapshot.baseline.json,
+        revision: accepted.revision,
+      };
+      const titleUnchanged = current.title === snapshot.title;
+      const bodyUnchanged = current.text === snapshot.text && JSON.stringify(current.json) === JSON.stringify(snapshot.json);
+      const next = withDirty({ ...current,
+        title: (!wasCanceled && titleUnchanged) || (wasCanceled && !titleDirty(current)) ? acceptedBaseline.title : current.title,
+        text: (!wasCanceled && bodyUnchanged) || (wasCanceled && !bodyDirty(current)) ? acceptedBaseline.text : current.text,
+        json: (!wasCanceled && bodyUnchanged) || (wasCanceled && !bodyDirty(current)) ? acceptedBaseline.json : current.json,
+        baseline: acceptedBaseline,
+      });
+      sessionRef.current = next;
+      onDraftChange?.(note._id, next.dirty ? next : null);
+      setContentJsonDraft(next.json);
+      setContentTextDraft(next.text);
+      setContentSavedFlash(!wasCanceled);
+      setState((old) => ({ ...old,
+        title: { ...old.title, value: next.title, isEditing: next.dirty ? old.title.isEditing : false, saving: false, error: '', conflictCurrentTitle: null },
+        content: { ...old.content, value: next.text, isEditing: next.dirty ? old.content.isEditing : false, saving: false, error: '', conflictCurrentText: null },
+      }));
+      return !wasCanceled && !next.dirty;
+    } catch (error) {
+      if (!mountedRef.current || ownerRef.current !== submittedOwner || sessionEpoch.current !== submittedEpoch) return false;
+      const current = error instanceof NoteWriteConflict ? error.current : null;
+      if (current) {
+        sessionRef.current = { ...sessionRef.current,
+          baseline: { ...sessionRef.current.baseline, revision: current.revision } };
+        onDraftChange?.(note._id, sessionRef.current);
+      }
+      const message = current ? `笔记已被其他写入更新。本地草稿已保留，当前服务端版本为 ${current.revision}。`
+        : error instanceof Error ? error.message : '保存失败，请重试。';
+      setState((old) => ({ ...old,
+        title: { ...old.title, saving: false, error: message, conflictCurrentTitle: current?.title ?? null },
+        content: { ...old.content, saving: false, error: message, conflictCurrentText: current?.contentText ?? current?.content ?? null },
+      }));
+      return false;
+    } finally { saveRef.current = false; }
   };
 
-  const handleCancelContent = () => {
-    dispatch({ type: 'CANCEL_CONTENT_EDIT', value: state.content.original });
-    
-    // Reset drafts to original content
-    const baseJson = note.contentJson ?? buildJsonFromPlain(getNotePlainText());
-    const baseText = extractPlainTextFromJson(baseJson) || getNoteTextForEditor();
-    setContentJsonDraft(baseJson);
-    setContentTextDraft(baseText);
-    draftMetaRef.current = { noteId: note._id, dirty: false };
-    onDraftChange?.(note._id, { json: baseJson, text: baseText, dirty: false });
-    contentEditBaselineRef.current = {
-      noteId: note._id,
-      jsonStr: safeStringify(baseJson),
-      text: baseText,
-    };
-  };
-
-  return {
-    state,
-    dispatch,
-    contentJsonDraft,
-    contentTextDraft,
-    contentSavedFlash,
-    activeKeywordIndex,
-    setActiveKeywordIndex,
-    tagEditValue,
-    setTagEditValue,
-    keywordError,
-    beginKeywordEdit,
-    cancelKeywordEdit,
-    handleSaveTitle,
-    beginTitleEdit,
-    handleSaveContent,
-    handleCancelContent,
-    deleteKeywordAt,
-    commitKeywordAt,
-    enterContentEdit,
-    onEditorChange,
-    getNotePlainText,
-    getNoteTextForEditor,
-    buildJsonFromPlain,
-    extractPlainTextFromJson,
-    safeStringify,
+  return { state, dispatch, contentJsonDraft, contentTextDraft, contentSavedFlash,
+    isDirty: () => sessionRef.current.dirty, isSaving: () => saveRef.current,
+    beginTitleEdit, changeTitle, handleSaveTitle: save, handleSaveContent: save,
+    handleCancelContent: cancel, cancel, enterContentEdit, onEditorChange,
+    getNotePlainText: () => noteText(note), getNoteTextForEditor: () => noteText(note),
+    buildJsonFromPlain: fromPlain,
   };
 }

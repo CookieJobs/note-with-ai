@@ -15,6 +15,8 @@ import { Note } from '../models/Note';
 
 type LegacyCreateBody = {
   body?: NoteBodyInput;
+  title?: unknown;
+  keywords?: unknown;
   content?: unknown;
   contentJson?: unknown;
   contentText?: unknown;
@@ -70,10 +72,7 @@ function changesFromLegacyRequest(data: LegacyUpdateBody): UpdateNoteInput['chan
       text: typeof data.contentText === 'string' ? data.contentText : data.content as string,
     };
   }
-  if (typeof data.title === 'string') changes.title = data.title;
-  if (Array.isArray(data.keywords) && data.keywords.every((keyword) => typeof keyword === 'string')) {
-    changes.keywords = data.keywords;
-  }
+  if (Object.prototype.hasOwnProperty.call(data, 'title')) changes.title = data.title as string;
   return changes;
 }
 
@@ -148,7 +147,13 @@ class NoteController {
   async createNote(req: Request, res: Response, next: NextFunction) {
     const user = await UserValidator.authenticateUser(req);
     try {
-      const result = await noteService.createNote(user._id.toString(), { body: bodyFromLegacyRequest(req.body) });
+      if (Object.prototype.hasOwnProperty.call(req.body, 'keywords')) {
+        throw new NoteWriteError('NOTE_TAGS_RETIRED', '笔记标签功能已退役', 400);
+      }
+      const result = await noteService.createNote(user._id.toString(), {
+        body: bodyFromLegacyRequest(req.body),
+        ...(Object.prototype.hasOwnProperty.call(req.body, 'title') ? { title: req.body.title } : {}),
+      });
       ResponseHandler.success(res, result, '笔记创建成功', 201);
     } catch (error) {
       mapNoteWriteError(error);
@@ -189,6 +194,9 @@ class NoteController {
     const { title } = req.body;
     const user = await UserValidator.authenticateUser(req);
     try {
+      if (Object.prototype.hasOwnProperty.call(req.body, 'keywords')) {
+        throw new NoteWriteError('NOTE_TAGS_RETIRED', '笔记标签功能已退役', 400);
+      }
       const result = await noteService.updateTitle(user._id.toString(), id, title);
       ResponseHandler.success(res, result, '笔记标题更新成功');
     } catch (error) {
@@ -241,6 +249,10 @@ class NoteController {
     const user = await UserValidator.authenticateUser(req);
     
     try {
+      if (Object.prototype.hasOwnProperty.call(req.body, 'keywords')
+        || Object.prototype.hasOwnProperty.call(req.body?.changes ?? {}, 'keywords')) {
+        throw new NoteWriteError('NOTE_TAGS_RETIRED', '笔记标签功能已退役', 400);
+      }
       const input = await updateInputFromHttp(user._id.toString(), id, req.body);
       const result = await noteService.updateNote(user._id.toString(), id, input);
       ResponseHandler.success(res, result, '笔记更新成功');

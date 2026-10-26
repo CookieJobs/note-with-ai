@@ -4,8 +4,6 @@ import { summarizeNoteMeta, expandNoteConcepts } from './llmService';
 import { noteEmbeddingService } from './noteEmbeddingService';
 import { updateNoteRecommendations, type RecommendationOptions, type RecommendationResult } from './recommendService';
 import { InProcessNoteEnrichmentScheduler } from './noteEnrichmentScheduler';
-import { scheduleUserNoteTopicIndex } from './userNoteTopicIndexService';
-import { logger } from '../utils/logger';
 
 type EnrichmentWorkerNote = {
   _id: unknown;
@@ -13,21 +11,16 @@ type EnrichmentWorkerNote = {
   revision: unknown;
   content: unknown;
   contentText?: unknown;
-  titleOrigin?: unknown;
-  keywordsOrigin?: unknown;
 };
 
 type WorkerDependencies = {
   summarizeMeta: (contentText: string, userId?: string) => Promise<{
     summary: string;
     concepts: string[];
-    title?: string;
-    keywords?: string[];
   } | null>;
   generateEmbedding: (task: EnrichmentTask) => Promise<'saved' | 'stale' | 'failed'>;
   refreshRecommendations: (task: EnrichmentTask) => Promise<'saved' | 'stale' | 'failed' | void>;
   now?: () => Date;
-  scheduleTopicIndex?: (userId: string, noteId: string) => void;
 };
 
 export type EnrichmentTaskStatus = 'saved' | 'stale' | 'failed';
@@ -53,8 +46,6 @@ function createProductionWorker(options: ProductionTaskOptions = {}): NoteEnrich
       return {
         summary: meta.summary,
         concepts,
-        title: meta.title,
-        keywords: meta.keywords,
       };
     },
     generateEmbedding: async (task) => {
@@ -73,11 +64,6 @@ function createProductionWorker(options: ProductionTaskOptions = {}): NoteEnrich
       });
       options.onRecommendationResult?.(result);
       return result.meta.diagnostics?.reason === 'stale_source_revision' ? 'stale' : 'saved';
-    },
-    scheduleTopicIndex: (userId, noteId) => {
-      void scheduleUserNoteTopicIndex(userId, noteId).catch((error: unknown) => {
-        logger.warn('Could not schedule topic indexing after note metadata update', { noteId, error: error instanceof Error ? error.message : String(error) });
-      });
     },
   });
 }
@@ -119,12 +105,6 @@ export class NoteEnrichmentWorker {
         const meta = await this.dependencies.summarizeMeta(noteText(note), String(note.userId));
         if (!meta) throw new Error('meta generation returned no result');
         const values: Record<string, unknown> = { summary: meta.summary, concepts: meta.concepts };
-        if (note.titleOrigin === 'default' && typeof meta.title === 'string') {
-          values.title = meta.title;
-        }
-        if (note.keywordsOrigin === 'default' && Array.isArray(meta.keywords)) {
-          values.keywords = meta.keywords;
-        }
         return this.mark(task, 'ready', values);
       }
 
@@ -160,9 +140,6 @@ export class NoteEnrichmentWorker {
       { $set: { ...values, [`enrichment.${task.artifact}`]: artifactState } },
       { timestamps: false },
     );
-    if (result.matchedCount > 0 && status === 'ready' && task.artifact === 'meta') {
-      this.dependencies.scheduleTopicIndex?.(task.userId, task.noteId);
-    }
     return result.matchedCount > 0 ? (status === 'ready' ? 'saved' : 'failed') : 'stale';
   }
 }

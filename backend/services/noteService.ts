@@ -60,8 +60,8 @@ class NoteService {
     return { ...toNoteDto(value), enrichment: getEnrichmentView(value) };
   }
 
-  async createNote(userId: string, data: Pick<CreateNoteInput, 'body'>): Promise<NoteWriteResult> {
-    return noteWriteModule.create({ userId, body: data.body });
+  async createNote(userId: string, data: Pick<CreateNoteInput, 'body' | 'title'>): Promise<NoteWriteResult> {
+    return noteWriteModule.create({ userId, body: data.body, title: data.title });
   }
 
   async deleteNote(userId: string, noteId: string): Promise<void> {

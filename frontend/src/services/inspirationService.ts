@@ -6,7 +6,14 @@ export type InspirationErrorCode =
   | 'SEARCH_PROVIDER_FAILED'
   | 'NO_RESULT'
   | 'INSPIRATION_SYNTHESIS_FAILED'
-  | 'INSPIRATION_IN_PROGRESS';
+  | 'INSPIRATION_IN_PROGRESS'
+  | 'INSPIRATION_NOTE_CONTEXT_UNAVAILABLE';
+
+export type NoteContextReason = 'no_notes' | 'summary_pending' | 'context_unavailable';
+const contextReasons = new Set<NoteContextReason>(['no_notes', 'summary_pending', 'context_unavailable']);
+function parseContextReason(value: unknown): NoteContextReason | undefined {
+  return typeof value === 'string' && contextReasons.has(value as NoteContextReason) ? value as NoteContextReason : undefined;
+}
 
 export type InspirationSource = {
   sourceId: string;
@@ -39,6 +46,8 @@ export type InspirationSettings = {
   nextEligibleAt: string | null;
   lastAttemptAt: string | null;
   lastStatus: string | null;
+  lastReason: 'note_context_unavailable' | null;
+  lastContextReason: NoteContextReason | null;
 };
 
 export type RequestInspirationResult =
@@ -52,6 +61,7 @@ const knownErrorCodes = new Set<InspirationErrorCode>([
   'NO_RESULT',
   'INSPIRATION_SYNTHESIS_FAILED',
   'INSPIRATION_IN_PROGRESS',
+  'INSPIRATION_NOTE_CONTEXT_UNAVAILABLE',
 ]);
 
 export class InspirationApiError extends Error {
@@ -59,6 +69,7 @@ export class InspirationApiError extends Error {
     public readonly code: InspirationErrorCode | undefined,
     public readonly status: number,
     message: string,
+    public readonly reason?: NoteContextReason,
   ) {
     super(message);
     this.name = 'InspirationApiError';
@@ -130,7 +141,9 @@ async function readEnvelope(response: Response, fallback: string): Promise<unkno
     const message = code && suppliedMessage.length > 0 && suppliedMessage.length <= 160
       ? suppliedMessage
       : fallback;
-    throw new InspirationApiError(code, response.status, message);
+    const reason = code === 'INSPIRATION_NOTE_CONTEXT_UNAVAILABLE' && isRecord(record.details)
+      ? parseContextReason(record.details.reason) : undefined;
+    throw new InspirationApiError(code, response.status, message, reason);
   }
 
   if (!isRecord(payload) || payload.success !== true || !('data' in payload)) {
@@ -201,6 +214,8 @@ function settingsFromEnvelope(data: unknown): InspirationSettings {
     nextEligibleAt: nullable(data.nextEligibleAt),
     lastAttemptAt: nullable(data.lastAttemptAt),
     lastStatus: nullable(data.lastStatus),
+    lastReason: data.lastReason === 'note_context_unavailable' ? data.lastReason : null,
+    lastContextReason: parseContextReason(data.lastContextReason) || null,
   };
 }
 

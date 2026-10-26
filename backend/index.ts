@@ -23,7 +23,7 @@ import eventRoutes from './routes/events';
 import feedbackRoutes from './routes/feedback';
 import adminFeedbackRoutes from './routes/admin/feedback';
 import inspirationRoutes from './routes/inspirations';
-import { startUserNoteTopicRuntime } from './services/userNoteTopicRuntime';
+import { beginNoteTitleRequestDeadline, getNoteTitleRequestDeadline, stopExpiredNoteTitleRequest } from './middleware/noteTitleRequestDeadline';
 
 dotenv.config();
 
@@ -34,12 +34,14 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-w
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : ['http://localhost:3000', 'http://localhost:3001'];
-export function createApp() {
+export function createApp(options: { noteTitleDeadlineMs?: number } = {}) {
 const app = express();
+app.use(beginNoteTitleRequestDeadline(options.noteTitleDeadlineMs));
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 
 // 请求体大小限制（防止超大 payload 导致 OOM）
 app.use(express.json({ limit: '5mb' }));
+app.use(stopExpiredNoteTitleRequest);
 app.use(cookieParser());
 
 // 添加请求日志中间件
@@ -81,7 +83,6 @@ const connectDB = async () => {
   const g = globalThis as any;
 
   if (mongoose.connection.readyState >= 1) {
-    startUserNoteTopicRuntime();
     return;
   }
 
@@ -90,7 +91,6 @@ const connectDB = async () => {
       .connect(MONGODB_URI)
       .then(() => {
         logger.info('✅ MongoDB 连接成功');
-        startUserNoteTopicRuntime();
       })
       .catch((err: unknown) => {
         g.__mongoConnectPromise = undefined;
@@ -104,7 +104,16 @@ const connectDB = async () => {
 
 // Vercel Serverless Handler
 export default async (req: Request, res: Response) => {
-  await connectDB();
+  // The serverless connection wait is part of the same title-request clock.
+  beginNoteTitleRequestDeadline()(req, res, () => undefined);
+  try {
+    await connectDB();
+  } catch (error) {
+    const state = getNoteTitleRequestDeadline(req);
+    if (state && (state.signal.aborted || res.writableEnded || res.destroyed)) return;
+    throw error;
+  }
+  if (getNoteTitleRequestDeadline(req)?.signal.aborted || res.writableEnded) return;
   return app(req, res);
 };
 
