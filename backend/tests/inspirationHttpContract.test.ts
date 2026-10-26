@@ -104,6 +104,24 @@ describe('P15 inspiration HTTP contract', () => {
     assert.equal((response.body as { code: string }).code, 'SEARCH_PROVIDER_UNAVAILABLE');
   });
 
+  it('exposes only the context reason in a production 409 envelope', async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
+      mock.method(inspirationService, 'request', async () => { throw inspirationError('INSPIRATION_NOTE_CONTEXT_UNAVAILABLE', 409, 'summary_pending'); });
+      const response = makeResponse();
+      const error = await invokeRoute(routeHandler('/', 'post'), {}, response);
+      assert.ok(error);
+      globalErrorHandler(error as never, { method: 'POST', path: '/api/inspirations' } as never, response as never, (() => undefined) as NextFunction);
+      assert.equal(response.statusCode, 409);
+      assert.equal((response.body as any).code, 'INSPIRATION_NOTE_CONTEXT_UNAVAILABLE');
+      assert.deepEqual((response.body as any).details, { reason: 'summary_pending' });
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
   it('returns null when there is no latest item and scopes lookup to the authenticated user', async () => {
     mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-2' } }) as never);
     mock.method(inspirationService, 'latest', async (userId: string) => {

@@ -14,25 +14,32 @@ export class UserAnalysisService {
     return getDeepSeekClient();
   }
 
-  private async markAnalysisReadyWithoutProfileUpdate(userId: string, analysisVersion: number): Promise<boolean> {
-    const result = await UserProfile.updateOne(
+  private hasRenderableProfile(profile: Record<string, unknown>): boolean {
+    return Boolean(
+      (Array.isArray(profile.interests) && profile.interests.length > 0) ||
+      (Array.isArray(profile.expertise) && profile.expertise.length > 0) ||
+      (typeof profile.summary === 'string' && profile.summary.trim().length > 0)
+    );
+  }
+
+  private async markAnalysisInsufficient(userId: string, analysisVersion: number): Promise<void> {
+    await UserProfile.updateOne(
       { userId, analysisVersion, analysisStatus: 'running' },
       {
         $set: {
-          analysisStatus: 'ready',
-          analysisError: '',
-          lastAnalyzedAt: new Date(),
+          analysisStatus: 'failed',
+          analysisError: '笔记数量不足，未生成画像',
+          analysisFailedAt: new Date(),
         },
       }
     );
-
-    return result.matchedCount > 0;
   }
 
   private async commitProfileResult(
     userId: string,
     analysisVersion: number,
-    profileData: Record<string, unknown>
+    profileData: Record<string, unknown>,
+    inputNoteCount: number
   ): Promise<boolean> {
     const result = await UserProfile.updateOne(
       { userId, analysisVersion, analysisStatus: 'running' },
@@ -41,8 +48,12 @@ export class UserAnalysisService {
           ...profileData,
           analysisStatus: 'ready',
           analysisError: '',
+          analysisFailedAt: null,
           lastAnalyzedAt: new Date(),
+          analysisInputNoteCount: inputNoteCount,
+          analysisInputScope: 'recent_up_to_20',
         },
+        $unset: { profileInvalidatedAt: 1 },
       }
     );
 
@@ -57,28 +68,30 @@ export class UserAnalysisService {
     try {
       logger.info(`Starting user profile analysis for user: ${userId}, version: ${analysisVersion}`);
 
-      // 1. Fetch recent data (e.g., last 20 notes)
+      // 1. Check eligibility and fetch recent data (e.g., last 20 notes)
       // TODO: Also fetch recent chat history
+      const initialNoteCount = await Note.countDocuments({ userId });
+      if (initialNoteCount < 5) {
+        await this.markAnalysisInsufficient(userId, analysisVersion);
+        return { committed: false, reason: 'insufficient_data' };
+      }
       const notes = await Note.find({ userId }).sort({ createdAt: -1 }).limit(20);
       
       if (notes.length < 5) {
         logger.info(`Not enough data to analyze for user: ${userId}`);
-        const committed = await this.markAnalysisReadyWithoutProfileUpdate(userId, analysisVersion);
-        return {
-          committed,
-          reason: committed ? 'insufficient_data' : 'stale_analysis_version',
-        };
+        await this.markAnalysisInsufficient(userId, analysisVersion);
+        return { committed: false, reason: 'insufficient_data' };
       }
 
       const notesText = notes.map(n => 
         `[${n.createdAt.toISOString().split('T')[0]}] ${n.title || 'Untitled'}: ${n.content.substring(0, 500)}`
       ).join('\n---\n');
 
-      // 2. Call LLM to extract profile and generate background theme
+      // 2. Call LLM to extract the user profile
       const prompt = `
-        You are a user profiling expert and a top-tier UI/UX designer. Based on the following user notes, extract a structured user profile AND generate a personalized CSS background theme.
+        You are a user profiling expert. Based on the following user notes, extract a structured user profile.
         
-        CRITICAL INSTRUCTION: All output text (including topics, areas, descriptions, summary, themeName, and reasoning) MUST be in Chinese (简体中文).
+        CRITICAL INSTRUCTION: All output text (including topics, areas, descriptions, and summary) MUST be in Chinese (简体中文).
         
         Output strictly in JSON format with the following structure:
         {
@@ -90,21 +103,8 @@ export class UserAnalysisService {
             "contentFocus": string[],
             "feedbackMode": "Gentle" | "Direct"
           },
-          "summary": string (100-200 words biography),
-          "theme": {
-            "themeName": "颜色的诗意命名（如：迷雾森林、冰川晨曦）",
-            "cssType": "linear-gradient",
-            "cssValue": "标准的 CSS background 属性值（必须使用 HEX 或 RGBA 格式，如 linear-gradient(135deg, #E3FDF5 0%, #FFE6FA 100%)）",
-            "reasoning": "简短解释为什么选择这个颜色，它是如何体现用户特质的（50字以内）"
-          }
+          "summary": string (100-200 words biography)
         }
-        
-        THEME GENERATION CONSTRAINTS (Strictly Follow):
-        1. Visual Comfort: DO NOT use high-saturation, high-brightness glaring colors (e.g., pure red #FF0000, neon green).
-        2. Color Space: MUST use Morandi colors, Macaron colors, or low-saturation pastel colors. Lightness (L in HSL) should be between 85% and 95% to ensure a clean background.
-        3. Contrast with White Card: The background CANNOT be pure white (#FFFFFF). It must have enough contrast to distinguish boundaries with a pure white content card floating in the center, but not so dark that it feels oppressive.
-        4. Format: Prefer 2-3 colors soft linear-gradient, angle around 120deg to 145deg.
-        5. Emotional Mapping: Analyze the user's traits and map them to colors (e.g., tech -> very pale ice blue, literary -> oatmeal or light tea, lively -> pale peach and cream yellow).
   
         Notes:
         ${notesText}
@@ -114,12 +114,27 @@ export class UserAnalysisService {
         { role: 'system', content: 'You are a helpful assistant that outputs JSON. You MUST use Chinese (简体中文) for all text content.' },
         { role: 'user', content: prompt }
       ], {
-        temperature: 0.3, // Slightly higher for more creative theme generation
+        temperature: 0.3,
         response_format: { type: 'json_object' }
       });
 
       // 3. Parse and Update DB
-      const profileData = JSON.parse(response) as Record<string, any>;
+      const parsedProfile: unknown = JSON.parse(response);
+      if (
+        typeof parsedProfile !== 'object' ||
+        parsedProfile === null ||
+        Array.isArray(parsedProfile) ||
+        !this.hasRenderableProfile(parsedProfile as Record<string, unknown>)
+      ) {
+        throw new Error('No usable profile data was generated');
+      }
+      const modelProfile = parsedProfile as Record<string, any>;
+      // The model returns untrusted JSON. Commit only user-facing profile fields so it
+      // cannot alter coordinator state or the durable historical invalidation marker.
+      const profileData: Record<string, any> = {};
+      for (const field of ['interests', 'expertise', 'goals', 'preferences', 'summary']) {
+        if (Object.prototype.hasOwnProperty.call(modelProfile, field)) profileData[field] = modelProfile[field];
+      }
       
       // Add timestamps
       if (profileData.interests) {
@@ -136,7 +151,13 @@ export class UserAnalysisService {
       delete profileData.analysisError;
       delete profileData.lastAnalyzedAt;
 
-      const committed = await this.commitProfileResult(userId, analysisVersion, profileData);
+      const currentNoteCount = await Note.countDocuments({ userId });
+      if (currentNoteCount < 5) {
+        await this.markAnalysisInsufficient(userId, analysisVersion);
+        return { committed: false, reason: 'insufficient_data' };
+      }
+
+      const committed = await this.commitProfileResult(userId, analysisVersion, profileData, notes.length);
 
       if (committed) {
         logger.info(`User profile updated for user: ${userId}, version: ${analysisVersion}`);

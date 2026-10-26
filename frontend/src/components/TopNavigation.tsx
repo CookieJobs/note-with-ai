@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getUser, logout } from '../utils/auth';
 import { getUnviewedInspirationCount } from '../services/inspirationService';
 import styles from './TopNavigation.module.scss';
 import { Menu } from 'lucide-react';
+import { useWorkspace } from './workspace/WorkspaceContext';
+import workspaceStyles from './workspace/Workspace.module.scss';
 
 const menuItems = [
   { label: '笔记', href: '/notes' },
@@ -18,12 +20,19 @@ interface TopNavigationProps {
   onMenuClick?: () => void;
 }
 
-export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) {
+export default function TopNavigation(props: TopNavigationProps = {}) {
+  const workspace = useWorkspace();
+  if (workspace) return props.onMenuClick ? <button type="button" className={workspaceStyles.legacyChatHistoryToggle} aria-label="打开对话历史" onClick={props.onMenuClick}><Menu size={18} />对话历史</button> : null;
+  return <LegacyTopNavigation {...props} />;
+}
+
+function LegacyTopNavigation({ onMenuClick }: TopNavigationProps) {
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const userButtonRef = useRef<HTMLButtonElement>(null);
   const [unviewedInspirationCount, setUnviewedInspirationCount] = useState(0);
-  const activeIndex = Math.max(0, menuItems.findIndex(({ href }) => pathname === href || pathname.startsWith(`${href}/`)));
+  const activeIndex = menuItems.findIndex(({ href }) => pathname === href || pathname.startsWith(`${href}/`));
 
   useEffect(() => {
     const userData = getUser();
@@ -50,6 +59,17 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
     setShowUserMenu(false);
   };
 
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setShowUserMenu(false);
+      userButtonRef.current?.focus();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [showUserMenu]);
+
   return (
     <header className={styles.topNav}>
       <div className={styles.container}>
@@ -57,7 +77,7 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
         <div className={styles.leftSection}>
           {pathname.startsWith('/chat') && (
             <button
-              className="md:hidden mr-2 p-2 -ml-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center bg-transparent border-none"
+              className={styles.mobileMenu}
               onClick={onMenuClick}
               aria-label="打开侧边栏"
             >
@@ -74,7 +94,6 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
             data-active-index={activeIndex}
             aria-label="主导航"
           >
-            <span className={styles.navHoverPill} aria-hidden="true" />
             {menuItems.map(({ label, href }) => {
               const isActive = pathname === href;
               const showNewBadge = label === '灵感' && unviewedInspirationCount > 0;
@@ -113,10 +132,16 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
         <div className={styles.rightSection}>
           {user && (
             <div className={styles.userSection}>
-              <div
+              <button
+                type="button"
+                ref={userButtonRef}
                 className={styles.userInfo}
                 onClick={() => setShowUserMenu(!showUserMenu)}
+                aria-label="账户菜单"
+                aria-expanded={showUserMenu}
+                aria-controls="account-menu"
               >
+                <span className={styles.avatar} aria-hidden="true">{String(user.username || user.email || 'N').slice(0, 1).toUpperCase()}</span>
                 <span className={styles.userName}>{user.username}</span>
                 <svg
                   className={`${styles.chevron} ${showUserMenu ? styles.chevronUp : ''}`}
@@ -133,10 +158,10 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps = {}) 
                     strokeLinejoin="round"
                   />
                 </svg>
-              </div>
+              </button>
 
               {showUserMenu && (
-                <div className={styles.userMenu}>
+                <div className={styles.userMenu} id="account-menu">
                   <div className={styles.userMenuHeader}>
                     <div className={styles.userDetails}>
                       <span className={styles.userNameLarge}>{user.username}</span>

@@ -7,6 +7,8 @@ import { persistChatSessions, replaceSessionId } from './chatSessionStore';
 
 interface UseChatStreamReturn {
   loading: boolean;
+  activeSessionId: string | null;
+  errorSessionId: string | null;
   error: string;
   setError: React.Dispatch<React.SetStateAction<string>>;
   sendMessage: (
@@ -14,17 +16,49 @@ interface UseChatStreamReturn {
     currentSession: IChat,
     userId: string,
     updateSessionMessages: (sessionId: string, messages: IMessage[], userId?: string) => void,
-    setSessions: React.Dispatch<React.SetStateAction<IChat[]>>
-  ) => Promise<void>;
+    setSessions: React.Dispatch<React.SetStateAction<IChat[]>>,
+    onAccepted?: () => void,
+  ) => Promise<boolean>;
+}
+
+const CHAT_IDLE_TIMEOUT_MS = 60_000;
+const CHAT_TOTAL_TIMEOUT_MS = 180_000;
+
+function getChatErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (/CHAT_IDLE_TIMEOUT|CHAT_TOTAL_TIMEOUT|timed? out|timeout/i.test(message)) {
+    return '等待回复超时，请重试；你的问题已保留。';
+  }
+  if (/CHAT_UNCOMMITTED|尚未完成保存|未保存/.test(message)) {
+    return '回答尚未完成保存，请重试；你的问题已保留。';
+  }
+  if (/AI_SERVICE_UNAVAILABLE|MODEL_SERVICE_UNAVAILABLE/i.test(message)) {
+    return 'AI 服务暂不可用，请稍后重试；你的问题已保留。';
+  }
+  if (/^AI\s*服务暂不可用/.test(message.trim())) {
+    return 'AI 服务暂不可用，请稍后重试；你的问题已保留。';
+  }
+  if (/^AI\s*服务(?:连接失败|限流|认证失败|响应超时)/.test(message.trim())) {
+    return /请重试|请稍后/.test(message) ? message : `${message}，请重试；你的问题已保留。`;
+  }
+  if (/来源笔记|笔记已删除|笔记不存在|检查权限/.test(message)) return message;
+  if (/^[A-Z][A-Z0-9_]{2,}$/.test(message.trim()) || /internal server error/i.test(message)) {
+    return 'AI 服务暂不可用，请稍后重试；你的问题已保留。';
+  }
+  return message || '发送失败，请稍后重试';
 }
 
 type CommittedSessionPayload = IChat & {
   _id?: string;
 };
 
-export const useChatStream = (): UseChatStreamReturn => {
+export const useChatStream = (
+  onSessionIdChange?: (previousId: string, nextId: string) => void,
+): UseChatStreamReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [errorSessionId, setErrorSessionId] = useState<string | null>(null);
   const loadingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -73,48 +107,78 @@ export const useChatStream = (): UseChatStreamReturn => {
     currentSession: IChat,
     userId: string,
     updateSessionMessages: (sessionId: string, messages: IMessage[], userId?: string) => void,
-    setSessions: React.Dispatch<React.SetStateAction<IChat[]>>
+    setSessions: React.Dispatch<React.SetStateAction<IChat[]>>,
+    onAccepted?: () => void,
   ) => {
-    console.log('🚦 sendMessage 触发 (流式), input:', input, 'currentSession:', currentSession, 'loading:', loading);
     if (loadingRef.current) {
-      console.log('⚠️ 正在发送中，忽略重复请求');
-      return;
+      return false;
     }
     if (!input.trim()) {
-      console.log('⚠️ 输入为空, 不发送');
-      return;
+      return false;
     }
     if (!currentSession) {
       setError('当前会话不存在，无法发送消息');
-      console.log('❌ currentSession 不存在, 无法发送');
-      return;
+      return false;
     }
     if (!userId) {
       setError('用户未初始化，无法发送消息');
-      console.log('❌ user 不存在, 无法发送');
-      return;
+      return false;
     }
 
     // 确保消息的role严格为'user'或'assistant'
     const userMessage: IMessage = { role: 'user', content: input };
-    const updatedMessages: IMessage[] = [...currentSession.messages, userMessage];
+    const lastMessage = currentSession.messages.at(-1);
+    // An unanswered trailing question is retained after failure; retry it once.
+    const updatedMessages: IMessage[] = lastMessage?.role === 'user' && lastMessage.content === input
+      ? currentSession.messages
+      : [...currentSession.messages, userMessage];
 
     // 先更新本地状态
     updateSessionMessages(currentSession.id, updatedMessages, userId);
     loadingRef.current = true;
     setLoading(true);
+    setActiveSessionId(currentSession.id);
+    setErrorSessionId(null);
     setError('');
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
+    let hasCommittedSession = false;
+    let effectiveSessionId = currentSession.id;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    let totalTimer: ReturnType<typeof setTimeout> | undefined;
+    let timeoutCode: string | null = null;
+    let rejectTimeout!: (error: Error) => void;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => { rejectTimeout = reject; });
+    const refreshIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        timeoutCode = 'CHAT_IDLE_TIMEOUT';
+        abortController.abort();
+        rejectTimeout(new Error(timeoutCode));
+      }, CHAT_IDLE_TIMEOUT_MS);
+    };
+    refreshIdleTimer();
+    totalTimer = setTimeout(() => {
+      timeoutCode = 'CHAT_TOTAL_TIMEOUT';
+      abortController.abort();
+      rejectTimeout(new Error(timeoutCode));
+    }, CHAT_TOTAL_TIMEOUT_MS);
+    let finished = false;
 
-    try {
+    const streamOperation = async (): Promise<boolean> => {
       const serverSessionId = currentSession.id.startsWith('local_') ? undefined : currentSession.id;
       const res = await authFetch('/api/chat', {
         method: 'POST',
         signal: abortController.signal,
-        body: JSON.stringify({ messages: updatedMessages, sessionId: serverSessionId }),
+        body: JSON.stringify({
+          messages: updatedMessages.map(({ sourceSnapshot: _sourceSnapshot, ...message }) => message),
+          sessionId: serverSessionId,
+          sourceNoteId: currentSession.sourceNoteId,
+        }),
       });
+      if (finished) return false;
 
       if (!res.ok) {
         let errorMessage = '请求失败';
@@ -126,13 +190,11 @@ export const useChatStream = (): UseChatStreamReturn => {
       }
 
       // 处理流式响应
-      const reader = res.body?.getReader();
+      reader = res.body?.getReader() ?? null;
       if (!reader) throw new Error('无法读取响应流');
 
       const decoder = new TextDecoder();
       let assistantReply = '';
-      let effectiveSessionId = currentSession.id;
-      let committedSessionId = currentSession.id;
 
       // 先在 UI 中添加一个空的 assistant 消息占位
       const initialAssistantMessage: IMessage = { role: 'assistant', content: '' };
@@ -141,95 +203,102 @@ export const useChatStream = (): UseChatStreamReturn => {
 
       let buffer = '';
       let shouldStop = false;
-      try {
-        while (!shouldStop) {
-          const { done, value } = await reader.read();
-          if (done) break;
+      while (!shouldStop && !hasCommittedSession && !finished) {
+        const { done, value } = await reader.read();
+        if (finished) return false;
+        if (done) break;
+        if (value?.byteLength) refreshIdleTimer();
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // 最后一行可能不完整，保留在 buffer 中
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 最后一行可能不完整，保留在 buffer 中
 
-          for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) continue;
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) continue;
 
-            // 使用正则更稳健地匹配 SSE 数据行
-            const match = trimmedLine.match(/^data:\s*(.*)$/);
-            if (!match) continue;
+          // 使用正则更稳健地匹配 SSE 数据行
+          const match = trimmedLine.match(/^data:\s*(.*)$/);
+          if (!match) continue;
 
-            const dataStr = match[1].trim();
-            if (dataStr === '[DONE]') {
-              shouldStop = true;
-              break;
+          const dataStr = match[1].trim();
+          if (dataStr === '[DONE]') {
+            shouldStop = true;
+            break;
+          }
+
+          let data: Record<string, unknown>;
+          try {
+            data = JSON.parse(dataStr);
+          } catch {
+            // Ignore malformed SSE frames without logging their contents.
+            continue;
+          }
+          if (typeof data.error === 'string') {
+            shouldStop = true;
+            throw new Error(data.error);
+          }
+          if (data.chunk && !hasCommittedSession) {
+            // 每收到一个 chunk 立即更新 UI，实现真正的流式输出
+            assistantReply += data.chunk;
+            currentMessages = [
+              ...updatedMessages,
+              { role: 'assistant', content: assistantReply }
+            ];
+            updateSessionMessages(effectiveSessionId, currentMessages, userId);
+          } else if (data.type === 'committed' && data.session && typeof data.session === 'object') {
+            const nextSession = data.session as CommittedSessionPayload;
+            const committedSessionId = nextSession.id || nextSession._id || effectiveSessionId;
+            applyCommittedSession(effectiveSessionId, nextSession, userId, setSessions);
+            hasCommittedSession = true;
+            if (committedSessionId !== effectiveSessionId) {
+              onSessionIdChange?.(effectiveSessionId, committedSessionId);
             }
-
-            try {
-              const data = JSON.parse(dataStr);
-              if (data.chunk) {
-                // 每收到一个 chunk 立即更新 UI，实现真正的流式输出
-                assistantReply += data.chunk;
-                currentMessages = [
-                  ...updatedMessages,
-                  { role: 'assistant', content: assistantReply }
-                ];
-                updateSessionMessages(effectiveSessionId, currentMessages, userId);
-              } else if (data.type === 'committed' && data.session && typeof data.session === 'object') {
-                const nextSession = data.session as CommittedSessionPayload;
-                committedSessionId = nextSession.id || nextSession._id || effectiveSessionId;
-                applyCommittedSession(effectiveSessionId, nextSession, userId, setSessions);
-                effectiveSessionId = committedSessionId;
-              } else if (data.error) {
-                shouldStop = true;
-                throw new Error(data.error);
-              }
-            } catch (e: unknown) {
-              if (dataStr.includes('"error":')) {
-                shouldStop = true;
-                throw e;
-              }
-              console.warn('SSE 解析警告:', (e as Error).message, '数据:', dataStr);
-            }
+            effectiveSessionId = committedSessionId;
+            shouldStop = true;
+            break;
           }
         }
-      } finally {
-        try {
-          await reader.cancel();
-        } catch {}
-        try {
-          reader.releaseLock();
-        } catch {}
       }
-      if (assistantReply && committedSessionId === currentSession.id) {
-        const finalMessages: IMessage[] = [...updatedMessages, { role: 'assistant', content: assistantReply }];
-        setSessions((prevSessions) => {
-          const updated = prevSessions.map((session) => (
-            session.id === effectiveSessionId
-              ? { ...session, messages: finalMessages }
-              : session
-          ));
-          persistChatSessions(userId, updated);
-          return updated;
-        });
-      }
+      if (!hasCommittedSession) throw new Error('CHAT_UNCOMMITTED');
+      return true;
+    };
+
+    try {
+      onAccepted?.();
+      return await Promise.race([streamOperation(), timeoutPromise]);
     } catch (err: unknown) {
-      if (isAbortError(err)) {
-        return;
+      setErrorSessionId(effectiveSessionId);
+      if (!hasCommittedSession) {
+        updateSessionMessages(effectiveSessionId, updatedMessages, userId);
       }
-      console.error('发送消息失败:', err);
-      // 显示具体的错误信息
-      setError(err instanceof Error ? err.message : '发送失败，请稍后重试');
+      if (isAbortError(err)) {
+        if (timeoutCode) setError(getChatErrorMessage(new Error(timeoutCode)));
+        return false;
+      }
+      setError(getChatErrorMessage(err));
+      return false;
     } finally {
+      finished = true;
+      if (idleTimer) clearTimeout(idleTimer);
+      if (totalTimer) clearTimeout(totalTimer);
+      if (reader) {
+        void reader.cancel().catch(() => {});
+        try { reader.releaseLock(); } catch {}
+      }
       if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null;
       }
       loadingRef.current = false;
       setLoading(false);
+      setActiveSessionId(null);
     }
   };
 
   return {
     loading,
+    activeSessionId,
+    errorSessionId,
     error,
     setError,
     sendMessage,

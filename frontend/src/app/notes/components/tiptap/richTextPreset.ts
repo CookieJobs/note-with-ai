@@ -103,12 +103,15 @@ const sharedExtensions = [
   TableCell,
 ];
 
-export function createRichTextExtensions(options?: { placeholder?: string }) {
+export function createRichTextExtensions(options?: { placeholder?: string; preserveLineBreaks?: boolean }) {
+  const extensions = options?.preserveLineBreaks
+    ? sharedExtensions.map(extension => extension.name === 'markdown' ? Markdown.configure({ breaks: true }) : extension)
+    : sharedExtensions;
   const placeholder = options?.placeholder;
-  if (!placeholder) return sharedExtensions;
+  if (!placeholder) return extensions;
 
   return [
-    ...sharedExtensions,
+    ...extensions,
     Placeholder.configure({
       placeholder,
     }),

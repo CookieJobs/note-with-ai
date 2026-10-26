@@ -178,21 +178,29 @@ test('local password-only mode permits a correct password without a TOTP, while 
   const { AdminAuditLog } = await import('../models/AdminAuditLog');
   const { RateLimitService } = await import('../services/auth/RateLimitService');
   const model = AdminAccount as any; const audit = AdminAuditLog as any; const limiter = RateLimitService as any;
-  const original = { findOne: model.findOne, updateOne: model.updateOne, create: audit.create, assertLoginAllowed: limiter.assertLoginAllowed, clearLoginFailures: limiter.clearLoginFailures, recordLoginFailure: limiter.recordLoginFailure, localOnly: (config as any).ADMIN_LOCAL_PASSWORD_ONLY };
+  const original = { findOne: model.findOne, updateOne: model.updateOne, create: audit.create, assertLoginAllowed: limiter.assertLoginAllowed, clearLoginFailures: limiter.clearLoginFailures, recordLoginFailure: limiter.recordLoginFailure, localOnly: (config as any).ADMIN_LOCAL_PASSWORD_ONLY, environment: config.NODE_ENV };
   const passwordHash = await (await import('bcryptjs')).hash('password123', 10);
   try {
     model.findOne = () => ({ select: () => ({ lean: async () => ({ _id: { toString: () => 'admin-id' }, email: 'owner@example.com', displayName: 'Owner', passwordHash, totpSecretEncrypted: 'malformed-secret', role: 'owner', isActive: true, tokenVersion: 0 }) }) });
     model.updateOne = async () => ({ acknowledged: true }); audit.create = async () => ({ _id: 'audit-id' });
     limiter.assertLoginAllowed = async () => {}; limiter.clearLoginFailures = async () => {}; limiter.recordLoginFailure = async () => {};
+    (config as any).NODE_ENV = 'development';
     (config as any).ADMIN_LOCAL_PASSWORD_ONLY = true;
     const accepted = await authenticateAdmin({ email: 'owner@example.com', password: 'password123', ip: '127.0.0.1', requestId: 'request-1' });
     assert.equal(accepted.admin.email, 'owner@example.com');
     (config as any).ADMIN_LOCAL_PASSWORD_ONLY = false;
     await assert.rejects(authenticateAdmin({ email: 'owner@example.com', password: 'password123', ip: '127.0.0.1', requestId: 'request-2' }), (error: any) => error.statusCode === 401);
+    // Even an incorrectly forced flag must not bypass TOTP outside development.
+    (config as any).ADMIN_LOCAL_PASSWORD_ONLY = true;
+    for (const environment of ['test', 'production']) {
+      (config as any).NODE_ENV = environment;
+      await assert.rejects(authenticateAdmin({ email: 'owner@example.com', password: 'password123', ip: '127.0.0.1', requestId: 'request-3' }), (error: any) => error.statusCode === 401);
+    }
   } finally {
     model.findOne = original.findOne; model.updateOne = original.updateOne; audit.create = original.create;
     limiter.assertLoginAllowed = original.assertLoginAllowed; limiter.clearLoginFailures = original.clearLoginFailures; limiter.recordLoginFailure = original.recordLoginFailure;
     (config as any).ADMIN_LOCAL_PASSWORD_ONLY = original.localOnly;
+    (config as any).NODE_ENV = original.environment;
   }
 });
 

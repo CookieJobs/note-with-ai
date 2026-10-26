@@ -1,8 +1,8 @@
 /*
-Input: 笔记持久化字段定义，包括富文本内容、embedding 向量与推荐缓存
+Input: 笔记持久化字段定义，包括富文本内容、embedding、推荐缓存及派生任务 fencing
 Output: Note Mongoose Schema、索引与模型导出
 Pos: 后端 数据模型模块
-Note: embeddingMetadata 为文本向量保存 provider/model/dimension/modality，并为未来图片 embedding 预留 image 扩展位
+Note: topicIndexSuccess 与 source CAS 同文档写入作为权威快照；内部 fencing 写入不改变用户 updatedAt
 */
 // backend/models/Note.ts
 import mongoose from 'mongoose';
@@ -55,16 +55,16 @@ const NoteSchema = new mongoose.Schema(
     contentJson: { type: mongoose.Schema.Types.Mixed, default: null },
     // 富文本派生：用于搜索/embedding 的纯文本（可选，建议与 content 保持一致）
     contentText: { type: String, default: '' },
-    title: { type: String },
-    titleOrigin: { type: String, enum: ['default', 'user'], default: 'user' },
+    title: { type: String, default: '' },
+    titleOrigin: { type: String, enum: ['default', 'user'] },
     // 语义摘要：用于联想/重排输入（可选，异步生成并缓存）
     summary: { type: String, default: '' },
     // 概念扩展缓存：用于弱关联召回（可选，异步生成并缓存）
     concepts: [{ type: String }],
     // 语义联想结果缓存（用于节省 LLM token 成本）
     recommendCache: { type: mongoose.Schema.Types.Mixed, default: null },
-    keywords: [{ type: String }],
-    keywordsOrigin: { type: String, enum: ['default', 'user'], default: 'user' },
+    keywords: { type: [String], default: undefined },
+    keywordsOrigin: { type: String, enum: ['default', 'user'] },
     embedding: [{ type: Number }], // 可选字段，可后续异步填充
     embeddingMetadata: { type: EmbeddingMetadataSchema, default: null },
     // 用户写入的独立并发版本；AI 派生写回不增加它。
@@ -78,6 +78,13 @@ const NoteSchema = new mongoose.Schema(
         message: 'revision 必须是正整数',
       },
     },
+    // Standalone-compatible topic-index writes use this fence to order Note and index projections.
+    topicIndexFence: { type: Number, select: false },
+    topicIndexSuccess: { type: mongoose.Schema.Types.Mixed, select: false },
+    topicIndexClaimToken: { type: String, select: false },
+    topicIndexClaimVersion: { type: Number, select: false },
+    topicIndexClaimUntil: { type: Date, select: false },
+    topicIndexScheduled: { type: mongoose.Schema.Types.Mixed, select: false },
     // 仅用于内部 freshness 与降级投影，不会进入普通 Note DTO。
     enrichment: { type: NoteEnrichmentSchema, default: null },
   },

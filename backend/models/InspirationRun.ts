@@ -8,6 +8,8 @@ const InspirationRunSchema = new mongoose.Schema({
   token: { type: String, default: null },
   leaseUntil: { type: Date, default: null },
   budgetDay: { type: String, required: true },
+  reason: { type: String, enum: ['note_context_unavailable', null], default: null },
+  contextReason: { type: String, enum: ['no_notes', 'summary_pending', 'context_unavailable', null], default: null },
 }, { timestamps: true, versionKey: false });
 
 InspirationRunSchema.index({ userId: 1, cycleAt: 1 }, { unique: true });

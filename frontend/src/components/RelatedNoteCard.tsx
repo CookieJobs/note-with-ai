@@ -11,7 +11,6 @@ export interface RelatedNote {
   _id: string;
   title?: string;
   content: string;
-  keywords?: string[];
   createdAt: string;
   similarity: number;
 }
@@ -90,7 +89,6 @@ export const RelatedNoteCard: React.FC<RelatedNoteCardProps> = ({
   };
 
   const contentText = note?.content || '';
-  const keywords = Array.isArray(note?.keywords) ? note.keywords.filter(Boolean) : [];
 
   return (
     <div className={styles.relatedNoteCard}>
@@ -132,22 +130,6 @@ export const RelatedNoteCard: React.FC<RelatedNoteCardProps> = ({
           </button>
         )}
       </div>
-
-      {/* 关键词标签 */}
-      {keywords.length > 0 && (
-        <div className={styles.keywords}>
-          {keywords.slice(0, 3).map((keyword, index) => (
-            <span key={`${String(keyword)}-${index}`} className={styles.keyword}>
-              #{String(keyword)}
-            </span>
-          ))}
-          {keywords.length > 3 && (
-            <span className={styles.keywordMore}>
-              +{keywords.length - 3}
-            </span>
-          )}
-        </div>
-      )}
 
       {/* 时间信息 */}
       <div className={styles.noteFooter}>

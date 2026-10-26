@@ -1,18 +1,34 @@
 // Frontend types adapted from backend/types/index.ts
 
+export interface ISourceSnapshot {
+  noteId: string;
+  title?: string;
+  contentText: string;
+  revision: number;
+  updatedAt: string;
+  hasImages: boolean;
+}
+
 export interface IMessage {
   role: 'user' | 'assistant';
   content: string;
   // Frontend specific extensions
   relatedNotes?: IRelatedNote[];
   searchingNotes?: boolean;
+  // Authored by the server for the exact note version supplied for this answer.
+  sourceSnapshot?: ISourceSnapshot;
 }
 
 export interface IRelatedNote {
   noteId: string; // Corresponds to backend noteId (ObjectId string)
   id?: string; // Sometimes frontend uses id, but we should prefer noteId
-  title?: string;
+  title: string;
   content?: string;
+  excerpt?: string;
+  sourceType?: 'text' | 'image' | 'mixed';
+  imageCount?: number;
+  firstImageSrc?: string;
+  createdAtSource?: 'note';
   score?: number; // Backend uses score
   similarity?: number; // Frontend legacy use, should migrate to score
   matchType?: string;
@@ -27,6 +43,7 @@ export interface IChat {
   title: string;
   messages: IMessage[];
   relatedNotes?: IRelatedNote[];
+  sourceNoteId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -35,6 +52,12 @@ export interface CareIntro {
   noteId: string | null;
   noteTitle: string;
   snippet: string;
+  excerpt?: string;
+  sourceType?: 'text' | 'image' | 'mixed';
+  imageCount?: number;
+  firstImageSrc?: string;
+  createdAt?: string;
+  createdAtSource?: 'note';
   aiOpening: string;
 }
 
@@ -94,11 +117,14 @@ export interface INote {
   content: string;
   contentJson?: Record<string, unknown> | null;
   contentText?: string;
+  excerpt?: string;
+  sourceType?: 'text' | 'image' | 'mixed';
+  imageCount?: number;
+  firstImageSrc?: string;
   title?: string;
   summary?: string;
   concepts?: string[];
   recommendCache?: IRecommendCache | null;
-  keywords?: string[];
   revision: number;
   enrichment?: INoteEnrichmentView;
   createdAt: string;

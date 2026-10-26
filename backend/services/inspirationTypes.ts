@@ -6,13 +6,21 @@ export type InspirationErrorCode =
   | 'SEARCH_PROVIDER_FAILED'
   | 'NO_RESULT'
   | 'INSPIRATION_SYNTHESIS_FAILED'
-  | 'INSPIRATION_IN_PROGRESS';
+  | 'INSPIRATION_IN_PROGRESS'
+  | 'INSPIRATION_NOTE_CONTEXT_UNAVAILABLE';
+
+export type NoteContextReason = 'no_notes' | 'summary_pending' | 'context_unavailable';
+
+export const noteContextMessages: Record<NoteContextReason, string> = {
+  no_notes: '请先记录一篇笔记，再来研究灵感',
+  summary_pending: '近期笔记的摘要正在准备中，请稍后再试',
+  context_unavailable: '近期笔记缺少可用的标题或摘要',
+};
 
 export type LimitedNoteContext = {
   noteId: string;
   revision: number;
   title: string;
-  keywords: string[];
   summary: string;
 };
 
@@ -89,7 +97,7 @@ export function toInspirationDto(item: Record<string, unknown>): InspirationDto 
   };
 }
 
-export function inspirationError(code: InspirationErrorCode, statusCode: number): AppError {
+export function inspirationError(code: InspirationErrorCode, statusCode: number, reason?: NoteContextReason): AppError {
   const messages: Record<InspirationErrorCode, string> = {
     SEARCH_PROVIDER_UNAVAILABLE: '目前无法进行网络检索',
     AI_PROVIDER_UNAVAILABLE: '目前无法整理灵感',
@@ -97,8 +105,9 @@ export function inspirationError(code: InspirationErrorCode, statusCode: number)
     NO_RESULT: '这次没有找到新灵感',
     INSPIRATION_SYNTHESIS_FAILED: '暂时无法整理出可靠的灵感，请重试',
     INSPIRATION_IN_PROGRESS: '已有一条灵感研究正在进行',
+    INSPIRATION_NOTE_CONTEXT_UNAVAILABLE: reason ? noteContextMessages[reason] : noteContextMessages.context_unavailable,
   };
   return new AppError(messages[code], statusCode === 409 || statusCode === 400
     ? ErrorType.VALIDATION
-    : ErrorType.EXTERNAL_API, statusCode, true, { code });
+    : ErrorType.EXTERNAL_API, statusCode, true, reason ? { code, reason } : { code });
 }

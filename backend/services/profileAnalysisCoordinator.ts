@@ -1,11 +1,12 @@
 import UserProfile from '../models/UserProfile';
+import { Note } from '../models/Note';
 import { userAnalysisService } from './userAnalysisService';
 import { logger } from '../utils/logger';
 
 export type ProfileStatusForClient = 'analyzing' | 'ready' | 'failed';
 
 type RequestAnalysisOptions = {
-  source: 'auto' | 'manual';
+  source: 'manual';
   force?: boolean;
 };
 
@@ -20,17 +21,12 @@ type LeanUserProfile = {
     feedbackMode?: string;
   };
   summary?: string;
-  theme?: {
-    themeName?: string;
-    cssType?: string;
-    cssValue?: string;
-    reasoning?: string;
-  };
   analysisStatus?: 'idle' | 'queued' | 'running' | 'ready' | 'failed';
   analysisVersion?: number;
   analysisRequestedAt?: Date | null;
   analysisStartedAt?: Date | null;
   analysisError?: string;
+  analysisFailedAt?: Date | null;
   lastAnalyzedAt?: Date | null;
 };
 
@@ -43,8 +39,7 @@ export class ProfileAnalysisCoordinator {
     return Boolean(
       (Array.isArray(profile.interests) && profile.interests.length > 0) ||
       (Array.isArray(profile.expertise) && profile.expertise.length > 0) ||
-      (typeof profile.summary === 'string' && profile.summary.trim().length > 0) ||
-      (profile.theme && typeof profile.theme.cssValue === 'string' && profile.theme.cssValue.trim().length > 0)
+      (typeof profile.summary === 'string' && profile.summary.trim().length > 0)
     );
   }
 
@@ -60,12 +55,18 @@ export class ProfileAnalysisCoordinator {
   }
 
   async requestAnalysis(userId: string, options: RequestAnalysisOptions): Promise<{
-    profile: LeanUserProfile;
+    profile: LeanUserProfile | null;
     accepted: boolean;
-    status: ProfileStatusForClient;
+    status: ProfileStatusForClient | 'insufficient_data';
+    reason: 'insufficient_data' | 'already_running' | 'queued' | 'already_ready';
   }> {
     const force = options.force === true;
+    const noteCount = await Note.countDocuments({ userId });
     let profile = await this.getProfile(userId);
+
+    if (noteCount < 5) {
+      return { profile, accepted: false, status: 'insufficient_data', reason: 'insufficient_data' };
+    }
 
     if (!profile) {
       profile = await UserProfile.findOneAndUpdate(
@@ -84,16 +85,16 @@ export class ProfileAnalysisCoordinator {
         { upsert: true, new: true, setDefaultsOnInsert: true }
       ).lean<LeanUserProfile>();
       this.startBackgroundJob(userId, profile.analysisVersion || 1);
-      return { profile, accepted: true, status: this.getClientStatus(profile) };
+      return { profile, accepted: true, status: this.getClientStatus(profile), reason: 'queued' };
     }
 
     if (profile.analysisStatus === 'queued' || profile.analysisStatus === 'running') {
       this.startBackgroundJob(userId, profile.analysisVersion || 0);
-      return { profile, accepted: false, status: this.getClientStatus(profile) };
+      return { profile, accepted: false, status: this.getClientStatus(profile), reason: 'already_running' };
     }
 
     if (!force && this.hasRenderableProfile(profile)) {
-      return { profile, accepted: false, status: this.getClientStatus(profile) };
+      return { profile, accepted: false, status: this.getClientStatus(profile), reason: 'already_ready' };
     }
 
     const nextVersion = Math.max(Number(profile.analysisVersion || 0), 0) + 1;
@@ -123,6 +124,7 @@ export class ProfileAnalysisCoordinator {
       },
       accepted: true,
       status: 'analyzing',
+      reason: 'queued',
     };
   }
 
@@ -169,8 +171,6 @@ export class ProfileAnalysisCoordinator {
     try {
       await userAnalysisService.analyzeUserProfile({ userId, analysisVersion });
     } catch (error) {
-      const message = error instanceof Error ? error.message : '画像分析失败';
-
       await UserProfile.updateOne(
         {
           userId,
@@ -180,7 +180,8 @@ export class ProfileAnalysisCoordinator {
         {
           $set: {
             analysisStatus: 'failed',
-            analysisError: message,
+            analysisError: '画像生成失败，请稍后重试',
+            analysisFailedAt: new Date(),
           },
         }
       );

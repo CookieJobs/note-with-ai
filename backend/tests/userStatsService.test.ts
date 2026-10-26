@@ -23,100 +23,89 @@ describe('userStatsService', () => {
     mock.restoreAll();
   });
 
-  it('会基于聚合结果返回统计信息，并保留连续记录口径', async () => {
+  it('仅返回笔记总数和上海时区本月笔记数', async () => {
     const { Note, UserProfile, userStatsService } = await loadModules();
+    let profileQueries = 0;
 
-    let receivedPipeline: Record<string, unknown>[] = [];
-    mock.method(Note, 'aggregate', async (pipeline: Record<string, unknown>[]) => {
-      receivedPipeline = pipeline;
-      return [
-        {
-          totals: [{ totalNotes: 4, totalWords: 120 }],
-          monthCount: [{ count: 2 }],
-          weekCount: [{ count: 1 }],
-          dailyBuckets: [
-            { _id: '2026-07-27' },
-            { _id: '2026-07-28' },
-            { _id: '2026-07-29' },
-            { _id: '2026-07-31' },
-          ],
-        },
-      ];
+    mock.method(Note, 'aggregate', async () => [
+      { totals: [{ count: 4 }], monthCount: [{ count: 2 }] },
+    ]);
+    mock.method(UserProfile, 'findOne', () => {
+      profileQueries += 1;
+      return { select() { return this; }, lean: async () => null } as any;
     });
 
-    mock.method(UserProfile, 'findOne', () => ({
-      select() {
-        return this;
-      },
-      lean: async () => ({
-        interests: [{ topic: '写作', score: 0.8 }, { topic: '复盘', score: 0.6 }],
-        lastAnalyzedAt: new Date('2026-07-30T08:00:00.000Z'),
-      }),
-    }) as any);
+    const stats = await userStatsService.getStats('507f1f77bcf86cd799439011', {
+      now: new Date('2026-08-01T16:00:00.000Z'),
+    });
+
+    assert.deepEqual(stats, { totalNotes: 4, notesThisMonth: 2 });
+    assert.equal(profileQueries, 0);
+  });
+
+  it('不受主机时区影响地使用上海时区边界', async () => {
+    const { Note, UserProfile, userStatsService } = await loadModules();
+    let receivedPipeline: Record<string, unknown>[] = [];
+    let profileQueries = 0;
+
+    mock.method(Note, 'aggregate', async (pipeline: Record<string, unknown>[]) => {
+      receivedPipeline = pipeline;
+      return [{ totals: [{ count: 1 }], monthCount: [{ count: 1 }] }];
+    });
+    mock.method(UserProfile, 'findOne', () => {
+      profileQueries += 1;
+      return { select() { return this; }, lean: async () => null } as any;
+    });
+
+    const originalTimezone = process.env.TZ;
+    try {
+      process.env.TZ = 'America/Los_Angeles';
+      await userStatsService.getStats('507f1f77bcf86cd799439011', {
+        now: new Date('2026-08-01T16:00:00.000Z'),
+      });
+    } finally {
+      if (originalTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTimezone;
+    }
+
+    assert.deepEqual((receivedPipeline[1] as any)?.$facet?.monthCount?.[0]?.$match?.createdAt, {
+      $gte: new Date('2026-07-31T16:00:00.000Z'),
+      $lt: new Date('2026-08-31T16:00:00.000Z'),
+    });
+    assert.equal(profileQueries, 0);
+  });
+
+  it('会基于聚合结果返回笔记统计', async () => {
+    const { Note, userStatsService } = await loadModules();
+    let receivedPipeline: Record<string, unknown>[] = [];
+
+    mock.method(Note, 'aggregate', async (pipeline: Record<string, unknown>[]) => {
+      receivedPipeline = pipeline;
+      return [{ totals: [{ count: 4 }], monthCount: [{ count: 2 }] }];
+    });
 
     const stats = await userStatsService.getStats('507f1f77bcf86cd799439011', {
       now: new Date('2026-08-01T12:00:00.000Z'),
-      timeZone: 'UTC',
     });
 
-    assert.deepEqual(stats, {
-      totalNotes: 4,
-      notesThisMonth: 2,
-      notesThisWeek: 1,
-      streakDays: 1,
-      maxStreak: 3,
-      totalWords: 120,
-      avgWordsPerNote: 30,
-      interestCount: 2,
-      lastAnalyzedAt: new Date('2026-07-30T08:00:00.000Z'),
-    });
-
+    assert.deepEqual(stats, { totalNotes: 4, notesThisMonth: 2 });
     assert.equal(
       ((receivedPipeline[0] as any)?.$match?.userId as { toHexString: () => string }).toHexString(),
       '507f1f77bcf86cd799439011'
     );
-    assert.equal(
-      (receivedPipeline[2] as any)?.$facet?.dailyBuckets?.[0]?.$group?._id?.$dateToString?.timezone,
-      'UTC'
-    );
-    assert.ok((receivedPipeline[1] as any)?.$project?.wordSource);
+    assert.ok((receivedPipeline[1] as any)?.$facet?.monthCount);
   });
 
-  it('在没有笔记和画像时返回零值统计', async () => {
-    const { Note, UserProfile, userStatsService } = await loadModules();
+  it('在没有笔记时返回零值统计', async () => {
+    const { Note, userStatsService } = await loadModules();
 
-    mock.method(Note, 'aggregate', async () => [
-      {
-        totals: [],
-        monthCount: [],
-        weekCount: [],
-        dailyBuckets: [],
-      },
-    ]);
-
-    mock.method(UserProfile, 'findOne', () => ({
-      select() {
-        return this;
-      },
-      lean: async () => null,
-    }) as any);
+    mock.method(Note, 'aggregate', async () => [{ totals: [], monthCount: [] }]);
 
     const stats = await userStatsService.getStats('507f1f77bcf86cd799439011', {
       now: new Date('2026-08-01T12:00:00.000Z'),
-      timeZone: 'UTC',
     });
 
-    assert.deepEqual(stats, {
-      totalNotes: 0,
-      notesThisMonth: 0,
-      notesThisWeek: 0,
-      streakDays: 0,
-      maxStreak: 0,
-      totalWords: 0,
-      avgWordsPerNote: 0,
-      interestCount: 0,
-      lastAnalyzedAt: null,
-    });
+    assert.deepEqual(stats, { totalNotes: 0, notesThisMonth: 0 });
   });
 
   it('会从昨天开始计算连续记录，但最长连续保留完整历史', async () => {

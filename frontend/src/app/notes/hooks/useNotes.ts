@@ -1,8 +1,13 @@
+/*
+Input: 当前用户与真实笔记服务、React Query 缓存
+Output: 笔记读写/分页及真实查询成功状态，供页面判定可登记投影
+Pos: notes 数据 hook；修改时同步 ../README.md。
+*/
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { authFetch } from '../../../utils/auth';
 import { generateUUID } from '../../../utils/uuid';
-import type { INote, IUserProfile } from '../../../types';
+import type { INote, IRecommendCache, IUserProfile } from '../../../types';
 import { buildRecommendCacheFromResponse } from '../utils/recommendCache';
 
 export type Note = INote;
@@ -17,11 +22,11 @@ export type UpdateNoteCommand = {
   changes: {
     body?: NoteBodyInput;
     title?: string;
-    keywords?: string[];
   };
 };
 
 export type CreateNoteCommand = {
+  title?: string;
   body: NoteBodyInput;
   optimistic: {
     contentText: string;
@@ -160,7 +165,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     return selected;
   }, [commitNotesWrite]);
 
-  const { data: notes = [], isLoading, error, refetch } = useQuery({
+  const { data: notes = [], isLoading, isSuccess, error, refetch } = useQuery({
     queryKey: NOTES_QUERY_KEY,
     queryFn: async ({ signal }) => {
       const requestGeneration = listGenerationRef.current;
@@ -359,13 +364,12 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     const temporaryId = `temp-${generateUUID()}`;
     const temporary: Note = {
       _id: temporaryId,
-      title: '',
+      title: command.title ?? '',
       content: command.optimistic.contentText,
       contentText: command.optimistic.contentText,
       contentJson: command.optimistic.contentJson ?? undefined,
       summary: '',
       concepts: [],
-      keywords: [],
       recommendCache: null,
       revision: 0,
       enrichment: { sourceRevision: 0, status: 'pending' },
@@ -379,7 +383,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
       const response = await authFetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: command.body }),
+        body: JSON.stringify({ body: command.body, title: command.title ?? '' }),
       });
       const payload: unknown = await response.json().catch(() => undefined);
       if (!response.ok) {
@@ -404,8 +408,8 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     }
   }, [commitNotesWrite]);
 
-  const refreshRecommendCache = useCallback(async (noteId: string): Promise<void> => {
-    const source = queryClient.getQueryData<Note[]>(NOTES_QUERY_KEY)?.find((note) => note._id === noteId);
+  const refreshRecommendCache = useCallback(async (noteId: string, focusedSource?: Note): Promise<IRecommendCache> => {
+    const source = focusedSource ?? queryClient.getQueryData<Note[]>(NOTES_QUERY_KEY)?.find((note) => note._id === noteId);
     if (!source) throw new Error('笔记不存在，无法刷新相关推荐');
 
     const response = await authFetch('/api/recommend/semantic-notes', {
@@ -428,11 +432,14 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
       updatedAt: source.updatedAt,
       revision: source.revision,
     }, payload);
-    commitNotesWrite((notes = []) => notes.map((note) => (
-      note._id === noteId && note.revision === source.revision
-        ? { ...note, recommendCache }
-        : note
-    )));
+    if (!focusedSource) {
+      commitNotesWrite((notes = []) => notes.map((note) => (
+        note._id === noteId && note.revision === source.revision
+          ? { ...note, recommendCache }
+          : note
+      )));
+    }
+    return recommendCache;
   }, [commitNotesWrite, queryClient]);
 
   const loadMoreNotes = useCallback(async () => {
@@ -462,6 +469,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
   return {
     notes,
     isLoading,
+    isSuccess,
     deleteNote: deleteMutation.mutateAsync,
     createNote,
     updateNote,

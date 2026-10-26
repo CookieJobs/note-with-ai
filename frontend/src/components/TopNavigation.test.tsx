@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import TopNavigation from './TopNavigation';
 
 const { mockUsePathname, mockGetUser, mockGetUnviewedCount } = vi.hoisted(() => ({
@@ -32,6 +32,33 @@ describe('TopNavigation', () => {
     vi.clearAllMocks();
     mockGetUser.mockReturnValue(null);
     mockGetUnviewedCount.mockResolvedValue(0);
+  });
+
+  it('does not select a main navigation item on the profile page', () => {
+    mockUsePathname.mockReturnValue('/profile');
+    render(<TopNavigation />);
+    expect(screen.getByRole('navigation', { name: '主导航' })).toHaveAttribute('data-active-index', '-1');
+    expect(document.querySelector('[aria-current="page"]')).toBeNull();
+    expect(screen.getByRole('link', { name: '笔记' })).toHaveAttribute('href', '/notes');
+  });
+
+  it('keeps the notes child route selected', () => {
+    mockUsePathname.mockReturnValue('/notes/example');
+    render(<TopNavigation />);
+    expect(screen.getByRole('navigation', { name: '主导航' })).toHaveAttribute('data-active-index', '0');
+  });
+
+  it('opens the account menu with a keyboard-accessible control and restores focus on Escape', async () => {
+    mockUsePathname.mockReturnValue('/notes');
+    mockGetUser.mockReturnValue({ id: 'user-1', username: 'liujin', email: 'user@example.com' });
+    render(<TopNavigation />);
+    const account = await screen.findByRole('button', { name: '账户菜单' });
+    fireEvent.click(account);
+    expect(account).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('link', { name: '个人中心' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(account).toHaveAttribute('aria-expanded', 'false');
+    expect(account).toHaveFocus();
   });
 
   it('renders active notes tab as current page instead of a link', () => {

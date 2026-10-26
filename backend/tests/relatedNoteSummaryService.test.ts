@@ -46,6 +46,8 @@ describe('related note summaries', () => {
       assert.deepEqual(candidateFilter, { _id: { $in: ['retained', 'deleted'] }, userId: 'user-A' });
       assert.deepEqual(summaries, [{
         noteId: 'retained', title: '仍存在', contentText: '候选摘要',
+        excerpt: '候选摘要',
+        sourceType: 'text', imageCount: 0, firstImageSrc: undefined, createdAt: undefined,
         type: '强关联', reason: '同一主题', revision: 8,
       }]);
     } finally {

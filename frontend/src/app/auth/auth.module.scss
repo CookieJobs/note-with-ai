@@ -1,7 +1,7 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 前端 样式
+Input: 登录、注册与密码重置表单
+Output: 表单布局及保留可访问名称的视觉隐藏标签样式
+Pos: 前端认证页面样式
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 /* auth.module.scss - Apple Style */
@@ -120,6 +120,18 @@ Note: 一旦我被更新，务必更新我的开头注释，以及所属的文�
 .label {
   /* 隐藏传统 Label，改用 Placeholder 或 Floating Label 风格 */
   display: none;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .input {

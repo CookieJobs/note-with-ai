@@ -1,4 +1,6 @@
 import { Note } from '../models/Note';
+import UserProfile from '../models/UserProfile';
+import UserNoteTopicIndex from '../models/UserNoteTopicIndex';
 import { chatWithDeepSeek } from './llmService';
 import { ErrorHandler } from '../utils/errorHandler';
 import { noteEmbeddingService } from './noteEmbeddingService';
@@ -58,14 +60,31 @@ class NoteService {
     return { ...toNoteDto(value), enrichment: getEnrichmentView(value) };
   }
 
-  async createNote(userId: string, data: Pick<CreateNoteInput, 'body'>): Promise<NoteWriteResult> {
-    return noteWriteModule.create({ userId, body: data.body });
+  async createNote(userId: string, data: Pick<CreateNoteInput, 'body' | 'title'>): Promise<NoteWriteResult> {
+    return noteWriteModule.create({ userId, body: data.body, title: data.title });
   }
 
   async deleteNote(userId: string, noteId: string): Promise<void> {
     const note = await Note.findOne({ _id: noteId, userId });
     if (!note) throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
     await Note.deleteOne({ _id: noteId });
+    await UserNoteTopicIndex.deleteOne({ userId, noteId });
+    const remainingNotes = await Note.countDocuments({ userId });
+    if (remainingNotes < 5) {
+      await UserProfile.updateOne(
+        { userId },
+        {
+          $inc: { analysisVersion: 1 },
+          $set: {
+            profileInvalidatedAt: new Date(),
+            analysisStatus: 'idle',
+            analysisStartedAt: null,
+            analysisError: '笔记数量不足，画像已转为历史快照',
+          },
+        },
+        { upsert: true, setDefaultsOnInsert: true },
+      );
+    }
   }
 
   async generateEmbedding(userId: string, noteId: string): Promise<{ embedding?: number[]; skipped?: boolean }> {

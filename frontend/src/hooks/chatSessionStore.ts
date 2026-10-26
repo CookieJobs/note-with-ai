@@ -66,7 +66,7 @@ export const mergeChatSessions = (serverSessions: IChat[], localSessions: IChat[
         ...serverSession,
         messages: serverSession.messages.length >= localSession.messages.length
           ? serverSession.messages
-          : localSession.messages,
+          : [...serverSession.messages, ...localSession.messages.slice(serverSession.messages.length)],
         relatedNotes: serverNotes.length >= localNotes.length ? serverNotes : localNotes,
       });
       return;
@@ -87,8 +87,9 @@ export const saveChatSessionRemote = async (session: IChat): Promise<string | un
     body: JSON.stringify({
       sessionId: isLocalId ? undefined : session.id,
       title: session.title,
-      messages: session.messages,
+      messages: session.messages.map(({ sourceSnapshot: _sourceSnapshot, ...message }) => message),
       relatedNotes: session.relatedNotes,
+      sourceNoteId: session.sourceNoteId,
     }),
   });
 

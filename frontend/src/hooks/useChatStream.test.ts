@@ -92,6 +92,21 @@ describe('useChatStream', () => {
     vi.restoreAllMocks();
   });
 
+  it('identifies the active request and retains its error identity while refusing a concurrent stream', async () => {
+    let finish!: (response: unknown) => void;
+    mockAuthFetchFn.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const { result } = renderHook(() => useChatStream());
+    let pending!: Promise<boolean>;
+    act(() => { pending = result.current.sendMessage('A问题', makeSession({ id: 'A' }), 'user-1', vi.fn(), vi.fn()); });
+    expect(result.current.activeSessionId).toBe('A');
+    await act(async () => { expect(await result.current.sendMessage('B问题', makeSession({ id: 'B' }), 'user-1', vi.fn(), vi.fn())).toBe(false); });
+    expect(mockAuthFetchFn).toHaveBeenCalledOnce();
+    await act(async () => { finish({ ok: false, json: async () => ({ error: '来源笔记已删除' }) }); await pending; });
+    expect(result.current.activeSessionId).toBe(null);
+    expect(result.current.errorSessionId).toBe('A');
+    expect(result.current.error).toContain('来源笔记已删除');
+  });
+
   // --- Guard clauses ---
 
   it('does nothing when input is empty', async () => {
@@ -181,6 +196,252 @@ describe('useChatStream', () => {
   });
 
   // --- Streaming flow ---
+
+  it('sends the selected note while keeping cached source snapshots out of the client transcript', async () => {
+    const { result } = renderHook(() => useChatStream());
+    const snapshot = { noteId: 'note-1', contentText: '周三20分钟', revision: 2, updatedAt: '2026-10-18T00:00:00.000Z', hasImages: false };
+    const session = makeSession({ id: 'local_1', sourceNoteId: 'note-1', messages: [{ role: 'assistant', content: '开场', sourceSnapshot: snapshot }] } as Partial<IChat>);
+    mockAuthFetchSuccess(makeSseReader(['data: [DONE]\n\n']));
+
+    await act(async () => { await result.current.sendMessage('怎么安排？', session, 'user-1', vi.fn(), vi.fn()); });
+
+    expect(JSON.parse(mockAuthFetchFn.mock.calls[0][1].body)).toEqual({
+      sourceNoteId: 'note-1',
+      messages: [{ role: 'assistant', content: '开场' }, { role: 'user', content: '怎么安排？' }],
+    });
+  });
+
+  it('retains the authoritative same-ID committed transcript and answer snapshot after streaming ends', async () => {
+    const snapshot = { noteId: 'note-1', title: '学习安排', contentText: '周三20分钟', revision: 3, updatedAt: '2026-10-18T01:00:00.000Z', hasImages: false };
+    const committed = { ...makeSession(), sourceNoteId: 'note-1', messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: '已保存的回答', sourceSnapshot: snapshot }] };
+    const { result } = renderHook(() => useChatStream());
+    const state = makeSetSessionsMock([makeSession()]);
+    mockAuthFetchSuccess(makeSseReader(['data: {"chunk":"暂时的流式文字"}\n\n', `data: ${JSON.stringify({ type: 'committed', session: committed })}\n\n`, 'data: [DONE]\n\n']));
+
+    await act(async () => { await result.current.sendMessage('hi', makeSession(), 'user-1', vi.fn(), state.setSessions); });
+
+    expect(state.getState()[0]).toMatchObject(committed);
+  });
+
+  it('keeps a failed question without a placeholder answer and reuses it when retried', async () => {
+    const { result } = renderHook(() => useChatStream());
+    const state = makeSetSessionsMock([makeSession({ messages: [] })]);
+    const updateMessages = (id: string, messages: IChat['messages']) => state.setSessions(previous => previous.map(session => session.id === id ? { ...session, messages } : session));
+    mockAuthFetchSuccess(makeSseReader(['data: {"error":"笔记已删除，请选择其他笔记"}\n\n']));
+
+    await act(async () => { await result.current.sendMessage('这个安排如何？', state.getState()[0], 'user-1', updateMessages, state.setSessions); });
+    expect(result.current.error).toContain('笔记已删除');
+    expect(state.getState()[0].messages).toEqual([{ role: 'user', content: '这个安排如何？' }]);
+
+    mockAuthFetchFn.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ message: '笔记已删除，请选择其他笔记' }) });
+    await act(async () => { await result.current.sendMessage('这个安排如何？', state.getState()[0], 'user-1', updateMessages, state.setSessions); });
+    expect(JSON.parse(mockAuthFetchFn.mock.calls[1][1].body).messages).toEqual([{ role: 'user', content: '这个安排如何？' }]);
+  });
+
+  it.each([
+    { ending: 'EOF', chunks: [] },
+    { ending: '[DONE]', chunks: ['data: [DONE]\n\n'] },
+  ])('rejects a bound reply ending at $ending before its answer snapshot is committed', async ({ chunks }) => {
+    const { result } = renderHook(() => useChatStream());
+    const state = makeSetSessionsMock([makeSession({ sourceNoteId: 'note-1', messages: [] })]);
+    const updateMessages = (id: string, messages: IChat['messages']) => state.setSessions(previous => previous.map(session => session.id === id ? { ...session, messages } : session));
+    mockAuthFetchSuccess(makeSseReader(['data: {"chunk":"尚未保存的回答"}\n\n', ...chunks]));
+    let sent: boolean | undefined;
+
+    await act(async () => {
+      sent = await result.current.sendMessage('这个安排如何？', state.getState()[0], 'user-1', updateMessages, state.setSessions);
+    });
+
+    expect(sent).toBe(false);
+    expect(result.current.error).toMatch(/未.*保存|保存.*未/);
+    expect(result.current.loading).toBe(false);
+    expect(state.getState()[0].messages).toEqual([{ role: 'user', content: '这个安排如何？' }]);
+  });
+
+  it('does not report an ordinary partial reply as successful without a committed session', async () => {
+    const { result } = renderHook(() => useChatStream());
+    const state = makeSetSessionsMock([makeSession({ messages: [] })]);
+    const updateMessages = (id: string, messages: IChat['messages']) => state.setSessions(previous => previous.map(session => session.id === id ? { ...session, messages } : session));
+    mockAuthFetchSuccess(makeSseReader(['data: {"chunk":"尚未保存的回答"}\n\n', 'data: [DONE]\n\n']));
+    let sent: boolean | undefined;
+
+    await act(async () => {
+      sent = await result.current.sendMessage('请解释这个问题', state.getState()[0], 'user-1', updateMessages, state.setSessions);
+    });
+
+    expect(sent).toBe(false);
+    expect(result.current.error).toMatch(/保存/);
+    expect(result.current.loading).toBe(false);
+    expect(state.getState()[0].messages).toEqual([{ role: 'user', content: '请解释这个问题' }]);
+  });
+
+  it('releases loading with a retryable error when the stream has no data for 60 seconds', async () => {
+    vi.useFakeTimers();
+    const { result, unmount } = renderHook(() => useChatStream());
+    const state = makeSetSessionsMock([makeSession({ messages: [] })]);
+    const updateMessages = (id: string, messages: IChat['messages']) => state.setSessions(previous => previous.map(session => session.id === id ? { ...session, messages } : session));
+    let requestSignal!: AbortSignal;
+    const reader = {
+      read: vi.fn(() => new Promise<never>((_resolve, reject) => {
+        requestSignal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+      })),
+      cancel: vi.fn(async () => {}),
+      releaseLock: vi.fn(),
+    };
+    mockAuthFetchFn.mockImplementation((_url: string, options: RequestInit) => {
+      requestSignal = options.signal as AbortSignal;
+      return Promise.resolve({ ok: true, body: { getReader: () => reader }, json: async () => ({}) });
+    });
+    let sendPromise!: Promise<boolean>;
+
+    try {
+      await act(async () => {
+        sendPromise = result.current.sendMessage('继续刚才的问题', state.getState()[0], 'user-1', updateMessages, state.setSessions);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(result.current.loading).toBe(true);
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toMatch(/超时|中断|重试/);
+      expect(await sendPromise).toBe(false);
+      expect(state.getState()[0].messages).toEqual([{ role: 'user', content: '继续刚才的问题' }]);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it('releases loading with a retryable error when the request itself never returns', async () => {
+    vi.useFakeTimers();
+    const { result, unmount } = renderHook(() => useChatStream());
+    const state = makeSetSessionsMock([makeSession({ messages: [] })]);
+    const updateMessages = (id: string, messages: IChat['messages']) => state.setSessions(previous => previous.map(session => session.id === id ? { ...session, messages } : session));
+    mockAuthFetchFn.mockImplementation((_url: string, options: RequestInit) => new Promise((_resolve, reject) => {
+      (options.signal as AbortSignal).addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    }));
+    let sendPromise!: Promise<boolean>;
+
+    try {
+      await act(async () => {
+        sendPromise = result.current.sendMessage('等待网络的提问', state.getState()[0], 'user-1', updateMessages, state.setSessions);
+        await Promise.resolve();
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toMatch(/超时/);
+      expect(await sendPromise).toBe(false);
+      expect(state.getState()[0].messages).toEqual([{ role: 'user', content: '等待网络的提问' }]);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores a committed response delivered after timeout while a newer send is in flight', async () => {
+    vi.useFakeTimers();
+    const { result, unmount } = renderHook(() => useChatStream());
+    const state = makeSetSessionsMock([makeSession({ messages: [] })]);
+    const updateMessages = (id: string, messages: IChat['messages']) => state.setSessions(previous => previous.map(session => session.id === id ? { ...session, messages } : session));
+    let resolveOldFetch!: (response: { ok: true; body: { getReader: () => ReturnType<typeof makeSseReader> } }) => void;
+    let resolveNewFetch!: typeof resolveOldFetch;
+    mockAuthFetchFn
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOldFetch = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveNewFetch = resolve; }));
+    let firstSend!: Promise<boolean>;
+    let secondSend!: Promise<boolean>;
+
+    try {
+      await act(async () => {
+        firstSend = result.current.sendMessage('第一次问题', state.getState()[0], 'user-1', updateMessages, state.setSessions);
+        await Promise.resolve();
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+      expect(await firstSend).toBe(false);
+      expect(result.current.loading).toBe(false);
+
+      await act(async () => {
+        secondSend = result.current.sendMessage('第二次问题', state.getState()[0], 'user-1', updateMessages, state.setSessions);
+        await Promise.resolve();
+      });
+      expect(result.current.loading).toBe(true);
+      const pendingMessages = state.getState()[0].messages;
+
+      await act(async () => {
+        const staleSession = { ...makeSession(), messages: [
+          { role: 'user' as const, content: '第一次问题' },
+          { role: 'assistant' as const, content: '过期的旧回答' },
+        ] };
+        resolveOldFetch({ ok: true, body: { getReader: () => makeSseReader([`data: ${JSON.stringify({ type: 'committed', session: staleSession })}\n\n`]) } });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(state.getState()[0].messages).toEqual(pendingMessages);
+      expect(result.current.loading).toBe(true);
+
+      await act(async () => {
+        const committed = { ...makeSession(), messages: [
+          { role: 'user' as const, content: '第一次问题' },
+          { role: 'user' as const, content: '第二次问题' },
+          { role: 'assistant' as const, content: '第二次已保存' },
+        ] };
+        resolveNewFetch({ ok: true, body: { getReader: () => makeSseReader([`data: ${JSON.stringify({ type: 'committed', session: committed })}\n\n`]) } });
+        expect(await secondSend).toBe(true);
+      });
+      expect(state.getState()[0].messages.at(-1)).toEqual({ role: 'assistant', content: '第二次已保存' });
+      expect(result.current.loading).toBe(false);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it('applies the 180-second total limit even when stream bytes keep arriving', async () => {
+    vi.useFakeTimers();
+    const { result, unmount } = renderHook(() => useChatStream());
+    const state = makeSetSessionsMock([makeSession({ messages: [] })]);
+    let requestSignal!: AbortSignal;
+    let readTimer: ReturnType<typeof setTimeout> | undefined;
+    const reader = {
+      read: vi.fn(() => new Promise<{ done: false; value: Uint8Array }>((resolve, reject) => {
+        readTimer = setTimeout(() => resolve({ done: false, value: new TextEncoder().encode(': heartbeat\n\n') }), 30_000);
+        requestSignal.addEventListener('abort', () => {
+          if (readTimer) clearTimeout(readTimer);
+          reject(new DOMException('Aborted', 'AbortError'));
+        }, { once: true });
+      })),
+      cancel: vi.fn(async () => {}),
+      releaseLock: vi.fn(),
+    };
+    mockAuthFetchFn.mockImplementation((_url: string, options: RequestInit) => {
+      requestSignal = options.signal as AbortSignal;
+      return Promise.resolve({ ok: true, body: { getReader: () => reader }, json: async () => ({}) });
+    });
+    const updateMessages = (id: string, messages: IChat['messages']) => state.setSessions(previous => previous.map(session => session.id === id ? { ...session, messages } : session));
+    let sendPromise!: Promise<boolean>;
+
+    try {
+      await act(async () => {
+        sendPromise = result.current.sendMessage('持续等待的请求', state.getState()[0], 'user-1', updateMessages, state.setSessions);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(180_000); });
+
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toMatch(/超时/);
+      expect(await sendPromise).toBe(false);
+      expect(state.getState()[0].messages).toEqual([{ role: 'user', content: '持续等待的请求' }]);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
 
   it('accumulates chunks and updates session on each chunk', async () => {
     const { result } = renderHook(() => useChatStream());
@@ -321,7 +582,42 @@ describe('useChatStream', () => {
       );
     });
 
-    expect(result.current.error).toBe('AI 服务暂不可用');
+    expect(result.current.error).toBe('AI 服务暂不可用，请稍后重试；你的问题已保留。');
+  });
+
+  it('preserves a specific provider failure and adds retry guidance', async () => {
+    const { result } = renderHook(() => useChatStream());
+    mockAuthFetchSuccess(makeSseReader(['data: {"error":"AI服务连接失败"}\n\n']));
+
+    await act(async () => {
+      await result.current.sendMessage('hi', makeSession(), 'user-1', vi.fn(), vi.fn());
+    });
+
+    expect(result.current.error).toBe('AI服务连接失败，请重试；你的问题已保留。');
+  });
+
+  it('finishes on committed and ignores a trailing error without waiting for reader cancellation', async () => {
+    const { result } = renderHook(() => useChatStream());
+    const state = makeSetSessionsMock([makeSession()]);
+    const committed = { ...makeSession(), messages: [{ role: 'user' as const, content: 'hi' }, { role: 'assistant' as const, content: '已保存' }] };
+    const reader = {
+      read: vi.fn(async () => ({ done: false, value: new TextEncoder().encode(`data: ${JSON.stringify({ type: 'committed', session: committed })}\n\ndata: {"error":"late failure"}\n\n`) })),
+      cancel: vi.fn(() => new Promise<void>(() => {})),
+      releaseLock: vi.fn(),
+    };
+    mockAuthFetchSuccess(reader);
+
+    let sent: boolean | undefined;
+    await act(async () => {
+      sent = await result.current.sendMessage('hi', makeSession(), 'user-1', vi.fn(), state.setSessions);
+    });
+
+    expect(sent).toBe(true);
+    expect(result.current.error).toBe('');
+    expect(result.current.loading).toBe(false);
+    expect(reader.read).toHaveBeenCalledOnce();
+    expect(reader.cancel).toHaveBeenCalledOnce();
+    expect(state.getState()[0].messages).toEqual(committed.messages);
   });
 
   it('sets error when response body has no ReadableStream', async () => {

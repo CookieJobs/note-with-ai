@@ -103,10 +103,94 @@ function makeModule() {
     update: { $set: Record<string, unknown>; $inc?: Record<string, number> },
   ) => notes.findOneAndUpdate(filter, update)) as unknown as typeof Note.findOneAndUpdate);
   const scheduler = new CollectingScheduler();
-  return { notes, scheduler, module: new NoteUpdateOrchestrator({ scheduler }) };
+  return {
+    notes,
+    scheduler,
+    module: new NoteUpdateOrchestrator({ scheduler }),
+  };
 }
 
 describe('NoteUpdateOrchestrator public create/update contract', () => {
+  it('model defaults new titles to empty without injecting retired fields', () => {
+    const note = new Note({ userId: '507f1f77bcf86cd799439011', content: '正文' });
+    assert.equal(note.title, '');
+    assert.equal(note.titleOrigin, undefined);
+    assert.equal(note.keywords, undefined);
+    assert.equal(note.keywordsOrigin, undefined);
+    assert.equal((note as any).topicIndexFence, undefined);
+  });
+  it('creates untitled notes without persisting retired metadata', async () => {
+    const { module, notes } = makeModule();
+    const result = await module.create({ userId: 'user-1', body: { kind: 'plain-text', text: '# 正文' } });
+    assert.equal(result.note.title, '');
+    assert.equal('keywords' in result.note, false);
+    const stored = notes.notes.get('note-1') as Record<string, unknown>;
+    assert.equal('titleOrigin' in stored, false);
+    assert.equal('keywords' in stored, false);
+    assert.equal('keywordsOrigin' in stored, false);
+  });
+
+  it('normalizes manual titles and rejects multiline, non-string, and 101 code points', async () => {
+    const { module } = makeModule();
+    const hundred = '😀'.repeat(100);
+    assert.equal((await module.create({ userId: 'user-1', body: { kind: 'plain-text', text: '正文' }, title: `  ${hundred}  ` } as any)).note.title, hundred);
+    for (const title of ['a\nb', 'a\rb', '😀'.repeat(101), 12]) {
+      await assert.rejects(() => module.create({ userId: 'user-1', body: { kind: 'plain-text', text: '正文' }, title } as any),
+        (error: unknown) => error instanceof NoteWriteError && error.statusCode === 400);
+    }
+  });
+
+  it('treats whitespace-only line separators as empty on create and title clear', async () => {
+    const { module } = makeModule();
+    const created = await module.create({ userId: 'user-1', body: { kind: 'plain-text', text: '正文' }, title: ' \n ' });
+    assert.equal(created.note.title, '');
+    const titled = await module.update({ userId: 'user-1', noteId: created.note._id, expectedRevision: 1,
+      changes: { title: '手写' } });
+    const cleared = await module.update({ userId: 'user-1', noteId: created.note._id, expectedRevision: titled.note.revision,
+      changes: { title: '\u2028' } });
+    assert.equal(cleared.note.title, '');
+  });
+
+  it('reads missing, null, and overlong historical titles without changing them on body-only edits', async () => {
+    const { module, notes } = makeModule();
+    for (const historicalTitle of [undefined, null, '😀'.repeat(101)]) {
+      notes.seed({
+        _id: 'note-1', userId: 'user-1', content: '旧正文', contentText: '旧正文', contentJson: null,
+        title: historicalTitle as any, summary: '', concepts: [], revision: 1, enrichment: {},
+        createdAt: new Date('2026-08-18T00:00:00.000Z'), updatedAt: new Date('2026-08-18T00:00:00.000Z'),
+      });
+      const updated = await module.update({ userId: 'user-1', noteId: 'note-1', expectedRevision: 1,
+        changes: { body: { kind: 'plain-text', text: '新正文' } } });
+      assert.equal(updated.note.title, historicalTitle ?? '');
+      assert.equal(notes.notes.get('note-1')?.title, historicalTitle);
+    }
+  });
+
+  it('rejects an explicit empty keywords change before reading the note', async () => {
+    const { module } = makeModule();
+    await assert.rejects(() => module.update({ userId: 'user-1', noteId: 'missing', expectedRevision: 1, changes: { keywords: [] } } as any),
+      (error: unknown) => error instanceof NoteWriteError && error.code === 'NOTE_TAGS_RETIRED');
+  });
+
+  it('preserves a historical title on body-only edits and writes body plus title in one revision', async () => {
+    const { module, notes } = makeModule();
+    notes.seed({
+      _id: 'note-1', userId: 'user-1', content: '旧正文', contentText: '旧正文', contentJson: null,
+      title: '历史标题', summary: '旧摘要', concepts: [], keywords: ['历史标签'], revision: 1,
+      enrichment: {}, createdAt: new Date('2026-08-18T00:00:00.000Z'), updatedAt: new Date('2026-08-18T00:00:00.000Z'),
+    });
+    const bodyOnly = await module.update({ userId: 'user-1', noteId: 'note-1', expectedRevision: 1,
+      changes: { body: { kind: 'plain-text', text: '新正文' } } });
+    assert.equal(bodyOnly.note.title, '历史标题');
+    assert.equal(bodyOnly.note.revision, 2);
+    assert.deepEqual(notes.notes.get('note-1')?.keywords, ['历史标签']);
+    const combined = await module.update({ userId: 'user-1', noteId: 'note-1', expectedRevision: 2,
+      changes: { body: { kind: 'plain-text', text: '再改正文' }, title: '  新标题  ' } });
+    assert.equal(combined.note.title, '新标题');
+    assert.equal(combined.note.contentText, '再改正文');
+    assert.equal(combined.note.revision, 3);
+    assert.equal('keywords' in combined.note, false);
+  });
   it('uses NOTE_ENRICHMENT_STALE_MS and treats the configured boundary as degraded', () => {
     const now = Date.parse('2026-08-18T00:05:00.000Z');
     process.env.NOTE_ENRICHMENT_STALE_MS = '1000';
@@ -159,10 +243,9 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
       content: '第一行\n\n第二行',
       contentText: '第一行\n\n第二行',
       contentJson: null,
-      title: '第一行',
+      title: '',
       summary: '',
       concepts: [],
-      keywords: [],
       recommendCache: null,
       revision: 1,
       createdAt: '2026-08-18T00:00:00.000Z',
@@ -265,7 +348,7 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
     }]);
   });
 
-  it('preserves derived artifacts for a JSON-only body change and a keyword-only change', async () => {
+  it('preserves derived artifacts for a JSON-only body change and rejects keyword edits', async () => {
     const { module, notes, scheduler } = makeModule();
     notes.seed({
       _id: 'note-1', userId: 'user-1', content: '正文', contentText: '正文',
@@ -289,20 +372,20 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
         },
       },
     });
-    const afterKeywords = await module.update({
+    await assert.rejects(() => module.update({
       userId: 'user-1', noteId: 'note-1', expectedRevision: 4, changes: { keywords: ['新关键词'] },
-    });
+    } as any), (error: unknown) => error instanceof NoteWriteError && error.code === 'NOTE_TAGS_RETIRED');
 
     assert.equal(afterStructure.note.revision, 4);
-    assert.equal(afterKeywords.note.revision, 5);
-    assert.equal(afterKeywords.note.recommendCache?.sourceRevision, 5);
+    assert.equal(notes.notes.get('note-1')?.revision, 4);
+    assert.equal(notes.notes.get('note-1')?.recommendCache?.sourceRevision, 4);
     assert.equal(scheduler.tasks.length, 0);
     assert.deepEqual(
       Object.values(notes.notes.get('note-1')?.enrichment as Record<string, { status: string; sourceRevision: number }>),
       [
-        { status: 'ready', sourceRevision: 5 },
-        { status: 'ready', sourceRevision: 5 },
-        { status: 'ready', sourceRevision: 5 },
+        { status: 'ready', sourceRevision: 4 },
+        { status: 'ready', sourceRevision: 4 },
+        { status: 'ready', sourceRevision: 4 },
       ],
     );
   });

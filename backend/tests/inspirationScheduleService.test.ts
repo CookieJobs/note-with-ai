@@ -30,7 +30,7 @@ describe('inspiration opt-in settings', () => {
   it('starts disabled and does not schedule a call on enable', async () => {
     const store = installSettingsStore();
     const settings = createInspirationScheduleService({ hasProviders: () => true });
-    assert.deepEqual(await settings.get(userId), { enabled: false, consentedAt: null, nextEligibleAt: null, lastAttemptAt: null, lastStatus: null });
+    assert.deepEqual(await settings.get(userId), { enabled: false, consentedAt: null, nextEligibleAt: null, lastAttemptAt: null, lastStatus: null, lastReason: null, lastContextReason: null });
     const enabled = await settings.setEnabled(userId, true, now);
     assert.equal(enabled.enabled, true);
     assert.equal(enabled.nextEligibleAt, '2026-09-27T00:00:00.000Z');
@@ -46,13 +46,19 @@ describe('inspiration opt-in settings', () => {
   });
 
   it('manual research postpones the next automatic attempt and opt-out stops it', async () => {
-    installSettingsStore();
+    const store = installSettingsStore();
     const settings = createInspirationScheduleService({ hasProviders: () => true });
     await settings.setEnabled(userId, true, now);
     const manualAt = new Date(now.getTime() + 3_600_000);
     await settings.recordManualStart(userId, manualAt);
     assert.equal((await settings.get(userId)).nextEligibleAt, '2026-09-27T01:00:00.000Z');
+    Object.assign(store.get()!, { lastReason: 'note_context_unavailable', lastContextReason: 'summary_pending' });
     assert.equal((await settings.setEnabled(userId, false, manualAt)).enabled, false);
     assert.equal((await settings.get(userId)).nextEligibleAt, null);
+    assert.equal((await settings.get(userId)).lastReason, 'note_context_unavailable');
+    assert.equal((await settings.get(userId)).lastContextReason, 'summary_pending');
+    const reenabled = await settings.setEnabled(userId, true, new Date(manualAt.getTime() + 1));
+    assert.equal(reenabled.lastReason, null);
+    assert.equal(reenabled.lastContextReason, null);
   });
 });

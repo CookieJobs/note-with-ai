@@ -32,7 +32,7 @@ function makeResponse(): CapturedResponse {
 const canonicalResult = {
   note: {
     _id: 'note-1', content: '正文', contentText: '正文', contentJson: null, title: '正文',
-    summary: '', concepts: [], keywords: [], recommendCache: null, revision: 1,
+    summary: '', concepts: [], recommendCache: null, revision: 1,
     createdAt: '2026-08-18T00:00:00.000Z', updatedAt: '2026-08-18T00:00:00.000Z',
   },
   enrichment: { sourceRevision: 1, status: 'pending' as const },
@@ -40,6 +40,34 @@ const canonicalResult = {
 
 describe('Note HTTP contract', () => {
   afterEach(() => mock.restoreAll());
+
+  it('passes an explicit manual title through create and rejects keywords on every write adapter', async () => {
+    mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
+    mock.method(noteService, 'createNote', async (_userId: string, input: Pick<CreateNoteInput, 'body' | 'title'>) => {
+      assert.equal(input.title, '  手写标题  ');
+      return canonicalResult as never;
+    });
+    const created = makeResponse();
+    await noteController.createNote({ body: { body: { kind: 'plain-text', text: '正文' }, title: '  手写标题  ' } } as never,
+      created as never, () => undefined);
+    assert.equal(created.statusCode, 201);
+
+    mock.method(noteService, 'updateNote', async () => { throw new Error('retired keywords reached service'); });
+    for (const [handler, request] of [
+      [noteController.createNote.bind(noteController), { body: { content: '正文', keywords: [] } }],
+      [noteController.updateNote.bind(noteController), { params: { id: 'note-1' }, body: { expectedRevision: 1, changes: { keywords: [] } } }],
+      [noteController.updateNote.bind(noteController), { params: { id: 'note-1' }, body: { content: '正文', keywords: [] } }],
+      [noteController.updateTitle.bind(noteController), { params: { id: 'note-1' }, body: { title: '标题', keywords: [] } }],
+    ] as const) {
+      let caught: unknown;
+      try { await handler(request as never, makeResponse() as never, () => undefined); } catch (error) { caught = error; }
+      assert.ok(caught);
+      const response = makeResponse();
+      globalErrorHandler(caught as never, { method: 'POST', path: '/api/notes' } as never, response as never, () => undefined);
+      assert.equal(response.statusCode, 400);
+      assert.equal((response.body as any).code, 'NOTE_TAGS_RETIRED');
+    }
+  });
 
   it('wraps POST /api/notes in the single canonical data.note envelope without embedding fields', async () => {
     mock.method(UserValidator, 'authenticateUser', async () => ({ _id: { toString: () => 'user-1' } }) as never);
@@ -60,6 +88,7 @@ describe('Note HTTP contract', () => {
     });
     assert.equal('embedding' in canonicalResult.note, false);
     assert.equal('embeddingMetadata' in canonicalResult.note, false);
+    assert.equal('keywords' in (response.body as any).data.note, false);
   });
 
   it('wraps PATCH /api/notes/:id in the same canonical data.note envelope', async () => {

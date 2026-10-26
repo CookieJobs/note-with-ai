@@ -1,4 +1,5 @@
 import { Document, Types } from 'mongoose';
+import type { ChatSourceSnapshot } from './chatSource';
 
 export type EmbeddingMetadataModality = 'text' | 'image' | 'image_text';
 
@@ -33,12 +34,18 @@ export interface INoteEnrichmentState {
 export interface IMessage {
   role: 'user' | 'assistant';
   content: string;
+  sourceSnapshot?: ChatSourceSnapshot;
 }
 
 export interface IRelatedNote {
   noteId: Types.ObjectId;
   title?: string;
   content?: string;
+  excerpt?: string;
+  sourceType?: 'text' | 'image' | 'mixed';
+  imageCount?: number;
+  firstImageSrc?: string;
+  createdAtSource?: 'note';
   score?: number;
   matchType?: string;
   reason?: string;
@@ -49,6 +56,7 @@ export interface IChat extends Document {
   userId: Types.ObjectId;
   title: string;
   messages: IMessage[];
+  sourceNoteId?: Types.ObjectId | string;
   relatedNotes?: IRelatedNote[];
   createdAt: Date;
   updatedAt: Date;

@@ -14,7 +14,7 @@ import authRoutes from './routes/auth';
 import healthRoutes from './routes/health';
 import cacheRoutes from './routes/cache';
 import performanceRoutes from './routes/performance';
-import feedRoutes from './routes/feedRoutes';
+import profileRoutes from './routes/profileRoutes';
 import userRoutes from './routes/userRoutes';
 import { globalErrorHandler } from './utils/errorHandler';
 import { logger } from './utils/logger';
@@ -23,6 +23,7 @@ import eventRoutes from './routes/events';
 import feedbackRoutes from './routes/feedback';
 import adminFeedbackRoutes from './routes/admin/feedback';
 import inspirationRoutes from './routes/inspirations';
+import { beginNoteTitleRequestDeadline, getNoteTitleRequestDeadline, stopExpiredNoteTitleRequest } from './middleware/noteTitleRequestDeadline';
 
 dotenv.config();
 
@@ -33,12 +34,14 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/note-w
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
   : ['http://localhost:3000', 'http://localhost:3001'];
-export function createApp() {
+export function createApp(options: { noteTitleDeadlineMs?: number } = {}) {
 const app = express();
+app.use(beginNoteTitleRequestDeadline(options.noteTitleDeadlineMs));
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 
 // 请求体大小限制（防止超大 payload 导致 OOM）
 app.use(express.json({ limit: '5mb' }));
+app.use(stopExpiredNoteTitleRequest);
 app.use(cookieParser());
 
 // 添加请求日志中间件
@@ -62,7 +65,7 @@ app.use('/api/notes', noteRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/chat', chatRelatedNotesRoutes);
 app.use('/api/recommend', recommendRoutes);
-app.use('/api/feed', feedRoutes);
+app.use('/api/profile', profileRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/cache', cacheRoutes);
 app.use('/api/performance', performanceRoutes);
@@ -101,7 +104,16 @@ const connectDB = async () => {
 
 // Vercel Serverless Handler
 export default async (req: Request, res: Response) => {
-  await connectDB();
+  // The serverless connection wait is part of the same title-request clock.
+  beginNoteTitleRequestDeadline()(req, res, () => undefined);
+  try {
+    await connectDB();
+  } catch (error) {
+    const state = getNoteTitleRequestDeadline(req);
+    if (state && (state.signal.aborted || res.writableEnded || res.destroyed)) return;
+    throw error;
+  }
+  if (getNoteTitleRequestDeadline(req)?.signal.aborted || res.writableEnded) return;
   return app(req, res);
 };
 

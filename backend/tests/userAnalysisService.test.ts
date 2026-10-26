@@ -37,7 +37,7 @@ describe('userAnalysisService', () => {
     }
   });
 
-  it('在笔记不足时会把当前运行任务标记为 ready，避免页面长期停留在分析中', async () => {
+  it('笔记不足时不生成画像且不写入分析时间', async () => {
     const { Note, UserProfile, userAnalysisService } = await loadModules();
 
     mock.method(Note, 'find', () => ({
@@ -46,6 +46,7 @@ describe('userAnalysisService', () => {
       },
       limit: async () => [],
     }) as any);
+    mock.method(Note, 'countDocuments', async () => 4);
 
     const updateCalls: Array<{ filter: Record<string, unknown>; update: Record<string, any> }> = [];
     mock.method(UserProfile, 'updateOne', async (filter: Record<string, unknown>, update: Record<string, any>) => {
@@ -58,19 +59,120 @@ describe('userAnalysisService', () => {
       analysisVersion: 3,
     });
 
-    assert.deepEqual(result, {
-      committed: true,
-      reason: 'insufficient_data',
-    });
+    assert.deepEqual(result, { committed: false, reason: 'insufficient_data' });
     assert.equal(updateCalls.length, 1);
     assert.deepEqual(updateCalls[0].filter, {
       userId: 'user-1',
       analysisVersion: 3,
       analysisStatus: 'running',
     });
-    assert.equal(updateCalls[0].update.$set.analysisStatus, 'ready');
-    assert.equal(updateCalls[0].update.$set.analysisError, '');
-    assert.ok(updateCalls[0].update.$set.lastAnalyzedAt instanceof Date);
+    assert.equal(updateCalls[0].update.$set.analysisStatus, 'failed');
+    assert.equal(updateCalls[0].update.$set.analysisError, '笔记数量不足，未生成画像');
+    assert.ok(updateCalls[0].update.$set.analysisFailedAt instanceof Date);
+    assert.equal('lastAnalyzedAt' in updateCalls[0].update.$set, false);
+  });
+
+  it('写回前笔记数降至五篇以下时分析不提交', async () => {
+    const { Note, UserProfile, userAnalysisService } = await loadModules();
+    const notes = Array.from({ length: 5 }, (_, index) => ({
+      createdAt: new Date(`2026-01-0${index + 1}T00:00:00.000Z`),
+      title: `Note ${index + 1}`,
+      content: `内容${index + 1}`,
+    }));
+    let countCalls = 0;
+    mock.method(Note, 'countDocuments', async () => ++countCalls === 1 ? 5 : 4);
+    mock.method(Note, 'find', () => ({ sort() { return this; }, limit: async () => notes }) as any);
+    replaceMethod(userAnalysisService as any, 'getApiClient', (() => ({
+      chatCompletion: async () => JSON.stringify({ summary: '生成结果' }),
+    })) as any);
+    const updates: Array<{ filter: Record<string, unknown>; update: Record<string, any> }> = [];
+    mock.method(UserProfile, 'updateOne', async (filter: Record<string, unknown>, update: Record<string, any>) => {
+      updates.push({ filter, update });
+      return { matchedCount: 1 } as any;
+    });
+
+    const result = await userAnalysisService.analyzeUserProfile({ userId: 'user-1', analysisVersion: 8 });
+
+    assert.deepEqual(result, { committed: false, reason: 'insufficient_data' });
+    assert.equal(countCalls, 2);
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0].update.$set.analysisStatus, 'failed');
+    assert.ok(updates[0].update.$set.analysisFailedAt instanceof Date);
+    assert.equal('summary' in updates[0].update.$set, false);
+    assert.equal('lastAnalyzedAt' in updates[0].update.$set, false);
+  });
+
+  it('成功提交画像时记录实际输入笔记数和范围', async () => {
+    const { Note, UserProfile, userAnalysisService } = await loadModules();
+    const notes = Array.from({ length: 7 }, (_, index) => ({
+      createdAt: new Date(`2026-01-0${index + 1}T00:00:00.000Z`),
+      title: `Note ${index + 1}`,
+      content: `内容${index + 1}`,
+    }));
+    mock.method(Note, 'countDocuments', async () => 7);
+    mock.method(Note, 'find', () => ({ sort() { return this; }, limit: async () => notes }) as any);
+    replaceMethod(userAnalysisService as any, 'getApiClient', (() => ({
+      chatCompletion: async () => JSON.stringify({ summary: '生成结果' }),
+    })) as any);
+    let committedUpdate: Record<string, any> | undefined;
+    mock.method(UserProfile, 'updateOne', async (_filter: Record<string, unknown>, update: Record<string, any>) => {
+      committedUpdate = update;
+      return { matchedCount: 1 } as any;
+    });
+
+    const result = await userAnalysisService.analyzeUserProfile({ userId: 'user-1', analysisVersion: 9 });
+
+    assert.deepEqual(result, { committed: true, reason: 'updated' });
+    assert.equal(committedUpdate?.$set.analysisInputNoteCount, 7);
+    assert.equal(committedUpdate?.$set.analysisInputScope, 'recent_up_to_20');
+    assert.ok(committedUpdate?.$set.lastAnalyzedAt instanceof Date);
+    assert.equal(committedUpdate?.$set.analysisFailedAt, null);
+    assert.equal(committedUpdate?.$set.summary, '生成结果');
+    assert.deepEqual(committedUpdate?.$unset, { profileInvalidatedAt: 1 });
+  });
+
+  it('模型没有生成可展示画像时不提交或更新时间', async () => {
+    const { Note, UserProfile, userAnalysisService } = await loadModules();
+    const notes = Array.from({ length: 5 }, (_, index) => ({
+      createdAt: new Date(`2026-01-0${index + 1}T00:00:00.000Z`),
+      title: `Note ${index + 1}`,
+      content: `内容${index + 1}`,
+    }));
+    const emptyOutputs = [
+      '{}',
+      '[]',
+      'null',
+      JSON.stringify({
+        summary: '   ',
+        interests: [],
+        expertise: [],
+        theme: { themeName: '空', cssType: 'linear-gradient', cssValue: '  ', reasoning: '' },
+      }),
+      JSON.stringify({
+        theme: { themeName: '旧配色', cssType: 'linear-gradient', cssValue: 'linear-gradient(#eee, #ddd)', reasoning: '已退役' },
+      }),
+    ];
+    let output = '';
+    mock.method(Note, 'countDocuments', async () => 5);
+    mock.method(Note, 'find', () => ({ sort() { return this; }, limit: async () => notes }) as any);
+    replaceMethod(userAnalysisService as any, 'getApiClient', (() => ({
+      chatCompletion: async () => output,
+    })) as any);
+    const updates: Array<Record<string, any>> = [];
+    mock.method(UserProfile, 'updateOne', async (_filter: Record<string, unknown>, update: Record<string, any>) => {
+      updates.push(update);
+      return { matchedCount: 1 } as any;
+    });
+
+    for (let index = 0; index < emptyOutputs.length; index += 1) {
+      output = emptyOutputs[index];
+      await assert.rejects(userAnalysisService.analyzeUserProfile({
+        userId: 'user-1',
+        analysisVersion: 10 + index,
+      }));
+    }
+
+    assert.equal(updates.length, 0);
   });
 
   it('在旧版本结果提交失败时返回 stale_analysis_version，避免覆盖新画像', async () => {
@@ -90,6 +192,7 @@ describe('userAnalysisService', () => {
       },
       limit: async () => notes,
     }) as any);
+    mock.method(Note, 'countDocuments', async () => 5);
 
     replaceMethod(userAnalysisService as any, 'getApiClient', (() => ({
       chatCompletion: async () => JSON.stringify({
@@ -122,5 +225,43 @@ describe('userAnalysisService', () => {
       committed: false,
       reason: 'stale_analysis_version',
     });
+  });
+
+  it('只提交画像白名单字段并仅在真实成功CAS时清除失效标记', async () => {
+    const { Note, UserProfile, userAnalysisService } = await loadModules();
+    const notes = Array.from({ length: 5 }, (_, index) => ({
+      createdAt: new Date(`2026-01-0${index + 1}T00:00:00.000Z`),
+      title: `Note ${index + 1}`,
+      content: `内容${index + 1}`,
+    }));
+    mock.method(Note, 'countDocuments', async () => 5);
+    mock.method(Note, 'find', () => ({ sort() { return this; }, limit: async () => notes }) as any);
+    replaceMethod(userAnalysisService as any, 'getApiClient', (() => ({
+      chatCompletion: async () => JSON.stringify({
+        summary: '新画像',
+        theme: { themeName: '旧配色', cssType: 'linear-gradient', cssValue: 'linear-gradient(#eee, #ddd)', reasoning: '已退役' },
+        analysisFailedAt: new Date('2026-09-01T00:00:00.000Z'),
+        profileInvalidatedAt: null,
+        analysisVersion: 999,
+        analysisStatus: 'failed',
+        userId: 'attacker-controlled',
+      }),
+    })) as any);
+    let update: Record<string, any> | undefined;
+    mock.method(UserProfile, 'updateOne', async (_filter: Record<string, unknown>, value: Record<string, any>) => {
+      update = value;
+      return { matchedCount: 1 } as any;
+    });
+
+    const result = await userAnalysisService.analyzeUserProfile({ userId: 'user-1', analysisVersion: 14 });
+
+    assert.deepEqual(result, { committed: true, reason: 'updated' });
+    assert.deepEqual(Object.keys(update?.$set).sort(), [
+      'analysisError', 'analysisFailedAt', 'analysisInputNoteCount', 'analysisInputScope', 'analysisStatus', 'lastAnalyzedAt', 'summary',
+    ].sort());
+    assert.deepEqual(update?.$unset, { profileInvalidatedAt: 1 });
+    assert.equal(update?.$set.analysisVersion, undefined);
+    assert.equal(update?.$set.profileInvalidatedAt, undefined);
+    assert.equal(update?.$set.analysisFailedAt, null);
   });
 });

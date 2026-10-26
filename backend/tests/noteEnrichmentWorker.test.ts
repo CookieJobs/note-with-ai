@@ -48,6 +48,21 @@ const metaTask: EnrichmentTask = {
 };
 
 describe('Note enrichment worker and scheduler', () => {
+  it('preserves a cleared legacy default title during metadata maintenance', async () => {
+    const model = new MemoryWorkerModel({
+      _id: 'note-1', userId: 'user-1', revision: 3, content: '正文', contentText: '正文',
+      title: '', titleOrigin: 'default', keywordsOrigin: 'default', enrichment: {},
+    } as WorkerNote);
+    useMemoryWorkerModel(model);
+    const worker = new NoteEnrichmentWorker({
+      summarizeMeta: async () => ({ summary: '摘要', concepts: ['概念'], title: '自动标题', keywords: ['标签'] }),
+      generateEmbedding: async () => 'saved', refreshRecommendations: async () => 'saved',
+    });
+    assert.equal(await worker.run(metaTask), 'saved');
+    const values = model.updates[0].update.$set as Record<string, unknown>;
+    assert.equal('title' in values, false);
+    assert.equal('keywords' in values, false);
+  });
   afterEach(() => {
     mock.restoreAll();
   });
@@ -99,7 +114,7 @@ describe('Note enrichment worker and scheduler', () => {
     assert.equal(model.updates.length, 0);
   });
 
-  it('fills automatic metadata only while the title and keywords remain module-owned defaults', async () => {
+  it('never fills title or keywords for legacy default origins', async () => {
     const model = new MemoryWorkerModel({
       _id: 'note-1', userId: 'user-1', revision: 3, content: '正文', contentText: '正文',
       enrichment: {}, titleOrigin: 'default', keywordsOrigin: 'default',
@@ -115,8 +130,26 @@ describe('Note enrichment worker and scheduler', () => {
     await worker.run(metaTask);
 
     const values = model.updates[0].update.$set as Record<string, unknown>;
-    assert.equal(values.title, '自动标题');
-    assert.deepEqual(values.keywords, ['自动关键词']);
+    assert.equal('title' in values, false);
+    assert.equal('keywords' in values, false);
+  });
+
+  it('persists successful metadata without scheduling retired topic work', async () => {
+    const model = new MemoryWorkerModel({
+      _id: 'note-1', userId: 'user-1', revision: 3, content: '正文', contentText: '正文', enrichment: {},
+      titleOrigin: 'user', keywordsOrigin: 'user',
+    } as WorkerNote);
+    useMemoryWorkerModel(model);
+    const worker = new NoteEnrichmentWorker({
+      summarizeMeta: async () => ({ summary: '摘要', concepts: ['概念'] }),
+      generateEmbedding: async () => 'saved',
+      refreshRecommendations: async () => undefined,
+    });
+
+    const status = await worker.run(metaTask);
+
+    assert.equal(status, 'saved');
+    assert.deepEqual(model.updates[0].options, { timestamps: false });
   });
 
   it('never overwrites user-owned title or keywords during a later meta write', async () => {

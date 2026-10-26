@@ -2,6 +2,7 @@ import { EMBEDDING_CONFIG } from '../config/embedding';
 import { getCachedEmbedding } from '../utils/embedding';
 import { vectorStore } from './vectorStore';
 import { AiUsageService } from './aiUsageService';
+import { sourceMetadata } from './noteSourceMetadata';
 
 type RecallMessage = {
   role: 'user' | 'assistant';
@@ -12,6 +13,8 @@ type VectorNoteRecord = {
   _id?: { toString(): string } | string;
   title?: string;
   content?: string;
+  contentText?: string;
+  contentJson?: unknown;
   createdAt?: Date | string;
 };
 
@@ -22,6 +25,10 @@ export type RelatedNoteDto = {
   score?: number;
   matchType?: string;
   createdAt?: Date | string;
+  excerpt?: string;
+  sourceType?: 'text' | 'image' | 'mixed';
+  imageCount?: number;
+  firstImageSrc?: string;
 };
 
 type RecallFromMessagesInput = {
@@ -59,13 +66,19 @@ class ChatRelatedNoteRecallService {
     const noteId = String(note?._id || '');
     if (!noteId) return null;
 
+    const metadata = sourceMetadata(note);
+
     return {
       noteId,
       title: note.title,
       content: note.content,
+      excerpt: metadata.excerpt,
+      sourceType: metadata.sourceType,
+      imageCount: metadata.imageCount,
+      firstImageSrc: metadata.firstImageSrc,
       score,
       matchType: 'vector',
-      createdAt: note.createdAt,
+      createdAt: metadata.createdAt,
     };
   }
 

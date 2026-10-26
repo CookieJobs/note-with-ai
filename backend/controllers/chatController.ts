@@ -1,17 +1,17 @@
 import { Request, Response } from 'express';
 import { chatService } from '../services/chatService';
 import { chatTurnCommitService } from '../services/chatTurnCommitService';
-import { ResponseHandler, ErrorHandler } from '../utils/errorHandler';
+import { ResponseHandler, ErrorHandler, AppError } from '../utils/errorHandler';
 import { UserValidator } from '../utils/userValidation';
 import { logger } from '../utils/logger';
 import { requireSingleRouteParam } from '../utils/requestParams';
 
 export const saveChatSession = async (req: Request, res: Response): Promise<void> => {
   const user = await UserValidator.authenticateUser(req);
-  const { sessionId, title, messages, relatedNotes } = req.body;
+  const { sessionId, title, messages, relatedNotes, sourceNoteId } = req.body;
   const userId = user._id.toString();
 
-  const session = await chatService.saveSession(userId, sessionId, messages, title, relatedNotes);
+  const session = await chatService.saveSession(userId, sessionId, messages, title, relatedNotes, { sourceNoteId });
   const savedSessionId = (session as any)._id?.toString?.() || (session as any).id;
 
   ResponseHandler.success(res, { sessionId: savedSessionId });
@@ -47,7 +47,7 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
   const user = await UserValidator.authenticateUser(req);
   const userId = user._id.toString();
 
-  const { messages, sessionId, title } = req.body;
+  const { messages, sessionId, title, sourceNoteId } = req.body;
   logger.info('🟢 收到聊天请求 (流式):', messages?.length, '条消息, sessionId:', sessionId, 'userId:', userId);
 
   let clientClosed = false;
@@ -81,6 +81,7 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
       messages,
       sessionId,
       title,
+      sourceNoteId,
       onChunk: (chunk) => {
         if (!isWritable()) return false;
         safeWrite(`data: ${JSON.stringify({ chunk })}\n\n`);
@@ -122,7 +123,8 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
     }
 
     if (isWritable()) {
-      safeWrite(`data: ${JSON.stringify({ error: 'AI 服务暂时不可用，请稍后重试' })}\n\n`);
+      const message = error instanceof AppError && error.isOperational ? error.message : 'AI 服务暂时不可用，请稍后重试';
+      safeWrite(`data: ${JSON.stringify({ error: message })}\n\n`);
       res.end();
     }
   }

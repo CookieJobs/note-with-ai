@@ -1,5 +1,6 @@
 import { Note } from '../models/Note';
 import { ErrorHandler } from '../utils/errorHandler';
+import { sourceMetadata } from './noteSourceMetadata';
 
 type Source = { revision?: number; recommendCache?: any };
 
@@ -22,10 +23,16 @@ export class RelatedNoteSummaryService {
       const note: any = byId.get(id);
       if (!note) return [];
       const candidate = (source as any).recommendCache.byCandidateId[id] ?? {};
+      const metadata = sourceMetadata(note);
       return [{
         noteId: id,
-        title: String(note.title || '无标题'),
+        title: typeof note.title === 'string' ? note.title : '',
         contentText: String(note.contentText || note.content || ''),
+        excerpt: metadata.excerpt,
+        sourceType: metadata.sourceType,
+        imageCount: metadata.imageCount,
+        firstImageSrc: metadata.firstImageSrc,
+        createdAt: metadata.createdAt,
         type: typeof candidate.type === 'string' ? candidate.type : '',
         reason: typeof candidate.reason === 'string' ? candidate.reason : '',
         revision: typeof note.revision === 'number' ? note.revision : 1,

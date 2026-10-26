@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSchema, type JSONContent } from '@tiptap/react';
 import { createRichTextExtensions } from '../components/tiptap/richTextPreset';
 import type { CreateNoteCommand, Note } from './useNotes';
+import { validateNoteTitle } from '../utils/titleValidation';
 
 type UseCreateNoteOptions = {
   userId?: string | null;
@@ -17,6 +18,7 @@ type Content = {
 };
 
 type CaptureSession = Content & {
+  title: string;
   userId: string | null;
   revision: number;
   storedValue: string | null;
@@ -32,6 +34,7 @@ function createEmptySession(userId: string | null): CaptureSession {
   return {
     userId,
     text: '',
+    title: '',
     json: null,
     revision: 0,
     storedValue: null,
@@ -53,7 +56,7 @@ function restoreDraft(userId: string | null): CaptureSession {
     if (!storedValue) return session;
 
     const parsed = JSON.parse(storedValue);
-    if ((parsed?.version !== undefined && parsed.version !== 1) || typeof parsed?.text !== 'string') {
+    if ((parsed?.version !== undefined && parsed.version !== 1 && parsed.version !== 2) || typeof parsed?.text !== 'string') {
       throw new Error('invalid draft');
     }
 
@@ -73,10 +76,11 @@ function restoreDraft(userId: string | null): CaptureSession {
     return {
       ...session,
       text: parsed.text,
+      title: typeof parsed.title === 'string' ? parsed.title : '',
       json,
       storedValue,
-      localDraftState: parsed.text.trim() ? 'saved' : 'empty',
-      draftRestored: Boolean(parsed.text.trim()),
+      localDraftState: parsed.text.trim() || (typeof parsed.title === 'string' && parsed.title.trim()) ? 'saved' : 'empty',
+      draftRestored: Boolean(parsed.text.trim() || (typeof parsed.title === 'string' && parsed.title.trim())),
       saveError,
     };
   } catch {
@@ -89,7 +93,7 @@ function persistDraft(session: CaptureSession) {
 
   try {
     const key = draftKey(session.userId);
-    if (!session.text.trim()) {
+    if (!session.text.trim() && !session.title.trim()) {
       if (localStorage.getItem(key) === session.storedValue) localStorage.removeItem(key);
       session.storedValue = null;
       session.localDraftState = 'empty';
@@ -97,7 +101,8 @@ function persistDraft(session: CaptureSession) {
     }
 
     const storedValue = JSON.stringify({
-      version: 1,
+      version: 2,
+      title: session.title,
       text: session.text,
       json: session.json,
       updatedAt: Date.now(),
@@ -107,6 +112,7 @@ function persistDraft(session: CaptureSession) {
     session.localDraftState = 'saved';
   } catch {
     session.localDraftState = 'unavailable';
+    session.saveError = '本机草稿保存失败，刷新后可能无法恢复。';
   }
 }
 
@@ -169,6 +175,18 @@ export function useCreateNote(
     changeContent({ text: sessionRef.current.text, json });
   }, [changeContent]);
 
+  const setNewTitle = useCallback((title: string) => {
+    const session = sessionRef.current;
+    if (session.userId !== userId || session.title === title) return;
+    session.title = title;
+    session.revision += 1;
+    session.draftRestored = false;
+    if (session.saveState !== 'saving') session.saveState = 'idle';
+    session.saveError = '';
+    persistDraft(session);
+    publish(session);
+  }, [publish, userId]);
+
   const discardDraft = useCallback(() => {
     const session = sessionRef.current;
     if (session.userId !== userId || session.saveState === 'saving') return false;
@@ -189,10 +207,19 @@ export function useCreateNote(
   const handleSubmit = useCallback(async (): Promise<boolean> => {
     const session = sessionRef.current;
     const contentText = session.text.trim();
-    if (session.userId !== userId || !contentText || session.saveState === 'saving') return false;
+    if (session.userId !== userId || !contentText || session.saveState === 'saving'
+      || (session.saveState === 'saved' && session.localDraftState === 'unavailable')) return false;
 
     const submittedRevision = session.revision;
     const submittedJson = session.json;
+    const submittedTitle = session.title.trim();
+    const titleError = validateNoteTitle(session.title);
+    if (titleError) {
+      session.saveState = 'failed';
+      session.saveError = titleError;
+      publish(session);
+      return false;
+    }
     session.saveState = 'saving';
     session.saveError = '';
     publish(session);
@@ -200,6 +227,7 @@ export function useCreateNote(
 
     try {
       await createNote({
+        title: submittedTitle,
         body: submittedJson
           ? { kind: 'rich-text', document: submittedJson as Record<string, unknown> }
           : { kind: 'plain-text', text: contentText },
@@ -209,19 +237,25 @@ export function useCreateNote(
         },
       });
 
+      let removed = false;
       if (session.revision === submittedRevision) {
-        const removed = removeDraft(session);
-        session.text = '';
-        session.json = null;
-        session.storedValue = null;
-        session.localDraftState = removed ? 'empty' : 'unavailable';
-        session.draftRestored = false;
-        if (!removed) session.saveError = '笔记已保存到云端，但本机草稿未能清除。';
+        removed = removeDraft(session);
+        if (removed) {
+          session.text = '';
+          session.title = '';
+          session.json = null;
+          session.storedValue = null;
+          session.localDraftState = 'empty';
+          session.draftRestored = false;
+        } else {
+          session.localDraftState = 'unavailable';
+          session.saveError = '笔记已保存到云端，但本机草稿未能清除。';
+        }
       }
 
-      session.saveState = 'saved';
+      session.saveState = session.revision === submittedRevision ? 'saved' : 'idle';
       publish(session);
-      if (mountedRef.current && sessionRef.current === session && session.revision === submittedRevision) {
+      if (removed && mountedRef.current && sessionRef.current === session && session.revision === submittedRevision) {
         setIsComposing(false);
         return true;
       }
@@ -239,6 +273,8 @@ export function useCreateNote(
 
   const visible = view.userId === userId ? view : createEmptySession(userId);
   return {
+    newTitle: visible.title,
+    setNewTitle,
     newContentText: visible.text,
     newContentJson: visible.json,
     setNewContentText,

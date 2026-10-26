@@ -15,6 +15,10 @@ import {
 
 interface UseChatSessionReturn {
   sessions: IChat[];
+  sessionsLoaded: boolean;
+  sessionsError: string;
+  sessionsLoading: boolean;
+  retrySessions: () => Promise<void>;
   currentSessionId: string;
   currentSession: IChat | undefined;
   setSessions: React.Dispatch<React.SetStateAction<IChat[]>>;
@@ -28,10 +32,22 @@ interface UseChatSessionReturn {
 }
 
 export const useChatSession = (userId?: string): UseChatSessionReturn => {
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [sessionsError, setSessionsError] = useState('');
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessions, setSessions] = useState<IChat[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
   const currentSessionIdRef = useRef(currentSessionId);
   const sessionsRef = useRef<IChat[]>([]);
+  const historyOwner = useRef({ userId });
+  const historyRequest = useRef<object | null>(null);
+  const historyBusy = useRef(false);
+  const active = useRef(true);
+  if (historyOwner.current.userId !== userId) {
+    historyOwner.current = { userId };
+    historyRequest.current = null;
+    historyBusy.current = false;
+  }
 
   const currentSession = sessions.find((s) => s.id === currentSessionId);
 
@@ -42,22 +58,6 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
-
-  // 当当前选中会话失效，或页面恢复后尚未选中任何会话时，回退到第一条会话。
-  useEffect(() => {
-    if (sessions.length > 0) {
-      const exists = sessions.some(s => s.id === currentSessionId);
-      if (!currentSessionId || !exists) {
-        const firstSession = sessions[0];
-        // Prefer 'id', fallback to '_id'
-        const firstId = firstSession.id || firstSession._id;
-        if (firstId && currentSessionId !== firstId) {
-          console.log('🔄 [useChatSession] 恢复当前会话为:', firstId);
-          setCurrentSessionId(firstId);
-        }
-      }
-    }
-  }, [sessions, currentSessionId]);
 
   const saveSessionToDB = async (userId: string, session: IChat): Promise<string> => {
     try {
@@ -141,28 +141,55 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
       persistChatSessions(userId, updated);
       return updated;
     });
+    currentSessionIdRef.current = localId;
     setCurrentSessionId(localId);
     console.log('🔵 startNewSession 设置 currentSessionId:', localId);
 
     return newSession;
   };
 
-  const loadSessionsFromDB = async (userId: string, localSessions: IChat[]) => {
+  const loadSessionsFromDB = async (requestUserId: string, localSessions: IChat[]) => {
+    if (!active.current || historyOwner.current.userId !== requestUserId || historyBusy.current) return undefined;
+    const owner = historyOwner.current;
+    const request = {};
+    historyRequest.current = request;
+    historyBusy.current = true;
+    const isCurrent = () => active.current && historyOwner.current === owner && historyRequest.current === request;
+    setSessionsLoading(true);
+    setSessionsLoaded(false);
     try {
+      const sessionIdsAtLoadStart = new Set(sessionsRef.current.map(session => session.id));
       const normalizedServerSessions = await fetchChatSessionsRemote();
+      if (!isCurrent()) return undefined;
 
       setSessions(prevSessions => {
+        if (!isCurrent()) return prevSessions;
         const localSource = prevSessions.length > 0 ? prevSessions : localSessions;
-        const finalSessions = mergeChatSessions(normalizedServerSessions, localSource);
+        const mergedSessions = mergeChatSessions(normalizedServerSessions, localSource);
+        const mergedIds = new Set(mergedSessions.map(session => session.id));
+        // 请求期间创建并保存的会话可能不在这次服务端快照中，不能被旧历史覆盖。
+        const newlyCreatedSessions = localSource.filter(session =>
+          !sessionIdsAtLoadStart.has(session.id) && !mergedIds.has(session.id)
+        );
+        const finalSessions = [...newlyCreatedSessions, ...mergedSessions];
 
-        persistChatSessions(userId, finalSessions);
+        persistChatSessions(requestUserId, finalSessions);
         return finalSessions;
       });
+      setSessionsError('');
+      setSessionsLoaded(true);
       return normalizedServerSessions;
     } catch (err) {
       console.error('❌ 获取聊天记录失败:', err);
+      if (isCurrent()) setSessionsError('对话历史加载失败，请重试。你的草稿会保留。');
       return undefined;
+    } finally {
+      if (isCurrent()) { historyBusy.current = false; setSessionsLoading(false); }
     }
+  };
+
+  const retrySessions = async () => {
+    if (userId) await loadSessionsFromDB(userId, readChatSessionsFromStorage(userId));
   };
 
   const updateSessionMessages = (sessionId: string, newMessages: IMessage[], userId?: string) => {
@@ -192,6 +219,8 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
     
     // 如果没有会话，先创建会话
     let session = currentSession;
+    if (session?.messages.length && introData?.noteId) session = undefined;
+    const previousSession = session;
     if (!session) {
        console.log('⚠️ [CareSend] 当前无会话，自动创建新会话...');
        session = await startNewSession(userId);
@@ -206,9 +235,14 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
           noteId: introData.noteId,
           title: introData.noteTitle,
           content: introData.snippet,
+          excerpt: introData.excerpt,
+          sourceType: introData.sourceType,
+          imageCount: introData.imageCount,
+          firstImageSrc: introData.firstImageSrc,
+          createdAtSource: introData.createdAtSource,
           score: 1.0,
           matchType: 'care_source',
-          createdAt: new Date().toISOString()
+          createdAt: introData.createdAtSource === 'note' ? introData.createdAt : undefined
         }] : undefined
       };
 
@@ -219,55 +253,74 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
         noteId: introData.noteId,
         title: introData.noteTitle,
         content: introData.snippet,
+        excerpt: introData.excerpt,
+        sourceType: introData.sourceType,
+        imageCount: introData.imageCount,
+        firstImageSrc: introData.firstImageSrc,
+        createdAtSource: introData.createdAtSource,
         score: 1.0,
         matchType: 'care_source',
-        createdAt: new Date().toISOString()
+        createdAt: introData.createdAtSource === 'note' ? introData.createdAt : undefined
       }] : [];
 
-      // 更新本地状态
-      setSessions(prev => {
-        const updated = prev.map(s =>
-          s.id === session!.id ? {
-            ...s,
-            messages: newMessages,
-            relatedNotes: [...(s.relatedNotes || []), ...newRelatedNotes]
-          } : s
-        );
+      const candidate: IChat = {
+        ...session,
+        title: introData?.noteTitle || session.title,
+        sourceNoteId: introData?.noteId?.trim() || session.sourceNoteId,
+        messages: newMessages,
+        relatedNotes: [...(session.relatedNotes || []), ...newRelatedNotes],
+      };
 
-        persistChatSessions(userId, updated);
-        return updated;
-      });
-
-      // 保存到数据库
+      // Show a bound opening only after the server accepts the selected source.
       try {
-        await saveSessionToDB(userId, {
-          ...session,
-          messages: newMessages,
-          relatedNotes: [...(session.relatedNotes || []), ...newRelatedNotes]
+        const savedId = await saveChatSessionRemote(candidate);
+        if (!savedId) throw new Error('保存会话未返回有效记录，请重试');
+        setSessions(prev => {
+          const updated = prev.map(s => s.id === session!.id ? { ...candidate, id: savedId } : s);
+          persistChatSessions(userId, updated);
+          return updated;
         });
+        if (currentSessionIdRef.current === session.id) {
+          currentSessionIdRef.current = savedId;
+          setCurrentSessionId(savedId);
+        }
       } catch (error) {
         console.error('❌ 保存关怀消息失败:', error);
+        if (!previousSession) {
+          setSessions(prev => {
+            const updated = prev.filter(s => s.id !== session!.id);
+            persistChatSessions(userId, updated);
+            return updated;
+          });
+          if (currentSessionIdRef.current === session.id) {
+            currentSessionIdRef.current = '';
+            setCurrentSessionId('');
+          }
+        }
+        throw error instanceof Error ? error : new Error('保存笔记对话失败，请重试');
       }
     }
   };
 
   // 获取本地存储 & 请求服务器记录
   useEffect(() => {
-    if (!userId) return;
+    active.current = true;
+    historyRequest.current = null;
+    historyBusy.current = false;
+    setSessionsLoaded(false); setSessionsError(''); setSessionsLoading(false);
+    sessionsRef.current = [];
+    currentSessionIdRef.current = '';
+    setCurrentSessionId('');
+    if (!userId) {
+      setSessions([]);
+      return () => { active.current = false; historyRequest.current = null; };
+    }
     console.log('🟠 useEffect[userId] 触发, userId:', userId);
     const parsed = readChatSessionsFromStorage(userId);
     console.log('🟠 useEffect[userId] 本地 parsed:', parsed);
 
-    // 只有在没有会话时，才设置本地存储的会话
-    if (sessionsRef.current.length === 0 && parsed.length > 0) {
-      setSessions(parsed);
-    }
-
-    // 如果当前正在创建新会话，则不加载服务器会话
-    if (currentSessionIdRef.current && currentSessionIdRef.current.startsWith('local_')) {
-      console.log('🟠 检测到正在创建新会话，跳过加载服务器会话');
-      return;
-    }
+    // A new identity owns a separate cache and history request lifecycle.
+    setSessions(parsed);
     
     // 添加防抖，避免频繁加载服务器会话
     const timer = setTimeout(() => {
@@ -275,11 +328,15 @@ export const useChatSession = (userId?: string): UseChatSessionReturn => {
       loadSessionsFromDB(userId, parsed);
     }, 1000); // 延迟1秒加载
     
-    return () => clearTimeout(timer); // 清除定时器
+    return () => { clearTimeout(timer); active.current = false; historyRequest.current = null; };
   }, [userId]);
 
   return {
     sessions,
+    sessionsLoaded,
+    sessionsError,
+    sessionsLoading,
+    retrySessions,
     currentSessionId,
     currentSession,
     setSessions,

@@ -30,6 +30,16 @@ describe('inspirationService', () => {
     await expect(thrown).rejects.toMatchObject({ code: undefined, status: 500, message: '暂时无法研究新灵感' });
   });
 
+  it('parses the allowlisted note context reason from a 409 error', async () => {
+    mockAuthFetch.mockResolvedValue(new Response(JSON.stringify({
+      success: false, code: 'INSPIRATION_NOTE_CONTEXT_UNAVAILABLE', message: '摘要正在准备',
+      details: { reason: 'summary_pending', content: 'private' },
+    }), { status: 409 }));
+    await expect(requestInspiration()).rejects.toMatchObject({
+      code: 'INSPIRATION_NOTE_CONTEXT_UNAVAILABLE', status: 409, reason: 'summary_pending',
+    });
+  });
+
   it('returns only the latest safe DTO', async () => {
     const item = { id: 'i1', topicLabel: '知识管理', headline: '整理方法', brief: '摘要【1】', whyRelevant: '相关', nextQuestion: '下一步？', sources: [], createdAt: '2026-09-22' };
     mockAuthFetch.mockResolvedValue(new Response(JSON.stringify({ success: true, data: { item, internalQuery: 'hidden' } }), { status: 200 }));
@@ -58,7 +68,7 @@ describe('inspirationService', () => {
     const settings = { enabled: false, consentedAt: null, nextEligibleAt: null, lastAttemptAt: null, lastStatus: null };
     mockAuthFetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: settings }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { ...settings, enabled: true } }), { status: 200 }));
-    await expect(getInspirationSettings()).resolves.toEqual(settings);
+    await expect(getInspirationSettings()).resolves.toEqual({ ...settings, lastReason: null, lastContextReason: null });
     await expect(setInspirationEnabled(true)).resolves.toMatchObject({ enabled: true });
     expect(mockAuthFetch).toHaveBeenNthCalledWith(1, '/api/inspirations/settings');
     expect(mockAuthFetch).toHaveBeenNthCalledWith(2, '/api/inspirations/settings', {

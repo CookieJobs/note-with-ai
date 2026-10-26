@@ -17,7 +17,6 @@ const baseNote: Note = {
   contentJson: null,
   summary: '',
   concepts: [],
-  keywords: [],
   recommendCache: null,
   revision: 4,
   enrichment: { sourceRevision: 4, status: 'pending' },

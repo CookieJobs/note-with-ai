@@ -1,8 +1,8 @@
 /*
-Input: DeepSeek 聊天/摘要/重排所需的消息内容、笔记文本与候选数据
-Output: 聊天文本、流式响应、标题/关键词/摘要/概念词及重排结果
+Input: DeepSeek 聊天/摘要/重排和单篇话题提取所需的消息与笔记文本
+Output: 聊天文本、流式响应、标题/关键词/摘要/概念词及话题提取结果
 Pos: 后端 模块
-Note: 统一封装 DeepSeek 惰性初始化、降级错误与调试日志收敛
+Note: 常规 DeepSeek 客户端保留默认重试；话题提取专用客户端单次 HTTP 调用以服从持久重试额度
 */
 // backend/services/llmService.ts
 import { DeepSeekApiClient } from '../utils/apiClient';
@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 import { AiUsageService, type AiTelemetryContext } from './aiUsageService';
 
 let deepSeekClient: DeepSeekApiClient | null = null;
+let deepSeekTopicClient: DeepSeekApiClient | null = null;
 
 type JsonObject = Record<string, unknown>;
 
@@ -26,6 +27,20 @@ export function getDeepSeekClient(): DeepSeekApiClient {
 
   deepSeekClient = new DeepSeekApiClient(config.DEEPSEEK_API_KEY);
   return deepSeekClient;
+}
+
+// Persistent topic retries own the retry schedule, so this client makes one HTTP attempt per job.
+export function getDeepSeekTopicClient(): DeepSeekApiClient {
+  if (deepSeekTopicClient) return deepSeekTopicClient;
+  if (!config.DEEPSEEK_API_KEY) {
+    throw ErrorHandler.createExternalApiError('AI 服务未配置，请稍后再试', 'DeepSeek');
+  }
+  deepSeekTopicClient = createDeepSeekTopicClient(config.DEEPSEEK_API_KEY);
+  return deepSeekTopicClient;
+}
+
+export function createDeepSeekTopicClient(apiKey: string): DeepSeekApiClient {
+  return new DeepSeekApiClient(apiKey, { retries: 1 });
 }
 
 /**
@@ -136,24 +151,22 @@ export async function summarizeNote(content: string): Promise<{ title: string; k
   }
 
 /**
- * 为笔记生成：标题 + 关键词 + 语义摘要（summary）
+ * 为笔记生成语义摘要（summary）
  * - summary 用于联想/重排输入，建议 1-2 句、<=120字
  */
 export async function summarizeNoteMeta(
   content: string,
   userId?: string,
-): Promise<{ title: string; keywords: string[]; summary: string } | null> {
+): Promise<{ summary: string } | null> {
   try {
     const messages = [
       {
         role: 'system',
         content: `作为文本处理专家，请严格遵循以下规则：
-1. 为用户提供的文本生成一个简洁准确的中文标题（严格≤15字）
-2. 提取1-4个最能代表文本核心内容的中文关键词（宁缺毋滥，根据内容丰富度动态决定数量，如果内容简单只需1-2个即可）
-3. 关键词必须是具体的名词、实体（如产品名、人名、地名、技术名词）或核心概念，严格排除日常动词（如“下单”、“购买”、“学习”）和宽泛词汇
-4. 生成一段语义摘要 summary（1-2句，尽量≤120字），用于“语义联想/重排”，不得编造原文没有的信息
-5. 输出格式必须是纯JSON：{ "title": "标题", "keywords": ["词1"], "summary": "摘要" }
-6. 除了JSON格式的结果外，不要包含任何其他内容或解释`,
+1. 生成一段语义摘要 summary（1-2句，尽量≤120字），用于“语义联想/重排”，不得编造原文没有的信息
+2. 不生成标题或关键词
+3. 输出格式必须是纯JSON：{ "summary": "摘要" }
+4. 除了JSON格式的结果外，不要包含任何其他内容或解释`,
       },
       { role: 'user', content },
     ];
@@ -166,11 +179,7 @@ export async function summarizeNoteMeta(
     }, AiUsageService.newContext('note_meta', userId));
     const parsed = JSON.parse(text);
     const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
-    return {
-      title: parsed.title || '未命名笔记',
-      keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 5) : [],
-      summary,
-    };
+    return { summary };
   } catch (error: unknown) {
     logger.error('summarize note metadata failed', { errorCode: 'AI_PROVIDER_FAILED' });
     return null;

@@ -1,15 +1,25 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 后端 模块
+Input: 聊天消息、显式单篇笔记绑定与服务端回答来源快照
+Output: 保存会话绑定和每条回答所用笔记版本的 Chat 模型
+Pos: 后端聊天数据模型
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 // backend/models/Chat.ts
 import mongoose from 'mongoose';
 
+const SourceSnapshotSchema = new mongoose.Schema({
+  noteId: { type: String, required: true },
+  title: String,
+  contentText: { type: String, required: true },
+  revision: { type: Number, required: true },
+  updatedAt: { type: String, required: true },
+  hasImages: { type: Boolean, required: true },
+}, { _id: false });
+
 const MessageSchema = new mongoose.Schema({
   role: { type: String, enum: ['user', 'assistant'], required: true },
   content: { type: String, required: true },
+  sourceSnapshot: { type: SourceSnapshotSchema, default: undefined },
 });
 
 const ChatSchema = new mongoose.Schema(
@@ -17,10 +27,16 @@ const ChatSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true },
     messages: [MessageSchema],
+    sourceNoteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Note' },
     relatedNotes: [{
       noteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Note' },
       title: String,
       content: String,
+      excerpt: String,
+      sourceType: { type: String, enum: ['text', 'image', 'mixed'] },
+      imageCount: Number,
+      firstImageSrc: String,
+      createdAtSource: { type: String, enum: ['note'] },
       score: Number,
       matchType: String,
       reason: String,

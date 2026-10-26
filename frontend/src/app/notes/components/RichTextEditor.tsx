@@ -1,8 +1,13 @@
+/*
+Input: 富文本值、现有格式/交互选项与可选编辑器就绪回调
+Output: 真实 Tiptap 编辑器；就绪回调允许工作区外层工具条复用同一实例
+Pos: notes/components；修改时同步 ../README.md
+*/
 'use client';
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useEditor, EditorContent, JSONContent } from '@tiptap/react';
+import { useEditor, EditorContent, JSONContent, type Editor } from '@tiptap/react';
 import { DragHandle } from './DragHandle';
 import styles from '../styles/rich-editor.module.scss';
 import { RichTextBubbleMenu } from './RichTextBubbleMenu';
@@ -26,6 +31,7 @@ type Props = {
   onBlur?: () => void;
   onFocus?: () => void;
   onModEnter?: () => void; // Cmd/Ctrl + Enter
+  onEditorReady?: (editor: Editor | null) => void;
   placeholder?: string;
   showToolbar?: boolean;
   toolbarVariant?: 'simple' | 'advanced';
@@ -44,6 +50,7 @@ export default function RichTextEditor({
   onBlur,
   onFocus,
   onModEnter,
+  onEditorReady,
   placeholder,
   showToolbar = true,
   toolbarVariant = 'advanced',
@@ -111,6 +118,9 @@ export default function RichTextEditor({
     attributes: {
       class: editorContentClassName,
       'data-rich-text-editor-content': 'true',
+      role: 'textbox',
+      'aria-label': '笔记正文',
+      'aria-multiline': 'true',
     },
     handleDOMEvents: {
       keydown: (_view: unknown, event: Event) => {
@@ -187,6 +197,11 @@ export default function RichTextEditor({
       }
     });
   }, [editor, autoFocus]);
+
+  useEffect(() => {
+    onEditorReady?.(editor);
+    return () => { onEditorReady?.(null); };
+  }, [editor, onEditorReady]);
 
   if (!editor) {
     return null;

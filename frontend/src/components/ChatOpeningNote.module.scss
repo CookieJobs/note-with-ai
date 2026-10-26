@@ -1,0 +1,88 @@
+/*
+Input: 开场笔记的原文、日期和来源操作
+Output: 以浅底和引用线标明原文，与 AI 的白底提问区分
+Pos: 聊天开场笔记样式
+Note: 组件说明见同目录 README.md
+*/
+.note {
+  padding: 22px 24px 18px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 12px;
+  background: var(--workspace-surface);
+  color: var(--workspace-ink);
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: var(--workspace-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.excerptLabel {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.title {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 1.5;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.excerpt {
+  margin: 0;
+  padding-left: 16px;
+  border-left: 2px solid #c5cedc;
+  font-size: 15px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.image { margin-top: 12px; border-radius: 6px; object-fit: cover; }
+
+.expand,
+.sourceLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--workspace-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-decoration: none;
+
+  &:hover { color: var(--workspace-accent); }
+  &:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 4px; border-radius: 3px; }
+}
+
+.expand {
+  margin-top: 8px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+
+  &[aria-expanded='true'] svg { transform: rotate(180deg); }
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 16px;
+  color: var(--workspace-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.sourceLink { margin-left: auto; }
+
+@media (max-width: 767px) { .note { padding: 18px; } }

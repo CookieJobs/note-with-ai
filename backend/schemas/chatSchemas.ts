@@ -5,6 +5,9 @@ const messageSchema = z.object({
   content: z.string(),
 });
 
+// Only an identity is accepted from the browser. Answer snapshots are server-owned.
+const sourceNoteIdSchema = z.string().regex(/^[a-f\d]{24}$/i, '笔记 ID 无效').optional();
+
 const relatedNoteObjectSchema = z.object({
   noteId: z.string().min(1, '缺少笔记 ID'),
   id: z.string().optional(),
@@ -25,6 +28,7 @@ export const saveSessionSchema = z.object({
     title: z.string().optional(),
     messages: z.array(messageSchema),
     relatedNotes: z.array(relatedNoteSchema).optional(),
+    sourceNoteId: sourceNoteIdSchema,
   }),
 });
 
@@ -39,6 +43,7 @@ export const streamChatSchema = z.object({
     sessionId: z.string().optional(),
     title: z.string().optional(),
     messages: z.array(messageSchema).min(1, '消息列表不能为空'),
+    sourceNoteId: sourceNoteIdSchema,
   }),
 });
 

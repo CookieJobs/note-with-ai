@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createInspirationWorker, type InspirationWorkerStore, type WorkerRun, type WorkerSlot } from '../services/inspirationWorker';
+import { createInspirationWorker, type InspirationWorkerStore, type WorkerFinishMetadata, type WorkerRun, type WorkerSlot } from '../services/inspirationWorker';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const start = new Date('2026-09-26T00:00:00.000Z');
 
 class FakeStore implements InspirationWorkerStore {
-  users = new Map<string, { enabled: boolean; next: Date; lastStatus: string | null }>();
+  users = new Map<string, { enabled: boolean; next: Date; lastStatus: string | null; lastReason?: string | null; lastContextReason?: string | null }>();
   runs = new Map<string, WorkerRun>();
   slots = new Set<number>();
   budget = new Map<string, number>();
@@ -69,11 +69,13 @@ class FakeStore implements InspirationWorkerStore {
     current.state = 'provider_started';
     return true;
   }
-  async finish(run: WorkerRun, status: 'completed' | 'no_result' | 'failed' | 'cancelled'): Promise<void> {
+  async finish(run: WorkerRun, status: 'completed' | 'no_result' | 'failed' | 'cancelled', metadata?: WorkerFinishMetadata): Promise<void> {
     const current = this.runs.get(run.id);
     if (current?.token !== run.token) return;
     current.state = status;
     this.users.get(run.userId)!.lastStatus = status;
+    this.users.get(run.userId)!.lastReason = metadata?.reason || null;
+    this.users.get(run.userId)!.lastContextReason = metadata?.contextReason || null;
   }
 }
 
@@ -106,6 +108,18 @@ describe('durable inspiration worker', () => {
     assert.equal(calls, 1);
     assert.equal(store.users.get('user-1')?.lastStatus, 'no_result');
     assert.equal(store.budget.get('2026-09-26'), 1);
+  });
+
+  it('passes no-context diagnostics to the existing completion flow', async () => {
+    const store = new FakeStore();
+    store.add('user-1', start);
+    const worker = createInspirationWorker({ store, runResearch: async () => ({ status: 'no_result', reason: 'note_context_unavailable', contextReason: 'summary_pending' }) });
+    await worker.tick(start);
+    assert.equal(store.users.get('user-1')?.lastStatus, 'no_result');
+    assert.equal(store.users.get('user-1')?.lastReason, 'note_context_unavailable');
+    assert.equal(store.users.get('user-1')?.lastContextReason, 'summary_pending');
+    await worker.tick(new Date(start.getTime() + HOUR));
+    assert.equal(store.runs.size, 1);
   });
 
   it('never exceeds two global jobs or the UTC daily attempt limit', async () => {

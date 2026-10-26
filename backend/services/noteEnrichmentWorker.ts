@@ -11,16 +11,12 @@ type EnrichmentWorkerNote = {
   revision: unknown;
   content: unknown;
   contentText?: unknown;
-  titleOrigin?: unknown;
-  keywordsOrigin?: unknown;
 };
 
 type WorkerDependencies = {
   summarizeMeta: (contentText: string, userId?: string) => Promise<{
     summary: string;
     concepts: string[];
-    title?: string;
-    keywords?: string[];
   } | null>;
   generateEmbedding: (task: EnrichmentTask) => Promise<'saved' | 'stale' | 'failed'>;
   refreshRecommendations: (task: EnrichmentTask) => Promise<'saved' | 'stale' | 'failed' | void>;
@@ -50,8 +46,6 @@ function createProductionWorker(options: ProductionTaskOptions = {}): NoteEnrich
       return {
         summary: meta.summary,
         concepts,
-        title: meta.title,
-        keywords: meta.keywords,
       };
     },
     generateEmbedding: async (task) => {
@@ -111,12 +105,6 @@ export class NoteEnrichmentWorker {
         const meta = await this.dependencies.summarizeMeta(noteText(note), String(note.userId));
         if (!meta) throw new Error('meta generation returned no result');
         const values: Record<string, unknown> = { summary: meta.summary, concepts: meta.concepts };
-        if (note.titleOrigin === 'default' && typeof meta.title === 'string') {
-          values.title = meta.title;
-        }
-        if (note.keywordsOrigin === 'default' && Array.isArray(meta.keywords)) {
-          values.keywords = meta.keywords;
-        }
         return this.mark(task, 'ready', values);
       }
 

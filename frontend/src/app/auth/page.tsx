@@ -204,7 +204,9 @@ export default function AuthPage() {
 
         <form className={styles.authForm} onSubmit={handleSubmit}>
           <div className={styles.inputGroup}>
+            <label className={styles.visuallyHidden} htmlFor="auth-email">邮箱</label>
             <input
+              id="auth-email"
               type="email"
               name="email"
               className={styles.input}
@@ -219,7 +221,9 @@ export default function AuthPage() {
           {mode !== 'reset' && (
             <div className={styles.inputGroup}>
               <div className={styles.passwordInput}>
+                <label className={styles.visuallyHidden} htmlFor="auth-password">密码</label>
                 <input
+                  id="auth-password"
                   type={showPassword ? 'text' : 'password'}
                   name="password"
                   className={styles.input}
@@ -232,6 +236,7 @@ export default function AuthPage() {
                 <button
                   type="button"
                   className={styles.passwordToggle}
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -243,7 +248,9 @@ export default function AuthPage() {
           {mode === 'reset' && (
             <div className={styles.inputGroup}>
               <div className={styles.passwordInput}>
+                <label className={styles.visuallyHidden} htmlFor="auth-new-password">新密码</label>
                 <input
+                  id="auth-new-password"
                   type={showPassword ? 'text' : 'password'}
                   name="password"
                   className={styles.input}
@@ -256,6 +263,7 @@ export default function AuthPage() {
                 <button
                   type="button"
                   className={styles.passwordToggle}
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -266,7 +274,9 @@ export default function AuthPage() {
 
           {showCodeField && (
             <div className={styles.verificationRow}>
+              <label className={styles.visuallyHidden} htmlFor="auth-code">验证码</label>
               <input
+                id="auth-code"
                 type="text"
                 name="code"
                 className={`${styles.input} ${styles.codeInput}`}

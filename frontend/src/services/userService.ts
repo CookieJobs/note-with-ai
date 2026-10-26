@@ -1,8 +1,9 @@
 import { authFetch } from '../utils/auth';
+import type { AvatarSelection } from '../app/profile/avatarPresets';
 
 export const updateProfile = async (data: {
   username?: string;
-  avatar?: string;
+  avatar?: AvatarSelection;
 }): Promise<{ id: string; username?: string; email: string; avatar?: string }> => {
   const response = await authFetch('/api/auth/profile', {
     method: 'PUT',

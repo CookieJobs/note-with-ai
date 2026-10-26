@@ -7,7 +7,6 @@ Note: 推荐路由仅负责鉴权、参数校验与 HTTP 响应适配，推荐�
 // backend/routes/recommend.ts
 import express, { Request, Response } from 'express';
 import { Note } from '../models/Note';
-import { searchArticlesByKeyword } from '../services/search';
 import type { RecommendationResult } from '../services/recommendService';
 import { runProductionNoteEnrichmentTask, type EnrichmentTaskStatus } from '../services/noteEnrichmentWorker';
 import { authenticateToken } from '../middleware/auth';
@@ -31,26 +30,7 @@ export function getRecommendationTaskResult(
 }
 
 router.get('/', authenticateToken, asyncHandler(async (req, res) => {
-  // 获取当前用户，确保只查询自己的笔记
-  const user = await UserValidator.authenticateUser(req);
-  const notes = await Note.find({ userId: user._id });
-  const keywordCounts: Record<string, number> = {};
-
-  for (const note of notes) {
-    for (const keyword of note.keywords || []) {
-      keywordCounts[keyword] = (keywordCounts[keyword] || 0) + 1;
-    }
-  }
-
-  const topKeywords = Object.entries(keywordCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([kw]) => kw);
-
-  // 根据 topKeywords 调用爬虫/搜索服务
-  const articles = await searchArticlesByKeyword(topKeywords);
-
-  return ResponseHandler.success(res, { keywords: topKeywords, articles });
+  return res.status(410).json({ success: false, error: '笔记标签推荐功能已退役', message: '笔记标签推荐功能已退役', type: 'VALIDATION_ERROR', code: 'NOTE_TAGS_RETIRED' });
 }));
 
 router.get('/notes/:noteId', authenticateToken, asyncHandler(async (req, res) => {

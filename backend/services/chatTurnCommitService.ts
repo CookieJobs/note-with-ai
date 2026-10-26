@@ -10,6 +10,7 @@ type StreamAndCommitInput = {
   messages: IMessage[];
   sessionId?: string;
   title?: string;
+  sourceNoteId?: string;
   onChunk: (chunk: string) => boolean;
   onAborted?: () => Promise<void> | void;
 };
@@ -18,6 +19,8 @@ type StreamAndCommitResult = {
   fullReply: string;
   session: SessionSnapshot;
 };
+
+const OPTIONAL_ENRICHMENT_TIMEOUT_MS = 3_000;
 
 class ChatTurnCommitService {
   private getLastUserMessage(messages: IMessage[]): string {
@@ -36,10 +39,13 @@ class ChatTurnCommitService {
     messages,
     sessionId,
     title,
+    sourceNoteId,
     onChunk,
     onAborted,
   }: StreamAndCommitInput): Promise<StreamAndCommitResult> {
-    const stream = await chatService.streamChat(messages, userId);
+    const prepared = await chatService.prepareTurn(userId, messages, sessionId, sourceNoteId);
+    messages = prepared.messages;
+    const stream = await chatService.streamChat(messages, userId, prepared.sourceSnapshot);
     let fullReply = '';
     let aborted = false;
 
@@ -71,18 +77,26 @@ class ChatTurnCommitService {
       return Promise.reject(new Error('CHAT_STREAM_ABORTED'));
     }
 
-    const finalMessages: IMessage[] = [...messages, { role: 'assistant', content: fullReply }];
+    const finalMessages: IMessage[] = [...messages, { role: 'assistant', content: fullReply,
+      ...(prepared.sourceSnapshot ? { sourceSnapshot: prepared.sourceSnapshot } : {}),
+    }];
     const userText = this.getLastUserMessage(messages);
 
-    const [nextTitle, relatedNotes] = await Promise.all([
+    const enrichment = Promise.all([
       userText && fullReply.trim()
         ? chatService.summarizeTitle(userText, fullReply, userId).catch(() => title)
         : Promise.resolve(title),
       chatRelatedNoteRecallService.recallFromMessages({
         userId,
         messages: finalMessages,
-      }).catch(() => []),
+      }).catch(() => undefined),
     ]);
+    let enrichmentTimer: ReturnType<typeof setTimeout> | undefined;
+    const enrichmentDeadline = new Promise<[string | undefined, unknown[] | undefined]>((resolve) => {
+      enrichmentTimer = setTimeout(() => resolve([title, undefined]), OPTIONAL_ENRICHMENT_TIMEOUT_MS);
+    });
+    const [nextTitle, relatedNotes] = await Promise.race([enrichment, enrichmentDeadline]);
+    if (enrichmentTimer) clearTimeout(enrichmentTimer);
 
     const savedSession = await chatService.saveSession(
       userId,
@@ -90,6 +104,7 @@ class ChatTurnCommitService {
       finalMessages,
       nextTitle || title,
       relatedNotes,
+      { sourceNoteId: prepared.sourceNoteId, trustedSourceSnapshots: true },
     );
     trackProductEventBestEffort({ name: 'chat_turn_committed', userId, source: 'server', properties: {} });
 

@@ -7,6 +7,8 @@ const InspirationSettingsSchema = new mongoose.Schema({
   nextEligibleAt: { type: Date, default: null },
   lastAttemptAt: { type: Date, default: null },
   lastStatus: { type: String, enum: ['completed', 'no_result', 'failed', 'cancelled', 'deferred', null], default: null },
+  lastReason: { type: String, enum: ['note_context_unavailable', null], default: null },
+  lastContextReason: { type: String, enum: ['no_notes', 'summary_pending', 'context_unavailable', null], default: null },
 }, { timestamps: true, versionKey: false });
 
 InspirationSettingsSchema.index({ enabled: 1, nextEligibleAt: 1 });

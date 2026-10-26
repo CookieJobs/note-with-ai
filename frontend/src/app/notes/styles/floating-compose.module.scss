@@ -272,8 +272,8 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 800px;
-  margin: 0 auto 20px;
+  max-width: none;
+  margin: 0 auto;
   overflow: hidden;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.04);
@@ -285,9 +285,7 @@
     cursor: pointer;
 
     &:hover {
-      box-shadow:
-        0 1px 3px rgba(0, 0, 0, 0.04),
-        0 8px 24px rgba(0, 0, 0, 0.06);
+      background: var(--workspace-hover);
     }
   }
 
@@ -345,7 +343,7 @@
 .floatingComposeHint {
   font-size: 11px;
   font-weight: 400;
-  color: #c2c9d4;
+  color: var(--workspace-muted);
   display: inline-flex;
   align-items: center;
   height: 30px;
@@ -440,6 +438,7 @@
 
 .floatingComposeActions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
@@ -448,3 +447,20 @@
   border-top: 1px solid rgba(243, 244, 246, 0.92);
   will-change: transform, opacity;
 }
+
+.composeActionStatus {
+  flex: 0 0 100%;
+  min-width: 0;
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.floatingComposeShell { background: var(--workspace-canvas); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.floatingComposeBarInner { justify-content: flex-start; gap: 14px; &:focus-visible { outline: 2px solid var(--workspace-accent); outline-offset: 6px; border-radius: 4px; } }
+.floatingComposeBarText { color: var(--workspace-muted); font-size: 15px; }
+.composeEntryIcon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: var(--workspace-accent); background: var(--workspace-accent-soft); }
+.composeEntryPlus { margin-left: auto; color: var(--workspace-muted); }
+@media (prefers-reduced-motion: reduce) { .floatingComposeShell, .floatingComposeBarInner { transition: none; animation: none; } }
+
+.floatingComposeEditor :global(p.is-editor-empty:first-child)::before { color: var(--workspace-muted); }
