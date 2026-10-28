@@ -21,14 +21,14 @@ ADMIN_ENCRYPTION_KEY=<base64-encoded-32-byte-key>
 
 工作区版本需要配套的笔记写入与来源对话接口，不能只因前端构建成功就单独切换。先只读检查历史笔记 revision；只有缺失/无效时才在备份和演练后运行已编译的 `node dist/scripts/backfill_note_revisions.js`，已有有效 revision 不重复回填。标签/话题退场的版本不要同时保留旧自动写入实例。
 
-切换后运行：
+源码、配置、备份和批准提交核对完成后，先构建，再切换。`docker compose config` 可能包含插值后的密钥，只在受控终端核查，不将原始输出贴进日志、文档或聊天：
 
 ```bash
 docker compose config
 docker compose build backend
 docker compose build frontend
 # 构建和候选检查通过后再切换；构建期间旧服务继续运行。
-docker compose up -d --no-deps backend frontend
+docker compose up -d --no-deps --no-build backend frontend
 docker compose ps
 curl -fsS http://127.0.0.1:3001/api/health
 ```
@@ -73,12 +73,16 @@ curl -I https://bloomy16.com/admin
 
 ## 回滚
 
-停止前记录并保留正在运行的镜像。若发布失败，按备份记录切回原 commit/配套镜像；只恢复本次确实变更过的配置，优先使用已保留的旧镜像恢复服务，避免临时依赖重新构建。数据库只在确认需要时才从 MongoDB archive 恢复；一般代码回滚不应恢复数据库，以免抹去发布后的新用户数据。不要执行删除数据卷的清理命令。
+停止前记录并保留正在运行的镜像。若发布失败，按备份记录切回原 commit/配套镜像；只恢复本次确实变更过的配置，优先使用已保留的旧镜像恢复服务，避免临时依赖重新构建。逐项检查 tag、checkout、Compose 命令返回值，并核对前后端实际 image ID 都匹配保留镜像；后端 healthy 不能独自证明前端也回退成功。前端页面、静态资源、公网 API 与未登录权限同样需要复查。
+
+一般代码回滚不恢复数据库，以免抹去发布后的新用户数据；数据库恢复属于另行核实、批准的数据操作。不要执行删除数据卷的清理命令。退回包含旧自动标题/标签的镜像会重新带回已退役语义，不能视为完全兼容当前数据；优先使用带兼容保护的成套修复版本。历史切换脚本只是对应发布证据，不作为未来可直接重放的回滚工具。
 
 ## P16＋P17 灵感主动发现（独立验收后才启用）
 
 本功能的历史与保存操作由普通后端提供；定期研究由 `inspiration-worker` 独立进程负责。它属于 `inspiration` profile，普通 `docker compose up -d` 不会启动。用户未主动开启开关时，即使 worker 在运行，也不会调用 DeepSeek 或 Tavily。本节不授权部署，也不包含运营后台上线步骤。
 
-先在服务器后端专用 `.env` 中配置 `DEEPSEEK_API_KEY`、`TAVILY_API_KEY`，可按预算调整 `INSPIRATION_AUTO_CONCURRENCY`（默认 2）、`INSPIRATION_AUTO_DAILY_LIMIT`（默认 20）、`INSPIRATION_WORKER_POLL_MS`（默认 60000）。不要把真实密钥写进 Git、截图或聊天。完成 P15 和 P16＋P17 的本地整体验收、备份与单独发布批准后，才运行 `docker compose --profile inspiration up -d inspiration-worker`。检查 `docker compose ps` 和只含安全状态码的 worker 日志；设置接口显示用户上次检查结果。
+Compose 从服务器项目根目录 `.env` 插值注入 worker 环境；不会自动读取 `backend/.env`，后者也被后端 Docker 构建上下文排除。应在项目根 `.env` 中配置 `DEEPSEEK_API_KEY`、`TAVILY_API_KEY`，或对每条 Compose 命令一致使用明确的 `--env-file`。可按预算调整 `INSPIRATION_AUTO_CONCURRENCY`（默认 2）、`INSPIRATION_AUTO_DAILY_LIMIT`（默认 20）、`INSPIRATION_WORKER_POLL_MS`（默认 60000）。不要把真实密钥写进 Git、截图或聊天。
+
+完成本地整体验收、备份与单独发布批准后，在批准的精确 commit 构建 worker 镜像（`docker compose --profile inspiration build inspiration-worker`）；候选检查通过，确认镜像对应同一业务版本后，才运行 `docker compose --profile inspiration up -d --no-deps --no-build inspiration-worker`。使用自定义环境文件时，两条命令都必须带相同的 `--env-file`。检查 `docker compose --profile inspiration ps`、实际 worker 镜像和只含安全状态码的日志；设置接口显示用户上次检查结果。不能复用未经版本核对的旧 worker 镜像。
 
 如需暂停新的自动研究，先关闭用户开关，或执行 `docker compose --profile inspiration stop inspiration-worker`。已发出的外部请求无法撤回；停掉 worker 不会删除历史灵感。恢复时只处理仍符合频率约束的任务，不补跑停机期间的每一天。

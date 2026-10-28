@@ -16,4 +16,4 @@
 - [笔记开场](notewithai-unified-note-chat.png)
 - [上下文设置](notewithai-unified-settings.png)
 
-2026-10-24 按用户决定清理其他方案、作品目录和冗余配套文件，未提取历史评审摘录。主稿 HTML 内容保持原样，生产代码未修改。
+本目录保留视觉主稿及其配套证据，HTML 内容保持原样。它记录原型阶段，不代表全部模拟功能已进入产品；现行行为见[产品范围](../PRODUCT.md)与[工作区发布记录](../docs/releases/2026-10-workspace-ui.md)。

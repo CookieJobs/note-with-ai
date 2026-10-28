@@ -1,6 +1,6 @@
 # 工作区 UI 迁移 S1 验收记录
 
-日期：2026-10-25。状态：S1 样板可交付，等待用户视觉确认；整体迁移尚未完成。
+日期：2026-10-25。历史验收：**S1 样板已确认，后续 S2/S3 与发布已完成。** 本文保留 S1 检查时的结果和边界，不是当前待办。最终版本见 [发布摘要](../2026-10-workspace-ui.md)；当前规范见根目录 [DESIGN.md](../../../DESIGN.md) 与 [ARCHITECTURE_DOCUMENTATION.md](../../../ARCHITECTURE_DOCUMENTATION.md)。
 
 ## 已交付范围
 
@@ -9,24 +9,24 @@
 - DESIGN.md 已按用户确认主稿更新。新建期间保留 `compose=1`，保存、取消或离开才切换 URL。
 - 聊天、灵感、个人页仅接受公共外壳和必要的过渡主题兼容，具体构图与功能迁移仍在 S2/S3。
 
-分支为 `codex/workspace-ui-migration`，未提交、推送或部署。原有未提交业务改动保留；实施前基线位于 `.superpowers/workspace-ui-migration/`。
+本阶段验收针对完整的本机候选副本和实施前源码快照；当时尚未发布。随后整体验收和配套版本发布另见版本摘要，不以本阶段结论代替后续检查。
 
 ## 自动化检查
 
-| 检查 | 结果 | 原始记录 |
-| --- | --- | --- |
-| 完整前端测试 | 61 文件、463 测试通过 | `.superpowers/workspace-ui-migration/s1-final-tests.log` |
-| TypeScript | 通过 | `s1-final-types.log` |
-| ESLint | 0 errors、8 warnings，均为现有图片使用等告警 | `s1-final-lint.log` |
-| 最终生产构建 | 通过 | `s1-css-final-build.log` |
-| 已配置 route budgets | 通过，包含 notes 预算 | `s1-css-final-budgets.log` |
-| 独立增量审阅 | 所提问题已修复，未发现新阻断 | `final-review.md` |
+| 检查 | 结果 |
+| --- | --- |
+| 完整前端测试 | 61 文件、463 测试通过 |
+| TypeScript | 通过 |
+| ESLint | 0 errors、8 warnings，均为现有图片使用等告警 |
+| 最终生产构建 | 通过 |
+| 已配置 route budgets | 通过，包含 notes 预算 |
+| 独立增量审阅 | 所提问题已修复，未发现新阻断 |
 
-测试批次之后只有四个 SCSS 中九个局部按钮选择器提高了优先级；最终生产构建与体积检查已重新执行。未为这项纯样式修改编写镜像测试。生产副本与当前 frontend/src 源码哈希一致；记录在 `build-source-hashes.json`。
+测试批次之后只有四个 SCSS 中九个局部按钮选择器提高了优先级；最终生产构建与体积检查已重新执行。未为这项纯样式修改编写镜像测试。检查时生产副本与 `frontend/src` 源码哈希一致。
 
 ## 实际浏览器检查
 
-使用独立生产副本 `http://localhost:3010/notes` 和本机真实后端，避免用户 3000 dev 服务的 HMR 与构建目录争用。通过可见登录界面进入隔离验收账号，不操作日常账户数据。
+使用独立的本机生产构建副本和真实后端。通过可见登录界面进入隔离测试环境，不操作日常账户数据。
 
 | 场景 | 观察结果 |
 | --- | --- |
@@ -54,10 +54,19 @@
 5. 删除菜单卸载后丢失焦点。显式保留稳定的更多按钮引用，关闭弹窗后恢复。
 6. Tailwind 生产重置覆盖单类按钮背景。仅提高对应原生按钮选择器优先级；不修改全局重置或排除页面。
 
-## 范围与下一步
+## 阶段范围与最终状态
 
 认证/后台共 34 个基线文件保持原样，指定 HTML 主稿 SHA-256 保持 `079a21d0269eee41283d6e7bdea3320038388fa74dc92522330f86ff301ffba8`。新外壳只进入 notes/chat/inspiration/profile 路由。此结论以实施前文件快照核对，未将用户原有脏改误算为本轮修改。
 
-等待用户确认 S1 的字体、密度、侧栏比例、阅读/编辑体验。确认后再写 S2/S3 实施计划并推进，不能将本次交付当作整站迁移完成。
+用户确认 S1 后已继续完成 S2/S3 和发布前修复。本报告只证明 S1 阶段列出的检查，最终生产验证范围见发布摘要。
 
-截图位于 `assets/2026-10-24-workspace-ui-s1/`：`notes-light.png`、`reading-light.png`、`editing-light.png`、`settings-dark.png`、`unsaved-dark.png`、`related-drawer-1024.png`、`conflict-preserves-draft.png`。
+## 留存截图
+
+- [auth-unchanged](assets/2026-10-24-workspace-ui-s1/auth-unchanged.png)
+- [conflict-preserves-draft](assets/2026-10-24-workspace-ui-s1/conflict-preserves-draft.png)
+- [editing-light](assets/2026-10-24-workspace-ui-s1/editing-light.png)
+- [notes-light](assets/2026-10-24-workspace-ui-s1/notes-light.png)
+- [reading-light](assets/2026-10-24-workspace-ui-s1/reading-light.png)
+- [related-drawer-1024](assets/2026-10-24-workspace-ui-s1/related-drawer-1024.png)
+- [settings-dark](assets/2026-10-24-workspace-ui-s1/settings-dark.png)
+- [unsaved-dark](assets/2026-10-24-workspace-ui-s1/unsaved-dark.png)

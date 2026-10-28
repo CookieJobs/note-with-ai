@@ -1,37 +1,26 @@
-# NoteWithAI
+# NoteWithAI 产品范围
 
-## Register
+更新：2026-10-27。本文描述当前产品；布局和数据约束分别以 [设计规范](DESIGN.md) 与 [架构契约](ARCHITECTURE_DOCUMENTATION.md) 为准。
 
-product
+## 用户与目标
 
-## Users
+面向希望记录个人想法、回看笔记并通过 AI 延伸思考的中文用户。优先桌面网页。手机网页全面优化、微信小程序和原生移动应用属于单独产品范围，不从通用前端惯例自动推导。
 
-People recording personal thoughts and revisiting their notes through AI conversations, primarily through the Chinese web interface in a desktop browser.
+## 当前能力
 
-## Platform Priorities
+- 笔记：快速记录、阅读、富文本编辑、分页和关联线索；标题可选。仅在用户点击后拟标题，不在保存时自动生成标题。
+- AI 对话：普通对话、历史会话，以及明确绑定一篇笔记的对话。每轮读取绑定笔记最新已保存文字，回答保存当轮来源快照。
+- 灵感：主动研究、真实来源、历史、收藏与忽略。用户定期发现开关与独立 worker 共同决定自动研究是否执行；打开界面开关不等于生产 worker 已部署。
+- 个人与账户：真实资料、统计、笔记范围内的画像分析、密码修改；不虚构画像证据或订阅状态。
+- 工作区设置：外观、阅读字号、减少动态效果与上下文设置，保留正在进行的任务。
+- 认证和运营后台继续使用各自的业务与安全流程，未纳入本次工作区视觉替换。
 
-The current product prioritizes the desktop web experience. Mobile-browser optimization is outside the default scope of UI work and acceptance checks. If mobile becomes a product priority, the user expects to consider a WeChat mini program or dedicated iOS/Android app as a separate product surface. Do not infer a mobile-web requirement from general frontend conventions.
+## 已退役及边界
 
-## Product Purpose
+结构化标签、个人话题目录和自动话题提取不作为现行用户能力。旧模型和服务文件可能为兼容或测试保留，不表示应重新启动相应 worker。
 
-Capture notes, discuss them with AI, and discover connections and inspiration from the user's own writing.
+HTML 主稿只定义视觉参考；模拟回答、示例画像、撤销删除、导出或演示订阅等按钮，不因原型存在就成为已实现承诺。生产行为以真实服务、代码及版本验收记录为准。
 
-## Brand Personality
+## 体验准则
 
-Quiet, clear, thoughtful. Use direct Chinese labels and let personal writing lead.
-
-## Anti-references
-
-The user rejected the floating navigation card, segmented navigation, heavily framed chat history, and nested related-note cards. ChatGPT's restrained conversation layout is an acceptable reference.
-
-## Design Principles
-
-- Make writing and reading the main visual focus.
-- Keep navigation available with little visual weight.
-- Explain relationships in plain language.
-- Keep related material beside its source on desktop.
-- Use consistent controls across notes and conversations.
-
-## Accessibility & Inclusion
-
-Use legible contrast, visible keyboard focus, semantic controls, sensible desktop-window resizing, and reduced-motion support as implementation defaults.
+中文文案直接、平静、清楚，让个人写作成为中心。导航轻而稳定，解释来源和关联理由；保存、生成、失败和冲突状态必须真实。保留可见键盘焦点、语义控件、可读对比度和减少动态效果支持。

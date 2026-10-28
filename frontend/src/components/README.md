@@ -1,16 +1,15 @@
 # 共享组件
 
-聊天消息由 `ChatMessage` 渲染，支持 GFM 表格；宽表格在带名称、可键盘聚焦的区域内横向滚动。助手消息的 `sourceSnapshot` 以“本次回答依据”展示原笔记链接、版本和精确更新时间，使用原生展开控件查看当轮快照的纯文字；包含图片时明确说明尚未识别图片。笔记开场先由 `ChatOpeningNote` 展示浅底的“笔记原文”摘录，再显示带 AI 身份标识的“AI 开场提问”。摘录超过 160 个字符时可展开/收起，保留换行；完整内容通过“查看完整笔记”打开。无标题笔记直接显示正文，不虚构标题。非开场的旧版 `relatedNotes` 仍标为“正在讨论的笔记”，不称作回答依据。用户消息不展示来源。对应样式在 `ChatMessage.module.scss` 和 `ChatOpeningNote.module.scss`，语义与历史快照回归覆盖见 `ChatMessage.test.tsx`。
+页面构图与色彩以 [DESIGN.md](../../../DESIGN.md) 为准，导航、主题和弹层归[工作区公共层](workspace/README.md)管理。组件复用真实 props 与业务回调，不另建服务状态。
 
-`ChatMainContent` 将每条消息保存的来源快照传给 `ChatMessage`，并接收聊天页提供的滚动容器和来源返回位置。绑定会话的首条助手消息没有快照时，使用会话上下文识别开场，兼容服务端不保留消息级 `relatedNotes` 的历史；不将后来回答的快照冒充开场摘录。来源往返期间保留位置，历史刷新不自动跳到底部；选择其他会话、发送消息或新建会话后恢复正常滚动行为。
+## 回答与来源展示
 
-`ChatInputArea` 的起始页按“提示 → 自由输入 → 说明 → 可选笔记建议”排列。笔记开场可传入情境 placeholder，邀请用户接着回应或另提问题，首问后恢复普通输入提示。`CareAssistantPanel` 将开场、原文与来源收在同一块画布表面，跟随工作区主题；无来源时使用通用文案，不暗示内容来自笔记。
+[ChatMessage](ChatMessage.tsx) 支持 GFM 表格，宽表格放在有名称、可聚焦的横向滚动区域。助手回答的 `sourceSnapshot` 显示为“本次回答依据”，含笔记链接、revision、精确版本时间及可展开的当轮纯文字；有图片时说明尚未识别。用户消息不展示来源，后来笔记更新不能改写历史回答依据。
 
-单篇笔记入口等待服务端校验和保存后才进入对话，等待期间禁用重复发起；入口说明只读取最新保存的文字，图片不作识别。`ChatInputArea` 将来源错误作为可访问的内联提示展示。`ChatRelatedNotesPanel` 用于发现其他记录的线索，实际回答依据以每条回答附带的版本快照为准。
+[ChatMainContent](ChatMainContent.tsx) 透传每条消息的快照和页面提供的来源返回位置。[ChatOpeningNote](ChatOpeningNote.tsx) 为旧历史中的真实开场展示“笔记原文”摘录和 AI 身份，超过 160 字可展开；无标题直接显示正文，不虚构标题。绑定会话首条助手消息没有快照时，可用会话上下文识别开场，但不能借用后来回答的快照。新笔记入口创建空绑定会话，不由组件生成固定 AI 消息。
 
-`ReferenceNote` 供笔记与聊天的关联区共用，标题完整换行，正文摘要与日期分开显示，相关性和日期使用次要文字层级。页面构图与色彩约定见根目录 `DESIGN.md`。
+[ChatInputArea](ChatInputArea.tsx) 支持普通起始页和笔记提问情境，来源错误用可访问的内联提示。`CareAssistantPanel` 兼容真实开场、原文和来源，无来源时不暗示已读取笔记。旧 `relatedNotes` 是讨论线索，不冒充回答依据。
 
+[ReferenceNote](ReferenceNote.tsx) 供笔记/聊天关联区共用，标题完整换行，摘要与日期分开显示。`ChatRelatedNotesPanel` 用于发现其他记录；绑定笔记去重和可见性由聊天页负责。`ChatHistoryPanel` embedded 模式复用真实搜索、选择和删除，隐藏重复工具栏；流式等待/错误与删除确认由页面或工作区控制。
 
-2026-10-24 工作区迁移：`workspace/` 提供作用域化的新侧栏、外观设置和未保存保护。`TopNavigation` 在该上下文内不再绘制，独立环境保留旧导航及行为。页面内部链接在业务自己的来源记录处理后进入统一导航保护，避免打断聊天来源往返。
-
-2026-10-25 聊天/账户整合：ChatHistoryPanel embedded 模式在Workspace侧栏复用真实历史与搜索/删除，不另建会话hook；流等待/错误仅投影给所属会话，确认删除等待真实Promise并保留失败重试。指定笔记的notes入口通过真实空messages绑定服务打开用户提问页，未使用随机AI开场或本地假消息；既有真实AI开场保留，首问后只收起显示。上下文设置和唯一账户子弹窗由Workspace拥有，详细归属与控制器见workspace/README.md。
+工作区内 `TopNavigation` 不再绘制，独立环境保留原行为。页面链接先完成业务来源记录，再进入统一未保存保护。来源展示回归见 [ChatMessage.test.tsx](ChatMessage.test.tsx)，会话恢复见[聊天页说明](../app/chat/README.md)。

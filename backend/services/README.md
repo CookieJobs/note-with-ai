@@ -1,33 +1,30 @@
-# Services
+# 后端业务服务
 
-本目录承载后端业务服务。Note 的核心写入边界与异步富化约定如下。
+系统边界见[现行架构](../../ARCHITECTURE_DOCUMENTATION.md)，存储格式见[模型说明](../models/README.md)。本目录负责业务写入、异步富化和聊天来源的信任边界。
 
-## Note 写入
+## 笔记写入与派生任务
 
-- `NoteUpdateOrchestrator.ts` 是唯一的 Note 核心写模块，对外只有 `create` 和 `update`。它负责正文规范化、revision CAS、派生状态失效和任务安排。
-- `noteContentNormalizer.ts` 从富文本 JSON 推导可信 `contentText`；客户端不能自行指定语义文本。
-- `noteEnrichmentScheduler.ts` 是进程内、可 drain 的任务调度器。`noteEnrichmentWorker.ts` 在 revision 仍匹配时写回 meta、embedding 和 recommendation 状态；不改变核心 `updatedAt` 或 revision。
-- `noteService.ts` 负责列表、删除和维护入口。旧请求 DTO 只在 `controllers/noteController.ts` 适配后才调用核心模块。
-- `noteEmbeddingService.ts` 继续管理 embedding 的生成、metadata、修复与统计；普通 Note DTO 不返回 embedding。
-- `recommendService.ts` 管理用户主动触发的相关推荐查询及缓存写回。
-- `userNoteTopicIndexService.ts` 用完整 source CAS 与单调 fence 调度逐篇索引、租约和人工配额；Note 内 `topicIndexSuccess` 是成功快照权威，索引集合是可校验投影。
-- `userNoteTopicIndexWorker.ts` 单篇处理话题提取，按每指纹三次自动尝试退避；仅无现成候选标签时使用专用单次 HTTP DeepSeek 客户端。
+- [NoteUpdateOrchestrator.ts](NoteUpdateOrchestrator.ts) 是 Note 正文与标题的核心写入入口，提供 `create`、`update`，负责规范化、revision CAS、派生状态失效及任务安排。标题可空；标签写入返回 `NOTE_TAGS_RETIRED`。
+- [noteContentNormalizer.ts](noteContentNormalizer.ts) 从富文本 JSON 推导可信 `contentText`，客户端不能自行指定语义正文。
+- [noteEnrichmentScheduler.ts](noteEnrichmentScheduler.ts) 调度进程内、可 drain 的任务；[noteEnrichmentWorker.ts](noteEnrichmentWorker.ts) 仅在源 revision 匹配时写回摘要/概念、embedding 和推荐状态，不修改用户 `updatedAt` 或 revision，也不自动填写标题或标签。
+- [noteService.ts](noteService.ts) 提供列表、删除与维护入口，请求 DTO 由 controller 适配后进入核心写模块。[noteEmbeddingService.ts](noteEmbeddingService.ts) 管理向量生成、metadata、修复与统计；[recommendService.ts](recommendService.ts) 管理关联检索和缓存写回。普通 Note DTO 不返回 embedding。
 
-部署启用新的 revision CAS 代码前，必须先运行一次幂等的 `npm run backfill:note-revisions`。该 backfill 只补齐无效 revision，且不会修改时间戳；不得把它接入普通 GET 或应用启动流程进行批量写库。
+旧数据只有 revision 缺失或无效时才需要幂等回填；先备份和检查，再按[部署指南](../../deploy/DEPLOY_GUIDE.md)运行已编译的维护脚本。不要在普通 GET 或应用启动时批量写库。
 
-## LLM 与日志
+`userNoteTopic*` 服务是已退役话题功能的遗留实现。生产入口未启动 topic runtime，话题查询/重试接口返回 410；不要把保留文件当作现行调度能力。
 
-- `llmService.ts` 是 DeepSeek 聊天、摘要、概念扩展与重排的惰性入口。Note 路径不得直接创建 `DeepSeekApiClient`。
-- 话题提取从 `getDeepSeekTopicClient()` 使用独立的一次 HTTP 尝试配置；持久 worker 负责 30 秒/120 秒自动重试，其他 AI 调用保留默认配置。
-- 生产环境不记录完整模型响应；调试日志仅保留截断预览。
+## 聊天来源与提交
 
-## 单篇笔记聊天上下文
+[chatService.prepareTurn](chatService.ts) 核对用户拥有的会话和服务端绑定。已绑定会话沿用服务端历史，只接收当前新问题；浏览器不能更换绑定、改写旧回答或提交受信任来源快照。公开保存接口对已绑定历史只允许幂等保存。
 
-- `chatTurnCommitService` 在主回答结束后，为可选会话命名和关联检索提供共享的 3 秒等待预算；超时沿用已有标题与关联，不执行迟到写回。实际对话和来源快照仍须保存成功后才能向浏览器确认提交。
+[chatNoteContextService.ts](chatNoteContextService.ts) 每轮按 `_id + userId` 读取显式绑定笔记的最新已保存文字，不检索其他笔记、不缓存正文。正文优先 `contentText`，缺失时从 `contentJson` 推导，再兼容旧 `content`。图片仅保留未识别标记，不把地址或 base64 送入文字模型；空正文、纯图片、不可访问或读取失败均明确拒绝。正文上限为 12,000 个 Unicode 字符，完整模型上下文上限为 24,000 字符，超限拒绝，不截断。
 
-- `chatNoteContextService.ts` 每轮只按 `_id + userId` 读取显式绑定笔记的最新已保存文字，返回 `types/chatSource.ts` 中的来源快照；不查询其他笔记，不缓存正文。
-- 正文优先使用可信 `contentText`，缺失时从 `contentJson` 推导，最后兼容旧 `content`。图片仅保留未识别标记，不向文字模型传递图片地址或 base64；纯图片、空正文、读取失败和不可访问笔记都明确报错。
-- 单篇正文最多 12,000 个 Unicode 字符，模型消息合计最多 24,000 个 Unicode 字符（含系统说明、JSON 封包及完整聊天历史）；超过预算直接拒绝，绝不静默截断。
-- 模型只接收静态系统说明、单独的 JSON 资料消息和经过角色/正文校验的完整历史。每轮最新来源插在最后一条用户问题紧前，旧消息保持原顺序；静态说明按服务端绑定状态选择，明确这份来源是本轮自动读取的最新已保存正文，旧来源声明和旧回答不能替代它。笔记标题和正文始终是资料。
-- 回答直接使用已读取的笔记，不向用户展示或索要 JSON、封包、字段等内部技术资料；缺少事实及图片未识别的限制仍须如实说明。未绑定聊天不会把用户伪造的资料声明当成服务端来源，并引导用户使用已有的“从这条笔记聊起”入口。
-- `chatService.prepareTurn` 在生成前读取当前用户拥有的会话绑定；已绑定会话使用服务端历史，仅接受当前的新问题，不能通过浏览器替换旧回答或切换绑定。公开保存接口不接受来源快照，已绑定的历史只允许幂等保存；实际回答与旧来源由 `chatTurnCommitService` 通过服务端路径一起保存。
+静态系统说明与笔记资料、用户/助手历史分开，最新来源放在当前问题之前，旧来源声明不能替代本轮读取结果。模型应自然讨论笔记，不展示或索要内部 JSON 封包。
+
+[chatTurnCommitService.ts](chatTurnCommitService.ts) 将实际回答和来源快照通过服务端路径一起保存，成功后才向浏览器确认 `committed`。可选的会话命名和关联检索共享 3 秒等待预算，超时沿用已有标题与关联，不执行迟到写回；可选步骤不能取代真实提交确认。
+
+## 模型客户端与日志
+
+[llmService.ts](llmService.ts) 是 DeepSeek 对话、摘要、概念扩展和重排的惰性入口，Note 路径不直接创建 `DeepSeekApiClient`。
+
+[apiClient.ts](../utils/apiClient.ts) 提供通用 HTTP 与 DeepSeek 客户端。DeepSeek 默认最多两次 HTTP 总尝试；流式首响应和空闲等待各 45 秒，总时限 120 秒，仅收到 `[DONE]` 或 `finish_reason=stop/length` 才视为完整结束。流式错误日志限于请求 ID、阶段、错误分类、HTTP 状态、白名单网络原因和耗时。生产环境不记录完整模型响应；其他调试输出保留已有截断限制。

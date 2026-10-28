@@ -5,7 +5,10 @@ node_modules/
 .trae/
 .vercel/
 .superpowers/
-.claude/worktrees/
+.claude/
+.impeccable/
+.workbuddy/
+.worktrees/
 
 # 忽略构建产物
 .next/
@@ -32,11 +35,11 @@ IMPORT_GUIDE.md
 IMPORT_REPORT.md
 IMPROVEMENT_MEMO.md
 
-# AI 助手生成的计划与规范文件
-spec.md
-tasks.md
-checklist.md
-*_plan.md
+# 根目录临时任务草稿；正式 docs 内文件按用途审核，不按通用文件名隐藏
+/spec.md
+/tasks.md
+/checklist.md
+/*_plan.md
 
 # 临时测试与验证脚本 (本地验证的草稿文件)
 test_*.ts
