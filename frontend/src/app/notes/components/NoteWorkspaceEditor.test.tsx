@@ -47,6 +47,20 @@ describe('NoteWorkspaceEditor', () => {
     expect(onSaved).not.toHaveBeenCalled(); expect(registered.isDirty()).toBe(true);
   });
 
+  it.each(['edit', 'compose'] as const)('keeps the title optional and hides AI title suggestions for an image-only %s with Markdown image text', (mode) => {
+    const imageText = '![照片](/note-image.jpg)';
+    const imageJson = { type: 'doc', content: [{ type: 'image', attrs: { src: '/note-image.jpg', alt: '照片' } }] };
+    if (mode === 'compose') {
+      localStorage.setItem('quick-capture-draft:u1', JSON.stringify({ version: 2, title: '', text: imageText, json: imageJson }));
+    }
+    const editor = mode === 'edit'
+      ? <NoteWorkspaceEditor mode="edit" note={{ ...note, title: '', content: imageText, contentText: imageText, contentJson: imageJson }} userId="u1" updateNote={vi.fn()} onSaved={vi.fn()} onCancel={vi.fn()} />
+      : <NoteWorkspaceEditor mode="compose" userId="u1" createNote={vi.fn()} onSaved={vi.fn()} onCancel={vi.fn()} />;
+    render(<WorkspaceContext.Provider value={context}>{editor}</WorkspaceContext.Provider>);
+    expect(screen.getByRole('textbox', { name: '笔记标题' })).not.toBeRequired();
+    expect(screen.queryByRole('button', { name: '帮我拟个标题' })).not.toBeInTheDocument();
+  });
+
   it('allows saving a title change on an image-only existing note', async () => {
     const imageNote = { ...note, title: '图片记录', content: '![图片](/test-note.png)', contentText: '', contentJson: { type: 'doc', content: [{ type: 'image', attrs: { src: '/test-note.png' } }] } } as Note;
     const updateNote = vi.fn().mockResolvedValue({ ...imageNote, title: '图片说明', revision: 2 });

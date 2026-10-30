@@ -66,4 +66,4 @@ npm --prefix frontend run check:route-budgets
 
 ## 文档贡献
 
-业务变化时同步维护对应的产品、设计或模块契约。README 只在确实有独立职责或特殊约束时新增。临时执行清单、代理账本和本机日志不进入公共文档；维护规则见 [文档目录](docs/README.md)。`doc:scan`、`doc:inject`、`doc:check` 是可选的注释工具，不是功能或文档准确性门禁。
+业务变化时同步维护对应的产品、设计或模块契约。README 只在确实有独立职责或特殊约束时新增。临时执行清单、代理账本和本机日志不进入公共文档；维护规则见 [文档目录](docs/README.md)。
