@@ -202,7 +202,7 @@ export default function AuthPage() {
           </button>
         </div>
 
-        <form className={styles.authForm} onSubmit={handleSubmit}>
+        <form id="auth-form" method="post" className={styles.authForm} onSubmit={handleSubmit}>
           <div className={styles.inputGroup}>
             <label className={styles.visuallyHidden} htmlFor="auth-email">邮箱</label>
             <input
@@ -214,7 +214,7 @@ export default function AuthPage() {
               value={formData.email}
               onChange={handleChange}
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </div>
 

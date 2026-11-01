@@ -42,12 +42,14 @@ export default function AdminLoginPage() {
   return (
     <main className={`${styles.adminTheme} ${styles.login}`}>
       <Link href="/notes" className={styles.loginBack}><ArrowLeft size={16} aria-hidden="true" />返回笔记应用</Link>
-      <form onSubmit={(event) => void submit(event)}>
+      <form id="admin-login-form" method="post" onSubmit={(event) => void submit(event)}>
         <div className={styles.loginBrand}><span className={styles.brandMark}><BookOpen size={22} aria-hidden="true" /></span><span>NoteWithAI</span></div>
         <div className={styles.loginHeading}><h1>登录运营后台</h1><p>查看产品运行情况，处理用户与 AI 服务问题。</p></div>
         <label>
           邮箱
           <input
+            id="admin-login-email"
+            name="email"
             type="email"
             autoComplete="username"
             value={form.email}
@@ -58,6 +60,8 @@ export default function AdminLoginPage() {
         <label>
           密码
           <input
+            id="admin-login-password"
+            name="password"
             type="password"
             autoComplete="current-password"
             value={form.password}
@@ -69,6 +73,8 @@ export default function AdminLoginPage() {
           <label>
             6 位验证码
             <input
+              id="admin-login-otp"
+              name="otp"
               inputMode="numeric"
               pattern="[0-9]{6}"
               maxLength={6}

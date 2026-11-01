@@ -12,3 +12,5 @@
 | 个人页 | [画像、账户表单与会话保护](profile/README.md) |
 
 认证页 [auth/page.tsx](auth/page.tsx) 组合登录、注册和重置密码表单。输入框使用关联标签，密码显示按钮说明当前动作；视觉隐藏标签保留辅助技术语义。[auth/page.test.tsx](auth/page.test.tsx) 验证各模式的可访问名称，不能替代真实邮件或读屏验收。
+
+认证页与[运营后台登录页](admin/login/page.tsx) 使用稳定的表单 ID、字段 ID/name，以及 `username`、`current-password`（登录）、`new-password`（注册或重置）和 `one-time-code` 标记，供浏览器密码管理器识别。表单声明 POST，仍通过现有异步请求提交。Chrome 保存提示与再次回填需要在启用密码保存的真实浏览器中验收；组件测试不能验证浏览器原生提示。
