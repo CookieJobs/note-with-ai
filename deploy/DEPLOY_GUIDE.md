@@ -2,6 +2,40 @@
 
 此发布使用同机 Docker MongoDB（服务名 `mongo`）和 Redis；部署不会清空数据库或 Docker volume。管理员后台仅在 HTTPS 生效后使用，入口为 `https://bloomy16.com/admin`。
 
+## 连接生产服务器（优先 Workbench）
+
+本项目使用本机已登录的阿里云 Workbench CLI 远程执行命令，2026-11-01 已通过此通道完成发布。它不依赖默认 SSH agent 中存在密钥；普通 SSH 的 `Permission denied` 或空 agent 不能作为部署不可用的结论。
+
+| 参数 | 已验证的值 |
+| --- | --- |
+| CLI | `$HOME/.local/bin/workbench`，也可使用 PATH 中的 `workbench` |
+| ECS 实例 | `i-bp1cs8uozat9umdi9i4z` |
+| 地域 | `cn-hangzhou` |
+| 远端项目目录 | `/root/note-with-ai` |
+| 生产站点 | `https://bloomy16.com` |
+
+这些是连接参数，不是认证凭据；基础设施变更后需重新核对并更新。登录信息由本机 Workbench 管理，不复制到文档。先运行只读检查：
+
+```bash
+workbench_cli="$(command -v workbench || true)"
+if [ -z "$workbench_cli" ]; then
+  workbench_cli="$HOME/.local/bin/workbench"
+fi
+test -x "$workbench_cli"
+"$workbench_cli" exec \
+  --instance-id i-bp1cs8uozat9umdi9i4z \
+  --region cn-hangzhou \
+  --output json \
+  --command 'set -eu; cd /root/note-with-ai; git rev-parse HEAD; git status --short; docker compose ps --format "{{.Service}} {{.State}}"; curl -fsS -o /dev/null -w "health_http=%{http_code}\n" http://127.0.0.1:3001/api/health' \
+  --timeout 55
+```
+
+检查返回 JSON 的远端 `exit_code` 和 `stdout`/`stderr`，不能只看本地 CLI 退出码。每次 `exec` 是独立 shell，`cd` 和变量不会跨调用保留；用单引号包住远端命令，避免 `$变量` 或 `$(命令)` 被本机 shell 提前展开。需要动态组合复杂命令时，用 subprocess 参数数组传递，不用字符串拼接 shell 命令。
+
+耗时构建应在权限受限的发布目录中生成当次脚本，以 `nohup` 启动并重定向 stdin、stdout、stderr，保存独立日志和状态文件，再通过后续 `exec` 检查退出状态。CLI 返回进程 PID 只代表启动，不代表构建或部署完成。不要直接重放历史发布脚本。
+
+若 CLI 不可用或认证失败，先查看 `workbench exec --help`、当前安装和既有成功连接记录，确认是安装、云身份、实例权限还是远端命令失败，再报告具体阻塞；不要直接改走未经验证的 SSH，也不要让用户把密码或私钥粘贴到聊天。
+
 ## 发布前
 
 在服务器 `/root/note-with-ai/.env` 保留既有业务变量，并设置下列键。密钥只能保存在服务器 `.env`，不要提交、复制到终端记录或发送到聊天：
