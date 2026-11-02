@@ -38,12 +38,12 @@ export default function AvatarPicker({ value, legacyAvatarUrl, username, onChang
               type="radio"
               name="profile-avatar"
               value="preset:initials"
+              aria-label="姓名首字母"
               checked={value === 'preset:initials'}
               onChange={() => onChange('preset:initials')}
             />
             <label htmlFor="profile-avatar-initials" className={styles.optionLabel}>
               <span className={styles.swatchInitials} aria-hidden="true">{display.initials}</span>
-              <span>姓名首字母</span>
             </label>
           </div>
           {AVATAR_PRESETS.map((preset) => (
@@ -54,12 +54,12 @@ export default function AvatarPicker({ value, legacyAvatarUrl, username, onChang
                 type="radio"
                 name="profile-avatar"
                 value={preset.id}
+                aria-label={preset.label}
                 checked={value === preset.id}
                 onChange={() => onChange(preset.id)}
               />
               <label htmlFor={`profile-avatar-${preset.id}`} className={styles.optionLabel}>
                 <img src={preset.src} alt="" />
-                <span>{preset.label}</span>
               </label>
             </div>
           ))}

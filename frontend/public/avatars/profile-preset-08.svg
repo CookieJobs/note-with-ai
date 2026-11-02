@@ -1,7 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
-  <rect width="128" height="128" rx="64" fill="#4C1D95"/>
-  <path d="m64 24 10 27 28 1-22 17 8 27-24-16-24 16 8-27-22-17 28-1 10-27Z" fill="#DDD6FE"/>
-  <circle cx="64" cy="68" r="13" fill="#C4B5FD"/>
-  <circle cx="31" cy="44" r="4" fill="#FDE68A"/>
-  <circle cx="96" cy="93" r="5" fill="#FDE68A"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="小浪"><rect width="256" height="256" fill="#e8f3f6"/><g transform="rotate(-17 128 128)"><path d="M68 72C95 49 115 74 136 67C164 51 194 62 207 93C221 126 197 153 182 173C158 210 114 217 82 198C39 174 32 106 68 72Z" fill="#398eaa"/><g fill="#fff" transform="translate(-1 0)"><rect x="94" y="99" width="21" height="55" rx="10.5"/><rect x="140" y="99" width="21" height="45" rx="10.5"/></g></g></svg>

@@ -381,14 +381,14 @@ describe('ProfilePage', () => {
     render(<ProfilePage />);
 
     fireEvent.click(await screen.findByRole('button', { name: '编辑资料' }));
-    fireEvent.click(screen.getByRole('radio', { name: '预设头像 3' }));
+    fireEvent.click(screen.getByRole('radio', { name: '橘团' }));
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
     expect(screen.getByText('放弃未保存的修改？')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '放弃修改' }));
     fireEvent.click(screen.getByRole('button', { name: '编辑资料' }));
     expect(screen.getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
     expect(screen.getByAltText('头像预览：现有头像')).toHaveAttribute('src', legacyUrl);
-    fireEvent.click(screen.getByRole('radio', { name: '预设头像 4' }));
+    fireEvent.click(screen.getByRole('radio', { name: '薄荷' }));
     fireEvent.click(screen.getByRole('button', { name: '关闭' }));
     fireEvent.click(screen.getByRole('button', { name: '放弃修改' }));
 
@@ -402,7 +402,7 @@ describe('ProfilePage', () => {
     const { container } = render(<ProfilePage />);
 
     fireEvent.click(await screen.findByRole('button', { name: '编辑资料' }));
-    fireEvent.click(screen.getByRole('radio', { name: '预设头像 3' }));
+    fireEvent.click(screen.getByRole('radio', { name: '橘团' }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => expect(mocks.updateProfile).toHaveBeenCalledWith({ username: '测试用户', avatar: 'preset:03' }));
@@ -430,7 +430,7 @@ describe('ProfilePage', () => {
     render(<ProfilePage />);
 
     fireEvent.click(await screen.findByRole('button', { name: '编辑资料' }));
-    fireEvent.click(screen.getByRole('radio', { name: '预设头像 1' }));
+    fireEvent.click(screen.getByRole('radio', { name: '小墨' }));
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     expect(screen.getByRole('button', { name: '关闭' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '取消' })).toBeDisabled();

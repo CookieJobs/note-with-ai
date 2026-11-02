@@ -15,8 +15,8 @@ describe('AvatarPicker', () => {
     expect(radios.filter((radio) => (radio as HTMLInputElement).checked)).toHaveLength(0);
     expect(screen.getByRole('img', { name: '头像预览：林知' })).toBeInTheDocument();
     expect(within(group).getByRole('radio', { name: '姓名首字母' })).toBeInTheDocument();
-    for (let index = 1; index <= 8; index += 1) {
-      expect(within(group).getByRole('radio', { name: `预设头像 ${index}` })).toBeInTheDocument();
+    for (const preset of AVATAR_PRESETS) {
+      expect(within(group).getByRole('radio', { name: preset.label })).toBeInTheDocument();
     }
   });
 
@@ -27,7 +27,7 @@ describe('AvatarPicker', () => {
     }
 
     render(<ControlledPicker />);
-    const firstPreset = screen.getByRole('radio', { name: '预设头像 1' });
+    const firstPreset = screen.getByRole('radio', { name: '小墨' });
     const radios = screen.getAllByRole('radio');
 
     expect(radios.every((radio) => (radio as HTMLInputElement).type === 'radio')).toBe(true);
@@ -36,7 +36,7 @@ describe('AvatarPicker', () => {
     fireEvent.click(firstPreset);
 
     expect(firstPreset).toBeChecked();
-    expect(screen.getByAltText('头像预览：预设头像 1')).toHaveAttribute('src', '/avatars/profile-preset-01.svg');
+    expect(screen.getByAltText('头像预览：小墨')).toHaveAttribute('src', '/avatars/profile-preset-01.svg');
   });
 
   it('将预设键映射到本地资源', () => {
@@ -82,11 +82,11 @@ describe('AvatarPicker', () => {
     expect(screen.getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
     expect(onChange).not.toHaveBeenCalled();
 
-    const secondPreset = screen.getByRole('radio', { name: '预设头像 2' });
+    const secondPreset = screen.getByRole('radio', { name: '蓝角' });
     fireEvent.click(secondPreset);
 
     expect(secondPreset).toBeChecked();
-    expect(screen.getByAltText('头像预览：预设头像 2')).toHaveAttribute('src', '/avatars/profile-preset-02.svg');
+    expect(screen.getByAltText('头像预览：蓝角')).toHaveAttribute('src', '/avatars/profile-preset-02.svg');
     expect(onChange).toHaveBeenCalledWith('preset:02');
   });
 });
