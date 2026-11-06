@@ -1,6 +1,6 @@
 /*
-Input: 真实游标笔记列表、highlight 单篇来源、新建意图与持久工作区
-Output: 分离的列表 / 阅读 / Tiptap 编辑流程；成功查询才登记最近记录，替换动作经过工作区保护
+Input: 真实笔记列表、highlight 来源、fromChat 原会话标记、新建意图与持久工作区
+Output: 列表 / 阅读 / 编辑流程；聊天来源显示固定返回栏，相关跳转保留原会话，返回经过未保存保护
 Pos: notes 页面入口；修改时同步 ./README.md
 */
 'use client';
@@ -12,6 +12,7 @@ import { ArrowLeft, PencilLine, Plus } from 'lucide-react';
 import { getUser, isAuthenticated } from '../../utils/auth';
 import { noteReferenceDisplay } from '../../utils/noteReference';
 import { startNoteConversation } from '../../services/noteConversation';
+import { readChatSourceReturn, type ChatSourceReturn } from '../../utils/chatSourceReturn';
 import { useWorkspace } from '../../components/workspace/WorkspaceContext';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { NoteWriteConflict, useNotes } from './hooks/useNotes';
@@ -48,6 +49,7 @@ function NotesContent() {
   const [deleteError, setDeleteError] = useState('');
   const [discussing, setDiscussing] = useState(false);
   const [discussionError, setDiscussionError] = useState('');
+  const [chatReturn, setChatReturn] = useState<ChatSourceReturn | null>(null);
   const discussionRequest = useRef<object | null>(null);
   const latestDiscussion = useRef<object | null>(null);
   const active = useRef(true);
@@ -62,6 +64,11 @@ function NotesContent() {
   const { notes, isLoading, isSuccess, deleteNote, createNote, updateNote, refreshRecommendCache, refetchNotes,
     loadMoreNotes, hasMoreNotes, isLoadingMore, loadMoreError } = useNotes(user, { onError: setError });
   const highlightId = searchParams.get('highlight') || '';
+  const fromChat = searchParams.get('fromChat') || '';
+  useEffect(() => {
+    setChatReturn(user?.id && fromChat ? readChatSourceReturn(user.id) : null);
+  }, [user?.id, fromChat]);
+  const returnContext = chatReturn?.userId === user?.id && chatReturn?.sessionId === fromChat ? chatReturn : null;
   const composeIntent = searchParams.get('compose') === '1';
   // The URL owns this view so ordinary workspace navigation and history traversal
   // can leave it without relying on an unrelated highlight change.
@@ -83,8 +90,9 @@ function NotesContent() {
   }, [actSafely, router]);
   const openNote = useCallback((id: string) => {
     listScroll.current = listRef.current?.scrollTop ?? listScroll.current;
-    go('/notes?highlight=' + encodeURIComponent(id));
-  }, [go]);
+    const origin = returnContext ? '&fromChat=' + encodeURIComponent(returnContext.sessionId) : '';
+    go('/notes?highlight=' + encodeURIComponent(id) + origin);
+  }, [go, returnContext]);
   const discuss = async (note: Note) => {
     if (discussionRequest.current || !user?.id) return;
     const request = {};
@@ -200,7 +208,19 @@ function NotesContent() {
           </footer>}
         </div>
       </div>
-      {detail && <div className={styles.scroll} ref={detailRef}>
+      {detail && <section className={styles.detail} aria-label="笔记详情">
+        {highlightId && returnContext && <nav className={styles.chatReturn} aria-label="返回原对话">
+          <div className={styles.chatReturnInner}>
+            <button type="button" className={styles.primaryButton} onClick={() => go('/chat?session=' + encodeURIComponent(returnContext.sessionId))}>
+              <ArrowLeft size={15} aria-hidden="true" />返回刚才的对话
+            </button>
+            <div className={styles.chatReturnCopy}>
+              <strong title={returnContext.sessionTitle?.trim() || '刚才的对话'}>{returnContext.sessionTitle?.trim() || '刚才的对话'}</strong>
+              <span>回到刚才的位置，继续未发送的内容</span>
+            </div>
+          </div>
+        </nav>}
+        <div className={styles.scroll} ref={detailRef}>
         <div className={styles.page}>
           <button type="button" className={styles.backButton} onClick={() => go('/notes')}><ArrowLeft size={15} />返回笔记列表</button>
           {compose ? <NoteWorkspaceEditor key={'compose:' + (user?.id ?? '')} mode="compose" userId={user?.id ?? null} createNote={create}
@@ -222,7 +242,8 @@ function NotesContent() {
                 : <p role="status" className={styles.empty}>正在读取原笔记…</p>}
           {discussionError && <p role="alert" className={styles.error}>{discussionError}</p>}
         </div>
-      </div>}
+        </div>
+      </section>}
       {relatedId && <RelatedNotesDrawer isOpen selectedNoteId={relatedId} onClose={() => setRelatedId(null)}
         allNotes={focusedNote ? [...notes, focusedNote] : notes} onRefreshRecommendCache={refreshSourceRecommendCache} onOpenNote={openNote} />}
       {pendingDelete && <div className={styles.modalBackdrop} onClick={() => { if (!deleting) setPendingDelete(null); }}>

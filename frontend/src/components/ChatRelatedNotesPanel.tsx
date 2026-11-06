@@ -5,12 +5,14 @@ import ReferenceNote from './ReferenceNote';
 import styles from './RelatedNotes.module.scss';
 
 interface ChatRelatedNotesPanelProps {
+  hidden?: boolean;
   relatedNotes: IRelatedNote[];
   className?: string;
   onNoteClick?: (noteId: string) => void;
 }
 
 export default function ChatRelatedNotesPanel({
+  hidden,
   relatedNotes,
   className = '',
   onNoteClick,
@@ -24,7 +26,7 @@ export default function ChatRelatedNotesPanel({
           ? '可能相关'
           : '弱相关';
   return (
-    <section className={`${styles.panel} ${className}`} aria-label="相关笔记">
+    <section hidden={hidden} className={`${styles.panel} ${className}`} aria-label="相关笔记">
       <div className={styles.header}>
         <h2>
           相关笔记{' '}

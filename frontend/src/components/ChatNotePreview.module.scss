@@ -1,0 +1,20 @@
+.slot { flex: 0 0 43%; min-width: 360px; max-width: 520px; min-height: 0; display: flex; }
+.panel { display: flex; flex-direction: column; width: 100%; min-height: 0; min-width: 0; background: var(--ws-bg, #fff); color: var(--ws-ink, #0d0d0d); border-left: 1px solid var(--ws-line, #e8e8e8); outline: none; }
+.header { display: flex; align-items: center; gap: 10px; padding: 12px 16px 12px 24px; border-bottom: 1px solid var(--ws-line, #e8e8e8); flex-shrink: 0;
+  > span { flex: 1; color: var(--ws-muted, #6f6f6f); font-size: 12px; }
+  button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 34px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ws-secondary, #525252); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  button:hover { color: var(--ws-ink, #0d0d0d); background: var(--ws-hover, #f5f5f5); }
+}
+button.close { width: 34px; padding: 6px; }
+.body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 28px; scrollbar-width: thin;
+  h2 { margin: 0 0 24px; font-size: 22px; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
+  > p, > div[role='alert'] { font-size: 13px; line-height: 1.8; color: var(--ws-secondary, #525252); }
+}
+.retry { border: 1px solid var(--ws-line, #e8e8e8); border-radius: 6px; background: transparent; color: var(--ws-ink, #0d0d0d); padding: 6px 12px; cursor: pointer; }
+.panel button:focus-visible { outline: 2px solid var(--ws-focus, #266fe1); outline-offset: 2px; }
+@media (max-width: 1199px) {
+  .slot { position: fixed; inset: 0; z-index: var(--z-panel, 50); max-width: none; min-width: 0; justify-content: flex-end; }
+  .backdrop { position: absolute; inset: 0; border: 0; background: var(--ws-scrim, #0005); }
+  .panel { position: relative; width: min(100%, 560px); height: 100%; }
+}
+@media (max-width: 600px) { .header { padding-left: 20px; gap: 6px; } .body { padding: 24px 20px; } }

@@ -1,6 +1,7 @@
 export interface ChatSourceReturn {
   userId: string;
   sessionId: string;
+  sessionTitle?: string;
   scrollTop: number;
   draft: string;
   savedAt: number;
@@ -16,15 +17,16 @@ export function rememberChatSourceReturn(context: Omit<ChatSourceReturn, 'savedA
   }
 }
 
-export function takeChatSourceReturn(userId: string): ChatSourceReturn | null {
+// Notes may inspect this across multiple visits; only the chat page consumes it.
+export function readChatSourceReturn(userId: string): ChatSourceReturn | null {
   try {
     const raw = sessionStorage.getItem(storageKey(userId));
-    sessionStorage.removeItem(storageKey(userId));
     if (!raw) return null;
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== 'object') return null;
     const context = value as Partial<ChatSourceReturn>;
     if (context.userId !== userId || typeof context.sessionId !== 'string' || !context.sessionId
+      || (context.sessionTitle !== undefined && typeof context.sessionTitle !== 'string')
       || typeof context.draft !== 'string' || typeof context.scrollTop !== 'number'
       || !Number.isFinite(context.scrollTop) || context.scrollTop < 0
       || typeof context.savedAt !== 'number' || !Number.isFinite(context.savedAt)
@@ -33,4 +35,14 @@ export function takeChatSourceReturn(userId: string): ChatSourceReturn | null {
   } catch {
     return null;
   }
+}
+
+export function takeChatSourceReturn(userId: string): ChatSourceReturn | null {
+  const context = readChatSourceReturn(userId);
+  try {
+    sessionStorage.removeItem(storageKey(userId));
+  } catch {
+    return null;
+  }
+  return context;
 }

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceContext, type WorkspaceContextValue } from '../../components/workspace/WorkspaceContext';
 import type { Note } from './hooks/useNotes';
 import NotesPage from './page';
+import { readChatSourceReturn, rememberChatSourceReturn } from '../../utils/chatSourceReturn';
 
 const mocks = vi.hoisted(() => ({
   params: new URLSearchParams(), push: vi.fn(), replace: vi.fn(), focused: { state: null } as Record<string, unknown>,
@@ -18,7 +19,7 @@ vi.mock('./hooks/useNotes', () => ({ NoteWriteConflict: class extends Error {}, 
 vi.mock('./hooks/useFocusedSourceNote', () => ({ useFocusedSourceNote: () => ({ retry: mocks.retry, captureMutation: vi.fn(), applyCanonical: vi.fn(), applyRecommendCache: vi.fn(), markUnavailable: vi.fn(), ...mocks.focused }) }));
 vi.mock('./components/NoteWorkspaceReader', () => ({ default: ({ note, onEdit, onRelated, onDelete }: { note: Note; onEdit: () => void; onRelated: () => void; onDelete: () => void }) => <article aria-label="笔记阅读"><p>{note.contentText}</p><button onClick={onEdit}>编辑笔记</button><button onClick={onRelated}>相关笔记</button><button onClick={onDelete}>删除笔记</button></article> }));
 vi.mock('./components/NoteWorkspaceEditor', () => ({ default: ({ onCancel }: { onCancel: () => void }) => <div aria-label="笔记编辑"><button onClick={onCancel}>取消编辑</button></div> }));
-vi.mock('./components/RelatedNotesDrawer', () => ({ default: ({ isOpen }: { isOpen: boolean }) => isOpen ? <aside aria-label="相关笔记">相关推荐</aside> : null }));
+vi.mock('./components/RelatedNotesDrawer', () => ({ default: ({ isOpen, onOpenNote }: { isOpen: boolean; onOpenNote: (id: string) => void }) => isOpen ? <aside aria-label="相关笔记"><button onClick={() => onOpenNote('n2')}>另一篇相关笔记</button></aside> : null }));
 
 const note = { _id: 'n1', title: '一条记录', contentText: '真实正文', content: '真实正文', createdAt: '2026-10-24T01:00:00.000Z', revision: 1 } as Note;
 const context: WorkspaceContextValue = { navigate: vi.fn(), requestAction: mocks.request, registerEditor: vi.fn(() => vi.fn()), setRecentNotes: vi.fn() };
@@ -26,10 +27,80 @@ const renderPage = () => render(<WorkspaceContext.Provider value={context}><Note
 
 describe('notes workspace', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.clearAllMocks(); mocks.params = new URLSearchParams(); mocks.focused = { state: null }; mocks.user = { id: 'u1' };
     mocks.request.mockImplementation((action) => action());
     mocks.push.mockImplementation((href: string) => { mocks.params = new URLSearchParams(href.split('?')[1]); });
     mocks.data = { notes: [note], isLoading: false, isSuccess: true, createNote: mocks.create, updateNote: mocks.update, deleteNote: mocks.remove, refreshRecommendCache: vi.fn(), loadMoreNotes: mocks.load, hasMoreNotes: true, isLoadingMore: false, loadMoreError: null, refetchNotes: mocks.retry };
+  });
+
+  function visitFromChat() {
+    rememberChatSourceReturn({ userId: 'u1', sessionId: 'chat/1', sessionTitle: '给自己留点空白', draft: '继续聊', scrollTop: 240 });
+    mocks.params = new URLSearchParams('highlight=n1&fromChat=chat%2F1');
+  }
+
+  it('shows the original title and returns to the exact session without consuming draft/scroll on the note page', async () => {
+    visitFromChat();
+    renderPage();
+    const bar = await screen.findByRole('navigation', { name: '返回原对话' });
+    expect(bar).toHaveTextContent('给自己留点空白');
+    expect(readChatSourceReturn('u1')).toMatchObject({ draft: '继续聊', scrollTop: 240 });
+    fireEvent.click(within(bar).getByRole('button', { name: '返回刚才的对话' }));
+    expect(mocks.request).toHaveBeenCalled();
+    expect(mocks.push).toHaveBeenCalledWith('/chat?session=chat%2F1', { scroll: false });
+  });
+
+  it('preserves the original return target through related notes and a page reload', async () => {
+    visitFromChat();
+    const view = renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '相关笔记' }));
+    fireEvent.click(await screen.findByRole('button', { name: '另一篇相关笔记' }));
+    expect(mocks.push).toHaveBeenCalledWith('/notes?highlight=n2&fromChat=chat%2F1', { scroll: false });
+    mocks.focused = { state: { status: 'missing' } };
+    view.unmount();
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '返回刚才的对话' }));
+    expect(mocks.push).toHaveBeenLastCalledWith('/chat?session=chat%2F1', { scroll: false });
+    expect(readChatSourceReturn('u1')).toMatchObject({ draft: '继续聊' });
+  });
+
+  it.each(['highlight=n1', '', 'compose=1&fromChat=chat%2F1', 'highlight=n1&fromChat=another'])('does not show contextual return for an unrelated entry: %s', async (query) => {
+    visitFromChat(); mocks.params = new URLSearchParams(query);
+    renderPage();
+    expect(screen.queryByRole('navigation', { name: '返回原对话' })).not.toBeInTheDocument();
+  });
+
+  it.each(['missing', 'expired', 'different-user'] as const)('does not expose a %s snapshot', (kind) => {
+    visitFromChat();
+    if (kind === 'missing') sessionStorage.clear();
+    if (kind === 'expired') {
+      const value = JSON.parse(sessionStorage.getItem('chat_source_return:u1')!);
+      sessionStorage.setItem('chat_source_return:u1', JSON.stringify({ ...value, savedAt: Date.now() - 31 * 60 * 1000 }));
+    }
+    if (kind === 'different-user') mocks.user = { id: 'u2' };
+    renderPage();
+    expect(screen.queryByRole('navigation', { name: '返回原对话' })).not.toBeInTheDocument();
+  });
+
+  it('hides the prior account title immediately when the account changes', async () => {
+    visitFromChat(); const view = renderPage();
+    await screen.findByRole('navigation', { name: '返回原对话' });
+    mocks.user = { id: 'u2' };
+    view.rerender(<WorkspaceContext.Provider value={context}><NotesPage /></WorkspaceContext.Provider>);
+    expect(screen.queryByText('给自己留点空白')).not.toBeInTheDocument();
+  });
+
+  it('keeps the return action behind editor protection until the leave is accepted', async () => {
+    visitFromChat(); renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '编辑笔记' }));
+    await screen.findByLabelText('笔记编辑');
+    let pending!: () => void;
+    mocks.request.mockImplementationOnce((action) => { pending = action; });
+    fireEvent.click(screen.getByRole('button', { name: '返回刚才的对话' }));
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('笔记编辑')).toBeInTheDocument();
+    pending();
+    expect(mocks.push).toHaveBeenCalledWith('/chat?session=chat%2F1', { scroll: false });
   });
 
   it('opens a real list record in separate reading and only opens related notes on demand', async () => {

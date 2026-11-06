@@ -1,6 +1,6 @@
 /*
 Input: 用户身份、聊天历史、单篇笔记绑定、来源往返上下文及流式回复
-Output: 登记真实历史，服务端校验显式会话并隔离失效发送，普通入口清理失效状态；主动选择和成功删除显式目标对齐URL与来源恢复，流状态按会话投影，异步删除可重试
+Output: 来源默认在聊天旁只读预览，保留对话与草稿；主动打开完整笔记才记录往返状态，不改变会话绑定
 Pos: frontend/src/app/chat 页面入口
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
@@ -21,6 +21,7 @@ import { useChatSession } from '../../hooks/useChatSession';
 import { useChatStream } from '../../hooks/useChatStream';
 import CareAssistantPanel from '../../components/CareAssistantPanel';
 import ChatRelatedNotesPanel from '../../components/ChatRelatedNotesPanel';
+import ChatNotePreview from '../../components/ChatNotePreview';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
 import { usePanelDismiss } from '../../hooks/usePanelDismiss';
 import { rememberChatSourceReturn, takeChatSourceReturn, type ChatSourceReturn } from '../../utils/chatSourceReturn';
@@ -44,6 +45,7 @@ function ChatPageContent() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isRelatedNotesOpen, setIsRelatedNotesOpen] = useState(false);
   const [startingCare, setStartingCare] = useState(false);
+  const [notePreview, setNotePreview] = useState<{ userId: string; sessionId: string; noteId: string } | null>(null);
   const { panelRef: relatedPanelRef, isModal: isRelatedNotesModal } = usePanelDismiss<HTMLDivElement>(isRelatedNotesOpen, () => setIsRelatedNotesOpen(false), 1199);
 
   useEffect(() => {
@@ -52,6 +54,9 @@ function ChatPageContent() {
 
   const { user, isClient } = useAuthGuard();
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const mainCenterRef = useRef<HTMLDivElement>(null);
+  const noteOpenerRef = useRef<HTMLElement | null>(null);
+  const relatedFabRef = useRef<HTMLButtonElement>(null);
   const sourceReturnLoadedFor = useRef<string | null>(null);
   const sourceReturnApplied = useRef<ChatSourceReturn | null>(null);
   const [sourceReturn, setSourceReturn] = useState<ChatSourceReturn | null>(null);
@@ -86,6 +91,24 @@ function ChatPageContent() {
 
   const loading = streamBusy && activeSessionId === currentSessionId;
   const error = entryError || careError || (errorSessionId === currentSessionId ? streamError : '');
+  const preview = notePreview?.userId === user?.id && notePreview?.sessionId === currentSessionId ? notePreview : null;
+  const closeNotePreview = () => {
+    setNotePreview(null);
+    const opener = noteOpenerRef.current;
+    requestAnimationFrame(() => {
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      else relatedFabRef.current?.focus({ preventScroll: true });
+    });
+  };
+  const { panelRef: notePanelRef, isModal: isNoteModal } = usePanelDismiss<HTMLDivElement>(!!preview, closeNotePreview, 1199);
+  useEffect(() => { setNotePreview(null); }, [user?.id, currentSessionId]);
+  const modalPreview = !!preview && isNoteModal;
+  useEffect(() => {
+    const center = mainCenterRef.current;
+    if (!center) return;
+    center.inert = modalPreview;
+    return () => { center.inert = false; };
+  }, [modalPreview]);
 
   useEffect(() => {
     if (!explicitSessionId) {
@@ -150,13 +173,21 @@ function ChatPageContent() {
 
   const rememberSourceReturn = () => {
     if (!user?.id || !currentSessionId) return;
-    rememberChatSourceReturn({ userId: user.id, sessionId: currentSessionId, draft: inputRef.current, scrollTop: chatScrollRef.current?.scrollTop ?? 0 });
+    rememberChatSourceReturn({ userId: user.id, sessionId: currentSessionId, sessionTitle: currentSession?.title,
+      draft: inputRef.current, scrollTop: chatScrollRef.current?.scrollTop ?? 0 });
   };
 
   const openSourceNote = (noteId: string) => {
-    rememberSourceReturn();
+    noteOpenerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setIsRelatedNotesOpen(false);
-    router.push(`/notes?highlight=${encodeURIComponent(noteId)}`);
+    if (user?.id && currentSessionId) setNotePreview({ userId: user.id, sessionId: currentSessionId, noteId });
+  };
+
+  const openFullNote = () => {
+    if (!preview) return;
+    rememberSourceReturn();
+    const origin = user?.id && currentSessionId ? `&fromChat=${encodeURIComponent(currentSessionId)}` : '';
+    router.push(`/notes?highlight=${encodeURIComponent(preview.noteId)}${origin}`);
   };
 
   const handleSourceLink = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -165,7 +196,11 @@ function ChatPageContent() {
     const anchor = event.target.closest('a');
     if (!anchor || anchor.target === '_blank') return;
     const target = new URL(anchor.href, window.location.href);
-    if (target.origin === window.location.origin && target.pathname === '/notes' && target.searchParams.has('highlight')) rememberSourceReturn();
+    const noteId = target.searchParams.get('highlight');
+    if (target.origin === window.location.origin && target.pathname === '/notes' && noteId) {
+      event.preventDefault();
+      openSourceNote(noteId);
+    }
   };
 
   const leaveExplicitSession = () => {
@@ -363,7 +398,7 @@ function ChatPageContent() {
           onDeleteSession={handleDeleteClick}
         />}
 
-        <div className={styles.mainCenter}>
+        <div className={styles.mainCenter} ref={mainCenterRef}>
           {sourceNoteId ? (
             <section aria-label="正在讨论" className={isNoteOpening ? styles.openingContext : styles.sourceContext}>
               {isNoteOpening ? <h1>从一条笔记聊起</h1> : <>
@@ -410,15 +445,19 @@ function ChatPageContent() {
 
         {otherRelatedNotes.length > 0 && (
           <ChatRelatedNotesPanel
+            hidden={!!preview}
             relatedNotes={otherRelatedNotes}
             className={styles.rightPanel}
             onNoteClick={openSourceNote}
           />
         )}
+        {preview && <ChatNotePreview userId={preview.userId} noteId={preview.noteId} panelRef={notePanelRef} isModal={isNoteModal}
+          onClose={closeNotePreview} onOpenFull={openFullNote} />}
       </div>
 
-      {otherRelatedNotes.length > 0 && (
+      {!preview && otherRelatedNotes.length > 0 && (
         <button
+          ref={relatedFabRef}
           type="button"
           className={styles.relatedNotesFab}
           onClick={() => setIsRelatedNotesOpen(true)}

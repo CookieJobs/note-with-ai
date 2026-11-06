@@ -4,6 +4,7 @@ import { StrictMode } from 'react';
 import ChatPage from './page';
 import { WorkspaceContext, type WorkspaceContextValue } from '../../components/workspace/WorkspaceContext';
 import type { IChat } from '../../types';
+import { readChatSourceReturn } from '../../utils/chatSourceReturn';
 
 const { authFetch, router, searchParams } = vi.hoisted(() => ({
   authFetch: vi.fn(),
@@ -126,6 +127,7 @@ describe('chat page entry', () => {
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'B的草稿' } });
     (screen.getByRole('main').firstElementChild as HTMLElement).scrollTop = 286;
     fireEvent.click(screen.getByRole('button', { name: /B的来源/ }));
+    fireEvent.click(screen.getByRole('button', { name: '打开完整笔记' }));
     page.unmount();
 
     render(<ChatPage />);
@@ -153,6 +155,7 @@ describe('chat page entry', () => {
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '删除A后B的草稿' } });
     (screen.getByRole('main').firstElementChild as HTMLElement).scrollTop = 312;
     fireEvent.click(within(screen.getByRole('region', { name: '正在讨论' })).getByRole('link', { name: /B的来源/ }));
+    fireEvent.click(screen.getByRole('button', { name: '打开完整笔记' }));
     page.unmount();
     render(<ChatPage />);
     await loadServerHistory();
@@ -418,7 +421,9 @@ describe('chat page entry', () => {
     expect(within(drawer).queryByRole('button', { name: new RegExp(sourceNote.title) })).not.toBeInTheDocument();
     expect(within(drawer).getByRole('heading', { name: /相关笔记\s*1/ })).toBeInTheDocument();
     fireEvent.click(within(drawer).getByRole('button', { name: new RegExp(otherNote.title) }));
-    expect(router.push).toHaveBeenCalledWith('/notes?highlight=other-1');
+    expect(router.push).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '打开完整笔记' }));
+    expect(router.push).toHaveBeenCalledWith('/notes?highlight=other-1&fromChat=bound-1');
   });
 
   it('resets the bound opener when starting an ordinary new conversation', async () => {
@@ -612,8 +617,13 @@ describe('chat page entry', () => {
     fireEvent.click(source === 'message'
       ? screen.getByRole('link', { name: /学习时间限制/ })
       : screen.getAllByRole('button', { name: /学习时间限制/ }).at(-1)!);
+    expect(router.push).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '打开完整笔记' }));
+    expect(router.push).toHaveBeenCalledWith('/notes?highlight=source-1&fromChat=history-1');
+    expect(readChatSourceReturn('user-1')).toMatchObject({ sessionId: 'history-1', sessionTitle: '上次的对话' });
     page.unmount();
 
+    searchParams.value = 'session=history-1';
     render(<ChatPage />);
     await loadServerHistory();
 
@@ -623,12 +633,45 @@ describe('chat page entry', () => {
     expect((screen.getByRole('main').firstElementChild as HTMLElement).scrollTop).toBe(240);
   });
 
+  it('previews a note without leaving the chat, overwriting its draft or storing a return snapshot', () => {
+    const source = { noteId: 'preview-1', title: '查看这篇记录', content: '旧摘录' };
+    localStorage.setItem('chat_sessions_user-1', JSON.stringify([{ ...history, relatedNotes: [source] }]));
+    render(<ChatPage />);
+    fireEvent.click(screen.getByRole('button', { name: '上次的对话' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '继续写的草稿' } });
+    const scroller = screen.getByRole('main').firstElementChild as HTMLElement;
+    scroller.scrollTop = 240;
+    const trigger = screen.getByRole('button', { name: /查看这篇记录/ });
+    trigger.focus(); fireEvent.click(trigger);
+    expect(screen.getByRole('button', { name: '关闭笔记' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '相关笔记' })).not.toBeInTheDocument();
+    expect(router.push).not.toHaveBeenCalled();
+    expect(readChatSourceReturn('user-1')).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: '关闭笔记' })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox')).toHaveValue('继续写的草稿');
+    expect(scroller.scrollTop).toBe(240);
+    expect(screen.getByRole('button', { name: /查看这篇记录/ })).toHaveFocus();
+  });
+
+  it('closes the note preview when selecting a different conversation', () => {
+    const source = { noteId: 'preview-1', title: '查看这篇记录' };
+    localStorage.setItem('chat_sessions_user-1', JSON.stringify([{ ...history, relatedNotes: [source] }, { id: 'other', title: '另一段对话', messages: [{ role: 'user', content: '另一个问题' }] }]));
+    render(<ChatPage />);
+    fireEvent.click(screen.getByRole('button', { name: '上次的对话' }));
+    fireEvent.click(screen.getByRole('button', { name: /查看这篇记录/ }));
+    fireEvent.click(screen.getByRole('button', { name: '另一段对话' }));
+    expect(screen.queryByRole('button', { name: '关闭笔记' })).not.toBeInTheDocument();
+    expect(screen.getByText('另一个问题')).toBeInTheDocument();
+  });
+
   it('waits for uncached history before restoring the source conversation', async () => {
     const sourceNote = { noteId: 'source-1', title: '学习时间限制', content: '周三只能学习20分钟。', score: 1 };
     localStorage.setItem('chat_sessions_user-1', JSON.stringify([{ ...history, relatedNotes: [sourceNote] }]));
     const page = render(<ChatPage />);
     fireEvent.click(screen.getByRole('button', { name: '上次的对话' }));
     fireEvent.click(screen.getByRole('button', { name: /学习时间限制/ }));
+    fireEvent.click(screen.getByRole('button', { name: '打开完整笔记' }));
     page.unmount();
     localStorage.clear();
 
@@ -648,6 +691,7 @@ describe('chat page entry', () => {
     fireEvent.click(screen.getByRole('button', { name: '上次的对话' }));
     (screen.getByRole('main').firstElementChild as HTMLElement).scrollTop = 240;
     fireEvent.click(screen.getByRole('button', { name: /学习时间限制/ }));
+    fireEvent.click(screen.getByRole('button', { name: '打开完整笔记' }));
     page.unmount();
     authFetch.mockResolvedValue(sessionsResponse([{ ...cachedHistory, messages: [...history.messages, { role: 'assistant', content: '服务端补载的回答' }] }]));
     // jsdom has no layout; model the observable effect of scrolling the end anchor into view.
@@ -673,6 +717,7 @@ describe('chat page entry', () => {
     const page = render(<ChatPage />);
     fireEvent.click(screen.getByRole('button', { name: '上次的对话' }));
     fireEvent.click(screen.getByRole('button', { name: /学习时间限制/ }));
+    fireEvent.click(screen.getByRole('button', { name: '打开完整笔记' }));
     page.unmount();
     const returnedPage = render(<ChatPage />);
     await loadServerHistory();
@@ -690,6 +735,7 @@ describe('chat page entry', () => {
     const page = render(<StrictMode><ChatPage /></StrictMode>);
     fireEvent.click(screen.getByRole('button', { name: '上次的对话' }));
     fireEvent.click(screen.getByRole('button', { name: /学习时间限制/ }));
+    fireEvent.click(screen.getByRole('button', { name: '打开完整笔记' }));
     page.unmount();
 
     render(<StrictMode><ChatPage /></StrictMode>);
@@ -703,6 +749,7 @@ describe('chat page entry', () => {
     const page = render(<ChatPage />);
     fireEvent.click(screen.getByRole('button', { name: '上次的对话' }));
     fireEvent.click(screen.getByRole('button', { name: /学习时间限制/ }));
+    fireEvent.click(screen.getByRole('button', { name: '打开完整笔记' }));
     page.unmount();
     const otherHistory: IChat = { id: 'history-2', title: '另一个话题', messages: [{ role: 'user', content: '我选择了另一个话题' }] };
     localStorage.setItem('chat_sessions_user-1', JSON.stringify([otherHistory]));
