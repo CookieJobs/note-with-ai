@@ -10,6 +10,7 @@ const { pathname, push, readUser, unread, profileSave, fetchNotes } = vi.hoisted
 }));
 vi.mock('next/navigation', () => ({ usePathname: pathname, useRouter: () => ({ push }) }));
 vi.mock('../../utils/auth', () => ({ getUser: readUser, logout: vi.fn(), authFetch: fetchNotes }));
+vi.mock('../../app/notes/components/NotesCalendar', () => ({ default: () => null }));
 vi.mock('../../services/inspirationService', () => ({ getUnviewedInspirationCount: unread }));
 vi.mock('../../hooks/useInspirationSettings', () => ({ useInspirationSettings: () => ({ settings: { enabled: false }, loading: false, saving: false, error: null, refetch: vi.fn(), setEnabled: vi.fn() }) }));
 vi.mock('../../services/userService', () => ({ updateProfile: profileSave, changePassword: vi.fn() }));

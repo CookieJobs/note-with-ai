@@ -140,3 +140,6 @@ button.primary { background: var(--ws-accent); color: white; border-color: var(-
 @media (max-width: 767px) { button.legacyChatHistoryToggle { display: inline-flex; align-items: center; gap: 6px; position: fixed; top: 12px; right: 16px; z-index: 30; min-height: 32px; padding: 4px 8px; border: 1px solid var(--ws-line); border-radius: 8px; color: var(--ws-ink); background: var(--ws-bg); font-size: 12px; } }
 
 .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+
+/* Notes tab alone replaces recent-note links with the full recording calendar. */
+.notesCalendar { margin-top: 29px; padding: 0 12px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; }

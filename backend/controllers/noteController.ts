@@ -1,3 +1,4 @@
+import { parseSearchQuery, calendarMonthRange } from '../services/noteListQueries';
 import { Request, Response, NextFunction } from 'express';
 import { noteService } from '../services/noteService';
 import { ResponseHandler } from '../utils/errorHandler';
@@ -129,11 +130,20 @@ class NoteController {
     const user = await UserValidator.authenticateUser(req);
     const rawLimit = req.query.limit;
     const rawCursor = req.query.cursor;
+    const q = parseSearchQuery(req.query.q);
     const page = await noteService.getNotesPage(user._id.toString(), {
+      q,
       ...(rawLimit === undefined ? {} : { limit: Number(rawLimit) }),
       ...(rawCursor === undefined ? {} : { cursor: typeof rawCursor === 'string' ? rawCursor : '' }),
     });
     ResponseHandler.success(res, page, '获取笔记成功');
+  }
+
+  async getNotesCalendar(req: Request, res: Response, next: NextFunction) {
+    const user = await UserValidator.authenticateUser(req);
+    calendarMonthRange(req.query.month);
+    const calendar = await noteService.getNotesCalendar(user._id.toString(), req.query.month as string);
+    ResponseHandler.success(res, calendar, '获取笔记月历成功');
   }
 
   async getNote(req: Request, res: Response, next: NextFunction) {

@@ -2,6 +2,14 @@
 
 系统边界见[现行架构](../../ARCHITECTURE_DOCUMENTATION.md)，存储格式见[模型说明](../models/README.md)。本目录负责业务写入、异步富化和聊天来源的信任边界。
 
+## 笔记列表只读查询
+
+[noteService.getNotesPage](noteService.ts) 仍按当前账号及 `createdAt DESC, _id DESC` 游标分页。可选 `q` 经过 [noteListQueries](noteListQueries.ts) 校验，最多 100 个 Unicode 字符，完整字符串按英文不区分大小写的字面量匹配；正文优先非空 `contentText`，否则回退原 `content`。历史 Markdown 的地址和标记可命中，不搜索 AI 字段；不写库、不做历史迁移。搜索游标绑定关键词，普通列表旧游标继续兼容。
+
+`GET /api/notes/calendar?month=YYYY-MM` 由当前认证身份查询，对北京时间自然月的 `createdAt` 范围聚合，返回 month、timezone、noteCount、recordedDayCount、days（有记录的日期与数量）。聚合显式使用 ObjectId 账号限制；只统计当前仍存在的笔记，不读取已加载分页、不调用模型。静态路由注册在 `/:id` 之前。
+
+验证：`noteListQueries.test.ts`、`noteReadQueries.test.ts`；真实 Mongo 查询测试 `noteReadQueries.mongo.test.ts` 默认跳过，只允许 `NOTE_READ_MONGO_TEST_URI=mongodb://127.0.0.1:27028/nwai_notes_feed_test_<suffix>` 的独立临时测试数据库，测试会清除该数据库，不能指向业务库。
+
 ## 笔记写入与派生任务
 
 - [NoteUpdateOrchestrator.ts](NoteUpdateOrchestrator.ts) 是 Note 正文与标题的核心写入入口，提供 `create`、`update`，负责规范化、revision CAS、派生状态失效及任务安排。标题可空；标签写入返回 `NOTE_TAGS_RETIRED`。

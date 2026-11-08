@@ -1,5 +1,5 @@
 /*
-Input: 真实笔记列表、highlight 来源、fromChat 原会话标记、新建意图与持久工作区
+Input: 真实卡片列表、只读搜索/月历、highlight 来源、fromChat 原会话标记、新建意图与持久工作区
 Output: 列表 / 阅读 / 编辑流程；聊天来源显示固定返回栏，相关跳转保留原会话，返回经过未保存保护
 Pos: notes 页面入口；修改时同步 ./README.md
 */
@@ -8,7 +8,7 @@ Pos: notes 页面入口；修改时同步 ./README.md
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import dynamicComponent from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, PencilLine, Plus } from 'lucide-react';
+import { ArrowLeft, PencilLine, Plus, Search, X } from 'lucide-react';
 import { getUser, isAuthenticated } from '../../utils/auth';
 import { noteReferenceDisplay } from '../../utils/noteReference';
 import { startNoteConversation } from '../../services/noteConversation';
@@ -19,23 +19,14 @@ import { NoteWriteConflict, useNotes } from './hooks/useNotes';
 import type { CreateNoteCommand, Note } from './hooks/useNotes';
 import { useFocusedSourceNote } from './hooks/useFocusedSourceNote';
 import styles from './NotesWorkspace.module.scss';
+import NotesFeed from './components/NotesFeed';
+import { useNoteSearch } from './hooks/useNoteSearch';
 
 const NoteWorkspaceReader = dynamicComponent(() => import('./components/NoteWorkspaceReader'), { ssr: false, loading: () => <p role="status">正在加载阅读视图…</p> });
 const NoteWorkspaceEditor = dynamicComponent(() => import('./components/NoteWorkspaceEditor'), { ssr: false, loading: () => <p role="status">正在加载编辑器…</p> });
 const RelatedNotesDrawer = dynamicComponent(() => import('./components/RelatedNotesDrawer'), { ssr: false });
 
 export const dynamic = 'force-dynamic';
-
-function creationGroup(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '更早的记录';
-  const today = new Date();
-  const sameDay = (other: Date) => other.getFullYear() === date.getFullYear() && other.getMonth() === date.getMonth() && other.getDate() === date.getDate();
-  if (sameDay(today)) return '今天';
-  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-  if (sameDay(yesterday)) return '昨天';
-  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(date);
-}
 
 function NotesContent() {
   const router = useRouter();
@@ -63,6 +54,21 @@ function NotesContent() {
   const user = useAuthGuard({ isAuthenticated, getUser, routerPush: router.push, redirectTo: '/auth' });
   const { notes, isLoading, isSuccess, deleteNote, createNote, updateNote, refreshRecommendCache, refetchNotes,
     loadMoreNotes, hasMoreNotes, isLoadingMore, loadMoreError } = useNotes(user, { onError: setError });
+  const [searchInput, setSearchInput] = useState('');
+  const [query, setQuery] = useState('');
+  const [composingSearch, setComposingSearch] = useState(false);
+  const [readVersion, setReadVersion] = useState(0);
+  const scrollPositions = useRef(new Map<string, number>());
+  const lastOpened = useRef<string | null>(null);
+  const lastOpenedIndex = useRef(0);
+  const search = useNoteSearch(user?.id ?? null, query, readVersion);
+  const listNotes = query ? search.notes : notes;
+  useEffect(() => {
+    if (composingSearch) return;
+    if (!searchInput.trim()) { setQuery(''); return; }
+    const timer = window.setTimeout(() => setQuery(searchInput.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput, composingSearch]);
   const highlightId = searchParams.get('highlight') || '';
   const fromChat = searchParams.get('fromChat') || '';
   useEffect(() => {
@@ -89,6 +95,9 @@ function NotesContent() {
     actSafely(() => { setEditing(null); setRelatedId(null); router.push(href, { scroll: false }); });
   }, [actSafely, router]);
   const openNote = useCallback((id: string) => {
+    lastOpened.current = id;
+    const cards = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('[data-note-id]') ?? []);
+    lastOpenedIndex.current = Math.max(0, cards.findIndex(card => card.dataset.noteId === id));
     listScroll.current = listRef.current?.scrollTop ?? listScroll.current;
     const origin = returnContext ? '&fromChat=' + encodeURIComponent(returnContext.sessionId) : '';
     go('/notes?highlight=' + encodeURIComponent(id) + origin);
@@ -120,15 +129,29 @@ function NotesContent() {
     setDiscussionError('');
     if (detailRef.current) detailRef.current.scrollTop = 0;
   }, [highlightId]);
+  const previousDetail = useRef(detail);
+  const restoreCardFocus = useRef(false);
   useEffect(() => {
-    if (!detail && listRef.current) listRef.current.scrollTop = listScroll.current;
-  }, [detail]);
+    if (previousDetail.current && !detail) restoreCardFocus.current = true;
+    previousDetail.current = detail;
+    if (!detail && !search.isLoading && listRef.current) {
+      const top = scrollPositions.current.get(query) ?? 0;
+      listScroll.current = top;
+      listRef.current.scrollTop = top;
+      if (restoreCardFocus.current && lastOpened.current) {
+        const cards = Array.from(listRef.current.querySelectorAll<HTMLButtonElement>('[data-note-id]'));
+        const target = cards.find(card => card.dataset.noteId === lastOpened.current) ?? cards[Math.min(lastOpenedIndex.current, cards.length - 1)];
+        target?.focus({ preventScroll: true });
+        if (target) restoreCardFocus.current = false;
+      }
+    }
+  }, [detail, query, listNotes.length, search.isLoading]);
   const lastUser = useRef(user?.id);
   useEffect(() => {
     if (lastUser.current === user?.id) return;
     const previousUser = lastUser.current;
     lastUser.current = user?.id;
-    if (previousUser) { setEditing(null); setRelatedId(null); createdNote.current = null; }
+    if (previousUser) { setEditing(null); setRelatedId(null); createdNote.current = null; setSearchInput(''); setQuery(''); scrollPositions.current.clear(); lastOpened.current = null; }
   }, [user?.id]);
 
   const setRecentNotes = workspace?.setRecentNotes;
@@ -141,9 +164,9 @@ function NotesContent() {
   const updateFocusedNote = useCallback(async (...args: Parameters<typeof updateNote>) => {
     const ownership = captureMutation(args[0].noteId);
     try {
-      const canonical = await updateNote(...args); applyCanonical(canonical, ownership); return canonical;
+      const canonical = await updateNote(...args); applyCanonical(canonical, ownership); setReadVersion(value => value + 1); return canonical;
     } catch (cause) {
-      if (cause instanceof NoteWriteConflict) applyCanonical(cause.current, ownership);
+      if (cause instanceof NoteWriteConflict) { applyCanonical(cause.current, ownership); setReadVersion(value => value + 1); }
       throw cause;
     }
   }, [updateNote, captureMutation, applyCanonical]);
@@ -155,8 +178,8 @@ function NotesContent() {
     applyRecommendCache(focusedNote.revision, cache, ownership);
   }, [focusedNote, captureMutation, applyRecommendCache, refreshRecommendCache]);
   const create = useCallback(async (command: CreateNoteCommand) => {
-    const note = await createNote(command); createdNote.current = note; return note;
-  }, [createNote]);
+    const note = await createNote(command); createdNote.current = note; setReadVersion(value => value + 1); workspace?.refreshNotesCalendar?.(); return note;
+  }, [createNote, workspace]);
 
   useEffect(() => {
     if (!pendingDelete) return;
@@ -168,17 +191,11 @@ function NotesContent() {
     };
   }, [pendingDelete]);
 
-  const groups: { label: string; notes: Note[] }[] = [];
-  notes.forEach((note) => {
-    const label = creationGroup(note.createdAt);
-    if (groups[groups.length - 1]?.label === label) groups[groups.length - 1].notes.push(note);
-    else groups.push({ label, notes: [note] });
-  });
   return (
     <main className={styles.workspace + (relatedId ? ' ' + styles.withRelated : '')}>
       <div ref={listRef} data-testid="notes-list-scroll" className={styles.scroll} hidden={detail}
-        onScroll={(event) => { listScroll.current = event.currentTarget.scrollTop; }}>
-        <div className={styles.page}>
+        onScroll={(event) => { if (!detail && !search.isLoading) { listScroll.current = event.currentTarget.scrollTop; scrollPositions.current.set(query, listScroll.current); } }}>
+        <div className={styles.listPage} data-notes-list-page>
           <header className={styles.pageHeader}>
             <p className={styles.date}>{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</p>
             <h1>笔记</h1><p>写下此刻。之后可以把它交给 AI，继续想下去。</p>
@@ -186,26 +203,30 @@ function NotesContent() {
           <button type="button" className={styles.quickCapture} onClick={() => go('/notes?compose=1')} aria-label="打开快速记录">
             <span className={styles.captureIcon}><PencilLine size={16} /></span><span>记下一个想法…</span><Plus size={17} />
           </button>
-          <div className={styles.listBar}><h2>最近记录 <span>已加载 {notes.length} 条</span></h2><span>按创建时间</span></div>
-          {error && <div className={styles.error} role="alert">{error} <button type="button" className={styles.button} onClick={() => { setError(''); void refetchNotes(); }}>重试</button></div>}
-          {isLoading && !notes.length ? <p className={styles.empty} role="status">正在加载笔记…</p> : !notes.length && !error ? <div className={styles.empty}><h3>从一个想法开始</h3><p>写下此刻的思考，让它们慢慢产生联系。</p></div> : groups.map((group, index) => (
-            <section className={styles.group} key={group.label + ':' + index} aria-label={group.label}>
-              <h3>{group.label}</h3>
-              {group.notes.map((note) => {
-                const display = noteReferenceDisplay(note);
-                return <button type="button" key={note._id} className={styles.noteRow} onClick={() => openNote(note._id)} aria-label={'阅读笔记：' + display.label}>
-                  {note.title?.trim() && <span className={styles.rowHeading}>{display.label}</span>}
-                  <span className={styles.excerpt}>{note.excerpt || note.contentText || note.content || (!note.title?.trim() ? display.label : '')}</span>
-                  {display.dateLabel && <span className={styles.noteMeta}>{display.dateLabel}</span>}
-                </button>;
-              })}
-            </section>
-          ))}
-          {!!notes.length && <footer className={styles.listFooter}>
-            {loadMoreError && <p role="alert" className={styles.error}>{loadMoreError}</p>}
-            {(hasMoreNotes || loadMoreError) && <button type="button" className={styles.button} disabled={isLoadingMore} onClick={() => void loadMoreNotes()}>{isLoadingMore ? '正在加载…' : loadMoreError ? '重试加载更早的笔记' : '加载更早的笔记'}</button>}
-            {!hasMoreNotes && !loadMoreError && <span>已经看到最早的记录</span>}
-          </footer>}
+          <div className={styles.listTools}>
+            <h2>{query ? '搜索结果' : '最近记录'} <span>已加载 {listNotes.length} 条</span></h2>
+            <div className={styles.searchBox}>
+              <Search size={16} aria-hidden="true" />
+              <input type="search" aria-label="搜索笔记" placeholder="找找曾经写下的想法" value={searchInput} maxLength={100}
+                onCompositionStart={() => setComposingSearch(true)} onCompositionEnd={() => setComposingSearch(false)}
+                onChange={event => setSearchInput(event.target.value)} />
+              {searchInput && <button type="button" aria-label="清除搜索" className={styles.iconButton} onClick={() => { setSearchInput(''); setQuery(''); }}><X size={15} /></button>}
+            </div>
+          </div>
+          <div className={styles.feedLayout}>
+            <div className={styles.feedMain} aria-busy={query ? search.isLoading : isLoading}>
+              {(query ? search.error : error) && <div className={styles.error} role="alert">{query ? search.error : error} <button type="button" className={styles.button} onClick={() => { if (query) void search.retry(); else { setError(''); void refetchNotes(); } }}>重试</button></div>}
+              {(query ? search.isLoading : isLoading && !notes.length) ? <p className={styles.empty} role="status">{query ? '正在搜索笔记…' : '正在加载笔记…'}</p> : !listNotes.length && !(query ? search.error : error) ? <div className={styles.empty}>
+                <h3>{query ? '没有找到相关笔记' : '从一个想法开始'}</h3>
+                {query ? <button type="button" className={styles.button} onClick={() => { setSearchInput(''); setQuery(''); }}>清除搜索条件</button> : <p>写下此刻的思考，让它们慢慢产生联系。</p>}
+              </div> : <NotesFeed notes={listNotes} onOpen={openNote} />}
+              {!!listNotes.length && <footer className={styles.listFooter}>
+                {(query ? search.loadMoreError : loadMoreError) && <p role="alert" className={styles.error}>{query ? search.loadMoreError : loadMoreError}</p>}
+                {(query ? search.hasMore || search.loadMoreError : hasMoreNotes || loadMoreError) && <button type="button" className={styles.button} disabled={query ? search.isLoadingMore : isLoadingMore} onClick={() => { if (query) void search.loadMore(); else void loadMoreNotes(); }}>{(query ? search.isLoadingMore : isLoadingMore) ? '正在加载…' : (query ? search.loadMoreError : loadMoreError) ? '重试加载更早的笔记' : '加载更早的笔记'}</button>}
+                {!(query ? search.hasMore || search.loadMoreError : hasMoreNotes || loadMoreError) && <span>{query ? '已显示全部搜索结果' : '已经看到最早的记录'}</span>}
+              </footer>}
+            </div>
+          </div>
         </div>
       </div>
       {detail && <section className={styles.detail} aria-label="笔记详情">
@@ -268,6 +289,7 @@ function NotesContent() {
               const isCurrent = () => active.current && discussionOwner.current === owner && owner.noteId === id;
               try {
                 await deleteNote(id);
+                setReadVersion(value => value + 1); workspace?.refreshNotesCalendar?.();
                 if (!isCurrent()) return;
                 focused.markUnavailable(id); setPendingDelete(null); go('/notes');
               } catch (cause) {

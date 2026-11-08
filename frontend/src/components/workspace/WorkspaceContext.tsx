@@ -36,6 +36,7 @@ export type WorkspaceContextValue = {
   requestAction: (action: () => void) => void;
   registerEditor: (editor: WorkspaceEditor) => () => void;
   setRecentNotes: (notes: WorkspaceRecentNote[]) => void;
+  refreshNotesCalendar?: () => void;
   user?: User | null;
   openSettings?: (tab?: WorkspaceSettingsTab) => void;
   openAccountDialog?: (kind: WorkspaceAccountDialogKind) => void;

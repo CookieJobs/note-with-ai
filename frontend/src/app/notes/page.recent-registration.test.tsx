@@ -13,6 +13,8 @@ import WorkspaceRoot from '../../components/workspace/WorkspaceRoot';
 const mocks = vi.hoisted(() => ({ pathname: '/notes', fetch: vi.fn(), router: { push: vi.fn(), replace: vi.fn() } }));
 vi.mock('next/navigation', () => ({ usePathname: () => mocks.pathname, useSearchParams: () => new URLSearchParams(), useRouter: () => mocks.router }));
 vi.mock('../../utils/auth', () => ({ getUser: () => ({ id: 'recent-user', username: '最近笔记用户' }), isAuthenticated: () => true, authFetch: mocks.fetch, logout: vi.fn() }));
+// Calendar requests are independent of the recent-note projection exercised here.
+vi.mock('./components/NotesCalendar', () => ({ default: () => null }));
 vi.mock('../../services/inspirationService', () => ({ getUnviewedInspirationCount: async () => 0 }));
 vi.mock('../../hooks/useInspirationSettings', () => ({ useInspirationSettings: () => ({ settings: null, loading: false, saving: false, error: null, refetch: vi.fn(), setEnabled: vi.fn() }) }));
 
@@ -83,9 +85,10 @@ describe('真实笔记页登记最近记录', () => {
     expect(page.client.getQueryData(['notes'])).toBeUndefined();
     page.go('/notes');
     await screen.findByText('正在加载笔记…');
-    expect(recent().getByRole('link', { name: '真实服务笔记' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', {name:'最近笔记'})).not.toBeInTheDocument();
     await act(async () => first.resolve(reply()));
     expect(await screen.findByRole('button', { name: '加载更早的笔记' })).toBeInTheDocument();
+    page.go('/profile');
     expect(recent().getByRole('link', { name: '真实服务笔记' })).toBeInTheDocument();
   });
 });

@@ -1,4 +1,6 @@
+import { Types } from 'mongoose';
 import { Note } from '../models/Note';
+import { parseSearchQuery, buildNoteSearchFilter, calendarMonthRange } from './noteListQueries';
 import UserProfile from '../models/UserProfile';
 import UserNoteTopicIndex from '../models/UserNoteTopicIndex';
 import { chatWithDeepSeek } from './llmService';
@@ -37,11 +39,15 @@ class NoteService {
     });
   }
 
-  async getNotesPage(userId: string, options: { limit?: number; cursor?: string | null }): Promise<NotePage> {
+  async getNotesPage(userId: string, options: { limit?: number; cursor?: string | null; q?: string }): Promise<NotePage> {
     const limit = parseNotePageLimit(options.limit);
-    const cursor = options.cursor ? decodeNoteCursor(options.cursor) : null;
+    const query = parseSearchQuery(options.q);
+    const cursor = options.cursor ? decodeNoteCursor(options.cursor, query) : null;
     const filter: Record<string, unknown> = { userId };
-    if (cursor) filter.$or = [{ createdAt: { $lt: cursor.createdAt } }, { createdAt: cursor.createdAt, _id: { $lt: cursor.id } }];
+    const conditions: Record<string, unknown>[] = [];
+    if (query) conditions.push(buildNoteSearchFilter(query));
+    if (cursor) conditions.push({ $or: [{ createdAt: { $lt: cursor.createdAt } }, { createdAt: cursor.createdAt, _id: { $lt: cursor.id } }] });
+    if (conditions.length) filter.$and = conditions;
     const records = await Note.find(filter).sort({ createdAt: -1, _id: -1 }).limit(limit + 1);
     const hasMore = records.length > limit;
     const pageRecords = hasMore ? records.slice(0, limit) : records;
@@ -50,7 +56,18 @@ class NoteService {
       return { ...toNoteDto(value), enrichment: getEnrichmentView(value) };
     });
     const last = pageRecords[pageRecords.length - 1];
-    return { notes, pageInfo: { hasMore, nextCursor: hasMore && last ? encodeNoteCursor({ createdAt: last.createdAt, id: last._id.toString() }) : null } };
+    return { notes, pageInfo: { hasMore, nextCursor: hasMore && last ? encodeNoteCursor({ createdAt: last.createdAt, id: last._id.toString() }, query) : null } };
+  }
+
+  async getNotesCalendar(userId: string, month: string) {
+    const { start, end } = calendarMonthRange(month);
+    const records = await Note.aggregate<{ _id: string; count: number }>([
+      { $match: { userId: new Types.ObjectId(userId), createdAt: { $gte: start, $lt: end } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Shanghai' } }, count: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]);
+    const days = records.map(({ _id, count }) => ({ date: _id, count }));
+    return { month, timezone: 'Asia/Shanghai', noteCount: days.reduce((sum, day) => sum + day.count, 0), recordedDayCount: days.length, days };
   }
 
   async getNote(userId: string, noteId: string): Promise<NoteListItem> {

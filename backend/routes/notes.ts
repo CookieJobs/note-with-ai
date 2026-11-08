@@ -1,7 +1,7 @@
 /*
-Input: 待补充
-Output: 待补充
-Pos: 后端 模块
+Input: 当前认证账号、笔记读写参数与只读查询条件
+Output: 笔记路由、全库字面量搜索和北京时间月历
+Pos: 笔记 API 路由；静态查询注册于 /:id 之前
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 // backend/routes/notes.ts
@@ -29,7 +29,7 @@ router.get('/test', (req, res) => {
   res.json({ message: 'notes 路由已挂载' });
 });
 
-// 获取当前用户的所有笔记，按创建时间倒序排列
+// 当前用户笔记分页及可选字面量搜索，按创建时间倒序
 router.get('/', authenticateToken, asyncHandler((req, res, next) => noteController.getNotes(req, res, next)));
 
 // 添加笔记
@@ -48,6 +48,8 @@ router.post('/embedding/ensure', authenticateToken, validate(ensureSchema), asyn
 
 // 当前用户 summary 补齐 (必须在 /:id 之前)
 router.post('/summary/ensure', authenticateToken, validate(ensureSchema), asyncHandler((req, res, next) => noteController.ensureSummaries(req, res, next)));
+
+router.get('/calendar', authenticateToken, asyncHandler((req, res, next) => noteController.getNotesCalendar(req, res, next)));
 
 router.get('/:id', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.getNote(req, res, next)));
 
