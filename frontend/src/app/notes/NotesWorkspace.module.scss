@@ -4,7 +4,6 @@
   background: var(--ws-bg); color: var(--ws-ink);
   button { font-family: inherit; cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
-  button:focus-visible, input:focus-visible { outline: 2px solid var(--ws-focus); outline-offset: 3px; }
 }
 .scroll { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .scroll[hidden] { display: none; }

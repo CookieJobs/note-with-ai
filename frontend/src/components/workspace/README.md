@@ -18,4 +18,6 @@
 
 [useWorkspacePreferences](useWorkspacePreferences.ts) 校验并恢复本机主题、字号、动效和侧栏偏好。[Workspace.module.scss](Workspace.module.scss) 将 tokens 和旧变量桥接限制在根容器及工作区弹层，不给 html/body 设置全局深色。实色按钮使用 `button.类名` 抵抗 Tailwind reset，默认、悬停、禁用和深浅主题均需浏览器检查。
 
+焦点外框使用零优先级的 `:where(.root :focus-visible)` 作为兜底，让输入框、搜索容器、富文本编辑器各自的焦点样式优先生效，避免点击输入时叠加内部蓝框；笔记页复用外壳规则。按钮和链接仍保留键盘焦点提示。修改后须在浏览器检查鼠标点击与 Tab 导航，包含深浅主题。
+
 回归入口：[外壳与账户隔离](Workspace.test.tsx)、[导航保护](useWorkspaceNavigation.test.tsx)、[最近笔记登记](../../app/notes/page.recent-registration.test.tsx)。原生焦点、长历史滚动和断点布局的验收范围属于发布记录，不能用状态测试代替。

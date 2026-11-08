@@ -67,11 +67,12 @@
   button { cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
   a { color: inherit; text-decoration: none; }
-  :focus-visible { outline: 2px solid var(--ws-focus); outline-offset: 3px; }
   ::selection { background: rgba(38, 111, 225, .2); }
   h1, h2, h3 { text-wrap: balance; }
   &[data-reduce-motion='true'] *, &[data-reduce-motion='true'] *::before, &[data-reduce-motion='true'] *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+// Fallback only: component-owned input/editor focus styles must win regardless of CSS load order.
+:where(.root :focus-visible) { outline: 2px solid var(--ws-focus); outline-offset: 3px; }
 .sidebar { width: 260px; flex: 0 0 260px; padding: 12px 10px 10px; display: flex; flex-direction: column; background: var(--ws-sidebar); position: relative; z-index: 30; }
 .brandRow { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 4px 0 6px; margin-bottom: 17px; }
 .brand { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; white-space: nowrap; }
