@@ -23,3 +23,5 @@
 焦点外框使用零优先级的 `:where(.root :focus-visible)` 作为兜底，让输入框、搜索容器、富文本编辑器各自的焦点样式优先生效，避免点击输入时叠加内部蓝框；笔记页复用外壳规则。按钮和链接仍保留键盘焦点提示。修改后须在浏览器检查鼠标点击与 Tab 导航，包含深浅主题。
 
 回归入口：[外壳与账户隔离](Workspace.test.tsx)、[导航保护](useWorkspaceNavigation.test.tsx)、[最近笔记登记](../../app/notes/page.recent-registration.test.tsx)。原生焦点、长历史滚动和断点布局的验收范围属于发布记录，不能用状态测试代替。
+
+侧栏品牌使用 [BrandIcon](../brand/BrandIcon.tsx) 的蓝色折页图形，继续与 NoteWithAI 文字独立排版；保留 29px 图形容器、原间距与折叠交互，不再叠加旧蓝色底板。

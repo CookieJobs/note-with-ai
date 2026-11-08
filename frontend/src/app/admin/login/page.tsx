@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { BookOpen, ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+import BrandIcon from '../../../components/brand/BrandIcon';
 import Link from 'next/link';
 
 import styles from '../admin.module.scss';
@@ -43,7 +44,7 @@ export default function AdminLoginPage() {
     <main className={`${styles.adminTheme} ${styles.login}`}>
       <Link href="/notes" className={styles.loginBack}><ArrowLeft size={16} aria-hidden="true" />返回笔记应用</Link>
       <form id="admin-login-form" method="post" onSubmit={(event) => void submit(event)}>
-        <div className={styles.loginBrand}><span className={styles.brandMark}><BookOpen size={22} aria-hidden="true" /></span><span>NoteWithAI</span></div>
+        <div className={styles.loginBrand}><span className={styles.brandMark}><BrandIcon size={36} /></span><span>NoteWithAI</span></div>
         <div className={styles.loginHeading}><h1>登录运营后台</h1><p>查看产品运行情况，处理用户与 AI 服务问题。</p></div>
         <label>
           邮箱

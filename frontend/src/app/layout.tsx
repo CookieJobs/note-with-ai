@@ -1,6 +1,6 @@
 /*
 Input: 页面内容、全局服务及工作区路由边界
-Output: 公共Providers，普通用户页进入隔离工作区，认证和后台保持原样
+Output: 公共Providers与标题元数据；图标由 App Router 文件约定统一管理
 Pos: 前端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
@@ -20,9 +20,6 @@ const interVariable = 'font-sans';
 export const metadata: Metadata = {
   title: 'NoteWithAI',
   description: 'AI assisted note-taking app',
-  icons: {
-    icon: '/icon.svg',
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import BrandIcon from './brand/BrandIcon';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { getUser, logout } from '../utils/auth';
@@ -84,7 +85,7 @@ function LegacyTopNavigation({ onMenuClick }: TopNavigationProps) {
               <Menu size={20} />
             </button>
           )}
-          <h1 className={styles.logo}>NoteWithAI</h1>
+          <h1 className={styles.logo}><BrandIcon size={28} /><span>NoteWithAI</span></h1>
         </div>
 
         {/* 中间导航菜单 */}

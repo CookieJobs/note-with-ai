@@ -9,6 +9,7 @@
         "lint": "eslint .",
         "typecheck": "tsc --noEmit --incremental false",
         "test": "vitest run",
+        "brand:assets": "node scripts/generate-brand-assets.mjs",
         "check:route-budgets": "node scripts/check-route-budgets.mjs",
         "test:route-budgets": "node --test scripts/check-route-budgets.test.mjs"
     },

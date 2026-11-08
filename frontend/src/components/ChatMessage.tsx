@@ -1,6 +1,6 @@
 /*
 Input: 聊天消息、开场笔记上下文、实际来源快照与旧版讨论笔记
-Output: 标识 AI 回答与历史开场，展示 Markdown 回答及可展开的真实来源快照
+Output: 用统一品牌标识 AI 回答与历史开场，展示 Markdown 回答及可展开的真实来源快照
 Pos: 前端聊天消息呈现组件
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
@@ -12,6 +12,7 @@ import styles from './ChatMessage.module.scss';
 import { IRelatedNote, ISourceSnapshot } from '../types';
 import { noteReferenceDisplay } from '../utils/noteReference';
 import ChatOpeningNote from './ChatOpeningNote';
+import BrandIcon from './brand/BrandIcon';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -52,7 +53,7 @@ export default function ChatMessage({ role, content, sourceSnapshot, relatedNote
       ) : (
         // AI消息：直接渲染内容，支持Markdown
         <div className={`${styles.assistantMessage} ${discussionNote ? styles.openingMessage : ''}`} role={discussionNote ? 'region' : undefined} aria-label={discussionNote ? 'AI 开场提问' : undefined}>
-          {!discussionNote && <div className={styles.assistantIdentity}><span aria-hidden="true">✦</span>NoteWithAI</div>}
+          {!discussionNote && <div className={styles.assistantIdentity}><BrandIcon size={16} />NoteWithAI</div>}
           {discussionNote && <div className={styles.openingIdentity}><span className={styles.aiMark} aria-hidden="true">AI</span><span>AI 开场提问</span></div>}
           {!content && isLoading ? (
             <div className={styles.loadingDots}>

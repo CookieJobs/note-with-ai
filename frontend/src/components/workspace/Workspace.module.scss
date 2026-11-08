@@ -76,7 +76,7 @@
 .sidebar { width: 260px; flex: 0 0 260px; padding: 12px 10px 10px; display: flex; flex-direction: column; background: var(--ws-sidebar); position: relative; z-index: 30; }
 .brandRow { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 4px 0 6px; margin-bottom: 17px; }
 .brand { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; white-space: nowrap; }
-.brandMark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 8px; background: var(--ws-accent); color: white; }
+.brandMark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 8px; }
 .iconButton { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 8px; color: var(--ws-secondary); background: transparent; flex-shrink: 0; &:hover { background: var(--ws-hover); color: var(--ws-ink); } }
 .newNote { min-height: 40px; padding: 0 11px; display: flex; align-items: center; gap: 10px; border: 0; color: var(--ws-ink); background: transparent; border-radius: 10px; margin-bottom: 18px; text-align: left; font-size: 14px; &:hover { background: var(--ws-hover); } }
 .chatHistory { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; > p { color: var(--ws-muted); padding: 10px; font-size: 12px; } }

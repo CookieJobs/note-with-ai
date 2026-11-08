@@ -24,6 +24,9 @@
   margin-left: auto;
 }
 .logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   margin: 0;
   color: var(--workspace-ink);
   font-size: 17px;

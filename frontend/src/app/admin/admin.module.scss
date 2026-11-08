@@ -62,7 +62,7 @@
   background: var(--admin-sidebar);
 }
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 10px; color: var(--admin-ink); }
-.brandMark { display: inline-flex; flex: 0 0 36px; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: var(--admin-accent); color: white; }
+.brandMark { display: inline-flex; flex: 0 0 36px; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; }
 .brandName { display: block; font-size: 17px; font-weight: 700; letter-spacing: -.03em; }
 .brandCaption { display: block; font-size: 11px; color: var(--admin-muted); margin-top: 1px; }
 .navCaption { margin: 36px 12px 12px; color: var(--admin-muted); font-size: 11px; font-weight: 600; }

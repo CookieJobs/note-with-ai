@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import styles from './auth.module.scss';
+import BrandIcon from '../../components/brand/BrandIcon';
 
 type AuthMode = 'login' | 'register' | 'reset';
 
@@ -176,7 +177,7 @@ export default function AuthPage() {
     <div className={styles.container}>
       <div className={styles.authCard}>
         <div className={styles.authHeader}>
-          <span className={styles.brandLogo}>📝</span>
+          <div className={styles.brandLogo}><BrandIcon size={48} /><span>NoteWithAI</span></div>
           <h2 className={styles.authTitle}>{modeLabel}</h2>
           <p className={styles.authSubtitle}>{modeSubtitle}</p>
         </div>

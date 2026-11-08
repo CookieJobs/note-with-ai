@@ -2,7 +2,8 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Activity, ArrowUpRight, BookOpen, LayoutDashboard, LogOut, MessageSquare, ScrollText, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
+import BrandIcon from '../../../components/brand/BrandIcon';
+import { Activity, ArrowUpRight, LayoutDashboard, LogOut, MessageSquare, ScrollText, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import styles from '../admin.module.scss';
@@ -131,7 +132,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       <a href="#admin-content" className={styles.skipLink}>跳到主要内容</a>
       <aside className={styles.sidebar}>
         <Link className={styles.brand} href="/admin" aria-label="NoteWithAI 运营后台首页">
-          <span className={styles.brandMark}><BookOpen size={20} aria-hidden="true" /></span>
+          <span className={styles.brandMark}><BrandIcon size={36} /></span>
           <span><span className={styles.brandName}>NoteWithAI</span><span className={styles.brandCaption}>运营后台</span></span>
         </Link>
         <span className={styles.navCaption}>工作空间</span>

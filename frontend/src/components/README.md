@@ -15,3 +15,5 @@
 [ChatNotePreview](ChatNotePreview.tsx) 是聊天内的轻量只读原文面板，复用独立来源读取 hook 和按需加载的富文本 viewer，保留无标题、格式与软换行。不提供编辑、关联推荐或新建讨论；阅读完整笔记和关闭是两个常规操作。桌面替换相关栏，窄屏抽屉及焦点由聊天页负责；只有用户主动进入完整笔记页才保存往返上下文。组件读取失败可以重试，过期响应与账号切换沿用来源 hook 的隔离。
 
 工作区内 `TopNavigation` 不再绘制，独立环境保留原行为。页面链接先完成业务来源记录，再进入统一未保存保护。来源展示回归见 [ChatMessage.test.tsx](ChatMessage.test.tsx)，会话恢复见[聊天页说明](../app/chat/README.md)。
+
+[brand/BrandIcon](brand/BrandIcon.tsx) 是统一品牌图形入口，覆盖工作区、独立导航、认证、后台和普通 AI 回答身份。仅替换品牌露出，功能图标沿用原语义；素材与生成说明见 [品牌资源](../../public/brand/README.md)。
