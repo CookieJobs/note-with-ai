@@ -2,7 +2,7 @@
 
 更新：2026-11-08。本文描述当前产品；布局和数据约束分别以 [设计规范](DESIGN.md) 与 [架构契约](ARCHITECTURE_DOCUMENTATION.md) 为准。
 
-笔记信息流本轮仅完成本地实现，尚未部署，验证范围见[本地验收记录](docs/releases/2026-11-notes-feed.md)。
+笔记信息流已于 2026-11-08 发布至生产，验证范围见[发布与验收记录](docs/releases/2026-11-notes-feed.md)。
 
 ## 用户与目标
 
