@@ -15,6 +15,6 @@
 
 认证页与[运营后台登录页](admin/login/page.tsx) 使用稳定的表单 ID、字段 ID/name，以及 `username`、`current-password`（登录）、`new-password`（注册或重置）和 `one-time-code` 标记，供浏览器密码管理器识别。表单声明 POST，仍通过现有异步请求提交。Chrome 保存提示与再次回填需要在启用密码保存的真实浏览器中验收；组件测试不能验证浏览器原生提示。
 
-品牌图标由根目录的 `icon.svg`、`favicon.ico`、`apple-icon.png` 文件约定统一声明，不在 layout 手动重复配置。认证页与运营后台复用 [BrandIcon](../components/brand/BrandIcon.tsx)，素材生成见 [brand 说明](../../public/brand/README.md)。
+品牌图标由根目录的 `icon.png`、`favicon.ico`、`apple-icon.png` 文件约定统一声明，不在 layout 手动重复配置。认证页与运营后台复用 [BrandIcon](../components/brand/BrandIcon.tsx)，素材生成见 [brand 说明](../../public/brand/README.md)。
 
 认证页品牌组合保持整组居中；深色媒体查询同时为品牌文字与标题设置浅色，避免不可见文字占位造成图形视觉偏移。

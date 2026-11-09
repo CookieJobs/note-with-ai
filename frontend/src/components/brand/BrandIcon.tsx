@@ -7,7 +7,7 @@ type BrandIconProps = {
 export default function BrandIcon({ size = 29, className }: BrandIconProps) {
   return (
     <img
-      src="/brand/notewithai.svg"
+      src="/brand/icon-192.png"
       width={size}
       height={size}
       alt=""
