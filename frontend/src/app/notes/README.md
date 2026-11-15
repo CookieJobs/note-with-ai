@@ -29,3 +29,5 @@
 页面只在当前用户的列表查询成功后登记最近五条，确认空库也登记；初次加载或失败的默认空数组不覆盖可信投影。相关栏按主动开启显示，保留推荐刷新与独立来源 revision 校验。
 
 总规则见 [DESIGN.md](../../../../DESIGN.md)、[现行架构](../../../../ARCHITECTURE_DOCUMENTATION.md)。回归入口为 `page*.test.tsx`、[编辑器保存保护](hooks/useNoteEditor.workspace.test.tsx)和 [useCreateNote.test.tsx](hooks/useCreateNote.test.tsx)；执行结果属于版本记录。列表新增验证入口为 `page.feed.test.tsx`、`useNoteSearch.test.tsx`、`useNoteCalendar.test.tsx` 与 `noteFeed.test.ts`；侧栏位置及刷新验证见 `Workspace.notes-calendar.test.tsx`。
+
+2026-11-15 Design System V2：快速记录、搜索、卡片和月历使用工作区共享 tokens。按用户反馈移除卡片顶部装饰图标，直接展示标题或正文；标题两行截断、摘要六行、图片回退及 API 顺序不变。月历以圆点提示记录日期，今天蓝底白字，非交互日期不伪装成筛选按钮。

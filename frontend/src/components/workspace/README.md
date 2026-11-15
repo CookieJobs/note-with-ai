@@ -25,3 +25,5 @@
 回归入口：[外壳与账户隔离](Workspace.test.tsx)、[导航保护](useWorkspaceNavigation.test.tsx)、[最近笔记登记](../../app/notes/page.recent-registration.test.tsx)。原生焦点、长历史滚动和断点布局的验收范围属于发布记录，不能用状态测试代替。
 
 侧栏品牌使用 [BrandIcon](../brand/BrandIcon.tsx) 的蓝色折页图形，继续与 NoteWithAI 文字独立排版；保留 29px 图形容器、原间距与折叠交互，不再叠加旧蓝色底板。
+
+2026-11-15 Design System V2：工作区 SCSS 持有浅蓝/中性色、表面/阴影/圆角 tokens，Lucide 描边统一 1.75。侧栏 274px、导航 44px、新建入口细边框，深色保留独立表面；折叠及抽屉行为沿用。详见根目录 DESIGN.md。
