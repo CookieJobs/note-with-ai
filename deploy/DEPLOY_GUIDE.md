@@ -51,7 +51,7 @@ ADMIN_ENCRYPTION_KEY=<base64-encoded-32-byte-key>
 
 ## 备份、构建和切换
 
-先创建权限受限、带时间戳的目录，备份当前提交、实际运行镜像、`.env`、`docker-compose.yml` 及 MongoDB archive。给旧镜像保留独立回滚标签并归档校验；发布期间不要清理旧镜像或构建缓存。拉取 `origin main`，核对本次批准发布的精确 commit 后再以 detached HEAD 切换；不要用 `git reset`，也不要覆盖服务器上已有的 Compose 变量。旧后台发布分支不再作为后续版本的默认发布入口。
+先创建权限受限、带时间戳的目录，备份当前提交、实际运行镜像、`.env`、`docker-compose.yml` 及 MongoDB archive。给旧镜像保留独立回滚标签并归档校验；发布期间不要清理旧镜像或构建缓存。生产仅从 `main` 发布。先将功能分支合并到 GitHub `main`，拉取 `origin main`，核对本次批准发布的精确 commit；服务器工作区使用 `main`，通过 `git switch main` 与 `git merge --ff-only <批准的精确 commit>` 更新（不盲目合入检查后又变化的远端 HEAD）；不要用 `git reset`，也不要覆盖服务器上已有的 Compose 变量。旧后台发布分支不再作为后续版本的默认发布入口。
 
 工作区版本需要配套的笔记写入与来源对话接口，不能只因前端构建成功就单独切换。先只读检查历史笔记 revision；只有缺失/无效时才在备份和演练后运行已编译的 `node dist/scripts/backfill_note_revisions.js`，已有有效 revision 不重复回填。标签/话题退场的版本不要同时保留旧自动写入实例。
 
