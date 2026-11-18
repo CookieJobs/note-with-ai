@@ -4,6 +4,12 @@ import { z } from 'zod';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
+const discoveryPrice = z.string().trim().regex(/^(?:\d+(?:\.\d{1,12})?)?$/)
+  .transform((value) => value === '' ? undefined : Number(value))
+  .pipe(z.number().nonnegative().optional()).optional();
+const discoveryCnyCap = z.string().trim().regex(/^\d+(?:\.\d{1,6})?$/)
+  .transform(Number).pipe(z.number().positive().max(Number.MAX_SAFE_INTEGER / 1_000_000)).optional();
+
 const envSchema = z.object({
   // 数据库配置
   MONGODB_URI: z.string().url().default('mongodb://localhost:27017/note-with-ai'),
@@ -79,6 +85,28 @@ const envSchema = z.object({
   DEEPSEEK_CHAT_OUTPUT_CNY_PER_MILLION: z.coerce.number().nonnegative().optional(),
   OPENROUTER_EMBEDDING_CNY_PER_MILLION: z.coerce.number().nonnegative().optional(),
   DASHSCOPE_EMBEDDING_CNY_PER_MILLION: z.coerce.number().nonnegative().optional(),
+
+  NOTE_DISCOVERY_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+  NOTE_DISCOVERY_MODEL: z.string().trim().min(1).max(200).default('deepseek-flash'),
+  NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION: discoveryPrice,
+  NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION: discoveryPrice,
+  // Set for the configured EMBEDDING_PROVIDER and EMBEDDING_MODEL; explicit zero is allowed.
+  NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION: discoveryPrice,
+  NOTE_DISCOVERY_USER_DAILY_CNY: discoveryCnyCap,
+  NOTE_DISCOVERY_GLOBAL_DAILY_CNY: discoveryCnyCap,
+  NOTE_DISCOVERY_RUN_RESERVATION_CNY: discoveryCnyCap,
+  NOTE_DISCOVERY_MAX_MODEL_CALLS: z.coerce.number().int().min(1).max(3).default(3),
+  NOTE_DISCOVERY_MAX_TOOL_CALLS: z.coerce.number().int().min(1).max(8).default(8),
+  NOTE_DISCOVERY_MAX_NOTES_READ: z.coerce.number().int().min(1).max(12).default(12),
+  NOTE_DISCOVERY_MAX_INPUT_TOKENS: z.coerce.number().int().min(1).max(24_000).default(24_000),
+  NOTE_DISCOVERY_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(4_000).default(4_000),
+  NOTE_DISCOVERY_TIMEOUT_MS: z.coerce.number().int().min(1).max(90_000).default(90_000),
+  NOTE_DISCOVERY_AUTO_DEBOUNCE_MS: z.coerce.number().int().min(1).max(86_400_000).default(120_000),
+  NOTE_DISCOVERY_AUTO_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000).default(6),
+  NOTE_DISCOVERY_AUTO_HOURLY_LIMIT: z.coerce.number().int().min(1).max(1000).default(2),
+  NOTE_DISCOVERY_MANUAL_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000).default(3),
+  NOTE_DISCOVERY_MANUAL_COOLDOWN_MS: z.coerce.number().int().min(1).max(86_400_000).default(60_000),
+  NOTE_DISCOVERY_DAILY_EXPOSURE_LIMIT: z.coerce.number().int().min(1).max(3).default(3),
 });
 
 type Environment = Record<string, string | undefined>;
@@ -106,7 +134,16 @@ export function parseConfig(environment: Environment = process.env) {
   if (result.data.NODE_ENV !== 'development' && result.data.ADMIN_LOCAL_PASSWORD_ONLY) {
     throw new Error('ADMIN_LOCAL_PASSWORD_ONLY is only allowed in development');
   }
-  return result.data;
+  const environmentConfig = result.data;
+  const NOTE_DISCOVERY_RUNNABLE = environmentConfig.NOTE_DISCOVERY_ENABLED && [
+    environmentConfig.NOTE_DISCOVERY_USER_DAILY_CNY,
+    environmentConfig.NOTE_DISCOVERY_GLOBAL_DAILY_CNY,
+    environmentConfig.NOTE_DISCOVERY_RUN_RESERVATION_CNY,
+    environmentConfig.NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION,
+    environmentConfig.NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION,
+    environmentConfig.NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION,
+  ].every((value) => value !== undefined);
+  return { ...environmentConfig, NOTE_DISCOVERY_RUNNABLE };
 }
 
 export const config = parseConfig();
