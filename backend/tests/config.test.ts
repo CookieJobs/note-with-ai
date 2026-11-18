@@ -6,8 +6,11 @@ const budget = {
   NOTE_DISCOVERY_USER_DAILY_CNY: '0.5',
   NOTE_DISCOVERY_GLOBAL_DAILY_CNY: '10',
   NOTE_DISCOVERY_RUN_RESERVATION_CNY: '0.25',
+  NOTE_DISCOVERY_PRICED_MODEL: 'deepseek-flash',
   NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION: '2',
   NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION: '4',
+  NOTE_DISCOVERY_PRICED_EMBEDDING_PROVIDER: 'openrouter',
+  NOTE_DISCOVERY_PRICED_EMBEDDING_MODEL: 'nvidia/llama-nemotron-embed-vl-1b-v2:free',
   NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION: '0',
 };
 
@@ -56,14 +59,62 @@ test('discovery uses its own chat model and pricing configuration', () => {
   const alternate = parseConfig({
     ...environment,
     NOTE_DISCOVERY_MODEL: 'deepseek-alternate',
-    NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION: undefined,
-    NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION: undefined,
   });
   assert.equal(alternate.NOTE_DISCOVERY_MODEL, 'deepseek-alternate');
   assert.equal(alternate.NOTE_DISCOVERY_RUNNABLE, false);
   assert.equal(parseConfig({
+    ...environment,
+    NOTE_DISCOVERY_MODEL: 'deepseek-alternate',
+    NOTE_DISCOVERY_PRICED_MODEL: 'deepseek-alternate',
+  }).NOTE_DISCOVERY_RUNNABLE, true);
+  assert.equal(parseConfig({
     ...environment, NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION: undefined,
   }).NOTE_DISCOVERY_RUNNABLE, false);
+});
+
+test('discovery rejects stale embedding prices after switching provider or model', () => {
+  const environment = { ...budget, NOTE_DISCOVERY_ENABLED: 'true' };
+  assert.equal(parseConfig({ ...environment, EMBEDDING_PROVIDER: 'dashscope' }).NOTE_DISCOVERY_RUNNABLE, false);
+  assert.equal(parseConfig({ ...environment, EMBEDDING_MODEL: 'alternate' }).NOTE_DISCOVERY_RUNNABLE, false);
+  assert.equal(parseConfig({
+    ...environment,
+    EMBEDDING_PROVIDER: 'dashscope',
+    EMBEDDING_MODEL: 'alternate',
+    NOTE_DISCOVERY_PRICED_EMBEDDING_PROVIDER: 'dashscope',
+    NOTE_DISCOVERY_PRICED_EMBEDDING_MODEL: 'alternate',
+  }).NOTE_DISCOVERY_RUNNABLE, true);
+});
+
+test('blank embedding model labels do not identify a priced model', () => {
+  assert.equal(parseConfig({
+    ...budget,
+    NOTE_DISCOVERY_ENABLED: 'true',
+    EMBEDDING_MODEL: '',
+    NOTE_DISCOVERY_PRICED_EMBEDDING_MODEL: '',
+  }).NOTE_DISCOVERY_RUNNABLE, false);
+});
+
+test('blank discovery monetary caps leave the feature non-runnable', () => {
+  const environment = { ...budget, NOTE_DISCOVERY_ENABLED: 'true' };
+  for (const key of [
+    'NOTE_DISCOVERY_USER_DAILY_CNY', 'NOTE_DISCOVERY_GLOBAL_DAILY_CNY', 'NOTE_DISCOVERY_RUN_RESERVATION_CNY',
+  ]) {
+    assert.equal(parseConfig({ ...environment, [key]: ' ' }).NOTE_DISCOVERY_RUNNABLE, false, key);
+  }
+});
+
+test('discovery parses decimal CNY caps exactly in safe integer micros', () => {
+  const config = parseConfig({
+    ...budget,
+    NOTE_DISCOVERY_GLOBAL_DAILY_CNY: '9007199254.740991',
+    NOTE_DISCOVERY_RUN_RESERVATION_CNY: '0.000249',
+  });
+  assert.equal(config.NOTE_DISCOVERY_USER_DAILY_CNY_MICROS, 500_000);
+  assert.equal(config.NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS, Number.MAX_SAFE_INTEGER);
+  assert.equal(config.NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS, 249);
+  assert.throws(() => parseConfig({
+    ...budget, NOTE_DISCOVERY_GLOBAL_DAILY_CNY: '9007199254.740992',
+  }), /Invalid environment variables/);
 });
 
 test('discovery has the planned scheduling and execution defaults', () => {

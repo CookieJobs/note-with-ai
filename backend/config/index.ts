@@ -7,8 +7,16 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const discoveryPrice = z.string().trim().regex(/^(?:\d+(?:\.\d{1,12})?)?$/)
   .transform((value) => value === '' ? undefined : Number(value))
   .pipe(z.number().nonnegative().optional()).optional();
-const discoveryCnyCap = z.string().trim().regex(/^\d+(?:\.\d{1,6})?$/)
-  .transform(Number).pipe(z.number().positive().max(Number.MAX_SAFE_INTEGER / 1_000_000)).optional();
+const discoveryCnyCap = z.string().trim().regex(/^(?:\d+(?:\.\d{1,6})?)?$/)
+  .transform((value) => {
+    if (value === '') return undefined;
+    // Form the integer directly to avoid rounding CNY before converting to micros.
+    const [whole, fraction = ''] = value.split('.');
+    return Number(whole + fraction.padEnd(6, '0'));
+  })
+  .pipe(z.number().int().positive().optional()).optional();
+const embeddingProvider = z.enum(['openrouter', 'dashscope']);
+const pricedModel = z.string().trim().max(200).transform((value) => value || undefined).optional();
 
 const envSchema = z.object({
   // 数据库配置
@@ -59,7 +67,7 @@ const envSchema = z.object({
   QQ_EMAIL_PASS: z.string().min(1, "QQ_EMAIL_PASS is required"),
 
   // 向量化配置
-  EMBEDDING_PROVIDER: z.enum(['openrouter', 'dashscope']).default('openrouter'),
+  EMBEDDING_PROVIDER: embeddingProvider.default('openrouter'),
   EMBEDDING_MODEL: z.string().default('nvidia/llama-nemotron-embed-vl-1b-v2:free'),
   EMBEDDING_DIMENSION: z.coerce.number().default(2048),
   EMBEDDING_MODALITY: z.enum(['text', 'image', 'image_text']).default('text'),
@@ -88,9 +96,12 @@ const envSchema = z.object({
 
   NOTE_DISCOVERY_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   NOTE_DISCOVERY_MODEL: z.string().trim().min(1).max(200).default('deepseek-flash'),
+  // Discovery generation uses DeepSeek. Rates are only valid for the identified model.
+  NOTE_DISCOVERY_PRICED_MODEL: pricedModel,
   NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION: discoveryPrice,
   NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION: discoveryPrice,
-  // Set for the configured EMBEDDING_PROVIDER and EMBEDDING_MODEL; explicit zero is allowed.
+  NOTE_DISCOVERY_PRICED_EMBEDDING_PROVIDER: z.union([embeddingProvider, z.literal('')]).optional(),
+  NOTE_DISCOVERY_PRICED_EMBEDDING_MODEL: pricedModel,
   NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION: discoveryPrice,
   NOTE_DISCOVERY_USER_DAILY_CNY: discoveryCnyCap,
   NOTE_DISCOVERY_GLOBAL_DAILY_CNY: discoveryCnyCap,
@@ -134,16 +145,31 @@ export function parseConfig(environment: Environment = process.env) {
   if (result.data.NODE_ENV !== 'development' && result.data.ADMIN_LOCAL_PASSWORD_ONLY) {
     throw new Error('ADMIN_LOCAL_PASSWORD_ONLY is only allowed in development');
   }
-  const environmentConfig = result.data;
-  const NOTE_DISCOVERY_RUNNABLE = environmentConfig.NOTE_DISCOVERY_ENABLED && [
-    environmentConfig.NOTE_DISCOVERY_USER_DAILY_CNY,
-    environmentConfig.NOTE_DISCOVERY_GLOBAL_DAILY_CNY,
-    environmentConfig.NOTE_DISCOVERY_RUN_RESERVATION_CNY,
-    environmentConfig.NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION,
-    environmentConfig.NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION,
-    environmentConfig.NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION,
-  ].every((value) => value !== undefined);
-  return { ...environmentConfig, NOTE_DISCOVERY_RUNNABLE };
+  const {
+    NOTE_DISCOVERY_USER_DAILY_CNY: NOTE_DISCOVERY_USER_DAILY_CNY_MICROS,
+    NOTE_DISCOVERY_GLOBAL_DAILY_CNY: NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
+    NOTE_DISCOVERY_RUN_RESERVATION_CNY: NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS,
+    ...environmentConfig
+  } = result.data;
+  const NOTE_DISCOVERY_RUNNABLE = environmentConfig.NOTE_DISCOVERY_ENABLED
+    && environmentConfig.NOTE_DISCOVERY_PRICED_MODEL === environmentConfig.NOTE_DISCOVERY_MODEL
+    && environmentConfig.NOTE_DISCOVERY_PRICED_EMBEDDING_PROVIDER === environmentConfig.EMBEDDING_PROVIDER
+    && environmentConfig.NOTE_DISCOVERY_PRICED_EMBEDDING_MODEL === environmentConfig.EMBEDDING_MODEL
+    && [
+      NOTE_DISCOVERY_USER_DAILY_CNY_MICROS,
+      NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
+      NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS,
+      environmentConfig.NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION,
+      environmentConfig.NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION,
+      environmentConfig.NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION,
+    ].every((value) => value !== undefined);
+  return {
+    ...environmentConfig,
+    NOTE_DISCOVERY_USER_DAILY_CNY_MICROS,
+    NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
+    NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS,
+    NOTE_DISCOVERY_RUNNABLE,
+  };
 }
 
 export const config = parseConfig();
