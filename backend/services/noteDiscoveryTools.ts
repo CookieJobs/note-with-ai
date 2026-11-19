@@ -26,13 +26,13 @@ export interface NoteDiscoveryTools extends Array<NoteDiscoveryTool> {
   getCandidates(): SubmittedDiscoveryCandidate[];
 }
 
-const text = z.string().trim().min(1).max(2000);
+const text = z.string().trim().min(1);
 export const discoveryCandidateSchema = z.strictObject({
-  kind: z.enum(DISCOVERY_KINDS), title: text.max(200), observation: text,
-  whyNow: text, qualification: text, suggestedAction: text, draft: text.max(6000).optional(),
+  kind: z.enum(DISCOVERY_KINDS), title: text.max(200), observation: text.max(2000),
+  whyNow: text.max(1500), qualification: text.max(1500), suggestedAction: text.max(1500), draft: text.max(16000).optional(),
   evidence: z.array(discoveryEvidenceInputSchema).min(1).max(12),
   relationshipKey: text.max(200).optional(), questionKey: text.max(200).optional(),
-  rationale: z.strictObject({ novelInsight: text, counterEvidence: text, missingInformation: z.array(text).max(20) }),
+  rationale: z.strictObject({ novelInsight: text.max(1500), counterEvidence: text.max(1500), missingInformation: z.array(text.max(500)).max(20) }),
 });
 const resultLimit = z.number().int().min(1).max(20).default(10);
 const schemas = {
@@ -64,7 +64,8 @@ export function createNoteDiscoveryTools(userId: string, limits: ToolLimits): No
   const maxCalls = cap(limits.maxToolCalls, 8);
   const maxReads = cap(limits.maxNotesRead, 12);
   let toolCalls = 0;
-  let notesRead = 0;
+  const reservedNoteIds = new Set<string>();
+  const pendingReads = new Map<string, Promise<DiscoverySource>>();
   const sources = new Map<string, DiscoverySource>();
   const candidates: SubmittedDiscoveryCandidate[] = [];
   const tools = (Object.keys(schemas) as ToolName[]).map(name => ({
@@ -80,11 +81,24 @@ export function createNoteDiscoveryTools(userId: string, limits: ToolLimits): No
     if (!parsed.success) return { ok: false, error: 'invalid_args' };
     try {
       if (name === 'readOwnNote') {
-        if (notesRead >= maxReads) return { ok: false, error: 'note_limit' };
-        notesRead++;
         const { noteId } = parsed.data as z.infer<typeof schemas.readOwnNote>;
-        const source = await readDiscoverySource(owner.toHexString(), noteId);
-        sources.set(`${source.noteId}:${source.revision}`, clone(source));
+        const canonicalId = noteId.toLowerCase();
+        let pending = pendingReads.get(canonicalId);
+        if (!pending) {
+          const alreadyRead = reservedNoteIds.has(canonicalId);
+          if (!alreadyRead && reservedNoteIds.size >= maxReads) return { ok: false, error: 'note_limit' };
+          // Distinct IDs reserve capacity before I/O; concurrent repeats share the same load.
+          reservedNoteIds.add(canonicalId);
+          pending = readDiscoverySource(owner.toHexString(), canonicalId).then(source => {
+            sources.set(`${source.noteId}:${source.revision}`, clone(source));
+            return source;
+          }).catch(error => {
+            if (!alreadyRead) reservedNoteIds.delete(canonicalId);
+            throw error;
+          }).finally(() => { pendingReads.delete(canonicalId); });
+          pendingReads.set(canonicalId, pending);
+        }
+        const source = await pending;
         return { ok: true, data: { ...source, title: source.title ?? '', dataType: 'untrusted_note_text', imagesRecognized: false } };
       }
       if (name === 'listRecentNotes' || name === 'searchOwnNotes') {
@@ -131,7 +145,7 @@ export function createNoteDiscoveryTools(userId: string, limits: ToolLimits): No
   return Object.assign(tools, {
     execute,
     getReadSources: () => clone([...sources.values()]),
-    getCounters: () => ({ toolCalls, notesRead }),
+    getCounters: () => ({ toolCalls, notesRead: reservedNoteIds.size }),
     getCandidates: () => clone(candidates),
   });
 }

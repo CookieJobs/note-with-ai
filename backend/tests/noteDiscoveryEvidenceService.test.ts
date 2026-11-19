@@ -24,6 +24,18 @@ describe('discovery evidence', noteDiscoveryMongoTestOptions, () => {
     await assert.rejects(validateEvidence(owner, [{ ...input, excerpt: 'secret description' }]));
     await assert.rejects(validateEvidence(owner, [{ ...input, excerpt: '[图片]' }]));
   });
+  it('rejects partial image marker spans but selects a matching occurrence in original prose', async () => {
+    const note = await Note.create({ userId: owner, content: 'intro ![not evidence](https://example.com/image.png) trailing' });
+    const input = { noteId: String(note._id), revision: 1, excerpt: '图片' };
+    for (const excerpt of ['图片', '片', '[图', '图片]', '[', ']']) {
+      await assert.rejects(validateEvidence(owner, [{ ...input, excerpt }]));
+    }
+    const [mixed] = await validateEvidence(owner, [{ ...input, excerpt: 'intro [图片]' }]);
+    assert.deepEqual(mixed.locator, { start: 0, end: 10 });
+    await Note.updateOne({ _id: note._id }, { $set: { content: 'intro ![not evidence](https://example.com/image.png) original 图片 prose', revision: 2 } });
+    const [valid] = await validateEvidence(owner, [{ ...input, revision: 2 }]);
+    assert.deepEqual(valid.locator, { start: 20, end: 22 });
+  });
   it('rejects invalid/foreign/deleted IDs, forged excerpts, stale revisions, and unknown fields', async () => {
     const note = await Note.create({ userId: owner, content: 'saved source' });
     const input = { noteId: String(note._id), revision: 1, excerpt: 'saved source' };

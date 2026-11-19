@@ -33,6 +33,27 @@ export async function readDiscoverySource(userId: string, noteId: string): Promi
   }
 }
 
+/** Select the first exact occurrence containing readable characters outside image-marker ranges. */
+function evidenceStart(content: string, excerpt: string): number {
+  const markers = [...content.matchAll(/\[(?:图片|image)\]/giu)].map(match => ({
+    start: match.index!, end: match.index! + match[0].length,
+  }));
+  for (let start = content.indexOf(excerpt); start >= 0; start = content.indexOf(excerpt, start + 1)) {
+    const end = start + excerpt.length;
+    let cursor = start;
+    let readable = '';
+    for (const marker of markers) {
+      if (marker.end <= cursor) continue;
+      if (marker.start >= end) break;
+      readable += content.slice(cursor, Math.max(cursor, marker.start));
+      cursor = Math.min(end, marker.end);
+    }
+    readable += content.slice(cursor, end);
+    if (readable.trim()) return start;
+  }
+  return -1;
+}
+
 /** All evidence is re-read by authenticated owner; caller-provided snapshots are never trusted. */
 export async function validateEvidence(userId: string, evidence: EvidenceInput[]): Promise<ValidatedEvidence[]> {
   const parsed = z.array(discoveryEvidenceInputSchema).min(1).max(12).safeParse(evidence);
@@ -47,9 +68,7 @@ export async function validateEvidence(userId: string, evidence: EvidenceInput[]
       sources.set(key, source);
     }
     if (source.revision !== item.revision) throw new DiscoverySourceError('stale_revision');
-    // An unread image marker alone can never substantiate a factual claim.
-    if (!item.excerpt.replace(/\[(?:图片|image)\]/giu, '').trim()) throw new DiscoverySourceError('excerpt_mismatch');
-    const start = source.contentText.indexOf(item.excerpt);
+    const start = evidenceStart(source.contentText, item.excerpt);
     if (start < 0) throw new DiscoverySourceError('excerpt_mismatch');
     result.push({
       noteId: source.noteId, revision: source.revision, excerpt: item.excerpt,
