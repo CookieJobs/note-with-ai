@@ -297,7 +297,7 @@ export class NoteDiscoveryWorkerStore {
 
       if (trigger === 'automatic') {
         const covered = await NoteDiscoveryRun.findOne({
-          userId, status: { $nin: [...activeStatuses, 'cancelled'] },
+          userId, status: { $in: ['completed', 'no_result'] },
           'watermark.changedAt': { $gte: watermark.changedAt },
         }).sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1 }).lean();
         if (covered && compareWatermarks(covered.watermark, watermark) >= 0) {

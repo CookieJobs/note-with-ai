@@ -41,9 +41,28 @@ const NoteDiscoveryPreferenceSchema = new mongoose.Schema<DiscoveryPreferenceRec
     },
   },
   feedback: { type: [FeedbackSchema], default: [] },
+  // Versioned single-document scheduling outbox and quota receipts. Only the scheduler mutates this state.
+  schedule: { type: new mongoose.Schema({
+    version: { type: Number, required: true, default: 0 },
+    initialized: { type: Boolean, required: true, default: false },
+    epoch: { type: Number, required: true, default: 0 },
+    changedWatermark: { type: new mongoose.Schema({
+      changedAt: { type: Date, required: true }, noteId: mongoose.Schema.Types.ObjectId, revision: Number,
+    }, { _id: false }) },
+    dueAt: Date,
+    lastSuccessfulWatermark: { type: new mongoose.Schema({
+      changedAt: { type: Date, required: true }, noteId: mongoose.Schema.Types.ObjectId, revision: Number,
+    }, { _id: false }) },
+    lastSuccessfulAt: Date,
+    admissions: { type: [new mongoose.Schema({
+      runId: { type: String, required: true }, trigger: { type: String, enum: ['automatic', 'manual'], required: true },
+      at: { type: Date, required: true },
+    }, { _id: false })], default: [] },
+  }, { _id: false }) },
 }, { timestamps: true, versionKey: false });
 
 NoteDiscoveryPreferenceSchema.index({ userId: 1 }, { unique: true });
+NoteDiscoveryPreferenceSchema.index({ automaticEnabled: 1, 'schedule.dueAt': 1, userId: 1 });
 
 export const NoteDiscoveryPreference = (mongoose.models.NoteDiscoveryPreference as mongoose.Model<DiscoveryPreferenceRecord>)
   || mongoose.model<DiscoveryPreferenceRecord>('NoteDiscoveryPreference', NoteDiscoveryPreferenceSchema);

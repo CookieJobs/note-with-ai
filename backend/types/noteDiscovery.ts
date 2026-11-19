@@ -148,11 +148,23 @@ export interface DiscoveryFeedback<Id = string> {
   revokedAt?: Date;
 }
 
+export interface DiscoveryScheduleState {
+  version: number;
+  initialized: boolean;
+  epoch: number;
+  changedWatermark?: DiscoveryWatermark<Types.ObjectId>;
+  dueAt?: Date;
+  lastSuccessfulWatermark?: DiscoveryWatermark<Types.ObjectId>;
+  lastSuccessfulAt?: Date;
+  admissions: Array<{ runId: string; trigger: DiscoveryTrigger; at: Date }>;
+}
+
 export interface DiscoveryPreferenceRecord {
   userId: Types.ObjectId;
   automaticEnabled: boolean;
   timeZone: string;
   feedback: DiscoveryFeedback<Types.ObjectId>[];
+  schedule?: DiscoveryScheduleState;
 }
 
 export interface DiscoveryDto {
