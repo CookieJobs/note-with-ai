@@ -109,6 +109,73 @@ describe('discovery worker store on MongoDB', noteDiscoveryMongoTestOptions, () 
     assert.equal(await store.drainPending(), 0);
   });
 
+  it('replays a coalesced manual key against the original completed run', async () => {
+    const queued = await store.enqueue(userId, watermark(), 'Q', { trigger: 'manual' });
+    const merged = await store.enqueue(userId, watermark(), 'M', { trigger: 'manual' });
+    assert.equal(merged?._id.toHexString(), queued?._id.toHexString());
+    const run = await claim();
+    assert.equal(await store.finish(run._id.toHexString(), run.leaseToken, 'no_result'), true);
+    const replay = await store.enqueue(userId, watermark(), 'M', { trigger: 'manual' });
+    assert.equal(replay?._id.toHexString(), run._id.toHexString());
+    assert.equal(await store.claimNext(now), null);
+  });
+
+  it('replays a stale manual promotion after another drainer merges, acknowledges, and finishes it', async () => {
+    await NoteDiscoveryRun.create({
+      userId: owner, idempotencyKey: 'P', watermark: watermark(), status: 'no_result',
+      pendingWatermark: watermark(1), pendingIdempotencyKey: 'M', pendingTrigger: 'manual', pendingAvailableAt: now,
+    });
+    const queued = await store.enqueue(userId, watermark(2), 'Q', { trigger: 'manual' });
+    const delayed = new NoteDiscoveryWorkerStore({ budget, now: () => now });
+    const promote = delayed['enqueueStored'].bind(delayed);
+    let didRead!: () => void;
+    const snapshotRead = new Promise<void>((resolve) => { didRead = resolve; });
+    let release!: () => void;
+    const canResume = new Promise<void>((resolve) => { release = resolve; });
+    delayed['enqueueStored'] = async (...args: Parameters<typeof promote>) => {
+      didRead();
+      await canResume;
+      return promote(...args);
+    };
+    const staleDrain = delayed.drainPending();
+    try {
+      await snapshotRead;
+      assert.equal(await store.drainPending(), 1);
+      const run = await claim();
+      assert.equal(run._id.toHexString(), queued?._id.toHexString());
+      assert.equal(await store.finish(run._id.toHexString(), run.leaseToken, 'no_result'), true);
+    } finally {
+      release();
+      await staleDrain;
+    }
+    assert.equal(await store.claimNext(now), null);
+  });
+
+  it('preserves a manual promotion merged into a second running predecessor', async () => {
+    await store.enqueue(userId, watermark(), 'P');
+    const first = await claim();
+    const accepted = await store.enqueue(userId, watermark(3), 'M', { trigger: 'manual' });
+    assert.equal(accepted?._id.toHexString(), first._id.toHexString());
+    // A replacement was already running when the first run's outbox was drained.
+    assert.equal(await store.finish(first._id.toHexString(), first.leaseToken, 'no_result'), true);
+    const queued = await store.enqueue(userId, watermark(2), 'Q');
+    assert.ok(queued);
+    await NoteDiscoveryRun.updateOne({ _id: queued._id }, {
+      $set: { status: 'running', leaseToken: '1:00000000-0000-0000-0000-000000000001', leaseUntil: watermark(1_000).changedAt, generation: 1 },
+    });
+    assert.equal(await store.drainPending(), 1);
+    const second = await store.getActiveRun(userId);
+    assert.ok(second?.leaseToken);
+    assert.equal(await store.finish(second._id.toHexString(), second.leaseToken, 'no_result'), true);
+    const promoted = await claim();
+    assert.equal(promoted.trigger, 'manual');
+    assert.equal(promoted.watermark.changedAt.getTime(), watermark(3).changedAt.getTime());
+    // Replay follows the durable owner even when the successor's clock is behind.
+    await NoteDiscoveryRun.collection.updateOne({ _id: promoted._id }, { $set: { createdAt: new Date(0) } });
+    const replay = await store.enqueue(userId, watermark(3), 'M', { trigger: 'manual' });
+    assert.equal(replay?._id.toHexString(), first._id.toHexString());
+  });
+
   it('renews an active lease and fences out the previous holder after unsent recovery', async () => {
     await store.enqueue(userId, watermark(), 'unsent');
     const expired = await claim();
@@ -200,7 +267,9 @@ describe('discovery worker store on MongoDB', noteDiscoveryMongoTestOptions, () 
     assert.equal(await store.incrementRetry(current), false);
     assert.equal(await store.finish(current.runId, current.leaseToken, 'completed'), false);
     assert.equal(await store.markProviderFinished(current, reservation.id), false);
-    await budget.settle(reservation.id, current.generation, { kind: 'known', inputTokens: 3, outputTokens: 2, costCnyMicros: 5 });
+    await budget.settle(reservation.id, current.generation, {
+      kind: 'known', inputTokens: 3, outputTokens: 2, costCnyMicros: 5,
+    }, 'response_received');
     assert.equal(await store.markProviderFinished(current, reservation.id), true);
     assert.equal(await store.markProviderStarted(current, reservation.id), false);
     assert.equal(await store.incrementRetry(current), true);
@@ -216,6 +285,36 @@ describe('discovery worker store on MongoDB', noteDiscoveryMongoTestOptions, () 
       usage: { modelCalls: 2, toolCalls: 0, notesRead: 0, inputTokens: null, outputTokens: null, costCnyMicros: null },
     }), true);
     assert.equal((await NoteDiscoveryBudget.findById('2026-11-18').lean())?.spentTotalMicros, 15);
+  });
+
+  it('blocks a fresh dispatch on an uncertain send even with a reservation made earlier', async () => {
+    await store.enqueue(userId, watermark(), 'unknown-delivery');
+    const current = fence(await claim());
+    const first = await budget.reserve(current.runId, userId, current.generation, pricedCall);
+    const alreadyReserved = await budget.reserve(current.runId, userId, current.generation, pricedCall);
+    assert.ok(first && alreadyReserved);
+    assert.equal(await store.markProviderStarted(current, first.id), true);
+    await budget.settle(first.id, current.generation, { kind: 'unknown', reason: 'response timed out' });
+    assert.equal(await store.markProviderFinished(current, first.id), true);
+    const restarted = new NoteDiscoveryWorkerStore({ budget, now: () => now });
+    assert.equal((await restarted.getRun(userId, current.runId))?.providerDeliveryUnknown, true);
+    assert.equal(await restarted.incrementRetry(current), false);
+    assert.equal(await budget.reserve(current.runId, userId, current.generation, pricedCall), null);
+    assert.equal(await restarted.markProviderStarted(current, alreadyReserved.id), false);
+  });
+
+  it('keeps a confirmed response with unknown billing eligible for another bounded call', async () => {
+    await store.enqueue(userId, watermark(), 'unknown-accounting');
+    const current = fence(await claim());
+    const first = await budget.reserve(current.runId, userId, current.generation, pricedCall);
+    assert.ok(first);
+    assert.equal(await store.markProviderStarted(current, first.id), true);
+    await budget.settle(first.id, current.generation, { kind: 'unknown', reason: 'response omitted usage' }, 'response_received');
+    assert.equal(await store.markProviderFinished(current, first.id), true);
+    const next = await budget.reserve(current.runId, userId, current.generation, pricedCall);
+    assert.ok(next);
+    assert.equal(await store.markProviderStarted(current, next.id), true);
+    assert.equal((await NoteDiscoveryBudget.findById('2026-11-18').lean())?.spentTotalMicros, 10);
   });
 
   it('checks the auto preference before leasing a previously queued run', async () => {

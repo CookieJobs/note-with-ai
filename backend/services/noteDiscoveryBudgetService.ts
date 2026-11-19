@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Types } from 'mongoose';
 import { config } from '../config';
-import NoteDiscoveryBudget, { type BudgetReservation } from '../models/NoteDiscoveryBudget';
+import NoteDiscoveryBudget, {
+  PROVIDER_DELIVERY_DISPOSITIONS, type BudgetReservation, type ProviderDeliveryDisposition,
+} from '../models/NoteDiscoveryBudget';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
 import type { DiscoveryRunFence } from '../types/noteDiscovery';
 import logger from '../utils/logger';
 
-export type { BudgetReservation } from '../models/NoteDiscoveryBudget';
+export type { BudgetReservation, ProviderDeliveryDisposition } from '../models/NoteDiscoveryBudget';
 
 type Rate = string | number;
 
@@ -33,7 +35,7 @@ interface BudgetSettings {
 const MAX_RESERVATIONS = 10_000;
 const MAX_LEDGER_BYTES = 8 * 1024 * 1024;
 // Settlement adds a timestamp, amount and short outcome to each reservation.
-const SETTLEMENT_BYTES_PER_RESERVATION = 100;
+const SETTLEMENT_BYTES_PER_RESERVATION = 128;
 const PRICE_SCALE = 10n ** 12n;
 const MAX_SAFE = Number.MAX_SAFE_INTEGER;
 const writeConcern = { w: 'majority', j: true } as const;
@@ -108,7 +110,7 @@ export class NoteDiscoveryBudgetService {
     const owner = new Types.ObjectId(userId);
     const run = await NoteDiscoveryRun.findOne({
       _id: runId, userId: owner, generation, status: 'running', leaseUntil: { $gt: createdAt },
-      recoveringGeneration: null,
+      recoveringGeneration: null, providerDeliveryUnknown: { $ne: true }, providerReservationId: null,
     }, { leaseUntil: 1, leaseToken: 1 }).lean();
     if (!run?.leaseToken || !run.leaseUntil || await this.blocked()) return null;
 
@@ -164,15 +166,18 @@ export class NoteDiscoveryBudgetService {
     const stillCurrent = await NoteDiscoveryRun.exists({
       _id: run._id, userId: owner, generation, status: 'running', leaseToken: run.leaseToken,
       leaseUntil: { $gt: this.now() }, recoveringGeneration: null,
+      providerDeliveryUnknown: { $ne: true }, providerReservationId: null,
     });
     if (!stillCurrent || await this.blocked()) {
-      await this.applySettlement(reservation, { kind: 'known', inputTokens: 0, outputTokens: 0, costCnyMicros: 0 });
+      await this.applySettlement(reservation, { kind: 'known', inputTokens: 0, outputTokens: 0, costCnyMicros: 0 }, 'not_sent');
       return null;
     }
     return reservation;
   }
 
-  async settle(reservationId: string, generation: number, usage: UsageResult): Promise<void> {
+  async settle(
+    reservationId: string, generation: number, usage: UsageResult, delivery?: ProviderDeliveryDisposition,
+  ): Promise<void> {
     const reservation = await this.findReservation(reservationId);
     if (!reservation || reservation.generation !== generation) return;
     if (reservation.state === 'settled') {
@@ -183,7 +188,11 @@ export class NoteDiscoveryBudgetService {
       _id: reservation.runId, userId: reservation.userId, generation, status: 'running',
       leaseToken: reservation.leaseToken, leaseUntil: { $gt: this.now() }, recoveringGeneration: null,
     });
-    if (current) await this.applySettlement(reservation, usage);
+    if (!current) return;
+    const disposition = delivery && PROVIDER_DELIVERY_DISPOSITIONS.includes(delivery)
+      ? delivery
+      : 'delivery_unknown';
+    await this.applySettlement(reservation, usage, disposition);
   }
 
   async isDispatchableReservation(fence: DiscoveryRunFence, reservationId: string): Promise<boolean> {
@@ -192,9 +201,10 @@ export class NoteDiscoveryBudgetService {
       && reservation.state === 'reserved' && !(await this.blocked());
   }
 
-  async isSettledReservation(fence: DiscoveryRunFence, reservationId: string): Promise<boolean> {
+  async settledDelivery(fence: DiscoveryRunFence, reservationId: string): Promise<ProviderDeliveryDisposition | null> {
     const reservation = await this.findReservation(reservationId);
-    return !!reservation && this.matchesFence(reservation, fence) && reservation.state === 'settled';
+    if (!reservation || !this.matchesFence(reservation, fence) || reservation.state !== 'settled') return null;
+    return reservation.delivery ?? 'delivery_unknown';
   }
 
   async settleExpiredGeneration(fence: DiscoveryRunFence, generation: number): Promise<void> {
@@ -216,7 +226,7 @@ export class NoteDiscoveryBudgetService {
     ]);
     for (const { reservations } of ledgers) {
       for (const reservation of reservations) {
-        await this.applySettlement(reservation, { kind: 'unknown', reason: 'expired lease' });
+        await this.applySettlement(reservation, { kind: 'unknown', reason: 'expired lease' }, 'delivery_unknown');
       }
     }
   }
@@ -249,7 +259,9 @@ export class NoteDiscoveryBudgetService {
     return ledger?.reservations[0];
   }
 
-  private async applySettlement(reservation: BudgetReservation, usage: UsageResult): Promise<void> {
+  private async applySettlement(
+    reservation: BudgetReservation, usage: UsageResult, delivery: ProviderDeliveryDisposition,
+  ): Promise<void> {
     const { id, day, generation, reservedMicros, userId } = reservation;
     const reportedCost = usage?.kind === 'known' && nonnegativeInteger(usage.costCnyMicros) ? usage.costCnyMicros : null;
     const overrun = reportedCost !== null && reportedCost > reservedMicros;
@@ -258,7 +270,7 @@ export class NoteDiscoveryBudgetService {
       && nonnegativeInteger(usage.outputTokens) && usage.outputTokens <= reservation.maxOutputTokens;
     const settledMicros = (overrun || validUsage) && reportedCost !== null ? reportedCost : reservedMicros;
     const outcome = overrun ? 'overrun' : validUsage ? 'known' : 'unknown';
-    const fields = { state: 'settled', settledAt: this.now(), settledMicros, outcome };
+    const fields = { state: 'settled', settledAt: this.now(), settledMicros, outcome, delivery };
     const userKey = `users.${userId.toHexString()}`;
     // Cap the numeric aggregate at the maximum safe integer if a reported overrun is extreme.
     // The individual attempt retains its exact charge and the ledger remains blocked.

@@ -30,6 +30,8 @@ const NoteDiscoveryRunSchema = new mongoose.Schema<DiscoveryRunRecord>({
   trigger: { type: String, enum: DISCOVERY_TRIGGERS, required: true, default: 'automatic' },
   status: { type: String, enum: DISCOVERY_RUN_STATUSES, required: true, default: 'queued' },
   idempotencyKey: { type: String, required: true, trim: true, maxlength: 200 },
+  idempotencyAliases: { type: [{ type: String, maxlength: 200 }], default: undefined },
+  promotedPendingRunIds: { type: [mongoose.Schema.Types.ObjectId], default: undefined },
   watermark: { type: WatermarkSchema, required: true },
   pendingWatermark: { type: WatermarkSchema },
   pendingIdempotencyKey: { type: String, trim: true, maxlength: 200 },
@@ -42,6 +44,7 @@ const NoteDiscoveryRunSchema = new mongoose.Schema<DiscoveryRunRecord>({
   retryCount: { ...nonnegativeInteger, max: 1, required: true, default: 0 },
   providerStartedAt: { type: Date, default: null },
   providerReservationId: { type: String, maxlength: 48, default: null },
+  providerDeliveryUnknown: { type: Boolean },
   sentReservationIds: { type: [{ type: String, maxlength: 48 }], default: undefined },
   recoveringGeneration: { ...nullableInteger, default: null },
   startedAt: { type: Date },
@@ -51,6 +54,14 @@ const NoteDiscoveryRunSchema = new mongoose.Schema<DiscoveryRunRecord>({
 }, { timestamps: true, versionKey: false });
 
 NoteDiscoveryRunSchema.index({ userId: 1, idempotencyKey: 1 }, { unique: true });
+NoteDiscoveryRunSchema.index({ userId: 1, idempotencyAliases: 1 }, {
+  unique: true,
+  partialFilterExpression: { idempotencyAliases: { $exists: true } },
+});
+NoteDiscoveryRunSchema.index({ userId: 1, promotedPendingRunIds: 1 }, {
+  unique: true,
+  partialFilterExpression: { promotedPendingRunIds: { $exists: true } },
+});
 NoteDiscoveryRunSchema.index({ userId: 1 }, {
   unique: true,
   partialFilterExpression: { status: { $in: ['queued', 'running'] } },

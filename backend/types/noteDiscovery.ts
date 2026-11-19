@@ -47,6 +47,8 @@ export interface DiscoveryRunRecord {
   trigger: DiscoveryTrigger;
   status: DiscoveryRunStatus;
   idempotencyKey: string;
+  idempotencyAliases?: string[];
+  promotedPendingRunIds?: Types.ObjectId[];
   watermark: DiscoveryWatermark<Types.ObjectId>;
   pendingWatermark?: DiscoveryWatermark<Types.ObjectId>;
   pendingIdempotencyKey?: string;
@@ -59,6 +61,7 @@ export interface DiscoveryRunRecord {
   retryCount: number;
   providerStartedAt: Date | null;
   providerReservationId?: string | null;
+  providerDeliveryUnknown?: boolean;
   sentReservationIds?: string[];
   recoveringGeneration?: number | null;
   startedAt?: Date;

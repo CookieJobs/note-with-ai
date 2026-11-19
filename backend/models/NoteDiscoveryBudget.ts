@@ -1,5 +1,8 @@
 import mongoose from 'mongoose';
 
+export const PROVIDER_DELIVERY_DISPOSITIONS = ['response_received', 'not_sent', 'delivery_unknown'] as const;
+export type ProviderDeliveryDisposition = typeof PROVIDER_DELIVERY_DISPOSITIONS[number];
+
 export interface BudgetReservation {
   id: string;
   day: string;
@@ -18,6 +21,7 @@ export interface BudgetReservation {
   settledAt?: Date;
   settledMicros?: number;
   outcome?: 'known' | 'unknown' | 'overrun';
+  delivery?: ProviderDeliveryDisposition;
 }
 
 interface UserBudget {
@@ -58,6 +62,7 @@ const ReservationSchema = new mongoose.Schema<BudgetReservation>({
   settledAt: { type: Date },
   settledMicros: { ...nonnegativeInteger, required: false },
   outcome: { type: String, enum: ['known', 'unknown', 'overrun'] },
+  delivery: { type: String, enum: PROVIDER_DELIVERY_DISPOSITIONS },
 }, { _id: false });
 
 const NoteDiscoveryBudgetSchema = new mongoose.Schema<DiscoveryBudgetRecord>({

@@ -148,7 +148,8 @@ export class NoteDiscoveryWorkerStore {
     if (!await this.budget.isDispatchableReservation(fence, reservationId)) return false;
     const now = this.now();
     const result = await NoteDiscoveryRun.updateOne({
-      ...this.fenceFilter(fence, now), providerReservationId: null, sentReservationIds: { $ne: reservationId },
+      ...this.fenceFilter(fence, now), providerReservationId: null,
+      providerDeliveryUnknown: { $ne: true }, sentReservationIds: { $ne: reservationId },
     }, [{
       $set: {
         providerReservationId: { $literal: reservationId },
@@ -166,16 +167,19 @@ export class NoteDiscoveryWorkerStore {
   }
 
   async markProviderFinished(fence: DiscoveryRunFence, reservationId: string): Promise<boolean> {
-    if (!await this.budget.isSettledReservation(fence, reservationId)) return false;
+    const delivery = await this.budget.settledDelivery(fence, reservationId);
+    if (!delivery) return false;
     const result = await NoteDiscoveryRun.updateOne({
       ...this.fenceFilter(fence), providerReservationId: reservationId,
-    }, { $set: { providerReservationId: null } });
+    }, {
+      $set: { providerReservationId: null, ...(delivery === 'delivery_unknown' ? { providerDeliveryUnknown: true } : {}) },
+    }, { writeConcern });
     return result.matchedCount === 1;
   }
 
   async incrementRetry(fence: DiscoveryRunFence): Promise<boolean> {
     const result = await NoteDiscoveryRun.updateOne({
-      ...this.fenceFilter(fence), retryCount: 0, providerReservationId: null,
+      ...this.fenceFilter(fence), retryCount: 0, providerReservationId: null, providerDeliveryUnknown: { $ne: true },
     }, { $inc: { retryCount: 1 } });
     return result.matchedCount === 1;
   }
@@ -224,6 +228,7 @@ export class NoteDiscoveryWorkerStore {
       await this.enqueueStored(
         predecessor.userId.toHexString(), pendingWatermark, pendingIdempotencyKey,
         pendingAvailableAt ?? this.now(), pendingTrigger ?? 'automatic',
+        _id,
       );
       const result = await NoteDiscoveryRun.updateOne({ _id, pendingIdempotencyKey }, unsetPending);
       drained += result.modifiedCount;
@@ -233,12 +238,24 @@ export class NoteDiscoveryWorkerStore {
 
   private async enqueueStored(
     userId: string, watermark: StoredWatermark, key: string, availableAt: Date, trigger: DiscoveryTrigger,
+    predecessorId?: Types.ObjectId,
   ): Promise<StoredDiscoveryRun | null> {
     await NoteDiscoveryRun.init();
+    const publicKey = { userId, $or: [{ idempotencyKey: key }, { idempotencyAliases: key }] };
     for (;;) {
-      const replay = await NoteDiscoveryRun.findOne({ userId, idempotencyKey: key }).lean();
+      const replay = predecessorId
+        ? await NoteDiscoveryRun.findOne({ userId, promotedPendingRunIds: predecessorId }).lean()
+        : await NoteDiscoveryRun.findOne({ userId, idempotencyAliases: key }).lean()
+          ?? await NoteDiscoveryRun.findOne({ userId, idempotencyKey: key }).lean();
       if (replay) return replay;
       if (trigger === 'automatic' && !await this.hasEnabledPreference(userId)) return null;
+      // A direct manual call is replayed against the run that first accepted it. Each
+      // outbox hop also needs its own receipt, even if the public key was already accepted.
+      const keepManualAlias = trigger === 'manual' && (!predecessorId || !await NoteDiscoveryRun.exists(publicKey));
+      const addReceipt = {
+        ...(keepManualAlias ? { idempotencyAliases: key } : {}),
+        ...(predecessorId ? { promotedPendingRunIds: predecessorId } : {}),
+      };
 
       const active = await this.getActiveRun(userId);
       if (active) {
@@ -247,7 +264,8 @@ export class NoteDiscoveryWorkerStore {
         const existingTrigger = pending ? active.pendingTrigger : active.trigger;
         const promotesToManual = trigger === 'manual' && existingTrigger !== 'manual';
         const isNewer = compareWatermarks(watermark, currentWatermark) > 0;
-        if (active.pendingIdempotencyKey === key || (!isNewer && !promotesToManual)) return active;
+        const updateWatermark = active.pendingIdempotencyKey !== key && (isNewer || promotesToManual);
+        if (!updateWatermark && !keepManualAlias && !predecessorId) return active;
         const nextWatermark = isNewer ? watermark : currentWatermark;
         const fields = pending ? {
           pendingWatermark: nextWatermark,
@@ -257,16 +275,23 @@ export class NoteDiscoveryWorkerStore {
         } : {
           watermark: nextWatermark,
           availableAt: active.trigger === 'manual' ? active.availableAt : availableAt,
-          ...(promotesToManual ? { trigger, idempotencyKey: key } : {}),
+          ...(promotesToManual ? { trigger } : {}),
         };
-        const changed = await NoteDiscoveryRun.findOneAndUpdate({
-          _id: active._id, userId, generation: active.generation, status: active.status,
-          trigger: active.trigger, idempotencyKey: active.idempotencyKey,
-          ...sameWatermark('watermark', active.watermark),
-          ...sameWatermark('pendingWatermark', active.pendingWatermark),
-          pendingIdempotencyKey: active.pendingIdempotencyKey ?? null,
-        }, { $set: fields }, { returnDocument: 'after', runValidators: true }).lean();
-        if (changed) return changed;
+        try {
+          const changed = await NoteDiscoveryRun.findOneAndUpdate({
+            _id: active._id, userId, generation: active.generation, status: active.status,
+            trigger: active.trigger, idempotencyKey: active.idempotencyKey,
+            ...sameWatermark('watermark', active.watermark),
+            ...sameWatermark('pendingWatermark', active.pendingWatermark),
+            pendingIdempotencyKey: active.pendingIdempotencyKey ?? null,
+          }, {
+            ...(updateWatermark ? { $set: fields } : {}),
+            ...(keepManualAlias || predecessorId ? { $addToSet: addReceipt } : {}),
+          }, { returnDocument: 'after', runValidators: true, writeConcern }).lean();
+          if (changed) return changed;
+        } catch (error) {
+          if (!isDuplicate(error)) throw error;
+        }
         continue;
       }
 
@@ -275,11 +300,28 @@ export class NoteDiscoveryWorkerStore {
           userId, status: { $nin: [...activeStatuses, 'cancelled'] },
           'watermark.changedAt': { $gte: watermark.changedAt },
         }).sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1 }).lean();
-        if (covered && compareWatermarks(covered.watermark, watermark) >= 0) return covered;
+        if (covered && compareWatermarks(covered.watermark, watermark) >= 0) {
+          if (!predecessorId) return covered;
+          try {
+            await NoteDiscoveryRun.updateOne({ _id: covered._id, userId }, { $addToSet: addReceipt }, { writeConcern });
+            return covered;
+          } catch (error) {
+            if (!isDuplicate(error)) throw error;
+            continue;
+          }
+        }
       }
 
       try {
-        return (await NoteDiscoveryRun.create({ userId, trigger, idempotencyKey: key, watermark, availableAt })).toObject();
+        const idempotencyKey = predecessorId && await NoteDiscoveryRun.exists({ userId, idempotencyKey: key })
+          ? `pending:${randomUUID()}`
+          : key;
+        const [created] = await NoteDiscoveryRun.create([{
+          userId, trigger, idempotencyKey, watermark, availableAt,
+          ...(!predecessorId || keepManualAlias ? { idempotencyAliases: [key] } : {}),
+          ...(predecessorId ? { promotedPendingRunIds: [predecessorId] } : {}),
+        }], { writeConcern });
+        return created.toObject();
       } catch (error) {
         if (!isDuplicate(error)) throw error;
       }
@@ -329,7 +371,8 @@ export class NoteDiscoveryWorkerStore {
     const now = this.now();
     const filter = { ...this.leaseFilter(run._id.toHexString(), run.leaseToken, now), recoveringGeneration: run.recoveringGeneration };
     const fields = run.providerStartedAt ? {
-      status: 'failed', failureCategory: run.providerReservationId ? 'usage_unknown' : 'expired_lease', finishedAt: now,
+      status: 'failed', failureCategory: run.providerReservationId || run.providerDeliveryUnknown ? 'usage_unknown' : 'expired_lease',
+      finishedAt: now,
       leaseToken: null, leaseUntil: null, providerReservationId: null,
     } : { startedAt: now };
     return asClaimed(await NoteDiscoveryRun.findOneAndUpdate(filter, {
