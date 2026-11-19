@@ -384,6 +384,97 @@ describe('durable discovery scheduling', noteDiscoveryMongoTestOptions, () => {
     finally { NoteDiscoveryPreference.findOneAndUpdate = original; }
     assert.equal((await store.getRun(userId, run._id.toHexString()))?.status, 'running');
   });
+  it('absorbs automatic pending during deferral and never promotes unknown-delivery work twice', async () => {
+    await service.scheduleChanged(userId, noteId, 1, now);
+    now = new Date(now.getTime() + 120_000);
+    const first = await store.claimNext(now);
+    assert.ok(first);
+    await service.scheduleChanged(userId, noteId, 2, now);
+    assert.equal((await store.getRun(userId, first._id.toHexString()))?.pendingWatermark?.revision, 2);
+    const deferred = await service.authorizeRun(first, now);
+    assert.equal(deferred.status, 'limited');
+    const queued = await store.getActiveRun(userId);
+    assert.equal(queued?.watermark.revision, 2);
+    assert.equal(queued?.pendingWatermark, undefined);
+    now = new Date(deferred.retryAt!);
+    const second = await store.claimNext(now);
+    assert.ok(second);
+    assert.equal((await service.authorizeRun(second, now)).status, 'authorized');
+    await NoteDiscoveryRun.updateOne({ _id: second._id }, { $set: { providerDeliveryUnknown: true } });
+    await store.finish(second._id.toHexString(), second.leaseToken, 'failed', { failureCategory: 'usage_unknown' });
+    await service.reconcile(userId, now);
+    assert.equal(await store.drainPending(userId), 0);
+    assert.equal(await store.claimNext(now), null);
+    assert.equal((await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.admissions.length, 1);
+  });
+  it('independently blocks an automatic run directly promoted from unknown pending', async () => {
+    await service.scheduleChanged(userId, noteId, 1, now);
+    now = new Date(now.getTime() + 120_000);
+    const first = await store.claimNext(now);
+    assert.ok(first);
+    assert.equal((await service.authorizeRun(first, now)).status, 'authorized');
+    // Simulates persisted same-state pending from an older worker. claimNext drains
+    // without scheduler.reconcile, so authorizeRun must enforce the barrier itself.
+    await NoteDiscoveryRun.updateOne({ _id: first._id }, { $set: {
+      pendingWatermark: first.watermark, pendingIdempotencyKey: 'legacy-auto-pending', pendingTrigger: 'automatic', pendingAvailableAt: now,
+      providerDeliveryUnknown: true,
+    } });
+    await store.finish(first._id.toHexString(), first.leaseToken, 'failed', { failureCategory: 'usage_unknown' });
+    const promoted = await store.claimNext(now);
+    assert.ok(promoted);
+    await store.enqueue(userId, { ...promoted.watermark, noteId: promoted.watermark.noteId?.toHexString() }, 'keep-manual-after-block', { trigger: 'manual' });
+    assert.equal((await create().authorizeRun(promoted, now)).status, 'blocked');
+    assert.equal((await store.getRun(userId, promoted._id.toHexString()))?.status, 'cancelled');
+    assert.equal((await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.admissions.length, 1);
+    assert.equal((await store.getRun(userId, promoted._id.toHexString()))?.pendingTrigger, 'manual');
+    const manual = await store.claimNext(now);
+    assert.ok(manual);
+    assert.equal(manual.trigger, 'manual');
+    assert.equal((await service.authorizeRun(manual, now)).status, 'authorized');
+  });
+  it('preserves manual pending while absorbing its watermark into a deferred automatic run', async () => {
+    await service.scheduleChanged(userId, noteId, 1, now);
+    now = new Date(now.getTime() + 120_000);
+    const first = await store.claimNext(now);
+    assert.ok(first);
+    await service.scheduleChanged(userId, noteId, 2, now);
+    await service.requestManual(userId, 'preserve-manual', now);
+    assert.equal((await service.authorizeRun(first, now)).status, 'limited');
+    const row = await store.getRun(userId, first._id.toHexString());
+    assert.equal(row?.watermark.revision, 2);
+    assert.equal(row?.pendingWatermark?.revision, 2);
+    assert.equal(row?.pendingTrigger, 'manual');
+    assert.equal(row?.pendingIdempotencyKey, 'manual:preserve-manual');
+  });
+  it('preserves automatic pending newer than the absorbed outbox watermark', async () => {
+    await service.scheduleChanged(userId, noteId, 1, now);
+    now = new Date(now.getTime() + 120_000);
+    const first = await store.claimNext(now);
+    assert.ok(first);
+    await service.scheduleChanged(userId, noteId, 2, now);
+    const newer = { changedAt: new Date(now), noteId, revision: 3 };
+    await store.enqueue(userId, newer, 'greater-pending', { availableAt: new Date(now.getTime() + 121_000) });
+    assert.equal((await service.authorizeRun(first, now)).status, 'limited');
+    const row = await store.getRun(userId, first._id.toHexString());
+    assert.equal(row?.watermark.revision, 2);
+    assert.equal(row?.pendingWatermark?.revision, 3);
+    assert.equal(row?.pendingIdempotencyKey, 'greater-pending');
+  });
+  it('never cancels an expired lease while independently enforcing unknown admission', async () => {
+    await service.scheduleChanged(userId, noteId, 1, now);
+    now = new Date(now.getTime() + 120_000);
+    const run = await store.claimNext(now);
+    assert.ok(run);
+    await NoteDiscoveryRun.create({ userId, trigger: 'automatic', status: 'failed', idempotencyKey: 'historical-unknown',
+      watermark: run.watermark, availableAt: now, finishedAt: now, providerDeliveryUnknown: true,
+    });
+    now = new Date(run.leaseUntil.getTime() + 1);
+    assert.equal((await service.authorizeRun(run, now)).status, 'stale');
+    const unchanged = await store.getRun(userId, run._id.toHexString());
+    assert.equal(unchanged?.status, 'running');
+    assert.equal(unchanged?.leaseToken, run.leaseToken);
+    assert.equal((await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.admissions.length, 0);
+  });
   it('does nothing when feature disabled and rejects invalid browser zones', async () => {
     await create({ enabled: false }).scheduleChanged(userId, noteId, 1, now);
     assert.equal((await create({ enabled: false }).requestManual(userId, 'x', now)).status, 'disabled');

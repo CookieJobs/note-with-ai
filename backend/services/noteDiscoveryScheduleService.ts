@@ -13,7 +13,7 @@ const writeConcern = { w: 'majority', j: true } as const;
 type Watermark = DiscoveryWatermark<Types.ObjectId>;
 type Preference = DiscoveryPreferenceRecord & { _id: Types.ObjectId };
 export interface DiscoveryAdmissionResult {
-  status: 'queued' | 'running' | 'authorized' | 'limited' | 'disabled' | 'idle' | 'stale';
+  status: 'queued' | 'running' | 'authorized' | 'limited' | 'disabled' | 'idle' | 'stale' | 'blocked';
   currentRun: StoredDiscoveryRun | null;
   retryAt?: Date;
 }
@@ -66,6 +66,28 @@ function bounded(value: number, max: number): number {
   return value;
 }
 const initialState = (): DiscoveryScheduleState => ({ version: 0, initialized: false, epoch: 0, admissions: [] });
+
+// All pending fields are removed in the same fenced update as absorption/cancellation.
+// Manual requests and boundaries beyond this run remain a separate durable obligation.
+function clearAbsorbedAutomaticPending(watermark: Watermark) {
+  const pendingDate = '$pendingWatermark.changedAt';
+  const pendingId = { $ifNull: ['$pendingWatermark.noteId', null] };
+  const targetDate = { $literal: watermark.changedAt };
+  const targetId = { $literal: watermark.noteId ?? null };
+  const dateEqual = { $eq: [pendingDate, targetDate] };
+  const idEqual = { $eq: [pendingId, targetId] };
+  const absorbed = { $and: [
+    { $ne: [{ $type: '$pendingWatermark' }, 'missing'] },
+    { $ne: [{ $ifNull: ['$pendingTrigger', 'automatic'] }, 'manual'] },
+    { $or: [
+      { $lt: [pendingDate, targetDate] },
+      { $and: [dateEqual, { $lt: [pendingId, targetId] }] },
+      { $and: [dateEqual, idEqual, { $lte: [{ $ifNull: ['$pendingWatermark.revision', 0] }, watermark.revision ?? 0] }] },
+    ] },
+  ] };
+  return Object.fromEntries(['pendingWatermark', 'pendingIdempotencyKey', 'pendingAvailableAt', 'pendingTrigger']
+    .map((field) => [field, { $cond: [absorbed, '$$REMOVE', `$${field}`] }]));
+}
 
 /** Durable outbox + admission. Worker must call authorizeRun before any paid work and canPublish before publication. */
 export class NoteDiscoveryScheduleService {
@@ -182,9 +204,7 @@ export class NoteDiscoveryScheduleService {
       .sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1, finishedAt: -1, _id: -1 }).lean();
     // Search the durable account history, not only the most recent attempt. A later
     // ordinary/manual failure cannot erase an uncertain paid attempt's saved-state barrier.
-    const unknown = await NoteDiscoveryRun.findOne({ userId, status: 'failed',
-      $or: [{ providerDeliveryUnknown: true }, { failureCategory: 'usage_unknown' }],
-    }).sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1 }).lean();
+    const unknown = await this.getUnknownBarrier(userId);
     const pref = await this.mutate(userId, (_pref, state) => {
       if (success && (compare(success.watermark, state.lastSuccessfulWatermark) > 0
         || (compare(success.watermark, state.lastSuccessfulWatermark) === 0
@@ -259,6 +279,24 @@ export class NoteDiscoveryScheduleService {
     if (!this.enabled) return this.result('disabled', run);
     const userId = run.userId.toHexString();
     const fence = { runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken };
+    // Store promotion and crash recovery can reach admission without reconcile.
+    // Enforce the durable paid-state barrier at this independent execution boundary.
+    const unknown = run.trigger === 'automatic' ? await this.getUnknownBarrier(userId) : null;
+    if (unknown && compare(run.watermark, unknown.watermark) <= 0) {
+      const clock = this.now();
+      const cancelled = await NoteDiscoveryRun.findOneAndUpdate({
+        _id: run._id, userId, status: 'running', generation: run.generation, leaseToken: run.leaseToken,
+        leaseUntil: { $gt: clock }, recoveringGeneration: null, providerReservationId: null, providerStartedAt: null,
+      }, [{ $set: {
+        status: 'cancelled', finishedAt: clock, leaseToken: null, leaseUntil: null,
+        ...clearAbsorbedAutomaticPending(run.watermark),
+      } }], { returnDocument: 'after', writeConcern }).lean();
+      if (!cancelled) return this.result('stale', run);
+      await this.mutate(userId, (_pref, state) => {
+        if (compare(state.changedWatermark, unknown.watermark) <= 0) delete state.dueAt;
+      });
+      return this.result('blocked', cancelled);
+    }
     // Read before CAS; all instances serialize admission on the same preference version.
     let outcome: DiscoveryAdmissionResult = this.result('stale', run);
     let deferredWatermark: Watermark | undefined;
@@ -282,12 +320,13 @@ export class NoteDiscoveryScheduleService {
       return !!current && current.status === 'running' && await this.store.isCurrentFence(fence);
     });
     if (outcome.status === 'limited') {
+      const absorbed = run.trigger === 'automatic' && compare(deferredWatermark, run.watermark) > 0 ? deferredWatermark! : run.watermark;
       const deferred = await NoteDiscoveryRun.updateOne({ _id: run._id, userId, status: 'running', generation: run.generation, leaseToken: run.leaseToken,
-        leaseUntil: { $gt: this.now() }, recoveringGeneration: null, providerReservationId: null, providerStartedAt: null }, {
+        leaseUntil: { $gt: this.now() }, recoveringGeneration: null, providerReservationId: null, providerStartedAt: null }, [{
         $set: { status: 'queued', availableAt: outcome.retryAt, leaseToken: null, leaseUntil: null,
-          ...(run.trigger === 'automatic' && compare(deferredWatermark, run.watermark) > 0 ? { watermark: deferredWatermark } : {}),
+          ...(run.trigger === 'automatic' ? { watermark: { $literal: absorbed }, ...clearAbsorbedAutomaticPending(absorbed) } : {}),
         },
-      }, { writeConcern });
+      }], { writeConcern });
       if (!deferred.matchedCount) return this.result('stale', run);
     } else if (outcome.status === 'authorized' && !await this.canPublish(run)) return this.result('stale', run);
     return outcome;
@@ -298,6 +337,12 @@ export class NoteDiscoveryScheduleService {
     const userId = run.userId.toHexString();
     if (run.trigger === 'automatic' && await NoteDiscoveryPreference.exists({ userId, automaticEnabled: false })) return false;
     return this.store.isCurrentFence({ runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken });
+  }
+
+  private async getUnknownBarrier(userId: string): Promise<StoredDiscoveryRun | null> {
+    return NoteDiscoveryRun.findOne({ userId, status: 'failed',
+      $or: [{ providerDeliveryUnknown: true }, { failureCategory: 'usage_unknown' }],
+    }).sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1 }).lean();
   }
 
   private eligibility(pref: Preference, trigger: DiscoveryTrigger, now: Date): Date | undefined {
