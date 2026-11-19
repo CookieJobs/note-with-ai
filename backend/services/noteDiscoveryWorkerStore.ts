@@ -1,0 +1,341 @@
+import { randomUUID } from 'node:crypto';
+import { Types } from 'mongoose';
+import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
+import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
+import type {
+  DiscoveryFailureCategory, DiscoveryRunFence, DiscoveryRunRecord, DiscoveryRunStatus,
+  DiscoveryRunUsage, DiscoveryTrigger, DiscoveryWatermark,
+} from '../types/noteDiscovery';
+import { noteDiscoveryBudgetService, type NoteDiscoveryBudgetService } from './noteDiscoveryBudgetService';
+
+type StoredWatermark = DiscoveryWatermark<Types.ObjectId>;
+export type StoredDiscoveryRun = DiscoveryRunRecord & { _id: Types.ObjectId };
+export type ClaimedDiscoveryRun = StoredDiscoveryRun & { status: 'running'; leaseToken: string; leaseUntil: Date };
+type FinishStatus = Exclude<DiscoveryRunStatus, 'queued' | 'running'>;
+
+interface EnqueueOptions {
+  availableAt?: Date;
+  trigger?: DiscoveryTrigger;
+}
+
+interface FinishDetails {
+  usage?: DiscoveryRunUsage;
+  failureCategory?: DiscoveryFailureCategory;
+}
+
+interface StoreOptions {
+  now?: () => Date;
+  leaseMs?: number;
+  budget?: NoteDiscoveryBudgetService;
+}
+
+const activeStatuses = ['queued', 'running'];
+const pendingFields = ['pendingWatermark', 'pendingIdempotencyKey', 'pendingTrigger', 'pendingAvailableAt'];
+const unsetPending = { $unset: Object.fromEntries(pendingFields.map((field) => [field, 1])) };
+const latestFirst = { createdAt: -1, _id: -1 } as const;
+const writeConcern = { w: 'majority', j: true } as const;
+
+function compareWatermarks(a: StoredWatermark, b: StoredWatermark): number {
+  const dateDifference = a.changedAt.getTime() - b.changedAt.getTime();
+  if (dateDifference) return dateDifference;
+  const aId = a.noteId?.toHexString() ?? '';
+  const bId = b.noteId?.toHexString() ?? '';
+  if (aId !== bId) return aId < bId ? -1 : 1;
+  return (a.revision ?? 0) - (b.revision ?? 0);
+}
+
+function sameWatermark(prefix: string, watermark?: StoredWatermark) {
+  if (!watermark) return { [`${prefix}.changedAt`]: null };
+  return {
+    [`${prefix}.changedAt`]: watermark.changedAt,
+    [`${prefix}.noteId`]: watermark.noteId ?? null,
+    [`${prefix}.revision`]: watermark.revision ?? null,
+  };
+}
+
+function leaseGeneration(token: string): number {
+  const match = /^(\d+):[\da-f-]{36}$/.exec(token);
+  return match ? Number(match[1]) : -1;
+}
+
+function asClaimed(run: StoredDiscoveryRun | null): ClaimedDiscoveryRun | null {
+  if (run?.status !== 'running' || !run.leaseToken || !run.leaseUntil || run.recoveringGeneration != null) return null;
+  return { ...run, status: 'running', leaseToken: run.leaseToken, leaseUntil: run.leaseUntil };
+}
+
+function isDuplicate(error: unknown): boolean {
+  return (error as { code?: number } | null)?.code === 11000;
+}
+
+export class NoteDiscoveryWorkerStore {
+  private readonly now: () => Date;
+  private readonly leaseMs: number;
+  private readonly budget: NoteDiscoveryBudgetService;
+
+  constructor(options: StoreOptions = {}) {
+    this.now = options.now ?? (() => new Date());
+    this.leaseMs = options.leaseMs ?? 30_000;
+    this.budget = options.budget ?? noteDiscoveryBudgetService;
+  }
+
+  async getRun(userId: string, runId: string): Promise<StoredDiscoveryRun | null> {
+    return NoteDiscoveryRun.findOne({ _id: runId, userId }).lean();
+  }
+
+  async getActiveRun(userId: string): Promise<StoredDiscoveryRun | null> {
+    return NoteDiscoveryRun.findOne({ userId, status: { $in: activeStatuses } }).lean();
+  }
+
+  async getLatestRun(userId: string, trigger?: DiscoveryTrigger): Promise<StoredDiscoveryRun | null> {
+    return NoteDiscoveryRun.findOne({ userId, ...(trigger ? { trigger } : {}) }).sort(latestFirst).lean();
+  }
+
+  async hasEnabledPreference(userId: string): Promise<boolean> {
+    return !await NoteDiscoveryPreference.exists({ userId, automaticEnabled: false });
+  }
+
+  async enqueue(
+    userId: string, watermark: DiscoveryWatermark, idempotencyKey: string, options: EnqueueOptions = {},
+  ): Promise<StoredDiscoveryRun | null> {
+    if (!(watermark.changedAt instanceof Date) || !Number.isFinite(watermark.changedAt.getTime())
+      || (watermark.noteId !== undefined && !Types.ObjectId.isValid(watermark.noteId))
+      || (watermark.revision !== undefined && (!Number.isSafeInteger(watermark.revision) || watermark.revision < 1))) {
+      throw new Error('Invalid discovery watermark');
+    }
+    const storedWatermark: StoredWatermark = {
+      changedAt: watermark.changedAt, revision: watermark.revision,
+      noteId: watermark.noteId ? new Types.ObjectId(watermark.noteId) : undefined,
+    };
+    const key = idempotencyKey.trim();
+    if (!key || key.length > 200) throw new Error('Invalid discovery idempotency key');
+    return this.enqueueStored(userId, storedWatermark, key, options.availableAt ?? this.now(), options.trigger ?? 'automatic');
+  }
+
+  async claimNext(now = this.now()): Promise<ClaimedDiscoveryRun | null> {
+    for (;;) {
+      const recovered = await this.takeExpiredLease(now);
+      if (recovered) {
+        const run = await this.completeRecovery(recovered);
+        if (run && (run.trigger === 'manual' || await this.hasEnabledPreference(run.userId.toHexString()))) return run;
+        if (run) await this.finish(run._id.toHexString(), run.leaseToken, 'cancelled');
+        continue;
+      }
+
+      await this.drainPending();
+      const run = asClaimed(await NoteDiscoveryRun.findOneAndUpdate({
+        status: 'queued', availableAt: { $lte: now },
+      }, this.leasePipeline(now, false), {
+        sort: { availableAt: 1, _id: 1 }, returnDocument: 'after',
+      }).lean());
+      if (!run || run.trigger === 'manual' || await this.hasEnabledPreference(run.userId.toHexString())) return run;
+      await this.finish(run._id.toHexString(), run.leaseToken, 'cancelled');
+    }
+  }
+
+  async renewLease(runId: string, token: string): Promise<boolean> {
+    const now = this.now();
+    const result = await NoteDiscoveryRun.updateOne(this.leaseFilter(runId, token, now), {
+      $max: { leaseUntil: new Date(now.getTime() + this.leaseMs) },
+    });
+    return result.matchedCount === 1;
+  }
+
+  async isCurrentFence(fence: DiscoveryRunFence): Promise<boolean> {
+    return !!await NoteDiscoveryRun.exists(this.fenceFilter(fence));
+  }
+
+  async markProviderStarted(fence: DiscoveryRunFence, reservationId: string): Promise<boolean> {
+    if (!await this.budget.isDispatchableReservation(fence, reservationId)) return false;
+    const now = this.now();
+    const result = await NoteDiscoveryRun.updateOne({
+      ...this.fenceFilter(fence, now), providerReservationId: null, sentReservationIds: { $ne: reservationId },
+    }, [{
+      $set: {
+        providerReservationId: { $literal: reservationId },
+        providerStartedAt: { $ifNull: ['$providerStartedAt', now] },
+        sentReservationIds: { $concatArrays: [{ $ifNull: ['$sentReservationIds', []] }, { $literal: [reservationId] }] },
+      },
+    }], { writeConcern });
+    if (!result.matchedCount) return false;
+    if (await this.budget.isDispatchableReservation(fence, reservationId) && await this.isCurrentFence(fence)) return true;
+    // The caller will receive false and cannot dispatch from this marker.
+    await NoteDiscoveryRun.updateOne({
+      ...this.fenceFilter(fence), providerReservationId: reservationId,
+    }, { $set: { providerReservationId: null } });
+    return false;
+  }
+
+  async markProviderFinished(fence: DiscoveryRunFence, reservationId: string): Promise<boolean> {
+    if (!await this.budget.isSettledReservation(fence, reservationId)) return false;
+    const result = await NoteDiscoveryRun.updateOne({
+      ...this.fenceFilter(fence), providerReservationId: reservationId,
+    }, { $set: { providerReservationId: null } });
+    return result.matchedCount === 1;
+  }
+
+  async incrementRetry(fence: DiscoveryRunFence): Promise<boolean> {
+    const result = await NoteDiscoveryRun.updateOne({
+      ...this.fenceFilter(fence), retryCount: 0, providerReservationId: null,
+    }, { $inc: { retryCount: 1 } });
+    return result.matchedCount === 1;
+  }
+
+  async finish(runId: string, token: string, status: FinishStatus, details: FinishDetails = {}): Promise<boolean> {
+    const now = this.now();
+    const finished = await NoteDiscoveryRun.findOneAndUpdate({
+      ...this.leaseFilter(runId, token, now), providerReservationId: null,
+    }, {
+      $set: {
+        status, finishedAt: now, leaseToken: null, leaseUntil: null,
+        usage: details.usage, failureCategory: details.failureCategory,
+      },
+    }, { projection: { userId: 1 }, runValidators: true, writeConcern }).lean();
+    if (!finished) return false;
+    // The pending watermark remains on this immutable run until it is safely acknowledged.
+    // Promotion by future pollers recovers from a crash immediately after finishing.
+    return true;
+  }
+
+  async cancelQueued(userId: string, trigger: DiscoveryTrigger | 'all' = 'automatic'): Promise<number> {
+    const now = this.now();
+    const pendingTrigger = trigger === 'automatic' ? { $in: ['automatic', null] } : trigger;
+    await NoteDiscoveryRun.updateMany({
+      userId, pendingWatermark: { $exists: true }, ...(trigger === 'all' ? {} : { pendingTrigger }),
+    }, unsetPending);
+    const result = await NoteDiscoveryRun.updateMany({
+      userId, status: 'queued', ...(trigger === 'all' ? {} : { trigger }),
+    }, {
+      $set: { status: 'cancelled', finishedAt: now },
+    });
+    return result.modifiedCount;
+  }
+
+  async drainPending(userId?: string): Promise<number> {
+    const pending = await NoteDiscoveryRun.find({
+      ...(userId ? { userId } : {}), status: { $nin: activeStatuses },
+      pendingWatermark: { $exists: true }, pendingIdempotencyKey: { $exists: true },
+    }).sort({ updatedAt: 1 }).limit(100).lean();
+    let drained = 0;
+    for (const predecessor of pending) {
+      const { _id, pendingWatermark, pendingIdempotencyKey, pendingTrigger, pendingAvailableAt } = predecessor;
+      if (!pendingWatermark || !pendingIdempotencyKey) continue;
+      // enqueueStored either durably carries this watermark forward or confirms it was superseded.
+      // A disabled automatic preference explicitly cancels the pending work.
+      await this.enqueueStored(
+        predecessor.userId.toHexString(), pendingWatermark, pendingIdempotencyKey,
+        pendingAvailableAt ?? this.now(), pendingTrigger ?? 'automatic',
+      );
+      const result = await NoteDiscoveryRun.updateOne({ _id, pendingIdempotencyKey }, unsetPending);
+      drained += result.modifiedCount;
+    }
+    return drained;
+  }
+
+  private async enqueueStored(
+    userId: string, watermark: StoredWatermark, key: string, availableAt: Date, trigger: DiscoveryTrigger,
+  ): Promise<StoredDiscoveryRun | null> {
+    await NoteDiscoveryRun.init();
+    for (;;) {
+      const replay = await NoteDiscoveryRun.findOne({ userId, idempotencyKey: key }).lean();
+      if (replay) return replay;
+      if (trigger === 'automatic' && !await this.hasEnabledPreference(userId)) return null;
+
+      const active = await this.getActiveRun(userId);
+      if (active) {
+        const pending = active.status === 'running';
+        const currentWatermark = (pending && active.pendingWatermark) || active.watermark;
+        const existingTrigger = pending ? active.pendingTrigger : active.trigger;
+        const promotesToManual = trigger === 'manual' && existingTrigger !== 'manual';
+        const isNewer = compareWatermarks(watermark, currentWatermark) > 0;
+        if (active.pendingIdempotencyKey === key || (!isNewer && !promotesToManual)) return active;
+        const nextWatermark = isNewer ? watermark : currentWatermark;
+        const fields = pending ? {
+          pendingWatermark: nextWatermark,
+          pendingIdempotencyKey: existingTrigger === 'manual' ? active.pendingIdempotencyKey : key,
+          pendingAvailableAt: existingTrigger === 'manual' ? active.pendingAvailableAt : availableAt,
+          pendingTrigger: existingTrigger === 'manual' ? 'manual' : trigger,
+        } : {
+          watermark: nextWatermark,
+          availableAt: active.trigger === 'manual' ? active.availableAt : availableAt,
+          ...(promotesToManual ? { trigger, idempotencyKey: key } : {}),
+        };
+        const changed = await NoteDiscoveryRun.findOneAndUpdate({
+          _id: active._id, userId, generation: active.generation, status: active.status,
+          trigger: active.trigger, idempotencyKey: active.idempotencyKey,
+          ...sameWatermark('watermark', active.watermark),
+          ...sameWatermark('pendingWatermark', active.pendingWatermark),
+          pendingIdempotencyKey: active.pendingIdempotencyKey ?? null,
+        }, { $set: fields }, { returnDocument: 'after', runValidators: true }).lean();
+        if (changed) return changed;
+        continue;
+      }
+
+      if (trigger === 'automatic') {
+        const covered = await NoteDiscoveryRun.findOne({
+          userId, status: { $nin: [...activeStatuses, 'cancelled'] },
+          'watermark.changedAt': { $gte: watermark.changedAt },
+        }).sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1 }).lean();
+        if (covered && compareWatermarks(covered.watermark, watermark) >= 0) return covered;
+      }
+
+      try {
+        return (await NoteDiscoveryRun.create({ userId, trigger, idempotencyKey: key, watermark, availableAt })).toObject();
+      } catch (error) {
+        if (!isDuplicate(error)) throw error;
+      }
+    }
+  }
+
+  private leaseFilter(runId: string, token: string, now: Date) {
+    return {
+      _id: runId, status: 'running', generation: leaseGeneration(token), leaseToken: token,
+      leaseUntil: { $gt: now }, recoveringGeneration: null,
+    };
+  }
+
+  private fenceFilter(fence: DiscoveryRunFence, now = this.now()) {
+    // Both the explicit generation and the token's embedded generation must agree.
+    const lease = this.leaseFilter(fence.runId, fence.leaseToken, now);
+    return { ...lease, generation: lease.generation === fence.generation ? fence.generation : -1, userId: fence.userId };
+  }
+
+  private leasePipeline(now: Date, recovering: boolean) {
+    const nextGeneration = { $add: ['$generation', 1] };
+    return [{
+      $set: {
+        status: 'running',
+        generation: nextGeneration,
+        leaseToken: { $concat: [{ $toString: nextGeneration }, ':', randomUUID()] },
+        leaseUntil: new Date(now.getTime() + this.leaseMs),
+        ...(recovering ? { recoveringGeneration: { $ifNull: ['$recoveringGeneration', '$generation'] } } : { startedAt: now }),
+      },
+    }];
+  }
+
+  private async takeExpiredLease(now: Date): Promise<StoredDiscoveryRun | null> {
+    return NoteDiscoveryRun.findOneAndUpdate({
+      status: 'running', leaseUntil: { $lte: now },
+    }, this.leasePipeline(now, true), {
+      sort: { leaseUntil: 1, _id: 1 }, returnDocument: 'after',
+    }).lean();
+  }
+
+  private async completeRecovery(run: StoredDiscoveryRun): Promise<ClaimedDiscoveryRun | null> {
+    if (run.recoveringGeneration == null || !run.leaseToken) return null;
+    await this.budget.settleExpiredGeneration({
+      runId: run._id.toHexString(), userId: run.userId.toHexString(),
+      leaseToken: run.leaseToken, generation: run.generation,
+    }, run.recoveringGeneration);
+    const now = this.now();
+    const filter = { ...this.leaseFilter(run._id.toHexString(), run.leaseToken, now), recoveringGeneration: run.recoveringGeneration };
+    const fields = run.providerStartedAt ? {
+      status: 'failed', failureCategory: run.providerReservationId ? 'usage_unknown' : 'expired_lease', finishedAt: now,
+      leaseToken: null, leaseUntil: null, providerReservationId: null,
+    } : { startedAt: now };
+    return asClaimed(await NoteDiscoveryRun.findOneAndUpdate(filter, {
+      $set: { recoveringGeneration: null, ...fields },
+    }, { returnDocument: 'after' }).lean());
+  }
+}
+
+export const noteDiscoveryWorkerStore = new NoteDiscoveryWorkerStore();

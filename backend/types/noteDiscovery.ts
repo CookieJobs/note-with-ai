@@ -35,6 +35,13 @@ export interface DiscoveryRunUsage {
   costCnyMicros: number | null;
 }
 
+export interface DiscoveryRunFence {
+  runId: string;
+  userId: string;
+  leaseToken: string;
+  generation: number;
+}
+
 export interface DiscoveryRunRecord {
   userId: Types.ObjectId;
   trigger: DiscoveryTrigger;
@@ -43,12 +50,17 @@ export interface DiscoveryRunRecord {
   watermark: DiscoveryWatermark<Types.ObjectId>;
   pendingWatermark?: DiscoveryWatermark<Types.ObjectId>;
   pendingIdempotencyKey?: string;
+  pendingAvailableAt?: Date;
+  pendingTrigger?: DiscoveryTrigger;
   availableAt: Date;
   leaseToken: string | null;
   leaseUntil: Date | null;
   generation: number;
   retryCount: number;
   providerStartedAt: Date | null;
+  providerReservationId?: string | null;
+  sentReservationIds?: string[];
+  recoveringGeneration?: number | null;
   startedAt?: Date;
   finishedAt?: Date;
   usage?: DiscoveryRunUsage;
