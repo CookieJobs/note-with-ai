@@ -21,6 +21,7 @@ interface EnqueueOptions {
 interface FinishDetails {
   usage?: DiscoveryRunUsage;
   failureCategory?: DiscoveryFailureCategory;
+  publicationDeadline?: Date;
 }
 
 interface StoreOptions {
@@ -186,8 +187,14 @@ export class NoteDiscoveryWorkerStore {
 
   async finish(runId: string, token: string, status: FinishStatus, details: FinishDetails = {}): Promise<boolean> {
     const now = this.now();
+    // For publication, compare on the server as well as at dispatch: a delayed
+    // Mongo mutation must not commit after its lease or wall-clock deadline.
+    const publicationTime = details.publicationDeadline;
     const finished = await NoteDiscoveryRun.findOneAndUpdate({
       ...this.leaseFilter(runId, token, now), providerReservationId: null,
+      ...(publicationTime ? { $expr: { $and: [
+        { $gt: ['$leaseUntil', '$$NOW'] }, { $gt: [{ $literal: publicationTime }, '$$NOW'] },
+      ] } } : {}),
     }, {
       $set: {
         status, finishedAt: now, leaseToken: null, leaseUntil: null,
@@ -211,6 +218,20 @@ export class NoteDiscoveryWorkerStore {
     }, {
       $set: { status: 'cancelled', finishedAt: now },
     });
+    return result.modifiedCount;
+  }
+
+  /** Global shutdown suppresses every queued trigger and pending successor. */
+  async cancelAllQueued(): Promise<number> {
+    const result = await NoteDiscoveryRun.updateMany({
+      $or: [{ status: 'queued' }, { pendingWatermark: { $exists: true } }],
+    }, [{
+      $set: {
+        status: { $cond: [{ $eq: ['$status', 'queued'] }, 'cancelled', '$status'] },
+        finishedAt: { $cond: [{ $eq: ['$status', 'queued'] }, this.now(), '$finishedAt'] },
+        ...Object.fromEntries(pendingFields.map(field => [field, '$$REMOVE'])),
+      },
+    }], { writeConcern });
     return result.modifiedCount;
   }
 

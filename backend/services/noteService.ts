@@ -18,6 +18,7 @@ import {
 } from './NoteUpdateOrchestrator';
 import { runProductionNoteEnrichmentTask } from './noteEnrichmentWorker';
 import { decodeNoteCursor, encodeNoteCursor, parseNotePageLimit } from './noteListCursor';
+import { invalidateDiscoverySourceBestEffort } from './noteDiscoveryService';
 
 type NoteListItem = NoteDto & { enrichment: ReturnType<typeof getEnrichmentView> };
 export type NotePage = { notes: NoteListItem[]; pageInfo: { nextCursor: string | null; hasMore: boolean } };
@@ -84,7 +85,8 @@ class NoteService {
   async deleteNote(userId: string, noteId: string): Promise<void> {
     const note = await Note.findOne({ _id: noteId, userId });
     if (!note) throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
-    await Note.deleteOne({ _id: noteId });
+    await Note.deleteOne({ _id: noteId, userId });
+    await invalidateDiscoverySourceBestEffort(userId, noteId);
     await UserNoteTopicIndex.deleteOne({ userId, noteId });
     const remainingNotes = await Note.countDocuments({ userId });
     if (remainingNotes < 5) {

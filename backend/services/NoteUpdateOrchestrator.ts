@@ -7,6 +7,9 @@ import {
   type JsonDocument,
 } from './noteContentNormalizer';
 import { createProductionNoteEnrichmentScheduler } from './noteEnrichmentWorker';
+import { invalidateDiscoverySourceBestEffort } from './noteDiscoveryService';
+import { noteDiscoveryScheduleService } from './noteDiscoveryScheduleService';
+import logger from '../utils/logger';
 
 export type NoteBodyInput =
   | { kind: 'rich-text'; document: JsonDocument; fallbackMarkdown?: string }
@@ -287,6 +290,11 @@ function writeFailed(error: unknown): NoteWriteError {
   return new NoteWriteError('NOTE_WRITE_FAILED', '笔记写入失败', 500);
 }
 
+async function scheduleDiscoveryBestEffort(userId: string, note: NoteDto): Promise<void> {
+  try { await noteDiscoveryScheduleService.scheduleChanged(userId, note._id, note.revision, new Date(note.updatedAt)); }
+  catch { logger.warn('Note discovery scheduling failed', { code: 'DISCOVERY_SCHEDULE_CHANGE_FAILED' }); }
+}
+
 export class NoteUpdateOrchestrator {
   private readonly scheduler: EnrichmentScheduler;
 
@@ -321,6 +329,7 @@ export class NoteUpdateOrchestrator {
       throw writeFailed(error);
     }
     const result = this.toResult(created);
+    await scheduleDiscoveryBestEffort(input.userId, result.note);
     trackProductEventBestEffort({ name: 'note_created', userId: input.userId, source: 'server', properties: {} });
     for (const artifact of ARTIFACTS) {
       this.scheduler.schedule({ noteId: result.note._id, userId: input.userId, sourceRevision: revision, artifact });
@@ -406,6 +415,10 @@ export class NoteUpdateOrchestrator {
     }
 
     const result = this.toResult(updated);
+    await Promise.all([
+      invalidateDiscoverySourceBestEffort(input.userId, result.note._id, nextRevision),
+      scheduleDiscoveryBestEffort(input.userId, result.note),
+    ]);
     for (const artifact of ARTIFACTS) {
       if (invalidated.has(artifact) || getArtifactState(current.enrichment, artifact, input.expectedRevision).status === 'pending') {
         this.scheduler.schedule({ noteId: result.note._id, userId: input.userId, sourceRevision: nextRevision, artifact });
