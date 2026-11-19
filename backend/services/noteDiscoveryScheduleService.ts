@@ -103,7 +103,7 @@ export class NoteDiscoveryScheduleService {
       if (String(previous?.noteId) === noteId && (previous?.revision ?? 0) >= revision) return;
       state.initialized = true;
       state.changedWatermark = { changedAt: new Date(Math.max(now.getTime(), (previous?.changedAt.getTime() ?? -1) + 1)), noteId: new Types.ObjectId(noteId), revision };
-      state.dueAt = new Date(now.getTime() + this.debounce);
+      state.dueAt = new Date(Math.max(state.dueAt?.getTime() ?? 0, now.getTime() + this.debounce));
     });
     await this.reconcile(userId, now);
   }
@@ -139,15 +139,15 @@ export class NoteDiscoveryScheduleService {
       if (reenabled) {
         state.epoch += 1;
         state.initialized = true;
-        if (latest) state.changedWatermark = { ...stored(latest), changedAt: new Date(Math.max(now.getTime(), (state.changedWatermark?.changedAt.getTime() ?? -1) + 1)) };
-        state.dueAt = now;
+        if (latest && compare(stored(latest), state.changedWatermark) > 0) state.changedWatermark = stored(latest);
+        state.dueAt = new Date(Math.max(state.dueAt?.getTime() ?? 0, now.getTime()));
       }
     });
     if (!enabled) {
       await this.store.cancelQueued(userId);
       return this.result('disabled', await this.store.getActiveRun(userId));
     }
-    return this.reconcile(userId, now, true);
+    return this.reconcile(userId, now);
   }
 
   async requestManual(userId: string, key: string, now = this.now()): Promise<DiscoveryAdmissionResult> {
@@ -180,6 +180,11 @@ export class NoteDiscoveryScheduleService {
     if (!this.enabled) return this.result('disabled');
     const success = await NoteDiscoveryRun.findOne({ userId, status: { $in: ['completed', 'no_result'] } })
       .sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1, finishedAt: -1, _id: -1 }).lean();
+    // Search the durable account history, not only the most recent attempt. A later
+    // ordinary/manual failure cannot erase an uncertain paid attempt's saved-state barrier.
+    const unknown = await NoteDiscoveryRun.findOne({ userId, status: 'failed',
+      $or: [{ providerDeliveryUnknown: true }, { failureCategory: 'usage_unknown' }],
+    }).sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1 }).lean();
     const pref = await this.mutate(userId, (_pref, state) => {
       if (success && (compare(success.watermark, state.lastSuccessfulWatermark) > 0
         || (compare(success.watermark, state.lastSuccessfulWatermark) === 0
@@ -187,6 +192,8 @@ export class NoteDiscoveryScheduleService {
         state.lastSuccessfulWatermark = success.watermark;
         state.lastSuccessfulAt = success.finishedAt ?? now;
       }
+      if ((!force && compare(state.changedWatermark, state.lastSuccessfulWatermark) <= 0)
+        || (unknown && compare(state.changedWatermark, unknown.watermark) <= 0)) delete state.dueAt;
     });
     const state = pref.schedule!;
     if (!pref.automaticEnabled) return this.result('disabled', await this.store.getActiveRun(userId));
@@ -195,11 +202,14 @@ export class NoteDiscoveryScheduleService {
     const failed = latest && ['failed', 'cancelled', 'budget_blocked'].includes(latest.status) ? latest : null;
     // An uncertain delivery may already have consumed a paid call. Only a distinct new
     // saved change or explicit manual action may start another run for this account.
-    if (failed && (failed.providerDeliveryUnknown || failed.failureCategory === 'usage_unknown')
-      && compare(state.changedWatermark, failed.watermark) <= 0) return this.result('idle', failed);
+    if (unknown && compare(state.changedWatermark, unknown.watermark) <= 0) return this.result('idle', unknown);
     const quotaAt = this.eligibility(pref, 'automatic', now);
     const availableAt = new Date(Math.max(state.dueAt?.getTime() ?? now.getTime(), quotaAt?.getTime() ?? 0,
       failed ? (failed.finishedAt?.getTime() ?? now.getTime()) + this.debounce : 0));
+    await this.mutate(userId, (_pref, current) => {
+      // Never clear or postpone a concurrently saved newer change using an old snapshot.
+      if (compare(current.changedWatermark, state.changedWatermark) === 0) current.dueAt = availableAt;
+    });
     const key = `auto:${state.epoch}:${state.changedWatermark.changedAt.getTime()}:${state.changedWatermark.noteId ?? ''}:${state.changedWatermark.revision ?? 0}:${failed?._id ?? ''}`;
     const run = await this.store.enqueue(userId, publicWatermark(state.changedWatermark), key, { availableAt, trigger: 'automatic' });
     // Close off-vs-enqueue race. Manual promotion remains protected by store's trigger filter.
@@ -251,13 +261,21 @@ export class NoteDiscoveryScheduleService {
     const fence = { runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken };
     // Read before CAS; all instances serialize admission on the same preference version.
     let outcome: DiscoveryAdmissionResult = this.result('stale', run);
+    let deferredWatermark: Watermark | undefined;
     await this.mutate(userId, (pref, state) => {
       if (run.trigger === 'automatic' && !pref.automaticEnabled) { outcome = this.result('disabled', run); return; }
       if (state.admissions.some((receipt) => receipt.runId === fence.runId)) { outcome = this.result('authorized', run); return; }
-      const retryAt = this.eligibility(pref, run.trigger, now);
-      if (retryAt) { outcome = this.result('limited', run, retryAt); return; }
+      const quotaAt = this.eligibility(pref, run.trigger, now);
+      const silenceAt = run.trigger === 'automatic' && state.dueAt && state.dueAt.getTime() > now.getTime() ? state.dueAt : undefined;
+      const retryAt = quotaAt || silenceAt ? new Date(Math.max(quotaAt?.getTime() ?? 0, silenceAt?.getTime() ?? 0)) : undefined;
+      deferredWatermark = state.changedWatermark;
+      if (retryAt) {
+        if (run.trigger === 'automatic') state.dueAt = retryAt;
+        outcome = this.result('limited', run, retryAt); return;
+      }
       state.admissions = state.admissions.filter((receipt) => receipt.at.getTime() > now.getTime() - 2 * DAY);
       state.admissions.push({ runId: fence.runId, trigger: run.trigger, at: now });
+      if (run.trigger === 'automatic') state.dueAt = new Date(now.getTime() + config.NOTE_DISCOVERY_TIMEOUT_MS);
       outcome = this.result('authorized', run);
     }, async () => {
       const current = await this.store.getRun(userId, fence.runId);
@@ -265,8 +283,10 @@ export class NoteDiscoveryScheduleService {
     });
     if (outcome.status === 'limited') {
       const deferred = await NoteDiscoveryRun.updateOne({ _id: run._id, userId, status: 'running', generation: run.generation, leaseToken: run.leaseToken,
-        leaseUntil: { $gt: now }, providerReservationId: null, providerStartedAt: null }, {
-        $set: { status: 'queued', availableAt: outcome.retryAt, leaseToken: null, leaseUntil: null },
+        leaseUntil: { $gt: this.now() }, recoveringGeneration: null, providerReservationId: null, providerStartedAt: null }, {
+        $set: { status: 'queued', availableAt: outcome.retryAt, leaseToken: null, leaseUntil: null,
+          ...(run.trigger === 'automatic' && compare(deferredWatermark, run.watermark) > 0 ? { watermark: deferredWatermark } : {}),
+        },
       }, { writeConcern });
       if (!deferred.matchedCount) return this.result('stale', run);
     } else if (outcome.status === 'authorized' && !await this.canPublish(run)) return this.result('stale', run);
@@ -314,7 +334,9 @@ export class NoteDiscoveryScheduleService {
       const state = pref.schedule ?? initialState();
       const version = state.version;
       if (guard && !await guard()) return pref;
+      const before = JSON.stringify({ schedule: pref.schedule, automaticEnabled: pref.automaticEnabled, timeZone: pref.timeZone });
       change(pref, state);
+      if (before === JSON.stringify({ schedule: state, automaticEnabled: pref.automaticEnabled, timeZone: pref.timeZone })) return pref;
       state.version = version + 1;
       const updated = await NoteDiscoveryPreference.findOneAndUpdate({ _id: pref._id, 'schedule.version': pref.schedule ? version : null }, {
         $set: { schedule: state, automaticEnabled: pref.automaticEnabled, timeZone: pref.timeZone },

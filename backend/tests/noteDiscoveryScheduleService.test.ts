@@ -183,15 +183,15 @@ describe('durable discovery scheduling', noteDiscoveryMongoTestOptions, () => {
     await newer.initializeOnVisit(userId, undefined, now);
     assert.equal(await NoteDiscoveryRun.countDocuments(), 2);
   });
-  it('re-enabling initializes the current saved state after an earlier successful scan', async () => {
+  it('re-enabling stays quiet when the current saved state already scanned successfully', async () => {
     await service.initializeOnVisit(userId, undefined, now);
     await finish();
     await service.reconcile(userId, now);
     await service.setAutomaticEnabled(userId, false, now);
     now = new Date(now.getTime() + 60_000);
     await service.setAutomaticEnabled(userId, true, now);
-    assert.equal(await NoteDiscoveryRun.countDocuments(), 2);
-    assert.equal((await store.getActiveRun(userId))?.status, 'queued');
+    assert.equal(await NoteDiscoveryRun.countDocuments(), 1);
+    assert.equal(await store.getActiveRun(userId), null);
   });
   it('retains capped changes until the rolling hour clears and then admits exactly once', async () => {
     for (let i = 0; i < 2; i++) {
@@ -202,6 +202,9 @@ describe('durable discovery scheduling', noteDiscoveryMongoTestOptions, () => {
     await service.scheduleChanged(userId, noteId, 3, now);
     const queued = await store.getActiveRun(userId);
     assert.ok(queued);
+    const version = (await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.version;
+    assert.equal(await service.scanDue(now), 0);
+    assert.equal((await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.version, version);
     now = new Date(queued.availableAt.getTime() - 1);
     assert.equal(await store.claimNext(now), null);
     now = new Date(now.getTime() + 1);
@@ -293,7 +296,9 @@ describe('durable discovery scheduling', noteDiscoveryMongoTestOptions, () => {
     await store.finish(run._id.toHexString(), run.leaseToken, 'failed', { failureCategory: 'usage_unknown' });
     now = new Date(now.getTime() + 120_000);
     await service.scanDue(now);
-    await create().scanDue(now);
+    const blockedVersion = (await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.version;
+    assert.equal(await create().scanDue(now), 0);
+    assert.equal((await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.version, blockedVersion);
     assert.equal(await NoteDiscoveryRun.countDocuments(), 1);
     assert.equal(await store.getActiveRun(userId), null);
     await service.scheduleChanged(userId, noteId, 2, now);
@@ -308,6 +313,76 @@ describe('durable discovery scheduling', noteDiscoveryMongoTestOptions, () => {
     const restarted = create({ readLatest: async () => ({ changedAt: now, noteId, revision: 2 }) });
     await restarted.initializeOnStartup(now);
     assert.equal((await store.getActiveRun(userId))?.watermark.revision, 2);
+  });
+  it('admits no receipt while a newer durable outbox change is still in its silence window', async () => {
+    await service.scheduleChanged(userId, noteId, 1, now);
+    now = new Date(now.getTime() + 120_000);
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    const slow = Object.assign(Object.create(store), { enqueue: async (...args: Parameters<NoteDiscoveryWorkerStore['enqueue']>) => {
+      entered(); await gate; return store.enqueue(...args);
+    } });
+    const later = create({ store: slow }).scheduleChanged(userId, new Types.ObjectId().toHexString(), 1, now);
+    await waiting;
+    const run = await store.claimNext(now);
+    assert.ok(run);
+    const result = await service.authorizeRun(run, now);
+    release();
+    await later;
+    assert.equal(result.status, 'limited');
+    assert.equal(result.retryAt?.getTime(), now.getTime() + 120_000);
+    assert.equal((await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.admissions.length, 0);
+  });
+  it('out-of-order callbacks cannot shorten the latest silence deadline', async () => {
+    const later = new Date(now.getTime() + 60_000);
+    await service.scheduleChanged(userId, noteId, 1, later);
+    await service.scheduleChanged(userId, new Types.ObjectId().toHexString(), 1, now);
+    assert.equal((await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.dueAt?.getTime(), later.getTime() + 120_000);
+  });
+  it('unknown delivery survives a subsequent ordinary manual failure and off/on', async () => {
+    await service.initializeOnVisit(userId, undefined, now);
+    const first = await store.claimNext(now);
+    assert.ok(first);
+    await service.authorizeRun(first, now);
+    await NoteDiscoveryRun.updateOne({ _id: first._id }, { $set: { providerDeliveryUnknown: true } });
+    await store.finish(first._id.toHexString(), first.leaseToken, 'failed', { failureCategory: 'usage_unknown' });
+    await service.requestManual(userId, 'explicit-once', now);
+    await finish('failed');
+    now = new Date(now.getTime() + 120_000);
+    await service.scanDue(now);
+    assert.equal(await store.getActiveRun(userId), null);
+    await service.setAutomaticEnabled(userId, false, now);
+    await service.setAutomaticEnabled(userId, true, now);
+    assert.equal(await store.getActiveRun(userId), null);
+  });
+  it('clears covered and unknown-blocked due markers so quiet polling preserves versions', async () => {
+    await service.initializeOnVisit(userId, undefined, now);
+    await finish();
+    await service.reconcile(userId, now);
+    const before = await NoteDiscoveryPreference.findOne({ userId }).lean();
+    assert.equal(await service.scanDue(now), 0);
+    assert.equal(await service.scanDue(now), 0);
+    assert.equal((await NoteDiscoveryPreference.findOne({ userId }).lean())?.schedule?.version, before?.schedule?.version);
+  });
+  it('does not defer with an expired lease after waiting for the preference CAS', async () => {
+    await service.scheduleChanged(userId, noteId, 1, now);
+    now = new Date(now.getTime() + 120_000);
+    const run = await store.claimNext(now);
+    assert.ok(run);
+    await NoteDiscoveryPreference.updateOne({ userId }, { $set: { 'schedule.admissions': [
+      { runId: new Types.ObjectId().toHexString(), trigger: 'automatic', at: now },
+      { runId: new Types.ObjectId().toHexString(), trigger: 'automatic', at: now },
+    ] } });
+    const original = NoteDiscoveryPreference.findOneAndUpdate;
+    NoteDiscoveryPreference.findOneAndUpdate = function (this: typeof NoteDiscoveryPreference, ...args: unknown[]) {
+      now = new Date(run.leaseUntil.getTime() + 1);
+      return original.apply(this, args as Parameters<typeof original>);
+    } as typeof original;
+    try { assert.equal((await service.authorizeRun(run, new Date(now))).status, 'stale'); }
+    finally { NoteDiscoveryPreference.findOneAndUpdate = original; }
+    assert.equal((await store.getRun(userId, run._id.toHexString()))?.status, 'running');
   });
   it('does nothing when feature disabled and rejects invalid browser zones', async () => {
     await create({ enabled: false }).scheduleChanged(userId, noteId, 1, now);
