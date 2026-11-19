@@ -6,7 +6,7 @@ import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
 import type { DiscoveryCandidate, DiscoveryQualityResult, DiscoveryRunUsage, EvidenceInput } from '../types/noteDiscovery';
 import logger from '../utils/logger';
 import {
-  DiscoverySourceError, validateEvidence, type DiscoverySource, type ValidatedEvidence,
+  DiscoverySourceError, resolveDiscoveryEvidence, type DiscoverySource, type ValidatedEvidence,
 } from './noteDiscoveryEvidenceService';
 import { discoveryCandidateSchema, type SubmittedDiscoveryCandidate } from './noteDiscoveryTools';
 import { noteDiscoveryWorkerStore, type ClaimedDiscoveryRun } from './noteDiscoveryWorkerStore';
@@ -98,9 +98,9 @@ export async function isPublishedDiscovery(userId: string, discovery: DiscoveryI
 
 type SavedEvidence = Omit<EvidenceInput, 'noteId'> & { noteId: string | Types.ObjectId };
 
-async function currentEvidence(userId: string, evidence: readonly SavedEvidence[]): Promise<ValidatedEvidence[] | null> {
+async function currentEvidence(userId: string, evidence: readonly SavedEvidence[]) {
   try {
-    return await validateEvidence(userId, evidence.map(({ noteId, revision, excerpt }) => ({ noteId: String(noteId), revision, excerpt })));
+    return await resolveDiscoveryEvidence(userId, evidence.map(({ noteId, revision, excerpt }) => ({ noteId: String(noteId), revision, excerpt })));
   } catch (error) {
     if (error instanceof DiscoverySourceError && error.code !== 'read_failed') return null;
     throw error;
@@ -137,6 +137,12 @@ function sourceKey(ids: (Types.ObjectId | string)[]): string {
   return [...new Set(ids.map(String))].sort().join(',');
 }
 
+function sourceBodyBaselines(sources: readonly DiscoverySource[]) {
+  return sources.map(({ noteId, contentText }) => ({
+    noteId, fingerprint: digest(contentText.normalize('NFKC').replace(/\[(?:图片|image)\]|\s+/giu, '')),
+  }));
+}
+
 /** Stage by generation first. Only a matching completed run makes a staged row visible. */
 export async function publishDiscoveryRun(
   run: ClaimedDiscoveryRun, submissions: readonly SubmittedDiscoveryCandidate[], usage: DiscoveryRunUsage,
@@ -157,19 +163,27 @@ export async function publishDiscoveryRun(
   for (const { candidate, evidence } of submissions) {
     if (staged.size === 3) break;
     if (!await permitted()) return 'cancelled';
-    const quality = await validateCandidate(candidate, evidence, readSources);
-    if (!quality.passed) continue;
     const current = await currentEvidence(userId, candidate.evidence);
     if (!current) continue;
-    const sourceFingerprint = discoverySourceFingerprint(current);
+    const quality = await validateCandidate(candidate, evidence, readSources.length ? readSources : current.sources);
+    if (!quality.passed) continue;
+    const sourceFingerprint = discoverySourceFingerprint(current.evidence);
+    const bodyBaselines = sourceBodyBaselines(current.sources);
+    const bodyById = new Map(bodyBaselines.map(item => [item.noteId, item.fingerprint]));
     const observationFingerprint = discoveryObservationFingerprint(candidate);
     if (staged.has(observationFingerprint)) continue;
 
-    const ids = sourceKey(current.map(item => item.noteId));
+    const ids = sourceKey(current.evidence.map(item => item.noteId));
     const suppressed = feedback.some(item => {
       if (item.kind === 'not_interested') return sourceKey(item.sourceIds) === ids && item.observationFingerprint === observationFingerprint;
-      if (item.kind === 'not_related') return !!candidate.relationshipKey && item.relationshipKey === candidate.relationshipKey
-        && item.sourceFingerprint === sourceFingerprint;
+      if (item.kind === 'not_related') {
+        if (!candidate.relationshipKey || item.relationshipKey !== candidate.relationshipKey) return false;
+        // Replacing a title, formatting or an entire source does not establish changed text in an original source.
+        return !item.sourceBodyBaselines?.some((baseline) => {
+          const body = bodyById.get(String(baseline.noteId));
+          return body !== undefined && body !== baseline.fingerprint;
+        });
+      }
       return !!candidate.questionKey && item.questionKey === candidate.questionKey;
     });
     if (suppressed) continue;
@@ -190,14 +204,15 @@ export async function publishDiscoveryRun(
     try {
       await NoteDiscovery.updateOne(key, {
         $setOnInsert: {
-          ...key, ...proposal, sourceFingerprint, quality, status: 'ready', createdAt: now, updatedAt: now,
-          evidence: current.map(item => ({ ...item, noteDate: new Date(item.noteDate) })),
+          ...key, ...proposal, sourceFingerprint, sourceBodyBaselines: bodyBaselines,
+          quality, status: 'ready', createdAt: now, updatedAt: now,
+          evidence: current.evidence.map(item => ({ ...item, noteDate: new Date(item.noteDate) })),
         },
       }, { upsert: true, timestamps: false, runValidators: true, setDefaultsOnInsert: true, writeConcern }).maxTimeMS(2000);
     } catch (error) {
       if ((error as { code?: unknown } | null)?.code !== 11000 || !await NoteDiscovery.exists(key)) throw error;
     }
-    staged.set(observationFingerprint, current);
+    staged.set(observationFingerprint, current.evidence);
   }
   if (!staged.size) return 'no_result';
 

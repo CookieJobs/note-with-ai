@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { DiscoverySourceBodyBaselineSchema } from './NoteDiscovery';
 import {
   DEFAULT_DISCOVERY_TIME_ZONE,
   DISCOVERY_FEEDBACK_KINDS,
@@ -14,6 +15,7 @@ const FeedbackSchema = new mongoose.Schema<DiscoveryFeedback<mongoose.Types.Obje
     validate: (ids: mongoose.Types.ObjectId[]) => ids.length > 0,
   },
   sourceFingerprint: { type: String, required: true, trim: true, maxlength: 200 },
+  sourceBodyBaselines: { type: [DiscoverySourceBodyBaselineSchema], default: undefined },
   observationFingerprint: { type: String, required: true, trim: true, maxlength: 200 },
   relationshipKey: { type: String, trim: true, maxlength: 200 },
   questionKey: { type: String, trim: true, maxlength: 200 },

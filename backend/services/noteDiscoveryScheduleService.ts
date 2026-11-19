@@ -20,7 +20,7 @@ export interface DiscoveryAdmissionResult {
 interface ScheduleOptions {
   enabled?: boolean;
   now?: () => Date;
-  store?: Pick<NoteDiscoveryWorkerStore, 'enqueue' | 'getActiveRun' | 'getLatestRun' | 'getRun' | 'cancelQueued' | 'isCurrentFence'>;
+  store?: Pick<NoteDiscoveryWorkerStore, 'enqueue' | 'getActiveRun' | 'getLatestRun' | 'getRun' | 'cancelQueued' | 'cancelAutomaticRuns' | 'isCurrentFence'>;
   readLatest?: (userId: string) => Promise<DiscoveryWatermark | null>;
   debounceMs?: number;
   autoDailyLimit?: number;
@@ -166,7 +166,7 @@ export class NoteDiscoveryScheduleService {
       }
     });
     if (!enabled) {
-      await this.store.cancelQueued(userId);
+      await this.store.cancelAutomaticRuns(userId);
       return this.result('disabled', await this.store.getActiveRun(userId));
     }
     return this.reconcile(userId, now);
@@ -276,7 +276,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async authorizeRun(run: ClaimedDiscoveryRun, now = this.now()): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled) return this.result('disabled', run);
+    if (!this.enabled || run.executionCancelled) return this.result('disabled', run);
     const userId = run.userId.toHexString();
     const fence = { runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken };
     // Store promotion and crash recovery can reach admission without reconcile.
@@ -317,12 +317,17 @@ export class NoteDiscoveryScheduleService {
       outcome = this.result('authorized', run);
     }, async () => {
       const current = await this.store.getRun(userId, fence.runId);
+      if (current?.executionCancelled && current.leaseToken === fence.leaseToken) {
+        outcome = this.result('disabled', current);
+        return false;
+      }
       return !!current && current.status === 'running' && await this.store.isCurrentFence(fence);
     });
     if (outcome.status === 'limited') {
       const absorbed = run.trigger === 'automatic' && compare(deferredWatermark, run.watermark) > 0 ? deferredWatermark! : run.watermark;
       const deferred = await NoteDiscoveryRun.updateOne({ _id: run._id, userId, status: 'running', generation: run.generation, leaseToken: run.leaseToken,
-        leaseUntil: { $gt: this.now() }, recoveringGeneration: null, providerReservationId: null, providerStartedAt: null }, [{
+        leaseUntil: { $gt: this.now() }, recoveringGeneration: null, executionCancelled: { $ne: true },
+        providerReservationId: null, providerStartedAt: null }, [{
         $set: { status: 'queued', availableAt: outcome.retryAt, leaseToken: null, leaseUntil: null,
           ...(run.trigger === 'automatic' ? { watermark: { $literal: absorbed }, ...clearAbsorbedAutomaticPending(absorbed) } : {}),
         },

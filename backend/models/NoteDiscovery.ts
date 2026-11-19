@@ -4,6 +4,7 @@ import {
   DISCOVERY_STATUSES,
   type DiscoveryEvidenceSnapshot,
   type DiscoveryQualityRationale,
+  type DiscoverySourceBodyBaseline,
   type DiscoveryRecord,
   type EvidenceLocator,
 } from '../types/noteDiscovery';
@@ -42,6 +43,11 @@ const QualitySchema = new mongoose.Schema<DiscoveryRecord['quality']>({
   rationale: { type: RationaleSchema, required: true },
 }, { _id: false });
 
+export const DiscoverySourceBodyBaselineSchema = new mongoose.Schema<DiscoverySourceBodyBaseline<mongoose.Types.ObjectId>>({
+  noteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Note', required: true },
+  fingerprint: { type: String, required: true, match: /^[a-f0-9]{64}$/ },
+}, { _id: false });
+
 const NoteDiscoverySchema = new mongoose.Schema<DiscoveryRecord>({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, immutable: true },
   runId: { type: mongoose.Schema.Types.ObjectId, ref: 'NoteDiscoveryRun', required: true },
@@ -58,6 +64,7 @@ const NoteDiscoverySchema = new mongoose.Schema<DiscoveryRecord>({
     validate: (items: DiscoveryEvidenceSnapshot[]) => items.length > 0,
   },
   sourceFingerprint: { type: String, required: true, trim: true, maxlength: 200 },
+  sourceBodyBaselines: { type: [DiscoverySourceBodyBaselineSchema], default: undefined },
   observationFingerprint: { type: String, required: true, trim: true, maxlength: 200 },
   relationshipKey: { type: String, trim: true, maxlength: 200 },
   questionKey: { type: String, trim: true, maxlength: 200 },

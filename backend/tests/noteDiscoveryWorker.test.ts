@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
+import NoteDiscoveryBudget from '../models/NoteDiscoveryBudget';
 import { createDiscoveryProvider } from '../services/noteDiscoveryProvider';
 import { NoteDiscoveryWorker } from '../services/noteDiscoveryWorker';
 import { connectNoteDiscoveryTestMongo, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
@@ -148,4 +149,70 @@ describe('independent note discovery worker', noteDiscoveryMongoTestOptions, () 
     assert.equal(saved?.providerDeliveryUnknown, undefined);
     assert.equal(requests, 1);
   });
+
+  for (const paused of ['reservation', 'marker', 'retry'] as const) {
+    test(`deadline frees the worker while a provider ${paused} acknowledgement is pending`, { timeout: 5000 }, async context => {
+      const fixture = await makeRun();
+      await makeNote(fixture.userId);
+      let release!: () => void;
+      const waiting = new Promise<void>(resolve => { release = resolve; });
+      let notify!: () => void;
+      const entered = new Promise<void>(resolve => { notify = resolve; });
+      if (paused === 'reservation') {
+        const reserve = fixture.budget.reserve.bind(fixture.budget);
+        context.mock.method(fixture.budget, 'reserve', async (...args: Parameters<typeof reserve>) => {
+          const reservation = await reserve(...args);
+          notify();
+          await waiting;
+          return reservation;
+        });
+      } else if (paused === 'marker') {
+        const mark = fixture.store.markProviderStarted.bind(fixture.store);
+        context.mock.method(fixture.store, 'markProviderStarted', async (...args: Parameters<typeof mark>) => {
+          assert.equal(await mark(...args), true);
+          notify();
+          await waiting;
+          throw new Error('simulated lost marker acknowledgement');
+        });
+      } else {
+        const increment = fixture.store.incrementRetry.bind(fixture.store);
+        context.mock.method(fixture.store, 'incrementRetry', async (...args: Parameters<typeof increment>) => {
+          notify();
+          await waiting;
+          return increment(...args);
+        });
+      }
+      let requests = 0;
+      const worker = new NoteDiscoveryWorker({
+        ...fixture, enabled: () => true, heartbeatMs: 30,
+        agentOptions: { limits: { timeoutMs: 250 }, telemetry: false, provider: createDiscoveryProvider(fixturePrice, async () => {
+          requests++;
+          return { status: 503, data: { usage: { prompt_tokens: 12, completion_tokens: 1, total_tokens: 13 } } };
+        })! },
+      });
+      const ticking = worker.tick();
+      try {
+        await entered;
+        assert.equal(await Promise.race([ticking.then(() => 'released'), delay(500, 'blocked')]), 'released');
+      } finally {
+        release();
+        await ticking;
+      }
+      for (let i = 0; i < 50; i++) {
+        if ((await fixture.store.getRun(fixture.userId, fixture.runId))?.status === 'failed') break;
+        await delay(10);
+      }
+      const row = await fixture.store.getRun(fixture.userId, fixture.runId);
+      const ledger = await NoteDiscoveryBudget.findOne({ 'reservations.runId': fixture.runId }).lean();
+      const reservation = ledger?.reservations.find(item => String(item.runId) === fixture.runId);
+      assert.equal(row?.status, 'failed');
+      assert.equal(row?.failureCategory, 'limit_exceeded');
+      assert.equal(row?.providerReservationId, null);
+      assert.equal(row?.providerDeliveryUnknown, undefined);
+      assert.equal(requests, paused === 'retry' ? 1 : 0);
+      assert.equal(reservation?.state, 'settled');
+      assert.equal(reservation?.delivery, paused === 'retry' ? 'response_received' : 'not_sent');
+      if (paused !== 'retry') assert.equal(reservation?.settledMicros, 0);
+    });
+  }
 });

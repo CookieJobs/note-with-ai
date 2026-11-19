@@ -2,6 +2,7 @@ import { config } from '../config';
 import type { DiscoveryRunStatus, DiscoveryRunUsage } from '../types/noteDiscovery';
 import logger from '../utils/logger';
 import { DiscoveryExecutionError, NoteContinuationAgent, type DiscoveryAgentOptions } from './noteContinuationAgent';
+import { DiscoveryReservationRecoveryError } from './noteDiscoveryBudgetService';
 import { noteDiscoveryScheduleService } from './noteDiscoveryScheduleService';
 import { cleanUnpublishedDiscoveries } from './noteDiscoveryService';
 import { noteDiscoveryWorkerStore } from './noteDiscoveryWorkerStore';
@@ -72,6 +73,10 @@ export class NoteDiscoveryWorker {
       status: Extract<DiscoveryRunStatus, 'no_result' | 'cancelled' | 'failed'>,
       usage?: DiscoveryRunUsage, failureCategory?: DiscoveryExecutionError['category'],
     ) => this.store.finish(runId, run.leaseToken, status, { usage, failureCategory });
+    const reconcile = async () => {
+      try { await this.schedule.reconcile(userId); }
+      catch { logger.warn('Note discovery reconciliation failed', { code: 'DISCOVERY_RECONCILE_FAILED' }); }
+    };
 
     let terminal = false;
     let agent: NoteContinuationAgent | undefined;
@@ -94,16 +99,24 @@ export class NoteDiscoveryWorker {
         await this.schedule.canPublish(run) && !activeSignal.aborted && this.enabled());
       if (outcome === 'completed') terminal = true;
       else terminal = await finish(outcome, agent.getUsage());
+      if (outcome === 'no_result' && !terminal && !await this.schedule.canPublish(run)) {
+        terminal = await finish('cancelled', agent.getUsage());
+      }
     } catch (error) {
       const category = error instanceof DiscoveryExecutionError ? error.category : 'internal_error';
+      const cleanup = agent?.getPendingDispatchCleanup();
+      if (cleanup) {
+        void cleanup.then(async (settled) => {
+          if (settled && await finish('failed', agent?.getUsage(), category)) await reconcile();
+        }).catch(() => logger.warn('Note discovery dispatch cleanup needs lease recovery', { code: 'DISCOVERY_DISPATCH_CLEANUP_FAILED' }));
+        return;
+      }
+      if (error instanceof DiscoveryReservationRecoveryError) return;
       terminal = await finish('failed', agent?.getUsage(), category);
     } finally {
       closed = true;
       clearInterval(heartbeat);
-      if (terminal) {
-        try { await this.schedule.reconcile(userId); }
-        catch { logger.warn('Note discovery reconciliation failed', { code: 'DISCOVERY_RECONCILE_FAILED' }); }
-      }
+      if (terminal) await reconcile();
     }
   }
 }

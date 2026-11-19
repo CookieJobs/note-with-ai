@@ -45,6 +45,7 @@ const NoteDiscoveryRunSchema = new mongoose.Schema<DiscoveryRunRecord>({
   providerStartedAt: { type: Date, default: null },
   providerReservationId: { type: String, maxlength: 48, default: null },
   providerDeliveryUnknown: { type: Boolean },
+  executionCancelled: { type: Boolean },
   sentReservationIds: { type: [{ type: String, maxlength: 48 }], default: undefined },
   recoveringGeneration: { ...nullableInteger, default: null },
   startedAt: { type: Date },

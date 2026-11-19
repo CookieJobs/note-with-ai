@@ -121,6 +121,7 @@ export function createNoteDiscoveryTools(userId: string, limits: ToolLimits): No
         const now = new Date();
         const [preference] = await Preference.aggregate<{ feedback: unknown[] }>([
           { $match: { userId: owner } },
+          { $unset: 'feedback.sourceBodyBaselines' },
           { $project: { feedback: { $slice: [{ $filter: {
             input: '$feedback', as: 'item', cond: { $and: [
               { $eq: [{ $ifNull: ['$$item.revokedAt', null] }, null] },

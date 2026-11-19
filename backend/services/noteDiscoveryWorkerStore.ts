@@ -142,15 +142,16 @@ export class NoteDiscoveryWorkerStore {
   }
 
   async isCurrentFence(fence: DiscoveryRunFence): Promise<boolean> {
-    return !!await NoteDiscoveryRun.exists(this.fenceFilter(fence));
+    return !!await NoteDiscoveryRun.exists({ ...this.fenceFilter(fence), executionCancelled: { $ne: true } });
   }
 
-  async markProviderStarted(fence: DiscoveryRunFence, reservationId: string): Promise<boolean> {
+  async markProviderStarted(fence: DiscoveryRunFence, reservationId: string, deadline?: Date): Promise<boolean> {
     if (!await this.budget.isDispatchableReservation(fence, reservationId)) return false;
     const now = this.now();
     const result = await NoteDiscoveryRun.updateOne({
       ...this.fenceFilter(fence, now), providerReservationId: null,
-      providerDeliveryUnknown: { $ne: true }, sentReservationIds: { $ne: reservationId },
+      executionCancelled: { $ne: true }, providerDeliveryUnknown: { $ne: true }, sentReservationIds: { $ne: reservationId },
+      ...(deadline ? { $expr: { $gt: [{ $literal: deadline }, '$$NOW'] } } : {}),
     }, [{
       $set: {
         providerReservationId: { $literal: reservationId },
@@ -178,9 +179,11 @@ export class NoteDiscoveryWorkerStore {
     return result.matchedCount === 1;
   }
 
-  async incrementRetry(fence: DiscoveryRunFence): Promise<boolean> {
+  async incrementRetry(fence: DiscoveryRunFence, deadline?: Date): Promise<boolean> {
     const result = await NoteDiscoveryRun.updateOne({
-      ...this.fenceFilter(fence), retryCount: 0, providerReservationId: null, providerDeliveryUnknown: { $ne: true },
+      ...this.fenceFilter(fence), retryCount: 0, providerReservationId: null,
+      executionCancelled: { $ne: true }, providerDeliveryUnknown: { $ne: true },
+      ...(deadline ? { $expr: { $gt: [{ $literal: deadline }, '$$NOW'] } } : {}),
     }, { $inc: { retryCount: 1 } });
     return result.matchedCount === 1;
   }
@@ -192,6 +195,7 @@ export class NoteDiscoveryWorkerStore {
     const publicationTime = details.publicationDeadline;
     const finished = await NoteDiscoveryRun.findOneAndUpdate({
       ...this.leaseFilter(runId, token, now), providerReservationId: null,
+      ...(status === 'completed' || status === 'no_result' ? { executionCancelled: { $ne: true } } : {}),
       ...(publicationTime ? { $expr: { $and: [
         { $gt: ['$leaseUntil', '$$NOW'] }, { $gt: [{ $literal: publicationTime }, '$$NOW'] },
       ] } } : {}),
@@ -219,6 +223,25 @@ export class NoteDiscoveryWorkerStore {
       $set: { status: 'cancelled', finishedAt: now },
     });
     return result.modifiedCount;
+  }
+
+  /** Fence automatic execution in its own row without removing an in-flight attempt's settlement lease. */
+  async cancelAutomaticRuns(userId: string): Promise<void> {
+    const automatic = { $eq: ['$trigger', 'automatic'] };
+    const queued = { $and: [automatic, { $eq: ['$status', 'queued'] }] };
+    const running = { $and: [automatic, { $eq: ['$status', 'running'] }] };
+    const manualPending = { $eq: ['$pendingTrigger', 'manual'] };
+    await NoteDiscoveryRun.updateMany({
+      userId, $or: [
+        { trigger: 'automatic', status: { $in: activeStatuses } },
+        { pendingWatermark: { $exists: true }, pendingTrigger: { $in: ['automatic', null] } },
+      ],
+    }, [{ $set: {
+      status: { $cond: [queued, 'cancelled', '$status'] },
+      finishedAt: { $cond: [queued, this.now(), '$finishedAt'] },
+      executionCancelled: { $cond: [running, true, '$executionCancelled'] },
+      ...Object.fromEntries(pendingFields.map(field => [field, { $cond: [manualPending, `$${field}`, '$$REMOVE'] }])),
+    } }], { writeConcern });
   }
 
   /** Global shutdown suppresses every queued trigger and pending successor. */
@@ -391,8 +414,11 @@ export class NoteDiscoveryWorkerStore {
     }, run.recoveringGeneration);
     const now = this.now();
     const filter = { ...this.leaseFilter(run._id.toHexString(), run.leaseToken, now), recoveringGeneration: run.recoveringGeneration };
-    const fields = run.providerStartedAt ? {
-      status: 'failed', failureCategory: run.providerReservationId || run.providerDeliveryUnknown ? 'usage_unknown' : 'expired_lease',
+    const unknownDelivery = run.providerReservationId || run.providerDeliveryUnknown;
+    const fields = run.executionCancelled && !unknownDelivery ? {
+      status: 'cancelled', finishedAt: now, leaseToken: null, leaseUntil: null,
+    } : run.providerStartedAt ? {
+      status: 'failed', failureCategory: unknownDelivery ? 'usage_unknown' : 'expired_lease',
       finishedAt: now,
       leaseToken: null, leaseUntil: null, providerReservationId: null,
     } : { startedAt: now };

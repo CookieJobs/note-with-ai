@@ -5,7 +5,7 @@ import { config } from '../config';
 import type { DiscoveryFailureCategory, DiscoveryRunUsage } from '../types/noteDiscovery';
 import { aiUsageService } from './aiUsageService';
 import {
-  DiscoveryBudgetOverrunError, discoveryCostMicros, noteDiscoveryBudgetService, type UsageResult,
+  DiscoveryBudgetOverrunError, DiscoveryReservationRecoveryError, discoveryCostMicros, noteDiscoveryBudgetService, type UsageResult,
 } from './noteDiscoveryBudgetService';
 import { noteDiscoveryProvider, type DiscoveryMessage, type DiscoveryProvider } from './noteDiscoveryProvider';
 import { publishDiscoveryRun } from './noteDiscoveryService';
@@ -92,6 +92,7 @@ export class NoteContinuationAgent {
   private outputUsed = 0;
   private costMicros = 0;
   private allUsageKnown = true;
+  private pendingDispatch?: Promise<boolean>;
 
   constructor(private readonly run: ClaimedDiscoveryRun, private readonly options: DiscoveryAgentOptions = {}) {
     this.provider = options.provider === undefined ? noteDiscoveryProvider : options.provider;
@@ -118,6 +119,8 @@ export class NoteContinuationAgent {
       costCnyMicros: this.allUsageKnown ? this.costMicros : null,
     };
   }
+
+  getPendingDispatchCleanup(): Promise<boolean> | undefined { return this.pendingDispatch; }
 
   async runDiscovery(userId: string, runId: string, canContinue: () => Promise<boolean>): Promise<DiscoveryOutcome> {
     if (this.ran || userId !== this.fence.userId || runId !== this.fence.runId) return 'cancelled';
@@ -147,13 +150,15 @@ export class NoteContinuationAgent {
       ];
       for (;;) {
         if (!await boundary()) return 'cancelled';
-        const result = await this.request(this.provider, messages, boundary, signal);
+        const provider = this.provider;
+        const result = await this.waitBeforeDispatch(signal, dispatch =>
+          this.request(provider, messages, boundary, signal, publicationDeadline, dispatch));
         if (!result) return 'cancelled';
         if (result.delivery === 'delivery_unknown') throw new DiscoveryExecutionError('usage_unknown');
         if (!await boundary()) return 'cancelled';
         if (result.delivery !== 'response_received') return 'cancelled';
         if (result.response === 'retryable_error' && result.usage && this.modelCalls < this.limits.maxModelCalls
-          && await this.store.incrementRetry(this.fence)) continue;
+          && await this.waitBeforeDispatch(signal, () => this.store.incrementRetry(this.fence, publicationDeadline))) continue;
         if (result.response !== 'ok' || !result.content) {
           throw new DiscoveryExecutionError(result.response === 'length' ? 'limit_exceeded' : 'provider_failed');
         }
@@ -183,10 +188,31 @@ export class NoteContinuationAgent {
         if (timeout.signal.aborted) throw new DiscoveryExecutionError('limit_exceeded');
         return 'cancelled';
       }
-      if (error instanceof DiscoveryExecutionError) throw error;
+      if (error instanceof DiscoveryExecutionError || error instanceof DiscoveryReservationRecoveryError) throw error;
       throw new DiscoveryExecutionError('internal_error');
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  private async waitBeforeDispatch<T>(signal: AbortSignal, operation: (dispatch: () => void) => Promise<T>): Promise<T> {
+    if (signal.aborted) throw interrupted;
+    const waiting = new AbortController();
+    const interrupt = () => waiting.abort();
+    const dispatch = () => signal.removeEventListener('abort', interrupt);
+    signal.addEventListener('abort', interrupt, { once: true });
+    const pending = operation(dispatch);
+    try {
+      return await beforeAbort(pending, waiting.signal);
+    } catch (error) {
+      if (waiting.signal.aborted) {
+        // Late storage results stay on the original operation and cannot dispatch.
+        // Finish only after cleanup has resolved the reservation, or let the expired lease recover it.
+        this.pendingDispatch = pending.then(() => true, cause => !(cause instanceof DiscoveryReservationRecoveryError));
+      }
+      throw error;
+    } finally {
+      dispatch();
     }
   }
 
@@ -198,7 +224,10 @@ export class NoteContinuationAgent {
     return result;
   }
 
-  private async request(provider: DiscoveryProvider, messages: DiscoveryMessage[], boundary: () => Promise<boolean>, signal: AbortSignal) {
+  private async request(
+    provider: DiscoveryProvider, messages: DiscoveryMessage[], boundary: () => Promise<boolean>,
+    signal: AbortSignal, deadline: Date, dispatch: () => void,
+  ) {
     const maxOutputTokens = this.limits.maxOutputTokens - this.outputUsed;
     if (this.modelCalls >= this.limits.maxModelCalls || maxOutputTokens < 1) throw new DiscoveryExecutionError('limit_exceeded');
     const prepared = provider.prepare(messages, maxOutputTokens);
@@ -211,20 +240,22 @@ export class NoteContinuationAgent {
       inputCnyPerMillion: provider.inputCnyPerMillion,
       outputCnyPerMillion: provider.outputCnyPerMillion,
       maxInputTokens: prepared.maxInputTokens, maxOutputTokens,
-    });
+    }, { signal, deadline });
     if (!reservation) {
       if (!await boundary()) return null;
       throw new DiscoveryExecutionError('budget_exhausted');
     }
 
     let marked = false;
+    let attemptedMark = false;
     let delivery: 'not_sent' | 'delivery_unknown' | 'response_received' = 'not_sent';
     let usage: UsageResult = { kind: 'known', inputTokens: 0, outputTokens: 0, costCnyMicros: 0 };
     let overrun = false;
     let fenceClosed = true;
     try {
       if (!await boundary()) return null;
-      marked = await this.store.markProviderStarted(this.fence, reservation.id);
+      attemptedMark = true;
+      marked = await this.store.markProviderStarted(this.fence, reservation.id, deadline);
       if (!await boundary()) return null;
       if (!marked) throw new DiscoveryExecutionError('budget_exhausted');
       if (signal.aborted) throw interrupted;
@@ -236,6 +267,7 @@ export class NoteContinuationAgent {
         inputPriceCnyPerMillion: Number(provider.inputCnyPerMillion),
         outputPriceCnyPerMillion: Number(provider.outputCnyPerMillion),
       });
+      dispatch();
       const result = await beforeAbort(prepared.send(signal), signal).catch(error => {
         if (error !== interrupted) throw error;
         return { delivery: 'delivery_unknown' as const };
@@ -268,12 +300,18 @@ export class NoteContinuationAgent {
       }
       return result;
     } finally {
-      try { await this.budget.settle(reservation.id, generation, usage, delivery); }
+      try {
+        if (delivery === 'not_sent') await this.budget.releaseUnsent(this.fence, reservation.id);
+        else await this.budget.settle(reservation.id, generation, usage, delivery);
+      }
       catch (error) {
         if (!(error instanceof DiscoveryBudgetOverrunError)) throw error;
         overrun = true;
       } finally {
-        if (marked) fenceClosed = await this.store.markProviderFinished(this.fence, reservation.id);
+        if (attemptedMark) {
+          const closed = await this.store.markProviderFinished(this.fence, reservation.id);
+          if (marked) fenceClosed = closed;
+        }
       }
       if (overrun) throw new DiscoveryExecutionError('limit_exceeded');
       if (!fenceClosed) throw interrupted;

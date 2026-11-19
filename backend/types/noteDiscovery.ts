@@ -62,6 +62,7 @@ export interface DiscoveryRunRecord {
   providerStartedAt: Date | null;
   providerReservationId?: string | null;
   providerDeliveryUnknown?: boolean;
+  executionCancelled?: boolean;
   sentReservationIds?: string[];
   recoveringGeneration?: number | null;
   startedAt?: Date;
@@ -105,6 +106,11 @@ export type DiscoveryQualityResult =
   | { passed: true; rationale: DiscoveryQualityRationale }
   | { passed: false; reason: string };
 
+export interface DiscoverySourceBodyBaseline<Id = string> {
+  noteId: Id;
+  fingerprint: string;
+}
+
 export interface DiscoveryCandidate {
   kind: DiscoveryKind;
   title: string;
@@ -126,6 +132,7 @@ export interface DiscoveryRecord extends Omit<DiscoveryCandidate, 'evidence' | '
   status: DiscoveryStatus;
   evidence: DiscoveryEvidenceSnapshot[];
   sourceFingerprint: string;
+  sourceBodyBaselines?: DiscoverySourceBodyBaseline<Types.ObjectId>[];
   observationFingerprint: string;
   quality: Extract<DiscoveryQualityResult, { passed: true }>;
   exposedAt?: Date;
@@ -140,6 +147,7 @@ export interface DiscoveryFeedback<Id = string> {
   discoveryId: Id;
   sourceIds: Id[];
   sourceFingerprint: string;
+  sourceBodyBaselines?: DiscoverySourceBodyBaseline<Id>[];
   observationFingerprint: string;
   relationshipKey?: string;
   questionKey?: string;

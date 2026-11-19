@@ -32,6 +32,11 @@ interface BudgetSettings {
   attemptCapMicros: number | undefined;
 }
 
+interface ReserveOptions {
+  signal: AbortSignal;
+  deadline: Date;
+}
+
 const MAX_RESERVATIONS = 10_000;
 const MAX_LEDGER_BYTES = 8 * 1024 * 1024;
 // Settlement adds a timestamp, amount and short outcome to each reservation.
@@ -88,13 +93,18 @@ export class DiscoveryBudgetOverrunError extends Error {
   }
 }
 
+export class DiscoveryReservationRecoveryError extends Error {
+  constructor() { super('discovery_reservation_requires_lease_recovery'); }
+}
+
 export class NoteDiscoveryBudgetService {
   constructor(
     private readonly settings: BudgetSettings,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async reserve(runId: string, userId: string, generation: number, estimate: CostEstimate): Promise<BudgetReservation | null> {
+  async reserve(runId: string, userId: string, generation: number, estimate: CostEstimate, options?: ReserveOptions): Promise<BudgetReservation | null> {
+    if (options?.signal.aborted) return null;
     const { enabled, userCapMicros, globalCapMicros, attemptCapMicros } = this.settings;
     if (!enabled || !nonnegativeInteger(userCapMicros) || userCapMicros === 0
       || !nonnegativeInteger(globalCapMicros) || globalCapMicros === 0
@@ -110,7 +120,8 @@ export class NoteDiscoveryBudgetService {
     const owner = new Types.ObjectId(userId);
     const run = await NoteDiscoveryRun.findOne({
       _id: runId, userId: owner, generation, status: 'running', leaseUntil: { $gt: createdAt },
-      recoveringGeneration: null, providerDeliveryUnknown: { $ne: true }, providerReservationId: null,
+      recoveringGeneration: null, executionCancelled: { $ne: true },
+      providerDeliveryUnknown: { $ne: true }, providerReservationId: null,
     }, { leaseUntil: 1, leaseToken: 1 }).lean();
     if (!run?.leaseToken || !run.leaseUntil || await this.blocked()) return null;
 
@@ -122,6 +133,7 @@ export class NoteDiscoveryBudgetService {
       reservedMicros: amount, state: 'reserved', createdAt,
     };
     await this.ensureLedger(day);
+    if (options?.signal.aborted) return null;
     const count = { $size: '$reservations' };
     const userKey = `users.${owner.toHexString()}`;
     const userSpent = { $ifNull: [`$${userKey}.spentMicros`, 0] };
@@ -137,6 +149,7 @@ export class NoteDiscoveryBudgetService {
       ] },
       MAX_LEDGER_BYTES,
     ] };
+    const insertionDeadline = options ? new Date(Math.min(options.deadline.getTime(), run.leaseUntil.getTime())) : undefined;
     const added = await NoteDiscoveryBudget.findOneAndUpdate({
       _id: day, blockedAt: { $exists: false },
       $expr: { $and: [
@@ -144,6 +157,8 @@ export class NoteDiscoveryBudgetService {
         { $lte: [{ $add: [userSpent, userReserved] }, userCapMicros - amount] },
         { $lt: [count, MAX_RESERVATIONS] },
         roomForReservation,
+        // Do not insert behind the recovery scan if a timed-out worker goes away.
+        ...(insertionDeadline ? [{ $gt: [{ $literal: insertionDeadline }, '$$NOW'] }] : []),
       ] },
     }, [{
       $set: {
@@ -151,7 +166,10 @@ export class NoteDiscoveryBudgetService {
         users: addedUsers,
         reservations: addedReservations,
       },
-    }], { projection: { _id: 1 }, writeConcern }).lean();
+    }], { projection: { _id: 1 }, writeConcern }).lean().catch(() => {
+      // The update may have reached Mongo even when its acknowledgement did not.
+      throw new DiscoveryReservationRecoveryError();
+    });
     if (!added) {
       const [limited] = await NoteDiscoveryBudget.aggregate<{ _id: string }>([
         { $match: { _id: day, $expr: { $or: [{ $gte: [count, MAX_RESERVATIONS] }, { $not: [roomForReservation] }] } } },
@@ -163,13 +181,14 @@ export class NoteDiscoveryBudgetService {
 
     // The run fence is in another document. A claim may expire while the ledger CAS is in flight.
     // The caller has not received this reservation and cannot have sent a request for it.
-    const stillCurrent = await NoteDiscoveryRun.exists({
+    const stillCurrent = !options?.signal.aborted && await NoteDiscoveryRun.exists({
       _id: run._id, userId: owner, generation, status: 'running', leaseToken: run.leaseToken,
       leaseUntil: { $gt: this.now() }, recoveringGeneration: null,
-      providerDeliveryUnknown: { $ne: true }, providerReservationId: null,
-    });
-    if (!stillCurrent || await this.blocked()) {
-      await this.applySettlement(reservation, { kind: 'known', inputTokens: 0, outputTokens: 0, costCnyMicros: 0 }, 'not_sent');
+      executionCancelled: { $ne: true }, providerDeliveryUnknown: { $ne: true }, providerReservationId: null,
+    }).catch(() => { throw new DiscoveryReservationRecoveryError(); });
+    if (!stillCurrent || await this.blocked().catch(() => { throw new DiscoveryReservationRecoveryError(); })) {
+      await this.applySettlement(reservation, { kind: 'known', inputTokens: 0, outputTokens: 0, costCnyMicros: 0 }, 'not_sent')
+        .catch(() => { throw new DiscoveryReservationRecoveryError(); });
       return null;
     }
     return reservation;
@@ -193,6 +212,17 @@ export class NoteDiscoveryBudgetService {
       ? delivery
       : 'delivery_unknown';
     await this.applySettlement(reservation, usage, disposition);
+  }
+
+  /** The original caller did not dispatch. Its exact reservation can be refunded even after lease expiry. */
+  async releaseUnsent(fence: DiscoveryRunFence, reservationId: string): Promise<void> {
+    try {
+      const reservation = await this.findReservation(reservationId);
+      if (reservation?.state !== 'reserved' || !this.matchesFence(reservation, fence)) return;
+      await this.applySettlement(reservation, { kind: 'known', inputTokens: 0, outputTokens: 0, costCnyMicros: 0 }, 'not_sent');
+    } catch {
+      throw new DiscoveryReservationRecoveryError();
+    }
   }
 
   async isDispatchableReservation(fence: DiscoveryRunFence, reservationId: string): Promise<boolean> {

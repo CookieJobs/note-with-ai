@@ -56,6 +56,13 @@ function evidenceStart(content: string, excerpt: string): number {
 
 /** All evidence is re-read by authenticated owner; caller-provided snapshots are never trusted. */
 export async function validateEvidence(userId: string, evidence: EvidenceInput[]): Promise<ValidatedEvidence[]> {
+  return (await resolveDiscoveryEvidence(userId, evidence)).evidence;
+}
+
+export async function resolveDiscoveryEvidence(userId: string, evidence: EvidenceInput[]): Promise<{
+  evidence: ValidatedEvidence[];
+  sources: DiscoverySource[];
+}> {
   const parsed = z.array(discoveryEvidenceInputSchema).min(1).max(12).safeParse(evidence);
   if (!parsed.success || !isObjectIdOrHexString(userId)) throw new DiscoverySourceError('invalid_evidence');
   const sources = new Map<string, DiscoverySource>();
@@ -76,5 +83,5 @@ export async function validateEvidence(userId: string, evidence: EvidenceInput[]
       locator: { start, end: start + item.excerpt.length },
     });
   }
-  return result;
+  return { evidence: result, sources: [...sources.values()] };
 }
