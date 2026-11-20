@@ -1,24 +1,25 @@
 /** Opt-in, one synthetic case per invocation. Never load the application .env before safety checks. */
 import assert from 'node:assert/strict';
+import { evaluationPreflight, EVALUATION_URI, EvaluationSafetyError, assertEvaluationBinding, assertEvaluationBatchSafe, evaluationSettlementSummary, type EvaluationLedger } from './noteContinuationEvaluationSafety';
 import { evaluationCases } from '../tests/fixtures/noteContinuation/cases';
 
 async function main() {
   const id = process.argv[2];
   const item = evaluationCases.find(value => value.id === id);
   assert.ok(item, 'Provide one exact fixed case ID');
-  assert.equal(process.env.NOTE_DISCOVERY_EVAL_ALLOW_PAID, 'yes', 'Live evaluation requires explicit paid-call authorization');
-  // Adversarial storage/fault scenarios belong to the contract suite, not a paid prompt simulation.
+  const { maxMicros, metadata } = evaluationPreflight(process.env);
   assert.ok(!item.attack, 'Use contract suite for lifecycle, ownership, budget and fault cases');
-  const uri = new URL(process.env.NOTE_DISCOVERY_TEST_MONGO_URI ?? '');
-  assert.equal(uri.protocol, 'mongodb:');
-  assert.equal(uri.host, '127.0.0.1:27028');
-  assert.equal(uri.username + uri.password + uri.search + uri.hash, '');
-  assert.match(uri.pathname, /^\/nwai_discovery_test_[a-z0-9_]+$/);
-  const maxMicros = Number(process.env.NOTE_DISCOVERY_EVAL_MAX_CNY_MICROS);
-  assert.ok(Number.isSafeInteger(maxMicros) && maxMicros > 0 && maxMicros <= 2_100_000,
-    'Set an explicitly approved batch cap, at most 2.1 CNY; this is a ceiling, not a price');
-  // Stable batch database retains budget between invocations. Never drop it automatically.
-  process.env.MONGODB_URI = uri.href;
+  process.env.NOTE_DISCOVERY_EVAL_PROCESS_ONLY = 'true';
+  process.env.MONGODB_URI = EVALUATION_URI;
+  // Unused app subsystems get synthetic local-only config; never load their real credentials.
+  process.env.NODE_ENV = 'test';
+  process.env.ADMIN_LOCAL_PASSWORD_ONLY = 'false';
+  process.env.JWT_SECRET = 'evaluation-unused';
+  process.env.ADMIN_JWT_SECRET = 'evaluation-unused-admin-secret-00000000';
+  process.env.ADMIN_ENCRYPTION_KEY = Buffer.alloc(32, 1).toString('base64');
+  process.env.REDIS_URL = 'redis://127.0.0.1:6379';
+  process.env.QQ_EMAIL_USER = 'evaluation@example.invalid';
+  process.env.QQ_EMAIL_PASS = 'evaluation-unused';
   const [{ config }, mongooseModule, { Note }, { NoteDiscoveryWorkerStore }, { NoteDiscoveryScheduleService },
     { NoteDiscoveryBudgetService }, { NoteDiscoveryWorker }, { noteDiscoveryProvider }, { default: Discovery },
     { default: Run }] = await Promise.all([
@@ -31,21 +32,33 @@ async function main() {
   for (const cap of [config.NOTE_DISCOVERY_USER_DAILY_CNY_MICROS, config.NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
     config.NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS]) assert.ok(cap! > 0 && cap! <= maxMicros);
   const mongoose = mongooseModule.default;
-  await mongoose.connect(uri.href, { serverSelectionTimeoutMS: 5000 });
+  await mongoose.connect(EVALUATION_URI, { serverSelectionTimeoutMS: 5000 });
   const lock = mongoose.connection.collection('noteContinuationEvaluationLock');
   try { await lock.insertOne({ _id: 'single-evaluator' as never }); }
-  catch { await mongoose.disconnect(); throw new Error('evaluation_locked'); }
+  catch { await mongoose.disconnect(); throw new EvaluationSafetyError('EVAL_BATCH_LOCKED'); }
   try {
-    // Lifetime ledger bound remains across dates and unique synthetic users. Reservations count conservatively.
-    const ledgers = await mongoose.connection.collection('notediscoverybudgets').find({}).toArray();
+    const approvals = mongoose.connection.collection('noteContinuationEvaluationApproval');
+    await approvals.updateOne({ _id: 'fixed-batch' as never }, { $setOnInsert: { metadata } }, { upsert: true });
+    const approval = await approvals.findOne({ _id: 'fixed-batch' as never });
+    assertEvaluationBinding(approval?.metadata, metadata);
+    const readLedgers = async () => await mongoose.connection.collection('notediscoverybudgets').find({}).toArray() as unknown as EvaluationLedger[];
+    const ledgers = await readLedgers();
+    const previousRuns = await Run.find({}, { providerDeliveryUnknown: 1, failureCategory: 1 }).lean();
+    try { assertEvaluationBatchSafe(ledgers, previousRuns); }
+    catch (error) {
+      console.error(JSON.stringify({ code: error instanceof EvaluationSafetyError ? error.code : 'EVAL_BATCH_UNSAFE',
+        settlement: evaluationSettlementSummary(ledgers) }));
+      throw error;
+    }
     const committed = ledgers.reduce((sum, row) => sum + Number(row.spentTotalMicros ?? 0) + Number(row.reservedTotalMicros ?? 0), 0);
-    assert.ok(committed + Math.ceil((Number(config.NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION) * config.NOTE_DISCOVERY_MAX_INPUT_TOKENS
-      + Number(config.NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION) * config.NOTE_DISCOVERY_MAX_OUTPUT_TOKENS)) + 3 <= maxMicros,
-      'Retained batch budget cannot cover the worst-case cumulative run usage plus rounding guard');
-    assert.equal(await Run.countDocuments({ status: { $in: ['queued', 'running'] } }), 0, 'Do not run alongside another worker');
+    if (!(committed + Math.ceil((Number(config.NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION) * config.NOTE_DISCOVERY_MAX_INPUT_TOKENS
+      + Number(config.NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION) * config.NOTE_DISCOVERY_MAX_OUTPUT_TOKENS)) + 3 <= maxMicros)) {
+      throw new EvaluationSafetyError('EVAL_BATCH_CAP_EXCEEDED');
+    }
+    if (await Run.countDocuments({ status: { $in: ['queued', 'running'] } })) throw new EvaluationSafetyError('EVAL_OTHER_RUN_PENDING');
     const userId = new mongoose.Types.ObjectId().toHexString();
     for (const [index, text] of item.notes.entries()) await Note.create({
-      userId, title: `${item.id}-${index + 1}`, content: text, contentText: text, revision: 1,
+      userId, title: `记录 ${index + 1}`, content: text, contentText: text, revision: 1,
       createdAt: new Date(Date.UTC(2026, 0, index + 1)),
     });
     const budget = new NoteDiscoveryBudgetService({ enabled: true,
@@ -64,16 +77,19 @@ async function main() {
     await new NoteDiscoveryWorker({ store, schedule, budget, enabled: () => true }).tick();
     const result = await Run.findById(run._id).lean();
     // Output is deliberately synthetic; production observability never prints discovery prose.
-    const discoveries = await Discovery.find({ runId: run._id }, { title: 1, observation: 1, whyNow: 1,
-      qualification: 1, suggestedAction: 1, draft: 1, evidence: 1 }).lean();
+    const discoveries = result?.status === 'completed' ? await Discovery.find({ runId: run._id, generation: result.generation }, { kind: 1, quality: 1, title: 1, observation: 1, whyNow: 1,
+      qualification: 1, suggestedAction: 1, draft: 1, evidence: 1 }).lean() : [];
     console.log(JSON.stringify({ caseId: item.id, rubric: item.rubric, status: result?.status,
-      usage: result?.usage, discoveries }, null, 2));
+      failureCategory: result?.failureCategory, generation: result?.generation,
+      providerDeliveryUnknown: result?.providerDeliveryUnknown ?? false,
+      settlement: evaluationSettlementSummary(await readLedgers()), usage: result?.usage, discoveries }, null, 2));
+    assertEvaluationBatchSafe(await readLedgers(), result ? [result] : []);
   } finally {
-    await lock.deleteOne({ _id: 'single-evaluator' as never });
-    await mongoose.disconnect();
+    try { await lock.deleteOne({ _id: 'single-evaluator' as never }); }
+    finally { await mongoose.disconnect(); }
   }
 }
-if (require.main === module) main().catch(() => {
-  console.error('Evaluation stopped: prerequisite, cap, database or execution check failed. Review configuration without printing secrets.');
+if (require.main === module) main().catch(error => {
+  console.error(JSON.stringify({ code: error instanceof EvaluationSafetyError ? error.code : 'EVAL_STOPPED' }));
   process.exitCode = 1;
 });

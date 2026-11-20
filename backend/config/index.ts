@@ -2,7 +2,10 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// The opt-in evaluation process validates explicit inputs before importing this module.
+if (process.env.NOTE_DISCOVERY_EVAL_PROCESS_ONLY !== 'true') {
+  dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+}
 
 const discoveryPrice = z.string().trim().regex(/^(?:\d+(?:\.\d{1,12})?)?$/)
   .transform((value) => value === '' ? undefined : Number(value))

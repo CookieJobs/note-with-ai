@@ -15,7 +15,7 @@ NOTE_DISCOVERY_TEST_MONGO_URI=mongodb://127.0.0.1:27028/nwai_discovery_test_eval
 
 本轮未运行付费请求，尚无真实模型通过率或“有继续价值”的结论。后续需明确批准具体模型、核实日期、供应商价格依据及合计人民币预算；密钥只能通过已有受控环境注入。官方价格入口为 [DeepSeek 模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)，需执行前重新核实，不能把 test fixture 的虚构单价用于运行配置。2026-11-21 已对照官方中文价格表核实 deepseek-flash 峰时 cache-miss 输入为 ¥2/百万 tokens，输出为 ¥8/百万 tokens；这只是带日期的参考，不设置默认值，执行前需重新核对。24 组各用满累计 24000 输入/4000 输出的最坏合计为 ¥1.92（未计微元逐次取整）；可在明确批准后使用至多 ¥2.1 的保守批次上限。当前本地日限额配置尚缺，不能执行付费评估。只在单次受控进程中注入核实的价格和批准的用户/全局/预留限额，不改持久 .env 或生产配置。配置须包含精确 priced model、输入/输出单价、匹配的 embedding provider/model/单价、用户/全局日上限及单次预留上限；未知保持关闭。
 
-`backend/scripts/evaluate_note_continuation.ts` 每次仅接收一个固定 case ID，调用同一个真实 worker/runner/provider；仅禁用启动全库扫描及自动到期扫描，确保一次只评估指定的手动任务，授权、租约、工具、结算及发布链不替换。它只连接 `127.0.0.1:27028/nwai_discovery_test_*`，仅植入合成正文。使用专属、固定 batch 数据库，保留其账本；禁止同时启动其他 worker。必须显式设置 `NOTE_DISCOVERY_EVAL_ALLOW_PAID=yes`、`NOTE_DISCOVERY_EVAL_MAX_CNY_MICROS`（批准上限，至多 2100000，即 2.1 元，绝非预计价格）和完整已核实配置。每次执行前检查累计账本及最坏累计输入/输出费用及三次向上取整保护，运行中仍由生产预算服务逐次预留和结算。若批准的上限不足，停止并重新评估计划，不能修改上限绕过批准。
+`backend/scripts/evaluate_note_continuation.ts` 每次仅接收一个固定 case ID，调用同一个真实 worker/runner/provider；仅禁用启动全库扫描及自动到期扫描，确保一次只评估指定的手动任务，授权、租约、工具、结算及发布链不替换。它只连接固定专用 `mongodb://127.0.0.1:27028/nwai_discovery_test_live_evaluation`，拒绝其他合法测试后缀，仅植入合成正文。首次运行在固定数据库写入不可变批准记录（审批标识、价格核实日期、模型、价格、限额、执行上限及密钥指纹，不含明文密钥），后续参数改变即拒绝；不得更换数据库或删除批准/账本重置费用。禁止同时启动其他 worker。必须显式设置 `NOTE_DISCOVERY_EVAL_ALLOW_PAID=yes`、`NOTE_DISCOVERY_EVAL_MAX_CNY_MICROS`（批准上限，至多 2100000，即 2.1 元，绝非预计价格）、`NOTE_DISCOVERY_EVAL_APPROVAL_ID`、`NOTE_DISCOVERY_EVAL_PRICE_VERIFIED_AT=YYYY-MM-DD` 和完整显式已核实配置（包括 DeepSeek key、模型、所有单价及限额、embedding provider/model）。配置导入前逐项核验，评估进程设置 `NOTE_DISCOVERY_EVAL_PROCESS_ONLY=true` 跳过项目根 `.env`；无关认证/邮件配置使用固定合成占位值，不读取真实凭据。每次执行前检查累计账本及最坏累计输入/输出费用及三次向上取整保护，运行中仍由生产预算服务逐次预留和结算。若批准的上限不足，停止并重新评估计划，不能修改上限绕过批准。
 
 ```sh
 # 仅在上述授权及受控环境配置齐备后，逐条执行；不要把密钥写在命令里
@@ -23,7 +23,7 @@ cd backend
 npx tsx scripts/evaluate_note_continuation.ts connection-queue
 ```
 
-人工先看原始 case，再看输出；逐条记录 grounded / not-restatement / continuation-value 三项是或否及简短理由。每条正例三项全是才通过，无结果计未通过；至少 9/12 正例通过。反例不得出现无依据结论，所有引用逐字逐位置可核对，跨账户泄漏零。生命周期、跨账户、额度、故障六类带 attack 的案例由自动契约套件验证，live 脚本拒绝用自然语言模拟这些存储边界；语义反例逐条跑真实模型。失败时改检索、筛选或提示，再以相同集重评，不增加输出数量掩盖。每条结果核对成本、usage 和终态后才跑下一条；发送未知或账本 blocked 立即停止，不自动重试。
+人工先看原始 case，再看输出；逐条记录 grounded / not-restatement / continuation-value 三项是或否及简短理由。每条正例三项全是才通过，无结果计未通过；至少 9/12 正例通过。反例不得出现无依据结论，所有引用逐字逐位置可核对，跨账户泄漏零。生命周期、跨账户、额度、故障六类带 attack 的案例由自动契约套件验证，live 脚本拒绝用自然语言模拟这些存储边界；语义反例逐条跑真实模型。失败时改检索、筛选或提示，再以相同集重评，不增加输出数量掩盖。每条结果核对成本、usage 和终态后才跑下一条；发送未知、未结算/保留额非零、未知 usage 或账本 blocked 会以安全错误码及费用摘要终止，下一次调用跨合成账户和日期仍拒绝，不自动重试。完成态只输出当前 generation 发现，包含 kind 和 quality rationale。笔记标题为中性“记录 N”，不向模型透露 case ID/rubric。
 
 保留合成结果用于人工评审，但普通运行日志不得记录标题、正文、引用或提示。异常退出可能留下 `noteContinuationEvaluationLock` 锁；确认没有进程、无在途请求并完成账本/租约核对后才人工删除锁。不得删库重置已用预算；完成评审后记录总额再按批准清理 scratch 数据库。
 
