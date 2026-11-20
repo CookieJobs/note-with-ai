@@ -280,4 +280,70 @@ describe('independent note discovery worker', noteDiscoveryMongoTestOptions, () 
       assert.equal(ledger?.reservedTotalMicros, 0);
     });
   }
+
+  for (const interruption of ['external-abort', 'deadline'] as const) {
+    test(`${interruption} preserves recovery when refund and marker close both fail`, { timeout: 5000 }, async context => {
+      let clock = new Date();
+      const fixture = await makeRun(ownerId(), { now: () => clock, leaseMs: 5000 });
+      await makeNote(fixture.userId);
+      const controller = new AbortController();
+      let release!: () => void;
+      const waiting = new Promise<void>(resolve => { release = resolve; });
+      let notify!: () => void;
+      const entered = new Promise<void>(resolve => { notify = resolve; });
+      context.mock.method(fixture.store, 'markProviderStarted', async () => {
+        notify();
+        await waiting;
+        throw new Error('marker failed before write');
+      });
+      context.mock.method(fixture.budget, 'releaseUnsent', async () => {
+        throw new DiscoveryReservationRecoveryError();
+      });
+      let close!: () => void;
+      const closed = new Promise<void>(resolve => { close = resolve; });
+      context.mock.method(fixture.store, 'markProviderFinished', async () => {
+        close();
+        throw new Error('marker close query failed');
+      });
+      const { transport, calls } = scriptTransport();
+      const worker = new NoteDiscoveryWorker({
+        ...fixture, enabled: () => true, heartbeatMs: 30,
+        agentOptions: {
+          provider: createDiscoveryProvider(fixturePrice, transport)!, telemetry: false,
+          limits: { timeoutMs: interruption === 'deadline' ? 250 : 1000 },
+        },
+      });
+      const ticking = worker.tick(controller.signal);
+      try {
+        await entered;
+        if (interruption === 'external-abort') controller.abort();
+        assert.equal(await Promise.race([ticking.then(() => 'released'), delay(500, 'blocked')]), 'released');
+        assert.equal((await fixture.store.getRun(fixture.userId, fixture.runId))?.status, 'running');
+      } finally {
+        release();
+        await ticking;
+      }
+      await closed;
+      // Allow detached cleanup to attempt its terminal CAS if it incorrectly reports success.
+      await delay(50);
+      const pending = await fixture.store.getRun(fixture.userId, fixture.runId);
+      assert.equal(pending?.status, 'running', 'an unconfirmed refund must remain recoverable after marker close fails');
+      assert.equal(pending?.providerReservationId, null);
+      const outstanding = await NoteDiscoveryBudget.findOne({ 'reservations.runId': fixture.runId }).lean();
+      assert.equal(outstanding?.reservations.find(item => String(item.runId) === fixture.runId)?.state, 'reserved');
+
+      clock = new Date(clock.getTime() + 5001);
+      const recovered = await fixture.store.claimNext();
+      assert.equal(recovered?._id.toHexString(), fixture.runId);
+      assert.equal(recovered?.generation, 2);
+      assert.equal(await fixture.store.finish(fixture.runId, recovered!.leaseToken, 'cancelled'), true);
+      const ledger = await NoteDiscoveryBudget.findById(outstanding!._id).lean();
+      const reservation = ledger?.reservations.find(item => String(item.runId) === fixture.runId);
+      assert.equal(reservation?.state, 'settled');
+      assert.equal(reservation?.delivery, 'delivery_unknown');
+      assert.equal(reservation?.settledMicros, reservation?.reservedMicros);
+      assert.equal(ledger?.reservedTotalMicros, 0);
+      assert.equal(calls.length, 0);
+    });
+  }
 });

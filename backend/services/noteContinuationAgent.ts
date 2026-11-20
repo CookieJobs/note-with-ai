@@ -300,18 +300,24 @@ export class NoteContinuationAgent {
       }
       return result;
     } finally {
+      let settlementFailed = false;
       try {
         if (delivery === 'not_sent') await this.budget.releaseUnsent(this.fence, reservation.id);
         else await this.budget.settle(reservation.id, generation, usage, delivery);
       }
       catch (error) {
-        if (!(error instanceof DiscoveryBudgetOverrunError)) throw error;
-        overrun = true;
-      } finally {
+        if (error instanceof DiscoveryBudgetOverrunError) overrun = true;
+        else settlementFailed = true;
+      }
+      try {
         if (attemptedMark) {
           const closed = await this.store.markProviderFinished(this.fence, reservation.id);
           if (marked) fenceClosed = closed;
         }
+      } finally {
+        // A marker-close failure cannot turn an unconfirmed ledger settlement
+        // into successful cleanup. Keep the run eligible for lease recovery.
+        if (settlementFailed) throw new DiscoveryReservationRecoveryError();
       }
       if (overrun) throw new DiscoveryExecutionError('limit_exceeded');
       if (!fenceClosed) throw interrupted;
