@@ -256,6 +256,34 @@ describe('discovery worker store on MongoDB', noteDiscoveryMongoTestOptions, () 
     assert.equal((await NoteDiscoveryBudget.findById('2026-11-18').lean())?.spentTotalMicros, 10);
   });
 
+  it('retries interrupted disabled recovery against the original reservation generation without requeue', async () => {
+    await store.enqueue(userId, watermark(), 'disabled-crash');
+    const original = await claim();
+    const reservation = await budget.reserve(original._id.toHexString(), userId, original.generation, pricedCall);
+    assert.ok(reservation);
+    await store.enqueue(userId, watermark(1), 'disabled-successor', {trigger:'manual'});
+    now = watermark(1_001).changedAt;
+    const settle = budget.settleExpiredGeneration.bind(budget);
+    budget.settleExpiredGeneration = async () => { throw new Error('synthetic settlement outage'); };
+    await store.cancelAllQueued();
+    await assert.rejects(store.recoverExpiredRuns(), /synthetic settlement outage/);
+    const interrupted = await store.getRun(userId, original._id.toHexString());
+    assert.equal(interrupted?.status, 'running');
+    assert.equal(interrupted?.recoveringGeneration, original.generation);
+    assert.equal((await NoteDiscoveryBudget.findById('2026-11-18').lean())?.reservedTotalMicros, 10);
+    budget.settleExpiredGeneration = settle;
+    now = watermark(2_002).changedAt;
+    await store.recoverExpiredRuns();
+    const terminal = await store.getRun(userId, original._id.toHexString());
+    assert.equal(terminal?.status, 'cancelled');
+    assert.equal(terminal?.generation, original.generation + 2);
+    assert.equal(terminal?.recoveringGeneration, null);
+    assert.equal(terminal?.pendingWatermark, undefined);
+    assert.equal((await NoteDiscoveryBudget.findById('2026-11-18').lean())?.reservedTotalMicros, 0);
+    assert.equal((await NoteDiscoveryBudget.findById('2026-11-18').lean())?.spentTotalMicros, 10);
+    assert.equal(await store.claimNext(), null);
+  });
+
   it('authorizes one send per reservation and a retry only after a fresh reservation', async () => {
     await store.enqueue(userId, watermark(), 'retry');
     const running = await claim();

@@ -74,6 +74,16 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     base = `http://127.0.0.1:${server.address().port}`;
   });
   after(async () => { mock.restoreAll(); await new Promise<void>(resolve => server?.close(() => resolve())); await cleanup?.(); });
+  it('returns the current manual denial and retry time through the authenticated route', async () => {
+    const retryAt = new Date('2026-11-22T00:00:00Z');
+    const stub = mock.method(service.schedule, 'requestManual', async () => ({status:'limited',currentRun:null,retryAt}));
+    try {
+      const result = await request('/run','POST',{idempotencyKey:'current-manual-denial'});
+      assert.equal(result.status,429);
+      assert.equal(result.json.code,'DISCOVERY_RATE_LIMITED');
+      assert.equal(result.json.retryAt,retryAt.toISOString());
+    } finally { stub.mock.restore(); }
+  });
   it('requires authentication and rejects foreign/unpublished discovery actions without data leakage', async () => {
     assert.equal((await request('', 'GET', undefined, '')).status, 401);
     assert.equal((await request(`/${new Types.ObjectId()}/feedback`, 'POST', { kind: 'not_related' })).status, 404);
@@ -88,10 +98,25 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     const { Discovery } = await modules();
     assert.equal(await Discovery.countDocuments({ userId, exposedAt: { $exists: true } }), 3);
     assert.equal(await Discovery.countDocuments({ userId }), 6);
-    assert.equal((await request('?history=true')).json.data.items.length, 6);
+    assert.equal((await request('?history=true&admit=false')).json.data.items.length, 6);
+    assert.equal(await Discovery.countDocuments({ userId, exposedAt: { $exists: true } }), 3, 'history does not consume daily home exposure');
+    assert.equal((await request('?history=true', 'GET', undefined, '')).status, 401);
     now = new Date('2026-11-20T16:01:00Z');
     await request('');
     assert.equal(await Discovery.countDocuments({ userId, exposedAt: { $exists: true } }), 6);
+  });
+  it('history retains owner and current source/publication guards', async () => {
+    const { Discovery, Note } = await modules();
+    const f = await freshDiscovery();
+    assert.ok((await service.list(f.owner,{history:true,admit:false})).items.some((d:any)=>d.id===f.discovery.id));
+    assert.ok(!(await service.list(userId,{history:true,admit:false})).items.some((d:any)=>d.id===f.discovery.id));
+    await Discovery.updateOne({_id:f.discovery._id},{$set:{generation:2}});
+    assert.equal((await service.list(f.owner,{history:true,admit:false})).items.length,0);
+    await Discovery.updateOne({_id:f.discovery._id},{$set:{generation:1}});
+    await Note.updateOne({_id:f.note._id},{$set:{revision:2,content:'来源已变更',contentText:'来源已变更'}});
+    assert.equal((await service.list(f.owner,{history:true,admit:false})).items.length,0);
+    await Note.deleteOne({_id:f.note._id});
+    assert.equal((await service.list(f.owner,{history:true,admit:false})).items.length,0);
   });
   it('copies only the original server relation baseline, supports expiry and idempotent undo', async () => {
     const { Preference, Discovery } = await modules();

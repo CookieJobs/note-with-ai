@@ -39,6 +39,7 @@ export class NoteDiscoveryWorker {
     await recoverDiscoveryConversations();
     if (!this.enabled()) {
       await this.store.cancelAllQueued();
+      await this.store.recoverExpiredRuns();
       return;
     }
     if (!this.initialized) {

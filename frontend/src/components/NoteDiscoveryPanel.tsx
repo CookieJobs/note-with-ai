@@ -71,6 +71,30 @@ function DiscoveryCard({ item, busy, intent, patch, withdraw, feedbackDone, star
   </article>;
 }
 
+// Mounted only after the explicit history action. Never merges into daily home exposure.
+function DiscoveryHistory({ userId }: { userId: string }) {
+  const { data, error, loading, reload } = useNoteDiscoveries(userId, true);
+  return <section aria-label="历史发现" className={styles.state}>
+    <h2>历史发现</h2>
+    {loading && <p role="status">正在读取历史发现…</p>}
+    {error && <p role="alert">{error} <button onClick={reload}>重试读取历史</button></p>}
+    {data && (!data.available ? <p>历史发现暂时不可用。</p> : <>
+      {!data.items.length && <p>暂时没有可查看的历史发现。</p>}
+      {data.items.map(item => <article key={item.id} aria-label={item.title} className={styles.card}>
+        <h3>{item.title}</h3><p>{item.observation}</p><p className={styles.muted}>{item.whyNow}</p>
+        <p className={styles.muted}>{new Date(item.createdAt).toLocaleDateString('zh-CN')}{item.status === 'completed' ? ' · 已结束' : item.status === 'dismissed' ? ' · 已收起' : ''}</p>
+        <details className={styles.evidence}><summary>展开原文依据（{item.evidence.length}）</summary>
+          {item.evidence.map((source, index) => <div key={`${source.noteId}-${index}`}>
+            <Link href={`/notes?highlight=${encodeURIComponent(source.noteId)}`}>{source.title || '查看原始笔记'}</Link>
+            <p className={styles.muted}>{new Date(source.noteDate).toLocaleDateString('zh-CN')} · 版本 {source.revision}</p>
+            <p>“{source.excerpt}”</p>{source.hasImages && <p className={styles.muted}>这条依据只使用文字，图片尚未识别。</p>}
+          </div>)}
+        </details>
+      </article>)}
+    </>)}
+  </section>;
+}
+
 export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, onBusyChange, onStartSession }: { userId: string; busy: boolean; onSession: (session: IChat) => void; fallback?: ReactNode; onBusyChange?: (busy: boolean) => void; onStartSession?: (id: string, retryOf?: string) => Promise<void> }) {
   const { data, error, loading, paused, reload, update } = useNoteDiscoveries(userId);
   const intents = useDiscoveryIntents(userId);
@@ -78,6 +102,7 @@ export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, 
   const [sessionPending, setSessionPending] = useState(false);
   const busyRef = useRef(busy); busyRef.current = busy;
   const [expanded, setExpanded] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [operationError, setOperationError] = useState('');
   const [pending, setPending] = useState(false);
   const active = useRef(true);
@@ -87,7 +112,13 @@ export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, 
   const act = async (fn: () => Promise<void>) => {
     if (lock.current) return;
     lock.current = true; setPending(true); setOperationError('');
-    try { await fn(); } catch { if (active.current) setOperationError('操作没有完成，请重试。已有笔记不会受影响。'); }
+    try { await fn(); } catch (error) {
+      if (active.current) {
+        const retry = error instanceof DiscoveryApiError && error.retryAt
+          ? ` 可在 ${new Date(error.retryAt).toLocaleString('zh-CN')} 后再试。` : '';
+        setOperationError(error instanceof DiscoveryApiError ? error.message + retry : '操作没有完成，请重试。已有笔记不会受影响。');
+      }
+    }
     finally { lock.current = false; if (active.current) setPending(false); }
   };
   const startSession = async (id: string, retryOf?: string) => {
@@ -110,7 +141,7 @@ export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, 
       if (active.current) { update(previous => ({ ...previous, ...result })); reload(); }
     })}>自动发现：{data.automaticEnabled ? '开启' : '关闭'}</button>}</div>
     {loading && <p role="status">正在查看发现…</p>}
-    {(error || operationError) && <p role="alert" className={styles.error}>{error || operationError} <button onClick={reload}>重新加载</button></p>}
+    {(error || operationError) && <p role="alert" className={styles.error}>{operationError || error} <button onClick={reload}>重新加载</button></p>}
       {Object.entries(intents.values).filter(([, intent]) => intent.feedback).map(([id]) => <div key={id} className={styles.state}><strong>已收起这条发现</strong><p className={styles.muted}>你的反馈已保存，可以撤销。</p><button disabled={pending} onClick={() => void act(async () => { await noteDiscoveries.undo(id); if (active.current) { intents.set(id, {feedback:false}); reload(); } })}>撤销</button></div>)}
     {data && <>
 
@@ -118,10 +149,16 @@ export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, 
         withdraw={() => { intents.set(item.id, {stale:true}); update(previous => ({...previous, items:previous.items.filter(record => record.id !== item.id)})); reload(); }}
         feedbackDone={() => { intents.set(item.id, {feedback:true}); update(previous => ({...previous,items:previous.items.filter(record => record.id !== item.id)})); reload(); }} />)}
       {(pendingRun || data.run.status === 'failed' || data.run.status === 'budget_exhausted' || !visible.length) && <div className={styles.state} role="status"><strong>{labels[data.run.status]}</strong><p className={styles.muted}>{pendingRun ? paused ? '分析仍未结束。你可以稍后检查状态，或先继续记录。' : '找到线索后会显示原文依据。你可以先继续写笔记。' : data.run.status === 'failed' ? '保存的笔记不会受影响，稍后可以再试一次。' : data.run.status === 'budget_exhausted' ? '已有发现仍可查看，额度恢复后再试。' : '现有笔记里还没有足够明确的线索。你可以继续记录，之后再来看看。'}</p>
-        <Link href="/notes">继续记录笔记</Link>{pendingRun ? <button onClick={reload}>检查状态</button> : <button disabled={pending || data.run.status === 'budget_exhausted'} onClick={() => void act(async () => {
-          runKey.current ??= discoveryOperationId(); await noteDiscoveries.run(runKey.current); if (active.current) { runKey.current = undefined; reload(); }
-        })}>再检查一次</button>}
+        <Link href="/notes">继续记录笔记</Link>{pendingRun ? <button onClick={reload}>检查状态</button> : null}
       </div>}
+      <div className={styles.actions}>
+        {!pendingRun && <button disabled={pending} onClick={() => void act(async () => {
+          runKey.current ??= discoveryOperationId(); await noteDiscoveries.run(runKey.current);
+          if (active.current) { runKey.current = undefined; reload(); }
+        })}>再检查一次</button>}
+        <button aria-expanded={historyOpen} onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? '关闭历史发现' : '查看历史发现'}</button>
+      </div>
+      {historyOpen && <DiscoveryHistory key={userId} userId={userId} />}
       {visible.length > 1 && <button className={styles.quiet} onClick={() => setExpanded(value => !value)}>{expanded ? '收起其他发现' : '查看其他发现'}</button>}
     </>}
   </section>;

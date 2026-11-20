@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DiscoveryList, noteDiscoveries } from '../services/noteDiscoveries';
 export const DISCOVERY_POLL_MS = 4000;
 export const DISCOVERY_POLL_LIMIT = 30;
-export function useNoteDiscoveries(userId: string) {
+export function useNoteDiscoveries(userId: string, history = false) {
   const [state, setState] = useState<{ owner: string; data?: DiscoveryList; error: string; loading: boolean; paused?: boolean }>({ owner: userId, error: '', loading: true });
   const owner = useRef(userId);
   owner.current = userId;
@@ -26,15 +26,15 @@ export function useNoteDiscoveries(userId: string) {
       controller = new AbortController();
       const requestController = controller;
       const readRevision = revision.current;
-      const admit = !visit.current.admitted;
+      const admit = !history && !visit.current.admitted;
       try {
-        const data = await noteDiscoveries.list(requestController.signal, false, admit);
+        const data = await noteDiscoveries.list(requestController.signal, history, admit);
         if (!current() || requestController.signal.aborted || controller !== requestController || readRevision !== revision.current) return;
-        if (data.available) visit.current.admitted = true;
+        if (!history && data.available) visit.current.admitted = true;
         const pending = ['queued', 'running'].includes(data.run.status);
         const paused = pending && polls >= DISCOVERY_POLL_LIMIT;
         setState({ owner: userId, data, error: '', loading: false, paused });
-        if (pending && !paused) { polls++; timer = setTimeout(load, DISCOVERY_POLL_MS); }
+        if (!history && pending && !paused) { polls++; timer = setTimeout(load, DISCOVERY_POLL_MS); }
       } catch (error) {
         if (!current() || requestController.signal.aborted || controller !== requestController || readRevision !== revision.current) return;
         setState(prev => ({ ...prev, owner: userId, error: '发现暂时加载失败，请重试。', loading: false }));
@@ -49,6 +49,6 @@ export function useNoteDiscoveries(userId: string) {
     document.addEventListener('visibilitychange', visibility);
     void load();
     return () => { disposed = true; controller?.abort(); clearTimeout(timer); document.removeEventListener('visibilitychange', visibility); };
-  }, [userId, refreshKey]);
+  }, [userId, history, refreshKey]);
   return { ...(state.owner === userId ? state : { loading: true, error: '', data: undefined, paused: false }), reload, update };
 }

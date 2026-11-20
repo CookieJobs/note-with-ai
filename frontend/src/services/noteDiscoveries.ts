@@ -14,11 +14,11 @@ export interface DiscoveryList {
 }
 export type DiscoveryFeedback = 'not_interested' | 'not_related' | 'already_finished';
 export const discoveryOperationId = () => crypto.randomUUID();
-export class DiscoveryApiError extends Error { constructor(message: string, public status: number, public code?: string, public retryEligible = false, public requestId?: string) { super(message); } }
+export class DiscoveryApiError extends Error { constructor(message: string, public status: number, public code?: string, public retryEligible = false, public requestId?: string, public retryAt?: string) { super(message); } }
 async function request<T>(path = '', options: RequestInit = {}): Promise<T> {
   const response = await authFetch(`/api/note-discoveries${path}`, { ...options, signal: options.signal ?? AbortSignal.timeout(75_000) });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new DiscoveryApiError(payload?.message || payload?.error || '操作没有完成，请稍后重试。', response.status, payload?.code, payload?.retryEligible === true && payload?.code === 'CHAT_BUDGET_EXHAUSTED', payload?.requestId);
+  if (!response.ok) throw new DiscoveryApiError(payload?.message || payload?.error || '操作没有完成，请稍后重试。', response.status, payload?.code, payload?.retryEligible === true && payload?.code === 'CHAT_BUDGET_EXHAUSTED', payload?.requestId, typeof payload?.retryAt === 'string' ? payload.retryAt : undefined);
   return payload.data as T;
 }
 export const noteDiscoveries = {

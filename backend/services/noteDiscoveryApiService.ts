@@ -124,7 +124,7 @@ export class NoteDiscoveryApiService {
     const result = await this.schedule.requestManual(userId, key, this.now());
     if (result.status === 'disabled') throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
     if (result.status === 'blocked') throw error('上次请求结果尚无法确认，请稍后重新发起', 'DISCOVERY_DELIVERY_UNCERTAIN', 409);
-    if (result.status === 'limited') throw error('本次寻找发现的次数已达上限，请稍后再试', 'DISCOVERY_RATE_LIMITED', 429);
+    if (result.status === 'limited') throw new AppError('本次寻找发现的次数已达上限，请稍后再试', ErrorType.VALIDATION, 429, true, { code: 'DISCOVERY_RATE_LIMITED', ...(result.retryAt ? { retryAt: result.retryAt.toISOString() } : {}) });
     if (!result.currentRun) throw error('暂时无法发起发现，请稍后重试', 'DISCOVERY_RUN_UNAVAILABLE', 503);
     return { runId: String(result.currentRun._id), status: result.currentRun.status,
       ...(result.retryAt ? { retryAt: result.retryAt.toISOString() } : {}) };

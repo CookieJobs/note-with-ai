@@ -235,6 +235,7 @@ export const globalErrorHandler = (
   if (code === 'CHAT_BUDGET_EXHAUSTED' && appError.details?.retryEligible === true && typeof appError.details.requestId === 'string') {
     response.retryEligible = true; response.requestId = appError.details.requestId;
   }
+  if (code === 'DISCOVERY_RATE_LIMITED' && typeof appError.details?.retryAt === 'string') response.retryAt = appError.details.retryAt;
   if (appError.details?.current !== undefined) response.current = appError.details.current;
   if (appError.details?.code === 'NOTE_TITLE_RATE_LIMITED' && typeof appError.details.retryAfterSeconds === 'number') {
     response.details = { retryAfterSeconds: appError.details.retryAfterSeconds };

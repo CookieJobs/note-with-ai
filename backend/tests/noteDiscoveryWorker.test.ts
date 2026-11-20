@@ -86,6 +86,43 @@ describe('independent note discovery worker', noteDiscoveryMongoTestOptions, () 
     await manual.store.finish(String(running._id), running.leaseToken!, 'cancelled');
   });
 
+  for (const dispatched of [false, true]) {
+    test(`disabled restart settles expired ${dispatched ? 'dispatched' : 'reserved'} work without admission or calls`, async () => {
+      let clock = new Date();
+      const fixture = await makeRun(ownerId(), { leaseMs: 1000, now: () => clock });
+      const run = await fixture.store.claimNext();
+      assert.ok(run);
+      const reservation = await fixture.budget.reserve(fixture.runId, fixture.userId, run.generation, {
+        provider: 'fixture', model: 'fixture', inputCnyPerMillion: 1, outputCnyPerMillion: 1, maxInputTokens: 6, maxOutputTokens: 4,
+      });
+      assert.ok(reservation);
+      if (dispatched) assert.equal(await fixture.store.markProviderStarted({runId:fixture.runId,userId:fixture.userId,generation:run.generation,leaseToken:run.leaseToken},reservation.id),true);
+      await fixture.store.enqueue(fixture.userId,{changedAt:new Date(clock.getTime()+1)},'pending-disabled',{trigger:'manual'});
+      const queued = await fixture.store.enqueue(ownerId(),{changedAt:clock},'queued-disabled',{trigger:'manual'});
+      clock = new Date(clock.getTime()+1001);
+      const {transport,calls}=scriptTransport();
+      fixture.schedule.initializeOnStartup=async()=>{throw new Error('disabled worker must not initialize admission');};
+      fixture.schedule.scanDue=async()=>{throw new Error('disabled worker must not scan');};
+      fixture.schedule.authorizeRun=async()=>{throw new Error('disabled worker must not authorize');};
+      const worker=new NoteDiscoveryWorker({...fixture,enabled:()=>false,agentOptions:{provider:createDiscoveryProvider(fixturePrice,transport)!,telemetry:false}});
+      await worker.tick();
+      const terminal=await fixture.store.getRun(fixture.userId,fixture.runId);
+      assert.equal(terminal?.status,dispatched?'failed':'cancelled');
+      if(dispatched) assert.equal(terminal?.failureCategory,'usage_unknown');
+      assert.equal(terminal?.pendingWatermark,undefined);
+      assert.equal(terminal?.leaseToken,null);
+      assert.equal((await NoteDiscoveryRun.findById(queued?._id).lean())?.status,'cancelled');
+      const ledger=await NoteDiscoveryBudget.findOne({'reservations.id':reservation.id}).lean();
+      assert.equal(ledger?.reservedTotalMicros,0);
+      assert.equal(ledger?.reservations.find(r=>r.id===reservation.id)?.state,'settled');
+      const spent=ledger?.spentTotalMicros;
+      await worker.tick();
+      assert.equal((await NoteDiscoveryBudget.findById(ledger?._id).lean())?.spentTotalMicros,spent);
+      assert.equal(await fixture.store.claimNext(),null,'disabled work must not requeue after re-enable');
+      assert.equal(calls.length,0);
+    });
+  }
+
   test('scheduler-blocked automatic admission never invokes the runner or finishes the cancelled lease twice', async () => {
     const fixture = await makeRun();
     const original = await fixture.store.claimNext();

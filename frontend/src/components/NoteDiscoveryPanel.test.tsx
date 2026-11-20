@@ -160,3 +160,31 @@ it('keeps a deleted saved-note target error distinct from unavailable discovery 
  await screen.findByText('已保存的笔记已删除');
  expect(screen.getByText('一个联系')).toBeInTheDocument();
 });
+
+
+it.each(['completed', 'budget_exhausted'] as const)('keeps manual discovery available after %s with visible cards and reports the current denial', async status => {
+ vi.mocked(noteDiscoveries.list).mockResolvedValue(list({run:{status}}));
+ vi.mocked(noteDiscoveries.run).mockRejectedValue(new DiscoveryApiError('本次寻找发现的次数已达上限，请稍后再试',429,'DISCOVERY_RATE_LIMITED',false,undefined,'2026-11-22T00:00:00Z'));
+ render(<NoteDiscoveryPanel {...props} />);
+ const run = await screen.findByRole('button',{name:'再检查一次'});
+ expect(run).toBeEnabled();
+ fireEvent.click(run);
+ await screen.findByText(/本次寻找发现的次数已达上限.*可在.*后再试/);
+ expect(run).toBeEnabled();
+ expect(screen.getByText('一个联系')).toBeInTheDocument();
+});
+it('loads explicit history separately, leaves home cards bounded and aborts history on close', async () => {
+ const historical={...card,id:'old',title:'更早的发现',status:'completed' as const};
+ vi.mocked(noteDiscoveries.list).mockImplementation(async (_signal, history) => list({items:history?[card,historical]:[card]}));
+ render(<NoteDiscoveryPanel {...props} />);
+ await screen.findByText('一个联系');
+ expect(vi.mocked(noteDiscoveries.list).mock.calls.every(call=>call[1]===false)).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:'查看历史发现'}));
+ await screen.findByText('更早的发现');
+ const read=vi.mocked(noteDiscoveries.list).mock.calls.find(call=>call[1]===true)!;
+ expect(read[2]).toBe(false);
+ fireEvent.click(screen.getByRole('button',{name:'关闭历史发现'}));
+ expect(read[0]?.aborted).toBe(true);
+ expect(screen.queryByText('更早的发现')).toBeNull();
+ expect(screen.getAllByRole('article',{name:'一个联系'})).toHaveLength(1);
+});

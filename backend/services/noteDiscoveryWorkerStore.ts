@@ -133,6 +133,15 @@ export class NoteDiscoveryWorkerStore {
     }
   }
 
+  /** Disabled-worker recovery only: settle expired generations without admitting a replacement. */
+  async recoverExpiredRuns(now = this.now()): Promise<void> {
+    for (let count = 0; count < 100; count++) {
+      const run = await this.takeExpiredLease(now);
+      if (!run) return;
+      await this.completeRecovery(run, true);
+    }
+  }
+
   async renewLease(runId: string, token: string): Promise<boolean> {
     const now = this.now();
     const result = await NoteDiscoveryRun.updateOne(this.leaseFilter(runId, token, now), {
@@ -406,7 +415,7 @@ export class NoteDiscoveryWorkerStore {
     }).lean();
   }
 
-  private async completeRecovery(run: StoredDiscoveryRun): Promise<ClaimedDiscoveryRun | null> {
+  private async completeRecovery(run: StoredDiscoveryRun, cancelUnsent = false): Promise<ClaimedDiscoveryRun | null> {
     if (run.recoveringGeneration == null || !run.leaseToken) return null;
     await this.budget.settleExpiredGeneration({
       runId: run._id.toHexString(), userId: run.userId.toHexString(),
@@ -415,7 +424,7 @@ export class NoteDiscoveryWorkerStore {
     const now = this.now();
     const filter = { ...this.leaseFilter(run._id.toHexString(), run.leaseToken, now), recoveringGeneration: run.recoveringGeneration };
     const unknownDelivery = run.providerReservationId || run.providerDeliveryUnknown;
-    const fields = run.executionCancelled && !unknownDelivery ? {
+    const fields = (run.executionCancelled && !unknownDelivery) || (cancelUnsent && !run.providerStartedAt) ? {
       status: 'cancelled', finishedAt: now, leaseToken: null, leaseUntil: null,
     } : run.providerStartedAt ? {
       status: 'failed', failureCategory: unknownDelivery ? 'usage_unknown' : 'expired_lease',
@@ -424,6 +433,7 @@ export class NoteDiscoveryWorkerStore {
     } : { startedAt: now };
     return asClaimed(await NoteDiscoveryRun.findOneAndUpdate(filter, {
       $set: { recoveringGeneration: null, ...fields },
+      ...(cancelUnsent ? unsetPending : {}),
     }, { returnDocument: 'after' }).lean());
   }
 }

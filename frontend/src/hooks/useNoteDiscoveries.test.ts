@@ -77,3 +77,19 @@ it('does not consume admission from an aborted hidden initial response', async (
  expect(vi.mocked(noteDiscoveries.list).mock.calls.slice(0,2).map(call=>call[2])).toEqual([true,true]);
  view.unmount();
 });
+
+it('keeps history read-only without polling and rejects late history from a previous owner', async () => {
+ let finish!: (value: typeof running)=>void;
+ vi.mocked(noteDiscoveries.list).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const view=renderHook(({owner})=>useNoteDiscoveries(owner,true),{initialProps:{owner:'old'}});
+ const oldSignal=vi.mocked(noteDiscoveries.list).mock.calls[0][0];
+ view.rerender({owner:'new'});
+ await act(async()=>{});
+ await act(async()=>finish({...running,automaticEnabled:false}));
+ expect(oldSignal?.aborted).toBe(true);
+ expect(view.result.current.data?.automaticEnabled).toBe(true);
+ expect(vi.mocked(noteDiscoveries.list).mock.calls.every(call=>call[1]===true&&call[2]===false)).toBe(true);
+ await act(async()=>{await vi.advanceTimersByTimeAsync(DISCOVERY_POLL_MS*2);});
+ expect(noteDiscoveries.list).toHaveBeenCalledTimes(2);
+ view.unmount();
+});

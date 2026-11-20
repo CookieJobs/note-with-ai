@@ -20,3 +20,8 @@ it('never treats generic503 or an error code alone as eligibility to pay again',
  authFetch.mockResolvedValue({ok:false,status:503,json:async()=>({error:'稍后再试',code:'CHAT_BUDGET_EXHAUSTED'})});
  await expect(noteDiscoveries.session('finding')).rejects.toMatchObject({retryEligible:false});
 });
+
+it('preserves current manual denial code and server retry time',async()=>{
+ authFetch.mockResolvedValue({ok:false,status:429,json:async()=>({message:'本次寻找发现的次数已达上限，请稍后再试',code:'DISCOVERY_RATE_LIMITED',retryAt:'2026-11-22T00:00:00Z'})});
+ await expect(noteDiscoveries.run('manual-request')).rejects.toMatchObject({status:429,code:'DISCOVERY_RATE_LIMITED',retryAt:'2026-11-22T00:00:00Z'});
+});
