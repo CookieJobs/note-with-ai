@@ -174,13 +174,14 @@ it.each(['completed', 'budget_exhausted'] as const)('keeps manual discovery avai
  expect(screen.getByText('一个联系')).toBeInTheDocument();
 });
 it('loads explicit history separately, leaves home cards bounded and aborts history on close', async () => {
- const historical={...card,id:'old',title:'更早的发现',status:'completed' as const};
+ const historical={...card,id:'old',title:'更早的发现',qualification:'这个观察仅适用于当时的条件',status:'completed' as const};
  vi.mocked(noteDiscoveries.list).mockImplementation(async (_signal, history) => list({items:history?[card,historical]:[card]}));
  render(<NoteDiscoveryPanel {...props} />);
  await screen.findByText('一个联系');
  expect(vi.mocked(noteDiscoveries.list).mock.calls.every(call=>call[1]===false)).toBe(true);
  fireEvent.click(screen.getByRole('button',{name:'查看历史发现'}));
  await screen.findByText('更早的发现');
+ expect(screen.getByText('这个观察仅适用于当时的条件')).toBeInTheDocument();
  const read=vi.mocked(noteDiscoveries.list).mock.calls.find(call=>call[1]===true)!;
  expect(read[2]).toBe(false);
  fireEvent.click(screen.getByRole('button',{name:'关闭历史发现'}));

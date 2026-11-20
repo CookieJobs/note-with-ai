@@ -82,6 +82,7 @@ function DiscoveryHistory({ userId }: { userId: string }) {
       {!data.items.length && <p>暂时没有可查看的历史发现。</p>}
       {data.items.map(item => <article key={item.id} aria-label={item.title} className={styles.card}>
         <h3>{item.title}</h3><p>{item.observation}</p><p className={styles.muted}>{item.whyNow}</p>
+        {item.qualification && <p className={styles.muted}>{item.qualification}</p>}
         <p className={styles.muted}>{new Date(item.createdAt).toLocaleDateString('zh-CN')}{item.status === 'completed' ? ' · 已结束' : item.status === 'dismissed' ? ' · 已收起' : ''}</p>
         <details className={styles.evidence}><summary>展开原文依据（{item.evidence.length}）</summary>
           {item.evidence.map((source, index) => <div key={`${source.noteId}-${index}`}>
