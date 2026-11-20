@@ -807,7 +807,7 @@ it('offers typed unsent retry only after server confirmation and persists explic
  const hook=renderHook(()=>useChatStream());
  mockAuthFetchSuccess(makeSseReader([`data: ${JSON.stringify({error:'额度不足',code:'CHAT_BUDGET_EXHAUSTED',retryEligible:true,requestId:'confirmed-failed'})}\n\n`]));
  await act(async()=>{await hook.result.current.sendMessage('继续',session,'typed-owner',update,state.setSessions);});
- expect(hook.result.current.retryableFailure).toEqual({sessionId:session.id,requestId:'confirmed-failed'});
+ expect(hook.result.current.retryableFailure).toEqual({sessionId:session.id,requestId:'confirmed-failed',input:'继续'});
  expect(mockAuthFetchFn).toHaveBeenCalledTimes(1);
  mockAuthFetchFn.mockRejectedValueOnce(new Error('连接中断'));
  await act(async()=>{await hook.result.current.sendMessage('继续',session,'typed-owner',update,state.setSessions,undefined,'confirmed-failed');});

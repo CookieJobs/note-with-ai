@@ -10,7 +10,7 @@ interface UseChatStreamReturn {
   activeSessionId: string | null;
   errorSessionId: string | null;
   error: string;
-  retryableFailure: { sessionId: string; requestId: string } | null;
+  retryableFailure: { sessionId: string; requestId: string; input: string } | null;
   setError: React.Dispatch<React.SetStateAction<string>>;
   sendMessage: (
     input: string,
@@ -60,7 +60,7 @@ export const useChatStream = (
 ): UseChatStreamReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [retryableFailure, setRetryableFailure] = useState<{ sessionId: string; requestId: string } | null>(null);
+  const [retryableFailure, setRetryableFailure] = useState<{ sessionId: string; requestId: string; input: string } | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [errorSessionId, setErrorSessionId] = useState<string | null>(null);
   const loadingRef = useRef(false);
@@ -302,7 +302,7 @@ export const useChatStream = (
       return await Promise.race([streamOperation(), timeoutPromise]);
     } catch (err: unknown) {
       if (!isCurrentOwner()) return false;
-      setRetryableFailure(eligibleRetryRequest ? { sessionId: effectiveSessionId, requestId: eligibleRetryRequest } : null);
+      setRetryableFailure(eligibleRetryRequest ? { sessionId: effectiveSessionId, requestId: eligibleRetryRequest, input } : null);
       setErrorSessionId(effectiveSessionId);
       if (!hasCommittedSession) {
         updateSessionMessages(effectiveSessionId, updatedMessages, userId);

@@ -282,7 +282,7 @@ function ChatPageContent() {
     setSessionToDelete('');
   };
 
-  const handleSend = async (retryOfRequestId?: string) => {
+  const handleSend = async (retryOfRequestId?: string, retryInput?: string) => {
     if (!user?.id || startingCare || interactionLock.current) return;
     if (entryError || (explicitSessionId && explicitSessionHandled.current !== explicitSessionId)) {
       toast('请先选择有效对话或开启新对话；你的草稿已保留。');
@@ -301,7 +301,8 @@ function ChatPageContent() {
 
     if (session) {
       selectedSessionIdRef.current = session.id;
-      const submittedInput = inputRef.current;
+      const submittedInput = retryInput ?? inputRef.current;
+      const preserveEditedDraft = retryInput !== undefined && inputRef.current !== retryInput;
       const sent = await sendMessageHook(
         submittedInput,
         session,
@@ -309,11 +310,11 @@ function ChatPageContent() {
         updateSessionMessagesHook,
         setSessions,
         () => {
-          if (inputRef.current === submittedInput) updateInput('');
+          if (!preserveEditedDraft && inputRef.current === submittedInput) updateInput('');
         },
         retryOfRequestId,
       );
-      if (!sent && inputRef.current === '' && selectedSessionIdRef.current === session.id) {
+      if (!sent && !preserveEditedDraft && inputRef.current === '' && selectedSessionIdRef.current === session.id) {
         updateInput(submittedInput);
       }
     }
@@ -465,7 +466,7 @@ function ChatPageContent() {
 
           {sessionsError && <div role="alert" className={styles.chatError}>{sessionsError} <button type="button" disabled={sessionsLoading} onClick={() => { void retrySessions(); }}>{sessionsLoading ? '正在重试…' : '重试加载对话'}</button></div>}
           {streamBusy && !loading && <p role="status" className={styles.streamNotice}>另一段对话正在回复，完成后可继续发送。你的草稿会保留。</p>}
-          {retryableFailure?.sessionId === currentSessionId && <button type="button" disabled={streamBusy || startingCare} onClick={() => void handleSend(retryableFailure.requestId)}>额度恢复后重新尝试这次提问</button>}
+          {retryableFailure?.sessionId === currentSessionId && <button type="button" disabled={streamBusy || startingCare} onClick={() => void handleSend(retryableFailure.requestId, retryableFailure.input)}>额度恢复后重新尝试这次提问</button>}
           <ChatInputArea
             input={input}
             loading={loading || startingCare}

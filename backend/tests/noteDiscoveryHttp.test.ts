@@ -224,6 +224,30 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     assert.ok(success.includes('\"type\":\"committed\"'));assert.equal(scripted.calls.length,2);
     const repeated=await stream({...next,retryOfRequestId:'http-next'});
     assert.ok(repeated.includes('\"type\":\"committed\"'));assert.equal(scripted.calls.length,2);
+    const changed=await stream({...next,retryOfRequestId:'http-next',messages:[{role:'user',content:'另一份修改后的问题'}]});
+    assert.ok(changed.includes('CHAT_RETRY_PAYLOAD_MISMATCH'));assert.ok(!changed.includes('\"type\":\"committed\"'));assert.equal(scripted.calls.length,2);
+    const {Note}=await modules();await Note.updateOne({_id:f.note._id},{$set:{content:'来源已修改',contentText:'来源已修改',revision:2}});
+    assert.equal((await service.session(f.owner,f.discovery.id)).reused,true);assert.equal(scripted.calls.length,2);
+    execute.mock.restore();
+  });
+
+  it('revalidates a stale discovery before a fresh empty-session retry without blocking old attempt reconciliation',async()=>{
+    const f=await freshDiscovery();
+    const {noteDiscoveryConversationService,NoteDiscoveryConversationService}=await import('../services/noteDiscoveryConversationService');
+    const {createDiscoveryProvider}=await import('../services/noteDiscoveryProvider');
+    const {fixturePrice,scriptTransport,providerResponse}=await import('./noteDiscoveryRunnerFixture');
+    const {NoteDiscoveryBudgetService}=await import('../services/noteDiscoveryBudgetService');
+    const scripted=scriptTransport(providerResponse({reply:'不应发送'}));
+    const budget=new NoteDiscoveryBudgetService({enabled:true,userCapMicros:1_000_000,globalCapMicros:5_000_000,attemptCapMicros:250_000});
+    const conversation=new NoteDiscoveryConversationService({enabled:()=>true,provider:createDiscoveryProvider(fixturePrice,scripted.transport),budget});
+    const execute=mock.method(noteDiscoveryConversationService,'execute',conversation.execute.bind(conversation));
+    const denied=mock.method(budget,'reserveConversation',async()=>null);
+    await assert.rejects(service.session(f.owner,f.discovery.id),(e:any)=>e.details?.retryEligible===true);
+    denied.mock.restore();
+    const {Note}=await modules();await Note.updateOne({_id:f.note._id},{$set:{content:'新版正文',contentText:'新版正文',revision:2}});
+    await assert.rejects(service.session(f.owner,f.discovery.id,{retryOfRequestId:'discovery-initial'}),(e:any)=>e.details?.code==='DISCOVERY_STALE');
+    await assert.rejects(service.session(f.owner,f.discovery.id),(e:any)=>e.details?.retryEligible===true);
+    assert.equal(scripted.calls.length,0);
     execute.mock.restore();
   });
   it('orders feedback from one authoritative record when POST acknowledgement is delayed across DELETE', async () => {

@@ -14,6 +14,13 @@ const error = (message: string, code: string, status = 409) => new AppError(mess
 export const discoveryRetryRequestId = (prior: string) => `retry:${createHash('sha256').update(prior).digest('hex')}`;
 const canRetry = (turn: any) => turn.status === 'failed' && turn.errorCode === 'CHAT_BUDGET_EXHAUSTED' && !turn.providerStartedAt && !turn.providerReservationId && !turn.reply && !turn.cleanupRequested;
 const retryError = (turn: any) => new AppError('本轮额度不足，尚未发送；额度恢复后可明确重试。', ErrorType.VALIDATION, 429, true, { code: 'CHAT_BUDGET_EXHAUSTED', retryEligible: true, requestId: turn.requestId });
+const sameRetryPayload = (expected: IMessage[] | undefined, incoming: IMessage[], questionOnly = false) => {
+  if (!expected?.length || !incoming.length) return false;
+  const clean = (messages: IMessage[]) => messages.map((message, index) => ({ role: message.role, content: index === messages.length - 1 ? message.content.trim() : message.content }));
+  const actual = clean(incoming), original = clean(expected);
+  // Public chat input may contain only the question; all earlier history is server-owned.
+  return JSON.stringify(questionOnly && actual.length === 1 ? original.slice(-1) : original) === JSON.stringify(actual);
+};
 export class NoteDiscoveryConversationService {
   constructor(private readonly options: {
     provider?: DiscoveryProvider | null; budget?: NoteDiscoveryBudgetService; enabled?: () => boolean;
@@ -41,11 +48,14 @@ export class NoteDiscoveryConversationService {
     if (await bounded(isDiscoveryUserCleaningUp(userId))) throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
     if (!requestId?.trim() || requestId.length > 150) throw error('请为本次对话提供有效请求标识', 'CHAT_REQUEST_ID_REQUIRED', 400);
     const existing = await bounded(NoteDiscoveryChatTurn.findOne({ userId, chatId, requestId }).lean());
-    if (existing) return await bounded(this.replay(existing, userId, chatId));
+    if (existing) {
+      if (input.retryOfRequestId && (requestId !== discoveryRetryRequestId(input.retryOfRequestId) || !sameRetryPayload((existing as any).payload?.messages, input.messages))) throw error('重试问题与原请求不同，请保留原问题核对结果', 'CHAT_RETRY_PAYLOAD_MISMATCH');
+      return await bounded(this.replay(existing, userId, chatId));
+    }
     if (input.retryOfRequestId) {
       const prior: any = await bounded(NoteDiscoveryChatTurn.findOne({ userId, chatId, requestId: input.retryOfRequestId }).lean());
       if (!prior || !canRetry(prior) || requestId !== discoveryRetryRequestId(input.retryOfRequestId)
-        || JSON.stringify(prior.payload?.messages?.map((m: IMessage) => ({ role: m.role, content: m.content }))) !== JSON.stringify(input.messages.map(m => ({ role: m.role, content: m.content })))) {
+        || !sameRetryPayload(prior.payload?.messages, input.messages)) {
         throw error('上次请求尚不能重新申请，请保留原请求核对结果', 'CHAT_RETRY_NOT_ALLOWED');
       }
     }
@@ -156,9 +166,10 @@ export class NoteDiscoveryConversationService {
     } finally { clearTimeout(timer); }
   }
 
-  async replayExisting(userId: string, chatId: string, requestId: string) {
+  async replayExisting(userId: string, chatId: string, requestId: string, explicitRetryMessages?: IMessage[]) {
     const turn = await NoteDiscoveryChatTurn.findOne({ userId, chatId, requestId }).lean();
     if (!turn) return null;
+    if (explicitRetryMessages && !sameRetryPayload((turn as any).payload?.messages, explicitRetryMessages, true)) throw error('重试问题与原请求不同，请保留原问题核对结果', 'CHAT_RETRY_PAYLOAD_MISMATCH');
     if (await isDiscoveryUserCleaningUp(userId)) throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
     return this.replay(turn, userId, chatId);
   }

@@ -981,4 +981,30 @@ describe('chat page entry', () => {
     expect(screen.getByRole('button',{name:'上次的对话'})).toHaveAttribute('aria-current','page');
   });
 
+  it.each(['另一份编辑中的草稿',''])('retries the frozen failed question while preserving a different current draft %j', async draft => {
+    const bound:IChat={id:'retry-bound',title:'发现对话',sourceMode:'multi_note_discovery',messages:[]};
+    searchParams.value='session=retry-bound';
+    const frame=(data:unknown)=>{let done=false;return {ok:true,body:{getReader:()=>({read:async()=>done?{done:true}:(done=true,{done:false,value:new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`)}),cancel:async()=>{},releaseLock:()=>{}})}};};
+    authFetch.mockImplementation(async(url:string,options?:RequestInit)=>{
+      if(url==='/api/chat'){
+        const body=JSON.parse(options!.body as string);
+        if(body.retryOfRequestId) return committedResponse({...bound,messages:[{role:'user',content:'不可变的原问题'},{role:'assistant',content:'同一次明确重试的已保存回答'}]});
+        return frame({error:'预算不足',code:'CHAT_BUDGET_EXHAUSTED',retryEligible:true,requestId:'failed-original'});
+      }
+      return sessionsResponse([bound]);
+    });
+    render(<ChatPage />);await loadServerHistory();
+    fireEvent.change(screen.getByRole('textbox',{name:'聊天消息'}),{target:{value:'不可变的原问题'}});
+    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'发送消息'}));});
+    expect(screen.getByRole('button',{name:'额度恢复后重新尝试这次提问'})).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox',{name:'聊天消息'}),{target:{value:draft}});
+    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'额度恢复后重新尝试这次提问'}));});
+    const calls=authFetch.mock.calls.filter(([url])=>url==='/api/chat');
+    const retry=JSON.parse(calls[1][1].body);
+    expect(retry.messages.at(-1)).toEqual({role:'user',content:'不可变的原问题'});
+    expect(retry.retryOfRequestId).toBe('failed-original');
+    expect(screen.getByRole('textbox',{name:'聊天消息'})).toHaveValue(draft);
+    expect(screen.getByText('同一次明确重试的已保存回答')).toBeInTheDocument();
+  });
+
 });

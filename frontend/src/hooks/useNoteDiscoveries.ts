@@ -27,10 +27,10 @@ export function useNoteDiscoveries(userId: string) {
       const requestController = controller;
       const readRevision = revision.current;
       const admit = !visit.current.admitted;
-      visit.current.admitted = true;
       try {
         const data = await noteDiscoveries.list(requestController.signal, false, admit);
         if (!current() || requestController.signal.aborted || controller !== requestController || readRevision !== revision.current) return;
+        if (data.available) visit.current.admitted = true;
         const pending = ['queued', 'running'].includes(data.run.status);
         const paused = pending && polls >= DISCOVERY_POLL_LIMIT;
         setState({ owner: userId, data, error: '', loading: false, paused });

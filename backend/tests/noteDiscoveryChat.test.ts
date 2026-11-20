@@ -293,6 +293,7 @@ describe('metered durable discovery conversation turns', noteDiscoveryMongoTestO
     const results = await Promise.allSettled([f.service.execute(retry),f.service.execute(retry)]);
     assert.ok(results.some(result=>result.status==='fulfilled'));
     await f.service.execute(retry);
+    await assert.rejects(f.service.execute({...retry,messages:[{role:'user',content:'改变后的问题'}]}),(e:any)=>e.details?.code==='CHAT_RETRY_PAYLOAD_MISMATCH');
     assert.equal(f.scripted.calls.length,1,'concurrent explicit retries and response-loss replay share one paid winner');
     assert.equal(await NoteDiscoveryChatTurn.countDocuments({userId:f.userId}),2);
     await assert.rejects(f.service.execute({...input,requestId:discoveryRetryRequestId(retry.requestId),retryOfRequestId:retry.requestId}), /尚不能重新申请/);

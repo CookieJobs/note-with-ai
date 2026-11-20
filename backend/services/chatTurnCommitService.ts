@@ -50,7 +50,7 @@ class ChatTurnCommitService {
   }: StreamAndCommitInput): Promise<StreamAndCommitResult> {
     if (retryOfRequestId) requestId = discoveryRetryRequestId(retryOfRequestId);
     if (sessionId && requestId) {
-      const replay = await noteDiscoveryConversationService.replayExisting(userId, sessionId, requestId);
+      const replay = await noteDiscoveryConversationService.replayExisting(userId, sessionId, requestId, retryOfRequestId ? messages : undefined);
       if (replay) {
         if (!onChunk(replay.fullReply)) throw new Error('CHAT_STREAM_ABORTED');
         return { fullReply: replay.fullReply, session: chatService.formatSession(replay.session as any) };

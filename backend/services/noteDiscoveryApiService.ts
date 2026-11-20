@@ -200,6 +200,8 @@ export class NoteDiscoveryApiService {
     if (!existing.messages.length) {
       const latestTurn: any = await NoteDiscoveryChatTurn.findOne({ userId, chatId: existing._id }).sort({ createdAt: -1, _id: -1 }).lean();
       const initialRequestId = input.retryOfRequestId ? discoveryRetryRequestId(input.retryOfRequestId) : latestTurn?.requestId || 'discovery-initial';
+      const attempt = await NoteDiscoveryChatTurn.exists({ userId, chatId: existing._id, requestId: initialRequestId });
+      if (!attempt) await this.usable(userId, item);
       const committed = await chatTurnCommitService.streamAndCommit({ userId, sessionId: String(existing._id), requestId: initialRequestId, retryOfRequestId: input.retryOfRequestId,
         messages: [{ role: 'user', content: action.payload.opening }], title: existing.title, onChunk: () => true });
       return { session: committed.session, reused: false };
