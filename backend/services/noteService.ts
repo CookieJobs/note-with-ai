@@ -1,3 +1,4 @@
+import { fenceDiscoveryNoteTarget } from './discoveryNoteDeletionFence';
 import { Types } from 'mongoose';
 import { Note } from '../models/Note';
 import { parseSearchQuery, buildNoteSearchFilter, calendarMonthRange } from './noteListQueries';
@@ -83,9 +84,10 @@ class NoteService {
   }
 
   async deleteNote(userId: string, noteId: string): Promise<void> {
-    const note = await Note.findOne({ _id: noteId, userId });
+    const note = await Note.findOne({ _id: noteId, userId }, '+discoveryCreated');
     if (!note) throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
-    await Note.deleteOne({ _id: noteId, userId });
+    if ((note as any).discoveryCreated) await fenceDiscoveryNoteTarget(userId, noteId);
+    else await Note.deleteOne({ _id: noteId, userId });
     await invalidateDiscoverySourceBestEffort(userId, noteId);
     await UserNoteTopicIndex.deleteOne({ userId, noteId });
     const remainingNotes = await Note.countDocuments({ userId });

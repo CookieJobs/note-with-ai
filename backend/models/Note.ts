@@ -67,6 +67,9 @@ const NoteSchema = new mongoose.Schema(
     keywordsOrigin: { type: String, enum: ['default', 'user'] },
     embedding: [{ type: Number }], // 可选字段，可后续异步填充
     embeddingMetadata: { type: EmbeddingMetadataSchema, default: null },
+    // Internal stable discovery identity and content-free deletion fence, never public DTO fields.
+    discoveryCreated: { type: Boolean, select: false },
+    discoveryDeletedAt: { type: Date, select: false },
     // 用户写入的独立并发版本；AI 派生写回不增加它。
     revision: {
       type: Number,
@@ -90,6 +93,15 @@ const NoteSchema = new mongoose.Schema(
   },
   { timestamps: true } // 自动添加 createdAt 和 updatedAt 字段
 );
+
+// Deleted stable IDs remain occupied to block stale creates. Ordinary reads, search,
+// projections and mutations treat these content-free records exactly like absent notes.
+NoteSchema.pre(/^(find|countDocuments|distinct|update|replace|delete)/, function (this: mongoose.Query<any, any>) {
+  this.where({ discoveryDeletedAt: { $exists: false } });
+});
+NoteSchema.pre('aggregate', function () {
+  this.pipeline().unshift({ $match: { discoveryDeletedAt: { $exists: false } } });
+});
 
 // 数据库索引优化
 // 1. 用户ID索引 - 提升按用户查询笔记的性能

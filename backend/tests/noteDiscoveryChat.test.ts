@@ -220,6 +220,43 @@ describe('metered durable discovery conversation turns', noteDiscoveryMongoTestO
     assert.equal(f.scripted.calls.length, 1);
     resume(); stub.mock.restore();
   });
+  it('bounds operation creation and initial cleanup lookup acknowledgements without paying after uncertain inserts', async () => {
+    for (const phase of ['create', 'cleanup'] as const) {
+      const f = await fixture();
+      const { NoteDiscoveryChatTurn } = await import('../models/NoteDiscoveryChatTurn');
+      const { NoteDiscoveryCleanup } = await import('../models/NoteDiscoveryCleanup');
+      const { NoteDiscoveryConversationService } = await import('../services/noteDiscoveryConversationService');
+      let resume!: () => void;
+      const held = new Promise<void>(resolve => { resume = resolve; });
+      let stub;
+      if (phase === 'create') {
+        const original = NoteDiscoveryChatTurn.create.bind(NoteDiscoveryChatTurn);
+        stub = mock.method(NoteDiscoveryChatTurn, 'create', (async (...args: any[]) => {
+          const row = await (original as any)(...args); await held; return row;
+        }) as any);
+      } else {
+        const original = NoteDiscoveryCleanup.exists.bind(NoteDiscoveryCleanup);
+        let calls = 0;
+        stub = mock.method(NoteDiscoveryCleanup, 'exists', (async (...args: any[]) => {
+          const result = await (original as any)(...args);
+          if (++calls === 2) await held;
+          return result;
+        }) as any);
+      }
+      const service = new NoteDiscoveryConversationService({ enabled: () => true, provider: f.provider, budget: f.budget, timeoutMs: 150 });
+      const input = { userId: f.userId, chatId: f.chat.id, requestId: `held-${phase}`, messages: f.prepared.messages, sourceSnapshots: f.prepared.sourceSnapshots! };
+      const start = Date.now();
+      await assert.rejects(service.execute(input), /超时/);
+      assert.ok(Date.now() - start < 1000);
+      const operation = await NoteDiscoveryChatTurn.findOne({ userId: f.userId, requestId: input.requestId });
+      assert.ok(operation);
+      await f.budget.recoverConversation(String(operation._id));
+      assert.equal((await NoteDiscoveryChatTurn.findById(operation._id)).status, 'failed');
+      resume(); stub.mock.restore();
+      await assert.rejects(service.execute(input), /未完成/);
+      assert.equal(f.scripted.calls.length, 0);
+    }
+  });
   it('bounds a hanging pre-send reservation acknowledgement and leaves recovery ownership intact', async () => {
     const f = await fixture();
     const { NoteDiscoveryConversationService } = await import('../services/noteDiscoveryConversationService');

@@ -1,3 +1,4 @@
+import { fenceDiscoveryNoteTarget } from './discoveryNoteDeletionFence';
 import { NoteDiscoveryCleanup, isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { noteDiscoveryBudgetService } from './noteDiscoveryBudgetService';
 import mongoose, { Types } from 'mongoose';
@@ -55,7 +56,10 @@ export class NoteDiscoveryApiService {
     catch (e) { throw error(e instanceof Error && /zone/i.test(e.message) ? '请选择有效的时区' : '暂时无法读取发现状态，请稍后重试', 'DISCOVERY_STATUS_UNAVAILABLE'); }
     const preference = await NoteDiscoveryPreference.findOne({ userId }).lean();
     const timeZone = preference?.timeZone || 'Asia/Shanghai';
-    const records = await NoteDiscovery.find({ userId }).sort({ createdAt: -1, _id: -1 }).limit(100);
+    const hiddenIds = preference?.feedback.filter(f => !f.revokedAt && (!f.expiresAt || f.expiresAt > this.now())).map(f => f.discoveryId) ?? [];
+    const records = await NoteDiscovery.find({ userId, ...(options.history ? {} : {
+      _id: { $nin: hiddenIds }, status: { $ne: 'stale' },
+    }) }).sort({ createdAt: -1, _id: -1 }).limit(100);
     const items = [];
     for (const item of records) {
       const feedback = preference?.feedback.find(f => String(f.discoveryId) === item.id && !f.revokedAt
@@ -187,8 +191,7 @@ export class NoteDiscoveryApiService {
     }
     if (!existing || existing.sourceMode !== 'multi_note_discovery' || String(existing.discoveryId) !== id) throw error('会话来源不匹配', 'DISCOVERY_SESSION_CONFLICT', 409);
     if (await isDiscoveryUserCleaningUp(userId)) {
-      await Chat.deleteOne({ _id: existing._id, userId });
-      await NoteDiscoveryAction.deleteMany({ userId });
+      await eraseDiscoveryUserData(userId);
       throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
     }
     await NoteDiscovery.updateOne({ _id: item._id, userId }, { $set: { sessionId: existing._id } }, { writeConcern });
@@ -214,11 +217,12 @@ export class NoteDiscoveryApiService {
       if (!existing) throw error('已保存的笔记已删除，不会重复创建', 'DISCOVERY_SAVED_NOTE_DELETED', 410);
       note = toNoteDto(existing as any);
     } else {
-      const result = await noteWriteModule.create({ userId, body: { kind: 'plain-text', text: action.payload.text }, title: action.payload.title, stableNoteId: String(action.targetId) });
+      const result = await noteWriteModule.create({ userId, body: { kind: 'plain-text', text: action.payload.text }, title: action.payload.title, stableNoteId: String(action.targetId) })
+        .catch(async e => { await this.assertActive(userId); throw e; });
       if (await isDiscoveryUserCleaningUp(userId)) {
         // Persist this exact pending target before compensation; a crash is repaired by the worker.
         await NoteDiscoveryCleanup.updateOne({ userId }, { $addToSet: { cancelledSaveTargets: action.targetId } }, { writeConcern });
-        await Note.deleteOne({ _id: action.targetId, userId });
+        await fenceDiscoveryNoteTarget(userId, String(action.targetId));
         await this.assertActive(userId);
       }
       await NoteDiscoveryAction.updateOne({ _id: action._id, userId }, { $set: { completedAt: this.now() } }, { writeConcern });
@@ -245,13 +249,16 @@ async function eraseDiscoveryUserData(userId: string): Promise<void> {
     { $set: { executionCancelled: true, cleanupRequested: true, requestId: { $concat: ['cleanup:', { $toString: '$_id' }] } } },
     { $unset: ['payload', 'reply'] },
   ], { writeConcern });
-  const pending = await NoteDiscoveryAction.find({ userId, kind: 'save', completedAt: { $exists: false } }).select('targetId').lean();
+  const actions = await NoteDiscoveryAction.find({ userId }).select('_id kind completedAt targetId').lean();
+  const pending = actions.filter(a => a.kind === 'save' && !a.completedAt);
   if (pending.length) await NoteDiscoveryCleanup.updateOne({ userId },
     { $addToSet: { cancelledSaveTargets: { $each: pending.map(a => a.targetId) } } }, { writeConcern });
   const marker: any = await NoteDiscoveryCleanup.findOne({ userId }).lean();
-  if (marker?.cancelledSaveTargets?.length) await Note.deleteMany({ userId, _id: { $in: marker.cancelledSaveTargets } });
+  for (const target of marker?.cancelledSaveTargets ?? []) await fenceDiscoveryNoteTarget(userId, String(target));
   await Promise.all([NoteDiscovery.deleteMany({ userId }), NoteDiscoveryPreference.deleteMany({ userId }),
-    NoteDiscoveryAction.deleteMany({ userId }), NoteDiscoveryExposure.deleteMany({ userId }),
+    // Delete only the captured set. An action inserted after the scan must survive
+    // for its own post-write compensation or the next marker replay to capture its target.
+    NoteDiscoveryAction.deleteMany({ userId, _id: { $in: actions.map(a => a._id) } }), NoteDiscoveryExposure.deleteMany({ userId }),
     Chat.deleteMany({ userId, sourceMode: 'multi_note_discovery' })]);
 }
 

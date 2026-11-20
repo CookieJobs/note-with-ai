@@ -30,6 +30,15 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
   let now = new Date('2026-11-19T16:01:00Z');
   const modules = async () => ({ Note: (await import('../models/Note')).Note, Discovery: (await import('../models/NoteDiscovery')).default,
     Run: (await import('../models/NoteDiscoveryRun')).default, Preference: (await import('../models/NoteDiscoveryPreference')).default });
+  async function freshDiscovery() {
+    const { Note, Discovery, Run } = await modules();
+    const owner = String(new Types.ObjectId());
+    const note = await Note.create({ userId: owner, content: '私有已保存正文', contentText: '私有已保存正文', revision: 1 });
+    const run = await Run.create({ userId: owner, status: 'completed', trigger: 'manual', idempotencyKey: 'race-test', generation: 1, watermark: { changedAt: now }, availableAt: now });
+    const copy = item.toObject(); delete copy._id; delete copy.exposedAt; delete copy.savedNoteId; delete copy.sessionId;
+    const discovery = await Discovery.create({ ...copy, userId: owner, runId: run._id, evidence: [{ noteId: note._id, revision: 1, title: '原文', noteDate: now, excerpt: '已保存', hasImages: false }] });
+    return { owner, note, discovery };
+  }
   async function request(path: string, method = 'GET', body?: unknown, auth = token) {
     const response = await fetch(base + '/api/note-discoveries' + path, { method,
       headers: { ...(auth ? { Authorization: `Bearer ${auth}` } : {}), 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -269,6 +278,135 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     const schedule = new NoteDiscoveryScheduleService({ enabled: true });
     await schedule.initializeOnStartup();
     assert.equal(await Preference.countDocuments({ userId: { $in: owners } }), 0);
+  });
+  it('keeps an eligible homepage card behind more than100 feedback-hidden discoveries', async () => {
+    const f = await freshDiscovery();
+    const { Discovery, Preference } = await modules();
+    const hidden = await Discovery.insertMany(Array.from({ length: 105 }, (_, i) => {
+      const copy: any = f.discovery.toObject(); delete copy._id;
+      return { ...copy, createdAt: new Date(now.getTime() + i + 1), observationFingerprint: `hidden-${i}` };
+    }));
+    await Preference.create({ userId: f.owner, automaticEnabled: false, feedback: hidden.map(d => ({
+      kind: 'not_interested', discoveryId: d._id, sourceIds: [f.note._id], sourceFingerprint: 'source', observationFingerprint: d.observationFingerprint, createdAt: now,
+    })) });
+    const result = await service.list(f.owner);
+    assert.deepEqual(result.items.map((d: any) => d.id), [f.discovery.id]);
+  });
+  it('fences pending-save retries across normal deletion including lost creation acknowledgements', async () => {
+    const { Note } = await modules();
+    const { noteWriteModule } = await import('../services/NoteUpdateOrchestrator');
+    const { noteService } = await import('../services/noteService');
+    const { NoteDiscoveryAction } = await import('../models/NoteDiscoveryAction');
+    const scheduler = mock.method((noteWriteModule as any).scheduler, 'schedule', () => undefined);
+    for (const phase of ['before-create', 'lost-ack'] as const) {
+      const f = await freshDiscovery();
+      let resume!: () => void;
+      let reached!: () => void;
+      const held = new Promise<void>(resolve => { resume = resolve; });
+      const ready = new Promise<void>(resolve => { reached = resolve; });
+      const original = noteWriteModule.create.bind(noteWriteModule);
+      let first = true;
+      const stub = mock.method(noteWriteModule, 'create', async (...args: Parameters<typeof original>) => {
+        if (!first) return original(...args);
+        first = false;
+        if (phase === 'lost-ack') { await original(...args); reached(); await held; throw new Error('synthetic process exit after insert'); }
+        reached(); await held; return original(...args);
+      });
+      const pending = service.save(f.owner, f.discovery.id, { text: '确认正文', idempotencyKey: phase });
+      const rejected = assert.rejects(pending, phase === 'lost-ack' ? /process exit/ : /已删除|不可访问/);
+      await ready;
+      const action = await NoteDiscoveryAction.findOne({ userId: f.owner, discoveryId: f.discovery._id, kind: 'save' });
+      if (phase === 'before-create') await service.save(f.owner, f.discovery.id, { text: '确认正文', idempotencyKey: 'winner' });
+      await noteService.deleteNote(f.owner, String(action.targetId));
+      const raw = await Note.collection.findOne({ _id: action.targetId });
+      assert.deepEqual(Object.keys(raw!).sort(), ['_id', 'discoveryDeletedAt']);
+      resume(); await rejected; stub.mock.restore();
+      await assert.rejects(service.save(f.owner, f.discovery.id, { text: '不得复活', idempotencyKey: 'again' }), /已删除|不可访问/);
+      assert.equal(await Note.countDocuments({ _id: action.targetId }), 0);
+      assert.equal(await Note.findOne({ _id: action.targetId }), null);
+      assert.deepEqual(await Note.distinct('_id', { _id: action.targetId }), []);
+      assert.deepEqual(await Note.aggregate([{ $match: { _id: action.targetId } }]), []);
+      assert.equal((await Note.updateOne({ _id: action.targetId }, { $set: { content: '不能修改墓碑' } })).matchedCount, 0);
+      await assert.rejects(noteService.getNote(f.owner, String(action.targetId)), /不存在|无权限/);
+      await assert.rejects(noteService.deleteNote(f.owner, String(action.targetId)), /不存在|无权限/);
+      assert.deepEqual(Object.keys((await Note.collection.findOne({ _id: action.targetId }))!).sort(), ['_id', 'discoveryDeletedAt']);
+      await noteService.deleteNote(f.owner, f.note.id);
+      assert.equal(await Note.collection.findOne({ _id: f.note._id }), null, 'ordinary source notes still physically delete');
+    }
+    scheduler.mock.restore();
+  });
+  it('captures pending targets before session-triggered erasure and blocks a late insert after process exit', async () => {
+    const f = await freshDiscovery();
+    const { Note } = await modules();
+    const { NoteDiscoveryCleanup } = await import('../models/NoteDiscoveryCleanup');
+    const { NoteDiscoveryAction } = await import('../models/NoteDiscoveryAction');
+    const { noteWriteModule } = await import('../services/NoteUpdateOrchestrator');
+    const { recoverDiscoveryUserCleanup } = await import('../services/noteDiscoveryApiService');
+    const Chat = (await import('../models/Chat')).default;
+    let resumeSave!: () => void;
+    let saveReached!: () => void;
+    const saveReady = new Promise<void>(resolve => { saveReached = resolve; });
+    const saveHeld = new Promise<void>(resolve => { resumeSave = resolve; });
+    const originalCreate = noteWriteModule.create.bind(noteWriteModule);
+    const saveStub = mock.method(noteWriteModule, 'create', async (...args: Parameters<typeof originalCreate>) => {
+      saveReached(); await saveHeld; await originalCreate(...args); throw new Error('synthetic process exit');
+    });
+    const pendingSave = service.save(f.owner, f.discovery.id, { text: '待擦除草稿', idempotencyKey: 'session-race' });
+    const rejectedSave = assert.rejects(pendingSave, /清理|不可用|已删除/);
+    await saveReady;
+    const saveAction = await NoteDiscoveryAction.findOne({ userId: f.owner, discoveryId: f.discovery._id, kind: 'save' });
+    let resumeSession!: () => void;
+    let sessionReached!: () => void;
+    const sessionReady = new Promise<void>(resolve => { sessionReached = resolve; });
+    const sessionHeld = new Promise<void>(resolve => { resumeSession = resolve; });
+    const originalChat = Chat.findOneAndUpdate.bind(Chat);
+    const sessionStub = mock.method(Chat, 'findOneAndUpdate', (async (...args: any[]) => {
+      const result = await (originalChat as any)(...args); sessionReached(); await sessionHeld; return result;
+    }) as any);
+    const pendingSession = service.session(f.owner, f.discovery.id);
+    const rejectedSession = assert.rejects(pendingSession, /清理|不可用/);
+    await sessionReady;
+    // Simulate a cleanup process that persisted its marker and then exited before its erasure pass.
+    await NoteDiscoveryCleanup.create({ userId: f.owner, requestedAt: now });
+    resumeSession(); await rejectedSession; sessionStub.mock.restore();
+    const marker: any = await NoteDiscoveryCleanup.findOne({ userId: f.owner }).lean();
+    assert.ok(marker.cancelledSaveTargets.some((id: any) => String(id) === String(saveAction.targetId)));
+    assert.equal(await NoteDiscoveryAction.countDocuments({ userId: f.owner }), 0);
+    resumeSave(); await rejectedSave; saveStub.mock.restore();
+    await recoverDiscoveryUserCleanup(f.owner);
+    assert.equal(await Note.countDocuments({ _id: saveAction.targetId }), 0);
+    assert.deepEqual(Object.keys((await Note.collection.findOne({ _id: saveAction.targetId }))!).sort(), ['_id', 'discoveryDeletedAt']);
+  });
+  it('leaves actions inserted after the erasure snapshot for durable target capture on the next replay', async () => {
+    const f = await freshDiscovery();
+    const { Note } = await modules();
+    const { NoteDiscoveryAction } = await import('../models/NoteDiscoveryAction');
+    const { NoteDiscoveryCleanup } = await import('../models/NoteDiscoveryCleanup');
+    const { recoverDiscoveryUserCleanup } = await import('../services/noteDiscoveryApiService');
+    const { noteWriteModule } = await import('../services/NoteUpdateOrchestrator');
+    await NoteDiscoveryCleanup.create({ userId: f.owner, requestedAt: now });
+    const original = NoteDiscoveryAction.deleteMany.bind(NoteDiscoveryAction);
+    let resume!: () => void;
+    let reached!: () => void;
+    const held = new Promise<void>(resolve => { resume = resolve; });
+    const ready = new Promise<void>(resolve => { reached = resolve; });
+    const stub = mock.method(NoteDiscoveryAction, 'deleteMany', (async (...args: any[]) => {
+      reached(); await held; return (original as any)(...args);
+    }) as any);
+    const erasure = recoverDiscoveryUserCleanup(f.owner);
+    await ready;
+    const targetId = new Types.ObjectId();
+    const action = await NoteDiscoveryAction.create({ userId: f.owner, discoveryId: f.discovery._id, kind: 'save', targetId, payload: { text: '迟到的私有草稿' } });
+    resume(); await erasure; stub.mock.restore();
+    assert.ok(await NoteDiscoveryAction.findById(action._id), 'uncaptured target must not lose its sole durable record');
+    const schedule = mock.method((noteWriteModule as any).scheduler, 'schedule', () => undefined);
+    await noteWriteModule.create({ userId: f.owner, stableNoteId: String(targetId), body: { kind: 'plain-text', text: '迟到的私有草稿' } });
+    // Simulate process exit before the save post-write check; only the marker replay remains.
+    await recoverDiscoveryUserCleanup(f.owner);
+    assert.equal(await NoteDiscoveryAction.findById(action._id), null);
+    assert.equal(await Note.findById(targetId), null);
+    assert.deepEqual(Object.keys((await Note.collection.findOne({ _id: targetId }))!).sort(), ['_id', 'discoveryDeletedAt']);
+    schedule.mock.restore();
   });
   it('cleans private data immediately while retaining and recovering only active accounting fences', async () => {
     const { NoteDiscoveryChatTurn } = await import('../models/NoteDiscoveryChatTurn');

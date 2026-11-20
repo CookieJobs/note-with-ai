@@ -330,14 +330,16 @@ export class NoteUpdateOrchestrator {
       if (input.stableNoteId) {
         const existing = await Note.findOne({ _id: input.stableNoteId, userId: input.userId });
         if (existing) return this.toResult(existing as unknown as NoteRecord);
-        created = await Note.create({ _id: input.stableNoteId, ...creation }) as unknown as NoteRecord;
+        const inserted = await Note.create([{ _id: input.stableNoteId, ...creation, discoveryCreated: true }],
+          { writeConcern: { w: 'majority', j: true } });
+        created = inserted[0] as unknown as NoteRecord;
       } else {
         created = await Note.create(creation) as unknown as NoteRecord;
       }
     } catch (error) {
       if (input.stableNoteId && (error as { code?: number }).code === 11000) {
         const existing = await Note.findOne({ _id: input.stableNoteId, userId: input.userId });
-        if (!existing) throw writeFailed(error);
+        if (!existing) throw new NoteWriteError('NOTE_NOT_FOUND', '笔记已删除或不可访问，不会重复创建', 404);
         return this.toResult(existing as unknown as NoteRecord);
       }
       throw writeFailed(error);

@@ -19,14 +19,30 @@ export class NoteDiscoveryConversationService {
 
   async execute(input: { userId: string; chatId: string; requestId?: string; messages: IMessage[]; sourceSnapshots: ChatSourceSnapshot[]; baseVersion?: number }) {
     const { userId, chatId, requestId } = input;
-    if (await isDiscoveryUserCleaningUp(userId)) throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
+    const now = this.options.now?.() ?? new Date();
+    const deadline = new Date(now.getTime() + (this.options.timeoutMs ?? 60_000));
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), Math.max(1, deadline.getTime() - Date.now()));
+    const bounded = async <T>(pending: PromiseLike<T>): Promise<T> => {
+      if (abort.signal.aborted) throw error('本轮处理超时，请稍后查看', 'CHAT_STORAGE_WAIT_EXPIRED', 503);
+      let stop: () => void = () => undefined;
+      const elapsed = new Promise<never>((_resolve, reject) => {
+        stop = () => reject(error('本轮处理超时，请稍后查看', 'CHAT_STORAGE_WAIT_EXPIRED', 503));
+        abort.signal.addEventListener('abort', stop, { once: true });
+      });
+      try { return await Promise.race([Promise.resolve(pending), elapsed]); }
+      finally { abort.signal.removeEventListener('abort', stop); }
+    };
+    try {
+
+    if (await bounded(isDiscoveryUserCleaningUp(userId))) throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
     if (!requestId?.trim() || requestId.length > 150) throw error('请为本次对话提供有效请求标识', 'CHAT_REQUEST_ID_REQUIRED', 400);
-    const existing = await NoteDiscoveryChatTurn.findOne({ userId, chatId, requestId }).lean();
-    if (existing) return this.replay(existing, userId, chatId);
+    const existing = await bounded(NoteDiscoveryChatTurn.findOne({ userId, chatId, requestId }).lean());
+    if (existing) return await bounded(this.replay(existing, userId, chatId));
     if (!(this.options.enabled?.() ?? config.NOTE_DISCOVERY_RUNNABLE)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
     const provider = this.options.provider === undefined ? noteDiscoveryProvider : this.options.provider;
     if (!provider) throw error('AI 服务暂时不可用，请稍后重试', 'CHAT_PROVIDER_UNAVAILABLE', 503);
-    const chat = await Chat.findOne({ _id: chatId, userId, sourceMode: 'multi_note_discovery' }).lean();
+    const chat = await bounded(Chat.findOne({ _id: chatId, userId, sourceMode: 'multi_note_discovery' }).lean());
     if (!chat) throw error('会话不存在或无权限', 'CHAT_UNAVAILABLE', 404);
     const baseVersion = input.baseVersion ?? chat.__v ?? 0;
     if (baseVersion !== (chat.__v || 0)) throw error('对话已变化，请重新打开后继续', 'CHAT_COMMIT_CONFLICT');
@@ -40,40 +56,26 @@ export class NoteDiscoveryConversationService {
     { role: 'user' as const, content: input.messages[input.messages.length - 1]?.content || '' }];
     const request = provider.prepare(messages, 2000);
     if (request.maxInputTokens > 32000) throw error('本轮笔记和对话超出完整读取预算，请缩短内容后重试', 'CHAT_CONTEXT_TOO_LONG', 400);
-    const now = this.options.now?.() ?? new Date();
-    const deadline = new Date(now.getTime() + (this.options.timeoutMs ?? 60_000));
     let operation;
     try {
-      operation = await NoteDiscoveryChatTurn.create({ userId, chatId, requestId, status: 'running', generation: 1,
+      operation = await bounded(NoteDiscoveryChatTurn.create({ userId, chatId, requestId, status: 'running', generation: 1,
         leaseToken: randomUUID(), leaseUntil: deadline,
         payload: { messages: input.messages, sourceSnapshots: input.sourceSnapshots, baseVersion },
-      });
+      }));
     } catch (e) {
       if ((e as { code?: number }).code !== 11000) throw e;
-      const replay = await NoteDiscoveryChatTurn.findOne({ userId, chatId, requestId }).lean();
-      if (replay) return this.replay(replay, userId, chatId);
+      const replay = await bounded(NoteDiscoveryChatTurn.findOne({ userId, chatId, requestId }).lean());
+      if (replay) return await bounded(this.replay(replay, userId, chatId));
       throw error('当前对话正在生成，请稍后继续', 'CHAT_TURN_IN_PROGRESS');
     }
     const budget = this.options.budget ?? noteDiscoveryBudgetService;
-    if (await isDiscoveryUserCleaningUp(userId)) {
-      await NoteDiscoveryChatTurn.collection.updateOne({ _id: operation._id }, {
+    if (await bounded(isDiscoveryUserCleaningUp(userId))) {
+      await bounded(NoteDiscoveryChatTurn.collection.updateOne({ _id: operation._id }, {
         $set: { executionCancelled: true, cleanupRequested: true, status: 'failed' }, $unset: { payload: '', reply: '' },
-      }, { writeConcern });
-      await budget.recoverCleanupOperation('conversation', String(operation._id));
+      }, { writeConcern }));
+      await bounded(budget.recoverCleanupOperation('conversation', String(operation._id)));
       throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
     }
-    const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), Math.max(1, deadline.getTime() - Date.now()));
-    const bounded = async <T>(pending: PromiseLike<T>): Promise<T> => {
-      if (abort.signal.aborted) throw error('本轮处理超时，请稍后查看', 'CHAT_STORAGE_WAIT_EXPIRED', 503);
-      let stop: () => void = () => undefined;
-      const elapsed = new Promise<never>((_resolve, reject) => {
-        stop = () => reject(error('本轮处理超时，请稍后查看', 'CHAT_STORAGE_WAIT_EXPIRED', 503));
-        abort.signal.addEventListener('abort', stop, { once: true });
-      });
-      try { return await Promise.race([Promise.resolve(pending), elapsed]); }
-      finally { abort.signal.removeEventListener('abort', stop); }
-    };
     const fence = { runId: String(operation._id), userId, generation: 1, leaseToken: operation.leaseToken };
     let reservation: Awaited<ReturnType<typeof budget.reserveConversation>> = null;
     let sent = false;
@@ -139,6 +141,7 @@ export class NoteDiscoveryConversationService {
           { $set: { status: 'failed', errorCode: (e as AppError).details?.code || 'CHAT_GENERATION_FAILED' } }, { writeConcern }));
       }
       throw e;
+    }
     } finally { clearTimeout(timer); }
   }
 
