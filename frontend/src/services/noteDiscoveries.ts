@@ -22,7 +22,16 @@ async function request<T>(path = '', options: RequestInit = {}): Promise<T> {
   return payload.data as T;
 }
 export const noteDiscoveries = {
-  list: (signal?: AbortSignal, history = false, admit = false) => request<DiscoveryList>(`?admit=${admit}&history=${history}`, { signal }),
+  list: (signal?: AbortSignal, history = false, admit = false) => {
+    const query = new URLSearchParams({ admit: String(admit), history: String(history) });
+    if (admit && !history) {
+      try {
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (timeZone) query.set('timeZone', timeZone);
+      } catch { /* The server uses its default when the browser cannot resolve a zone. */ }
+    }
+    return request<DiscoveryList>(`?${query}`, { signal });
+  },
   run: (idempotencyKey: string) => request('/run', { method: 'POST', body: JSON.stringify({ idempotencyKey }) }),
   preferences: (automaticEnabled: boolean) => request<Pick<DiscoveryList, 'automaticEnabled' | 'available' | 'timeZone'>>('/preferences', { method: 'PATCH', body: JSON.stringify({ automaticEnabled }) }),
   feedback: (id: string, kind: DiscoveryFeedback) => request(`/${id}/feedback`, { method: 'POST', body: JSON.stringify({ kind }) }),

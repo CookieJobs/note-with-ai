@@ -11,8 +11,18 @@ it('retains real source-stale409 codes and distinguishes a deleted saved target4
 });
 it('uses scheduling read-only GET by default and sends explicit initial visit and explicit retry intent only when requested',async()=>{
  authFetch.mockResolvedValue({ok:true,json:async()=>({data:{}})});
- await noteDiscoveries.list();expect(authFetch.mock.calls.at(-1)![0]).toContain('admit=false');
- await noteDiscoveries.list(undefined,false,true);expect(authFetch.mock.calls.at(-1)![0]).toContain('admit=true');
+ const zone = vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions');
+ const resolved = Intl.DateTimeFormat().resolvedOptions();
+ zone.mockReturnValue({ ...resolved, timeZone: 'America/New_York' });
+ try {
+  await noteDiscoveries.list();
+  expect(authFetch.mock.calls.at(-1)![0]).toBe('/api/note-discoveries?admit=false&history=false');
+  await noteDiscoveries.list(undefined,false,true);
+  expect(authFetch.mock.calls.at(-1)![0]).toBe('/api/note-discoveries?admit=true&history=false&timeZone=America%2FNew_York');
+  zone.mockImplementation(() => { throw new Error('No time zone'); });
+  await noteDiscoveries.list(undefined,false,true);
+  expect(authFetch.mock.calls.at(-1)![0]).toBe('/api/note-discoveries?admit=true&history=false');
+ } finally { zone.mockRestore(); }
  await noteDiscoveries.session('finding','discovery-initial');
  expect(JSON.parse(authFetch.mock.calls.at(-1)![1].body)).toEqual({retryOfRequestId:'discovery-initial'});
 });
