@@ -8,6 +8,8 @@ export const DISCOVERY_FAILURE_CATEGORIES = [
   'budget_exhausted', 'provider_unavailable', 'provider_failed', 'usage_unknown',
   'limit_exceeded', 'expired_lease', 'internal_error',
 ] as const;
+// Maximum evidence entries per published candidate, and therefore bound conversation sources.
+export const MAX_DISCOVERY_EVIDENCE_ITEMS = 12;
 export const DISCOVERY_KINDS = ['connection', 'follow_up', 'next_step'] as const;
 export const DISCOVERY_STATUSES = ['ready', 'stale', 'dismissed', 'completed'] as const;
 export const DISCOVERY_FEEDBACK_KINDS = ['not_interested', 'not_related', 'already_finished'] as const;

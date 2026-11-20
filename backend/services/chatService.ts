@@ -7,6 +7,7 @@ import { AiUsageService } from './aiUsageService';
 import mongoose from 'mongoose';
 import { sourceMetadata } from './noteSourceMetadata';
 import { buildChatModelMessages, loadChatNoteSource } from './chatNoteContextService';
+import { MAX_DISCOVERY_EVIDENCE_ITEMS } from '../types/noteDiscovery';
 import type { ChatSourceSnapshot } from '../types/chatSource';
 
 type SaveSessionOptions = {
@@ -125,7 +126,7 @@ class ChatService {
       const last = messages[messages.length - 1];
       if (last?.role !== 'user' || !last.content?.trim()) throw ErrorHandler.createValidationError('请发送一个问题以继续笔记对话');
       const ids = session.selectedSourceIds?.map(String);
-      if (!ids?.length || ids.length > 5) throw ErrorHandler.createValidationError('会话来源不可用，请重新选择笔记');
+      if (!ids?.length || ids.length > MAX_DISCOVERY_EVIDENCE_ITEMS) throw ErrorHandler.createValidationError('会话来源不可用，请重新选择笔记');
       const sourceSnapshots = await Promise.all(ids.map(id => loadChatNoteSource(userId, id)));
       return { sourceMode: 'multi_note_discovery', sourceSnapshots, baseVersion: (session as any).__v || 0,
         messages: [...cleanMessages(session.messages, true), { role: 'user', content: last.content.trim() }] };

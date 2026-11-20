@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it, after, mock, afterEach } from 'node:test';
 import { Types } from 'mongoose';
+import type { IMessage } from '../types';
 import { connectNoteDiscoveryTestMongo, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
 
 process.env.NODE_ENV = 'test';
@@ -34,11 +35,12 @@ describe('metered durable discovery conversation turns', noteDiscoveryMongoTestO
   let cleanup: () => Promise<void>;
   after(async () => { await cleanup?.(); });
   afterEach(() => mock.restoreAll());
-  async function fixture() {
+  async function fixture(sourceCount = 2) {
     const { Note } = await import('../models/Note');
     const Chat = (await import('../models/Chat')).default;
     const userId = new Types.ObjectId().toString();
-    const notes = await Promise.all(['周一练习十分钟', '周三练习十五分钟'].map(content => Note.create({ userId, content, contentText: content, revision: 1 })));
+    const contents = sourceCount === 2 ? ['周一练习十分钟', '周三练习十五分钟'] : Array.from({length:sourceCount},(_,i)=>`第${i+1}次练习${i+10}分钟`);
+    const notes = await Promise.all(contents.map(content => Note.create({ userId, content, contentText: content, revision: 1 })));
     const chat = await Chat.create({ userId, title: '多篇继续', sourceMode: 'multi_note_discovery', discoveryId: new Types.ObjectId(), selectedSourceIds: notes.map(n => n._id), messages: [] });
     const { NoteDiscoveryBudgetService } = await import('../services/noteDiscoveryBudgetService');
     const budget = new NoteDiscoveryBudgetService({ enabled: true, userCapMicros: 1_000_000, globalCapMicros: 5_000_000, attemptCapMicros: 250_000 });
@@ -79,6 +81,41 @@ describe('metered durable discovery conversation turns', noteDiscoveryMongoTestO
     assert.equal(reservation.outcome, 'known');
     for (let index = 2; index <= 4; index++) await chatTurnCommitService.streamAndCommit({ ...input, requestId: `turn-${index}` });
     assert.equal(f.scripted.calls.length, 4, 'four conversation turns must not consume the three manual discovery allowance');
+  });
+  it('commits a six-source discovery continuation and reloads every current owned source', async () => {
+    const f = await fixture(6);
+    const { noteDiscoveryConversationService } = await import('../services/noteDiscoveryConversationService');
+    const { chatTurnCommitService } = await import('../services/chatTurnCommitService');
+    mock.method(noteDiscoveryConversationService, 'execute', f.service.execute.bind(f.service));
+    assert.equal(f.prepared.sourceSnapshots?.length,6);
+    const result = await chatTurnCommitService.streamAndCommit({userId:f.userId,sessionId:f.chat.id,requestId:'six-sources',messages:[{role:'user',content:'比较六次练习'}],onChunk:()=>true});
+    assert.equal(f.scripted.calls.length,1);
+    assert.deepEqual((result.session.messages as IMessage[])[1].sourceSnapshots?.map(s=>s.noteId),f.notes.map(n=>n.id));
+    const { Note } = await import('../models/Note');
+    await Note.updateOne({_id:f.notes[5]._id},{$set:{userId:new Types.ObjectId()}});
+    await assert.rejects(chatTurnCommitService.streamAndCommit({userId:f.userId,sessionId:f.chat.id,requestId:'foreign-sixth',messages:[{role:'user',content:'再比较一次'}],onChunk:()=>true}), /不存在|无法访问/);
+    assert.equal(f.scripted.calls.length,1,'foreign source must fail before provider dispatch');
+  });
+  it('uses the evidence schema ceiling for source count and retains the context cap', async () => {
+    const { MAX_DISCOVERY_EVIDENCE_ITEMS } = await import('../types/noteDiscovery');
+    const { discoveryCandidateSchema } = await import('../services/noteDiscoveryTools');
+    const { makeCandidate } = await import('./noteDiscoveryRunnerFixture');
+    const f = await fixture(MAX_DISCOVERY_EVIDENCE_ITEMS);
+    assert.equal(f.prepared.sourceSnapshots?.length,MAX_DISCOVERY_EVIDENCE_ITEMS);
+    const candidate = makeCandidate(f.notes[0].id);
+    candidate.evidence = f.notes.map(n=>({noteId:n.id,revision:1,excerpt:'练习'}));
+    assert.equal(discoveryCandidateSchema.safeParse(candidate).success,true);
+    assert.equal(discoveryCandidateSchema.safeParse({...candidate,evidence:[...candidate.evidence,candidate.evidence[0]]}).success,false);
+    const Chat = (await import('../models/Chat')).default;
+    const { Note } = await import('../models/Note');
+    const extra = await Note.create({userId:f.userId,content:'额外笔记',contentText:'额外笔记',revision:1});
+    const excess = await Chat.create({userId:f.userId,title:'超出来源数量',sourceMode:'multi_note_discovery',discoveryId:new Types.ObjectId(),selectedSourceIds:[...f.notes.map(n=>n._id),extra._id],messages:[]});
+    const { chatService } = await import('../services/chatService');
+    await assert.rejects(chatService.prepareTurn(f.userId,[{role:'user',content:'继续'}],excess.id), /会话来源不可用/);
+    await Note.updateMany({_id:{$in:f.notes.map(n=>n._id)}},{$set:{content:'x'.repeat(9000),contentText:'x'.repeat(9000),revision:2}});
+    const prepared = await chatService.prepareTurn(f.userId,[{role:'user',content:'继续'}],f.chat.id);
+    await assert.rejects(f.service.execute({userId:f.userId,chatId:f.chat.id,requestId:'context-too-long',messages:prepared.messages,sourceSnapshots:prepared.sourceSnapshots!}), (e:any)=>e.details?.code==='CHAT_CONTEXT_TOO_LONG');
+    assert.equal(f.scripted.calls.length,0,'the existing full-context cap still rejects before paying');
   });
   it('rejects stale authoritative history before paying and replays a committed turn after source deletion', async () => {
     const f = await fixture();

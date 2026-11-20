@@ -2,7 +2,7 @@ import { Types, isObjectIdOrHexString } from 'mongoose';
 import { z } from 'zod';
 import { Note } from '../models/Note';
 import Preference from '../models/NoteDiscoveryPreference';
-import { DISCOVERY_KINDS, type DiscoveryCandidate } from '../types/noteDiscovery';
+import { DISCOVERY_KINDS, MAX_DISCOVERY_EVIDENCE_ITEMS, type DiscoveryCandidate } from '../types/noteDiscovery';
 import {
   discoveryEvidenceInputSchema, DiscoverySourceError, readDiscoverySource, validateEvidence,
   type DiscoverySource, type ValidatedEvidence,
@@ -30,7 +30,7 @@ const text = z.string().trim().min(1);
 export const discoveryCandidateSchema = z.strictObject({
   kind: z.enum(DISCOVERY_KINDS), title: text.max(200), observation: text.max(2000),
   whyNow: text.max(1500), qualification: text.max(1500), suggestedAction: text.max(1500), draft: text.max(16000).optional(),
-  evidence: z.array(discoveryEvidenceInputSchema).min(1).max(12),
+  evidence: z.array(discoveryEvidenceInputSchema).min(1).max(MAX_DISCOVERY_EVIDENCE_ITEMS),
   relationshipKey: text.max(200).optional(), questionKey: text.max(200).optional(),
   rationale: z.strictObject({ novelInsight: text.max(1500), counterEvidence: text.max(1500), missingInformation: z.array(text.max(500)).max(20) }),
 });

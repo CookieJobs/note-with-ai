@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isObjectIdOrHexString } from 'mongoose';
-import type { EvidenceDto, EvidenceInput } from '../types/noteDiscovery';
+import { MAX_DISCOVERY_EVIDENCE_ITEMS, type EvidenceDto, type EvidenceInput } from '../types/noteDiscovery';
 import { loadChatNoteSource } from './chatNoteContextService';
 
 export const discoveryEvidenceInputSchema = z.strictObject({
@@ -63,7 +63,7 @@ export async function resolveDiscoveryEvidence(userId: string, evidence: Evidenc
   evidence: ValidatedEvidence[];
   sources: DiscoverySource[];
 }> {
-  const parsed = z.array(discoveryEvidenceInputSchema).min(1).max(12).safeParse(evidence);
+  const parsed = z.array(discoveryEvidenceInputSchema).min(1).max(MAX_DISCOVERY_EVIDENCE_ITEMS).safeParse(evidence);
   if (!parsed.success || !isObjectIdOrHexString(userId)) throw new DiscoverySourceError('invalid_evidence');
   const sources = new Map<string, DiscoverySource>();
   const result: ValidatedEvidence[] = [];
