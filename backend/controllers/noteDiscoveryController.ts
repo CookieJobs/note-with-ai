@@ -1,0 +1,14 @@
+import type { Request, Response } from 'express';
+import { UserValidator } from '../utils/userValidation';
+import { ResponseHandler } from '../utils/errorHandler';
+import { noteDiscoveryApiService as service } from '../services/noteDiscoveryApiService';
+import { requireSingleRouteParam } from '../utils/requestParams';
+const userId = async (req: Request) => String((await UserValidator.authenticateUser(req))._id);
+const id = (req: Request) => requireSingleRouteParam(req.params.id, 'id');
+export const listDiscoveries = async (req: Request, res: Response) => { ResponseHandler.success(res, await service.list(await userId(req), { history: req.query.history === 'true', timeZone: typeof req.query.timeZone === 'string' ? req.query.timeZone : undefined })); };
+export const runDiscoveries = async (req: Request, res: Response) => { ResponseHandler.success(res, await service.run(await userId(req), req.body.idempotencyKey)); };
+export const updateDiscoveryPreferences = async (req: Request, res: Response) => { ResponseHandler.success(res, await service.preferences(await userId(req), req.body)); };
+export const createDiscoveryFeedback = async (req: Request, res: Response) => { ResponseHandler.success(res, await service.feedback(await userId(req), id(req), req.body.kind)); };
+export const revokeDiscoveryFeedback = async (req: Request, res: Response) => { ResponseHandler.success(res, await service.revokeFeedback(await userId(req), id(req))); };
+export const startDiscoverySession = async (req: Request, res: Response) => { ResponseHandler.success(res, await service.session(await userId(req), id(req))); };
+export const saveDiscoveryDraft = async (req: Request, res: Response) => { ResponseHandler.success(res, await service.save(await userId(req), id(req), req.body)); };

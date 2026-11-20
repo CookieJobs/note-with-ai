@@ -41,6 +41,7 @@ export const deleteSessionSchema = z.object({
 export const streamChatSchema = z.object({
   body: z.object({
     sessionId: z.string().optional(),
+    requestId: z.string().trim().min(1).max(150).optional(),
     title: z.string().optional(),
     messages: z.array(messageSchema).min(1, '消息列表不能为空'),
     sourceNoteId: sourceNoteIdSchema,

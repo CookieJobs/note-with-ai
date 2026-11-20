@@ -20,6 +20,7 @@ const MessageSchema = new mongoose.Schema({
   role: { type: String, enum: ['user', 'assistant'], required: true },
   content: { type: String, required: true },
   sourceSnapshot: { type: SourceSnapshotSchema, default: undefined },
+  sourceSnapshots: { type: [SourceSnapshotSchema], default: undefined },
 });
 
 const ChatSchema = new mongoose.Schema(
@@ -27,6 +28,10 @@ const ChatSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true },
     messages: [MessageSchema],
+    lastDiscoveryTurnId: mongoose.Schema.Types.ObjectId,
+    sourceMode: { type: String, enum: ['single_note', 'multi_note_discovery'], default: 'single_note', immutable: true },
+    discoveryId: { type: mongoose.Schema.Types.ObjectId, immutable: true },
+    selectedSourceIds: { type: [mongoose.Schema.Types.ObjectId], default: undefined, immutable: true },
     sourceNoteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Note' },
     relatedNotes: [{
       noteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Note' },

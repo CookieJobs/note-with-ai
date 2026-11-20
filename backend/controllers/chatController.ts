@@ -47,7 +47,7 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
   const user = await UserValidator.authenticateUser(req);
   const userId = user._id.toString();
 
-  const { messages, sessionId, title, sourceNoteId } = req.body;
+  const { messages, sessionId, title, sourceNoteId, requestId } = req.body;
   logger.info('🟢 收到聊天请求 (流式):', messages?.length, '条消息, sessionId:', sessionId, 'userId:', userId);
 
   let clientClosed = false;
@@ -82,6 +82,7 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
       sessionId,
       title,
       sourceNoteId,
+      requestId,
       onChunk: (chunk) => {
         if (!isWritable()) return false;
         safeWrite(`data: ${JSON.stringify({ chunk })}\n\n`);

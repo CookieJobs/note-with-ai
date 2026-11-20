@@ -63,6 +63,7 @@ export interface DiscoveryRunRecord {
   providerReservationId?: string | null;
   providerDeliveryUnknown?: boolean;
   executionCancelled?: boolean;
+  cleanupRequested?: boolean;
   sentReservationIds?: string[];
   recoveringGeneration?: number | null;
   startedAt?: Date;
@@ -201,6 +202,9 @@ export interface DiscoveryRunDto {
 export interface DiscoveryListDto {
   items: DiscoveryDto[];
   run: DiscoveryRunDto;
+  automaticEnabled: boolean;
+  timeZone: string;
+  available: boolean;
 }
 
 export interface DiscoveryTriggerDto {
@@ -216,4 +220,20 @@ export interface DiscoverySessionDto {
 export interface DiscoverySaveDto {
   note: NoteDto;
   discovery: DiscoveryDto;
+}
+
+/** Keep all public date/identity serialization in this canonical module. */
+export function serializeDiscovery(record: DiscoveryRecord & { _id: unknown }): DiscoveryDto {
+  return {
+    id: String(record._id), kind: record.kind, title: record.title,
+    observation: record.observation, whyNow: record.whyNow, qualification: record.qualification,
+    suggestedAction: record.suggestedAction, ...(record.draft ? { draft: record.draft } : {}),
+    evidence: record.evidence.map(e => ({ noteId: String(e.noteId), revision: e.revision, title: e.title,
+      noteDate: new Date(e.noteDate).toISOString(), excerpt: e.excerpt, hasImages: e.hasImages,
+      ...(e.locator ? { locator: { start: e.locator.start, end: e.locator.end } } : {}),
+    })), status: record.status, createdAt: new Date(record.createdAt).toISOString(),
+    ...(record.exposedAt ? { exposedAt: new Date(record.exposedAt).toISOString() } : {}),
+    ...(record.sessionId ? { sessionId: String(record.sessionId) } : {}),
+    ...(record.savedNoteId ? { savedNoteId: String(record.savedNoteId) } : {}),
+  };
 }

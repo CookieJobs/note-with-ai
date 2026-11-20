@@ -1,3 +1,4 @@
+import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { randomUUID } from 'node:crypto';
 import { Types } from 'mongoose';
 import { config } from '../config';
@@ -5,6 +6,8 @@ import NoteDiscoveryBudget, {
   PROVIDER_DELIVERY_DISPOSITIONS, type BudgetReservation, type ProviderDeliveryDisposition,
 } from '../models/NoteDiscoveryBudget';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
+import Chat from '../models/Chat';
+import { NoteDiscoveryChatTurn } from '../models/NoteDiscoveryChatTurn';
 import type { DiscoveryRunFence } from '../types/noteDiscovery';
 import logger from '../utils/logger';
 
@@ -103,7 +106,7 @@ export class NoteDiscoveryBudgetService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async reserve(runId: string, userId: string, generation: number, estimate: CostEstimate, options?: ReserveOptions): Promise<BudgetReservation | null> {
+  async reserve(runId: string, userId: string, generation: number, estimate: CostEstimate, options?: ReserveOptions, operationKind: 'discovery' | 'conversation' = 'discovery'): Promise<BudgetReservation | null> {
     if (options?.signal.aborted) return null;
     const { enabled, userCapMicros, globalCapMicros, attemptCapMicros } = this.settings;
     if (!enabled || !nonnegativeInteger(userCapMicros) || userCapMicros === 0
@@ -116,9 +119,11 @@ export class NoteDiscoveryBudgetService {
       estimate.inputCnyPerMillion, estimate.outputCnyPerMillion, estimate.maxInputTokens, estimate.maxOutputTokens,
     );
     if (amount === null || amount > Math.min(userCapMicros, globalCapMicros, attemptCapMicros)) return null;
+    if (await isDiscoveryUserCleaningUp(userId)) return null;
     const createdAt = this.now();
     const owner = new Types.ObjectId(userId);
-    const run = await NoteDiscoveryRun.findOne({
+    const operationModel: typeof NoteDiscoveryChatTurn = operationKind === 'conversation' ? NoteDiscoveryChatTurn : NoteDiscoveryRun;
+    const run: any = await operationModel.findOne({
       _id: runId, userId: owner, generation, status: 'running', leaseUntil: { $gt: createdAt },
       recoveringGeneration: null, executionCancelled: { $ne: true },
       providerDeliveryUnknown: { $ne: true }, providerReservationId: null,
@@ -127,7 +132,7 @@ export class NoteDiscoveryBudgetService {
 
     const day = createdAt.toISOString().slice(0, 10);
     const reservation: BudgetReservation = {
-      id: `${day}:${randomUUID()}`, day, runId: run._id, userId: owner, generation,
+      operationKind, id: `${day}:${randomUUID()}`, day, runId: run._id, userId: owner, generation,
       leaseToken: run.leaseToken, leaseUntil: run.leaseUntil, provider: estimate.provider, model: estimate.model,
       maxInputTokens: estimate.maxInputTokens, maxOutputTokens: estimate.maxOutputTokens,
       reservedMicros: amount, state: 'reserved', createdAt,
@@ -181,7 +186,7 @@ export class NoteDiscoveryBudgetService {
 
     // The run fence is in another document. A claim may expire while the ledger CAS is in flight.
     // The caller has not received this reservation and cannot have sent a request for it.
-    const stillCurrent = !options?.signal.aborted && await NoteDiscoveryRun.exists({
+    const stillCurrent = !options?.signal.aborted && await operationModel.exists({
       _id: run._id, userId: owner, generation, status: 'running', leaseToken: run.leaseToken,
       leaseUntil: { $gt: this.now() }, recoveringGeneration: null,
       executionCancelled: { $ne: true }, providerDeliveryUnknown: { $ne: true }, providerReservationId: null,
@@ -194,6 +199,56 @@ export class NoteDiscoveryBudgetService {
     return reservation;
   }
 
+  /** Conversation turns share monetary caps, without scheduler run-count admission. */
+  async reserveConversation(turnId: string, userId: string, estimate: CostEstimate, options: ReserveOptions) {
+    return this.reserve(turnId, userId, 1, estimate, options, 'conversation');
+  }
+
+  /** An irreversible cleanup tombstone makes an expired operation safe to settle without a live lease. */
+  async recoverCleanupOperation(kind: 'discovery' | 'conversation', id: string): Promise<void> {
+    const model: typeof NoteDiscoveryChatTurn = kind === 'conversation' ? NoteDiscoveryChatTurn : NoteDiscoveryRun;
+    const operation: any = await model.findOne({ _id: id, cleanupRequested: true, $or: [
+      { status: { $ne: 'running' } }, { leaseUntil: { $lte: this.now() } },
+    ] }).lean();
+    if (!operation) return;
+    const ledgers = await NoteDiscoveryBudget.find({ reservations: { $elemMatch: { runId: operation._id, state: 'reserved' } } }).lean();
+    for (const ledger of ledgers) for (const reservation of ledger.reservations) {
+      if (reservation.runId.equals(operation._id) && reservation.state === 'reserved'
+        && (reservation.operationKind ?? 'discovery') === kind) {
+        await this.applySettlement(reservation, { kind: 'unknown', reason: 'account cleanup' }, 'delivery_unknown');
+      }
+    }
+    await model.deleteOne({ _id: operation._id, cleanupRequested: true });
+  }
+
+  /** Called by the independent worker; expired attempts are never retried. */
+  async recoverConversation(turnId: string): Promise<void> {
+    const turn: any = await NoteDiscoveryChatTurn.findOne({ _id: turnId, status: 'running', leaseUntil: { $lte: this.now() } }).lean();
+    if (!turn) return;
+    if (turn.cleanupRequested) return this.recoverCleanupOperation('conversation', turnId);
+    const ledgers = await NoteDiscoveryBudget.find({ reservations: { $elemMatch: {
+      operationKind: 'conversation', runId: turn._id, state: 'reserved',
+    } } }).lean();
+    for (const ledger of ledgers) for (const reservation of ledger.reservations) {
+      if (reservation.operationKind === 'conversation' && reservation.runId.equals(turn._id) && reservation.state === 'reserved') {
+        await this.applySettlement(reservation, { kind: 'unknown', reason: 'expired conversation' }, 'delivery_unknown');
+      }
+    }
+    if (turn.reply) {
+      const finalMessages = [...turn.payload.messages, { role: 'assistant', content: turn.reply, sourceSnapshots: turn.payload.sourceSnapshots }];
+      let chat = await Chat.findOne({ _id: turn.chatId, userId: turn.userId, lastDiscoveryTurnId: turn._id });
+      if (!chat) chat = await Chat.findOneAndUpdate({ _id: turn.chatId, userId: turn.userId, __v: turn.payload.baseVersion },
+        { $set: { messages: finalMessages, lastDiscoveryTurnId: turn._id }, $inc: { __v: 1 } }, { new: true, writeConcern });
+      if (chat) {
+        await NoteDiscoveryChatTurn.updateOne({ _id: turn._id, status: 'running' }, { $set: { status: 'completed' } }, { writeConcern });
+        return;
+      }
+    }
+    // The insertion itself checks Mongo's clock against this immutable deadline.
+    await NoteDiscoveryChatTurn.updateOne({ _id: turn._id, status: 'running', leaseUntil: { $lte: this.now() } },
+      { $set: { status: 'failed', errorCode: 'CHAT_ATTEMPT_EXPIRED' } });
+  }
+
   async settle(
     reservationId: string, generation: number, usage: UsageResult, delivery?: ProviderDeliveryDisposition,
   ): Promise<void> {
@@ -203,7 +258,8 @@ export class NoteDiscoveryBudgetService {
       if (reservation.outcome === 'overrun') throw new DiscoveryBudgetOverrunError();
       return;
     }
-    const current = await NoteDiscoveryRun.exists({
+    const operationModel: typeof NoteDiscoveryChatTurn = reservation.operationKind === 'conversation' ? NoteDiscoveryChatTurn : NoteDiscoveryRun;
+    const current = await operationModel.exists({
       _id: reservation.runId, userId: reservation.userId, generation, status: 'running',
       leaseToken: reservation.leaseToken, leaseUntil: { $gt: this.now() }, recoveringGeneration: null,
     });
@@ -250,6 +306,7 @@ export class NoteDiscoveryBudgetService {
         input: '$reservations', as: 'attempt', cond: { $and: [
           { $eq: ['$$attempt.runId', runId] },
           { $eq: ['$$attempt.generation', generation] },
+          { $ne: ['$$attempt.operationKind', 'conversation'] },
           { $eq: ['$$attempt.state', 'reserved'] },
         ] },
       } } } },

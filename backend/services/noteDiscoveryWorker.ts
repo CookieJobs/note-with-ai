@@ -1,3 +1,5 @@
+import { recoverDiscoveryUserCleanup } from './noteDiscoveryApiService';
+import { recoverDiscoveryConversations } from './noteDiscoveryConversationService';
 import { config } from '../config';
 import type { DiscoveryRunStatus, DiscoveryRunUsage } from '../types/noteDiscovery';
 import logger from '../utils/logger';
@@ -33,6 +35,8 @@ export class NoteDiscoveryWorker {
 
   async tick(signal = new AbortController().signal): Promise<void> {
     if (signal.aborted) return;
+    await recoverDiscoveryUserCleanup();
+    await recoverDiscoveryConversations();
     if (!this.enabled()) {
       await this.store.cancelAllQueued();
       return;

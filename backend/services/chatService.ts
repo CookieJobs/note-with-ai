@@ -18,6 +18,8 @@ type PreparedChatTurn = {
   messages: IMessage[];
   sourceNoteId?: string;
   sourceSnapshot?: ChatSourceSnapshot;
+  sourceSnapshots?: ChatSourceSnapshot[];
+  sourceMode?: 'multi_note_discovery';
 };
 
 function cleanMessages(messages: IMessage[], trusted = false): IMessage[] {
@@ -25,6 +27,7 @@ function cleanMessages(messages: IMessage[], trusted = false): IMessage[] {
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
     .map(m => ({ role: m.role, content: m.content.trim(),
       ...(trusted && m.role === 'assistant' && m.sourceSnapshot ? { sourceSnapshot: m.sourceSnapshot } : {}),
+      ...(trusted && m.role === 'assistant' && m.sourceSnapshots ? { sourceSnapshots: m.sourceSnapshots } : {}),
     }));
 }
 
@@ -116,6 +119,16 @@ class ChatService {
   /** Resolve the persisted binding before any model call. Client history cannot rewrite sourced answers. */
   async prepareTurn(userId: string, messages: IMessage[], sessionId?: string, sourceNoteId?: string): Promise<PreparedChatTurn> {
     const session = sessionId ? await this.getOwnedSession(userId, sessionId) : undefined;
+    if (session?.sourceMode === 'multi_note_discovery') {
+      if (sourceNoteId) throw ErrorHandler.createValidationError('会话绑定的笔记不能更换');
+      const last = messages[messages.length - 1];
+      if (last?.role !== 'user' || !last.content?.trim()) throw ErrorHandler.createValidationError('请发送一个问题以继续笔记对话');
+      const ids = session.selectedSourceIds?.map(String);
+      if (!ids?.length || ids.length > 5) throw ErrorHandler.createValidationError('会话来源不可用，请重新选择笔记');
+      const sourceSnapshots = await Promise.all(ids.map(id => loadChatNoteSource(userId, id)));
+      return { sourceMode: 'multi_note_discovery', sourceSnapshots,
+        messages: [...cleanMessages(session.messages, true), { role: 'user', content: last.content.trim() }] };
+    }
     const storedSourceId = session?.sourceNoteId ? String(session.sourceNoteId) : undefined;
     if (session && sourceNoteId && sourceNoteId !== storedSourceId) {
       throw ErrorHandler.createValidationError('会话绑定的笔记不能更换，请从这条笔记开启新对话');
@@ -156,7 +169,7 @@ class ChatService {
         if (options.sourceNoteId && options.sourceNoteId !== boundId) {
           throw ErrorHandler.createValidationError('会话绑定的笔记不能更换');
         }
-        if (boundId) {
+        if (boundId || existing.sourceMode === 'multi_note_discovery') {
           if (JSON.stringify(cleanMessages(existing.messages)) !== JSON.stringify(cleanedMessages)) {
             throw ErrorHandler.createValidationError('笔记对话请通过聊天继续，不能直接修改已有回答');
           }

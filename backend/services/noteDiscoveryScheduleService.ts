@@ -1,3 +1,4 @@
+import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { Types } from 'mongoose';
 import { config } from '../config';
 import { Note } from '../models/Note';
@@ -116,7 +117,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async scheduleChanged(userId: string, noteId: string, revision: number, now = this.now()): Promise<void> {
-    if (!this.enabled) return;
+    if (!this.enabled || await isDiscoveryUserCleaningUp(userId)) return;
     if (!Types.ObjectId.isValid(noteId) || !Number.isSafeInteger(revision) || revision < 1 || !Number.isFinite(now.getTime())) {
       throw new Error('Invalid discovery change');
     }
@@ -131,7 +132,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async initializeOnVisit(userId: string, timeZone?: string, now = this.now()): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled) return this.result('disabled');
+    if (!this.enabled || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     const zone = timeZone === undefined ? undefined : validZone(timeZone);
     const latest = await this.readLatest(userId);
     const preference = await this.mutate(userId, (pref, state) => {
@@ -153,6 +154,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async setAutomaticEnabled(userId: string, enabled: boolean, now = this.now()): Promise<DiscoveryAdmissionResult> {
+    if (await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     // Preferences remain editable while the global feature is off.
     const latest = enabled && this.enabled ? await this.readLatest(userId) : null;
     await this.mutate(userId, (pref, state) => {
@@ -173,7 +175,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async requestManual(userId: string, key: string, now = this.now()): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled) return this.result('disabled');
+    if (!this.enabled || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     if (!key.trim() || key.length > 150) throw new Error('Invalid manual idempotency key');
     // Replay precedes quota checks, including terminal requests.
     const replay = await NoteDiscoveryRun.findOne({ userId, $or: [{ idempotencyKey: `manual:${key}` }, { idempotencyAliases: `manual:${key}` }] }).lean();
@@ -199,7 +201,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async reconcile(userId: string, now = this.now(), force = false): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled) return this.result('disabled');
+    if (!this.enabled || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     const success = await NoteDiscoveryRun.findOne({ userId, status: { $in: ['completed', 'no_result'] } })
       .sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1, finishedAt: -1, _id: -1 }).lean();
     // Search the durable account history, not only the most recent attempt. A later
@@ -278,6 +280,7 @@ export class NoteDiscoveryScheduleService {
   async authorizeRun(run: ClaimedDiscoveryRun, now = this.now()): Promise<DiscoveryAdmissionResult> {
     if (!this.enabled || run.executionCancelled) return this.result('disabled', run);
     const userId = run.userId.toHexString();
+    if (await isDiscoveryUserCleaningUp(userId)) return this.result('disabled', run);
     const fence = { runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken };
     // Store promotion and crash recovery can reach admission without reconcile.
     // Enforce the durable paid-state barrier at this independent execution boundary.
@@ -340,6 +343,7 @@ export class NoteDiscoveryScheduleService {
   async canPublish(run: ClaimedDiscoveryRun): Promise<boolean> {
     if (!this.enabled) return false;
     const userId = run.userId.toHexString();
+    if (await isDiscoveryUserCleaningUp(userId)) return false;
     if (run.trigger === 'automatic' && await NoteDiscoveryPreference.exists({ userId, automaticEnabled: false })) return false;
     return this.store.isCurrentFence({ runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken });
   }

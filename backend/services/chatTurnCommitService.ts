@@ -1,6 +1,7 @@
 import { IMessage } from '../types';
 import { chatRelatedNoteRecallService } from './chatRelatedNoteRecallService';
 import { chatService } from './chatService';
+import { noteDiscoveryConversationService } from './noteDiscoveryConversationService';
 import { trackProductEventBestEffort } from './productEventService';
 
 type SessionSnapshot = ReturnType<typeof chatService.formatSession>;
@@ -9,6 +10,7 @@ type StreamAndCommitInput = {
   userId: string;
   messages: IMessage[];
   sessionId?: string;
+  requestId?: string;
   title?: string;
   sourceNoteId?: string;
   onChunk: (chunk: string) => boolean;
@@ -38,6 +40,7 @@ class ChatTurnCommitService {
     userId,
     messages,
     sessionId,
+    requestId,
     title,
     sourceNoteId,
     onChunk,
@@ -45,6 +48,15 @@ class ChatTurnCommitService {
   }: StreamAndCommitInput): Promise<StreamAndCommitResult> {
     const prepared = await chatService.prepareTurn(userId, messages, sessionId, sourceNoteId);
     messages = prepared.messages;
+    if (prepared.sourceMode === 'multi_note_discovery' && sessionId && prepared.sourceSnapshots) {
+      const result = await noteDiscoveryConversationService.execute({ userId, chatId: sessionId, requestId,
+        messages, sourceSnapshots: prepared.sourceSnapshots });
+      if (!onChunk(result.fullReply)) {
+        await onAborted?.();
+        throw new Error('CHAT_STREAM_ABORTED');
+      }
+      return { fullReply: result.fullReply, session: chatService.formatSession(result.session as any) };
+    }
     const stream = await chatService.streamChat(messages, userId, prepared.sourceSnapshot);
     let fullReply = '';
     let aborted = false;

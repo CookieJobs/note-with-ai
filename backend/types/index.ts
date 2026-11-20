@@ -35,6 +35,7 @@ export interface IMessage {
   role: 'user' | 'assistant';
   content: string;
   sourceSnapshot?: ChatSourceSnapshot;
+  sourceSnapshots?: ChatSourceSnapshot[];
 }
 
 export interface IRelatedNote {
@@ -56,6 +57,9 @@ export interface IChat extends Document {
   userId: Types.ObjectId;
   title: string;
   messages: IMessage[];
+  sourceMode?: 'single_note' | 'multi_note_discovery';
+  discoveryId?: Types.ObjectId;
+  selectedSourceIds?: Types.ObjectId[];
   sourceNoteId?: Types.ObjectId | string;
   relatedNotes?: IRelatedNote[];
   createdAt: Date;

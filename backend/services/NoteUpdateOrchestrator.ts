@@ -55,6 +55,8 @@ export type CreateNoteInput = {
   userId: string;
   body: NoteBodyInput;
   title?: string;
+  /** Internal durable create identity; never accepted by the ordinary note HTTP API. */
+  stableNoteId?: string;
 };
 
 export type UpdateNoteInput = {
@@ -313,7 +315,7 @@ export class NoteUpdateOrchestrator {
     };
     let created: NoteRecord;
     try {
-      created = await Note.create({
+      const creation = {
         userId: input.userId,
         content: body.content,
         contentText: body.contentText,
@@ -324,8 +326,20 @@ export class NoteUpdateOrchestrator {
         recommendCache: null,
         revision,
         enrichment,
-      }) as unknown as NoteRecord;
+      };
+      if (input.stableNoteId) {
+        created = await Note.findOneAndUpdate({ _id: input.stableNoteId, userId: input.userId },
+          { $setOnInsert: { _id: input.stableNoteId, ...creation } },
+          { upsert: true, new: true, runValidators: true, writeConcern: { w: 'majority', j: true } }) as unknown as NoteRecord;
+      } else {
+        created = await Note.create(creation) as unknown as NoteRecord;
+      }
     } catch (error) {
+      if (input.stableNoteId && (error as { code?: number }).code === 11000) {
+        const existing = await Note.findOne({ _id: input.stableNoteId, userId: input.userId });
+        if (!existing) throw writeFailed(error);
+        return this.toResult(existing as unknown as NoteRecord);
+      }
       throw writeFailed(error);
     }
     const result = this.toResult(created);

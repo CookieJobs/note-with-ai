@@ -6,6 +6,7 @@ export type ProviderDeliveryDisposition = typeof PROVIDER_DELIVERY_DISPOSITIONS[
 export interface BudgetReservation {
   id: string;
   day: string;
+  operationKind?: 'discovery' | 'conversation';
   runId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   generation: number;
@@ -47,6 +48,7 @@ const UserBudgetSchema = new mongoose.Schema<UserBudget>({
 const ReservationSchema = new mongoose.Schema<BudgetReservation>({
   id: { type: String, required: true, maxlength: 48 },
   day: { type: String, required: true, maxlength: 10 },
+  operationKind: { type: String, enum: ['discovery', 'conversation'] },
   runId: { type: mongoose.Schema.Types.ObjectId, required: true },
   userId: { type: mongoose.Schema.Types.ObjectId, required: true },
   generation: nonnegativeInteger,

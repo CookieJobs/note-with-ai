@@ -7,6 +7,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
 import noteRoutes from './routes/notes';
+import noteDiscoveryRoutes from './routes/noteDiscoveries';
 import chatRoutes from './routes/chat';
 import chatRelatedNotesRoutes from './routes/chatRelatedNotes';
 import recommendRoutes from './routes/recommend';
@@ -62,6 +63,7 @@ app.use('/api/feedback', feedbackRoutes);
 app.use('/api/inspirations', inspirationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notes', noteRoutes);
+app.use('/api/note-discoveries', noteDiscoveryRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/chat', chatRelatedNotesRoutes);
 app.use('/api/recommend', recommendRoutes);
