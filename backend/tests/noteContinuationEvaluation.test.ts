@@ -26,13 +26,16 @@ describe('synthetic corpus through production runner (contracts only, not semant
     const notes = await Promise.all(item.notes.map((text, index) => makeNote(
       item.attack === 'foreign' ? ownerId() : fixture.userId, text, new Date(Date.UTC(2026, 0, index + 1)),
     )));
+    if (item.attack === 'foreign') await makeNote(fixture.userId, '可见的合成账户笔记，仅用于初始化。');
     let calls = 0;
+    let observedForeignBody = false;
     const candidate = makeCandidate(String(notes[0]._id), item.notes[0]);
     candidate.kind = item.kind;
     candidate.relationshipKey = item.id;
     candidate.questionKey = item.id;
     candidate.evidence = notes.map((note, index) => ({ noteId: String(note._id), revision: 1, excerpt: item.notes[index] }));
-    const provider = createDiscoveryProvider(fixturePrice, async () => {
+    const provider = createDiscoveryProvider(fixturePrice, async request => {
+      if (item.attack === 'foreign' && JSON.stringify(request.body.messages).includes(item.notes[0])) observedForeignBody = true;
       calls++;
       if (item.attack === 'fault') throw new Error('synthetic transport failure');
       // Semantic negatives deliberately script abstention: this verifies execution, not model judgement.
@@ -58,6 +61,10 @@ describe('synthetic corpus through production runner (contracts only, not semant
       const outcome = await start();
       assert.equal(outcome, item.expectation === 'useful' || item.attack === 'duplicate' ? 'completed' : 'no_result');
       if (outcome !== 'completed') await fixture.store.finish(fixture.runId, claim.leaseToken, outcome);
+    }
+    if (item.attack === 'foreign') {
+      assert.equal(calls, 2, 'Foreign read must be attempted rather than skipped due to empty recent notes');
+      assert.equal(observedForeignBody, false);
     }
     const records = await Discovery.find({ runId: fixture.runId }).lean();
     assert.equal(records.length, item.expectation === 'useful' || item.attack === 'duplicate' ? 1 : 0);
