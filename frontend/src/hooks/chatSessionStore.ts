@@ -87,7 +87,7 @@ export const saveChatSessionRemote = async (session: IChat): Promise<string | un
     body: JSON.stringify({
       sessionId: isLocalId ? undefined : session.id,
       title: session.title,
-      messages: session.messages.map(({ sourceSnapshot: _sourceSnapshot, ...message }) => message),
+      messages: session.messages.map(({ sourceSnapshot: _sourceSnapshot, sourceSnapshots: _sourceSnapshots, ...message }) => message),
       relatedNotes: session.relatedNotes,
       sourceNoteId: session.sourceNoteId,
     }),

@@ -21,3 +21,7 @@
 删除确认等待真实 Promise，期间禁止重复确认；失败保留历史、弹窗和重试入口。历史搜索仅覆盖已加载会话。布局与主题以 [DESIGN.md](../../../../DESIGN.md) 为准。
 
 回归入口：[页面状态](page.test.tsx)、[流式提交](../../hooks/useChatStream.test.ts)、[会话与历史合并](../../hooks/useChatSession.test.ts)、[笔记绑定服务](../../services/noteConversation.test.ts)。执行结果与浏览器验收范围属于发布记录。
+
+## 笔记发现入口
+
+新对话建议区使用 `NoteDiscoveryPanel`，普通输入不绑定发现。选择“继续探索”后接纳 `/api/note-discoveries/:id/session` 返回的真实会话与已完成的行动承接，不在现有对话插入主动消息；创建期间锁定普通发送，回复期间禁止新建发现对话。发现会话使用多篇来源提示，每轮展示服务端全部版本快照。缓存/远程历史保留 `sourceMode`、`discoveryId`、`selectedSourceIds` 与 `sourceSnapshots`，客户端 `/chat/save` 和聊天请求均剥除快照。发现后续提问使用同一标签页保留的请求标识处理不确定失败重试；服务端 `committed` 后清除该标识。

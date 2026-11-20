@@ -1,0 +1,27 @@
+.panel { width: 100%; color: var(--ws-ink, #17191d); text-align: left; padding: 24px 0; font-size: 14px; line-height: 1.65;
+  button, a { font: inherit; }
+  button { cursor: pointer; border: 1px solid var(--ws-line, #e6e9ef); border-radius: 8px; padding: 7px 12px; background: var(--ws-surface, #fff); color: inherit; }
+  button:hover { background: var(--ws-hover, #f8f9fb); }
+  button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 2px solid var(--ws-accent-ink, #2365d7); outline-offset: 3px; }
+  button:disabled { opacity: .55; cursor: default; }
+  h2 { font-size: 16px; font-weight: 600; margin: 0; }
+  h3 { font-size: 20px; font-weight: 600; margin: 0 0 10px; line-height: 1.5; }
+  p { margin: 10px 0; white-space: pre-wrap; }
+  a { color: var(--ws-accent-ink, #2365d7); }
+  .primary { background: var(--ws-accent, #2365d7); color: white; border-color: transparent; }
+  .quiet { background: transparent; border-color: transparent; color: var(--ws-secondary, #646b78); }
+}
+.header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.card, .state { border: 1px solid var(--ws-line, #e6e9ef); border-radius: 12px; padding: 24px; background: var(--ws-surface, #fff); }
+.card + .card { margin-top: 12px; }
+.summary { font-size: 16px; line-height: 1.8; }
+.muted { color: var(--ws-secondary, #646b78); font-size: 13px; }
+.actions, .feedback { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+.feedback { border-top: 1px solid var(--ws-line, #e6e9ef); padding-top: 10px; }
+.evidence { margin: 20px 0; border-left: 2px solid var(--ws-line, #e6e9ef); padding-left: 16px; }
+.evidence summary { cursor: pointer; }
+.draft { margin-top: 20px; }
+.draft textarea { width: 100%; box-sizing: border-box; min-height: 180px; resize: vertical; padding: 12px; border-radius: 8px; border: 1px solid var(--ws-line, #e6e9ef); background: var(--ws-bg, #fff); color: inherit; font: inherit; line-height: 1.8; }
+.dialog { color: inherit; background: var(--ws-surface, #fff); border: 1px solid var(--ws-line, #e6e9ef); border-radius: 12px; width: min(580px, calc(100% - 64px)); max-height: 75vh; overflow: auto; padding: 24px; }
+.dialog::backdrop { background: rgba(0,0,0,.35); }
+.error { color: var(--ws-ink, #17191d); border-left: 3px solid #c14242; padding-left: 12px; }

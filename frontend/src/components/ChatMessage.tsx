@@ -1,5 +1,5 @@
 /*
-Input: 聊天消息、开场笔记上下文、实际来源快照与旧版讨论笔记
+Input: 聊天消息、开场笔记上下文、单篇或多篇实际来源快照与旧版讨论笔记
 Output: 用统一品牌标识 AI 回答与历史开场，展示 Markdown 回答及可展开的真实来源快照
 Pos: 前端聊天消息呈现组件
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
@@ -18,6 +18,7 @@ interface ChatMessageProps {
   role: 'user' | 'assistant';
   content: string;
   sourceSnapshot?: ISourceSnapshot;
+  sourceSnapshots?: ISourceSnapshot[];
   relatedNotes?: IRelatedNote[];
   openingNote?: IRelatedNote;
   searchingNotes?: boolean;
@@ -29,16 +30,12 @@ const snapshotTimestampFormat = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hourCycle: 'h23',
 });
 
-export default function ChatMessage({ role, content, sourceSnapshot, relatedNotes, openingNote, isLoading }: ChatMessageProps) {
+export default function ChatMessage({ role, content, sourceSnapshot, sourceSnapshots, relatedNotes, openingNote, isLoading }: ChatMessageProps) {
   const isUser = role === 'user';
-  const discussionNote = !isUser && !sourceSnapshot
+  const discussionNote = !isUser && !sourceSnapshot && !sourceSnapshots?.length
     ? openingNote ?? relatedNotes?.find(note => note.matchType === 'care_source' && (note.noteId || note.id))
     : undefined;
-  const sourceDisplay = sourceSnapshot ? noteReferenceDisplay(sourceSnapshot) : null;
-  const sourceUpdatedAt = sourceSnapshot ? new Date(sourceSnapshot.updatedAt) : null;
-  const updatedAtLabel = sourceUpdatedAt && !Number.isNaN(sourceUpdatedAt.getTime())
-    ? `${snapshotTimestampFormat.format(sourceUpdatedAt)}（UTC+08:00）`
-    : sourceSnapshot?.updatedAt;
+  const snapshots = sourceSnapshots?.length ? sourceSnapshots : sourceSnapshot ? [sourceSnapshot] : [];
 
   return (
     <div className={styles.messageWrapper}>
@@ -84,8 +81,12 @@ export default function ChatMessage({ role, content, sourceSnapshot, relatedNote
         </div>
       )}
 
-      {!isUser && sourceSnapshot && (
-        <section className={styles.sourceBasis} aria-label="本次回答依据">
+      {!isUser && snapshots.map((sourceSnapshot, index) => {
+        const sourceDisplay = noteReferenceDisplay(sourceSnapshot);
+        const date = new Date(sourceSnapshot.updatedAt);
+        const updatedAtLabel = Number.isNaN(date.getTime()) ? sourceSnapshot.updatedAt : `${snapshotTimestampFormat.format(date)}（UTC+08:00）`;
+        return (
+        <section key={`${sourceSnapshot.noteId}-${index}`} className={styles.sourceBasis} aria-label="本次回答依据">
           <div className={styles.sourceBasisHeader}>本次回答依据</div>
           <Link
             href={`/notes?highlight=${encodeURIComponent(sourceSnapshot.noteId)}`}
@@ -105,7 +106,7 @@ export default function ChatMessage({ role, content, sourceSnapshot, relatedNote
             </div>
           </details>
         </section>
-      )}
+      ); })}
 
       {/* 笔记引用卡片：当从随机漫步卡片发起对话时，展示当前讨论的笔记 */}
       {!isUser && !discussionNote && relatedNotes && relatedNotes.length > 0 && (

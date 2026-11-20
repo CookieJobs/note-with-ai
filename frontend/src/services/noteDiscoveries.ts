@@ -1,0 +1,32 @@
+// Authenticated discovery API; server owns eligibility, evidence and conversation binding.
+import { authFetch } from '../utils/auth';
+import type { IChat, INote } from '../types';
+export interface DiscoveryEvidence { noteId: string; revision: number; title: string; noteDate: string; excerpt: string; hasImages: boolean }
+export interface NoteDiscovery {
+  id: string; kind: 'connection' | 'follow_up' | 'next_step'; title: string; observation: string;
+  whyNow: string; qualification: string; suggestedAction: string; draft?: string;
+  evidence: DiscoveryEvidence[]; status: 'ready' | 'stale' | 'dismissed' | 'completed';
+  createdAt: string; exposedAt?: string; sessionId?: string; savedNoteId?: string;
+}
+export interface DiscoveryList {
+  items: NoteDiscovery[]; available: boolean; automaticEnabled: boolean; timeZone: string;
+  run: { status: 'idle' | 'queued' | 'running' | 'completed' | 'no_result' | 'budget_exhausted' | 'failed'; retryAt?: string; errorCode?: string };
+}
+export type DiscoveryFeedback = 'not_interested' | 'not_related' | 'already_finished';
+export const discoveryOperationId = () => crypto.randomUUID();
+export class DiscoveryApiError extends Error { constructor(message: string, public status: number) { super(message); } }
+async function request<T>(path = '', options: RequestInit = {}): Promise<T> {
+  const response = await authFetch(`/api/note-discoveries${path}`, { ...options, signal: options.signal ?? AbortSignal.timeout(75_000) });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new DiscoveryApiError(payload?.message || payload?.error || '操作没有完成，请稍后重试。', response.status);
+  return payload.data as T;
+}
+export const noteDiscoveries = {
+  list: (signal?: AbortSignal, history = false) => request<DiscoveryList>(history ? '?history=true' : '', { signal }),
+  run: (idempotencyKey: string) => request('/run', { method: 'POST', body: JSON.stringify({ idempotencyKey }) }),
+  preferences: (automaticEnabled: boolean) => request<Pick<DiscoveryList, 'automaticEnabled' | 'available' | 'timeZone'>>('/preferences', { method: 'PATCH', body: JSON.stringify({ automaticEnabled }) }),
+  feedback: (id: string, kind: DiscoveryFeedback) => request(`/${id}/feedback`, { method: 'POST', body: JSON.stringify({ kind }) }),
+  undo: (id: string) => request(`/${id}/feedback`, { method: 'DELETE' }),
+  session: (id: string) => request<{session: IChat; reused: boolean}>(`/${id}/session`, { method: 'POST' }),
+  save: (id: string, payload: { text: string; idempotencyKey: string }) => request<{note: INote; discovery: NoteDiscovery}>(`/${id}/save`, { method: 'POST', body: JSON.stringify(payload) }),
+};

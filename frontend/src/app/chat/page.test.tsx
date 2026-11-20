@@ -4,6 +4,7 @@ import { StrictMode } from 'react';
 import ChatPage from './page';
 import { WorkspaceContext, type WorkspaceContextValue } from '../../components/workspace/WorkspaceContext';
 import type { IChat } from '../../types';
+import { noteDiscoveries } from '../../services/noteDiscoveries';
 import { readChatSourceReturn } from '../../utils/chatSourceReturn';
 
 const { authFetch, router, searchParams } = vi.hoisted(() => ({
@@ -23,6 +24,10 @@ vi.mock('../../utils/auth', () => ({
   getUser: () => ({ id: 'user-1', username: '测试用户' }),
   logout: vi.fn(),
 }));
+vi.mock('../../services/noteDiscoveries', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../services/noteDiscoveries')>();
+  return { ...actual, noteDiscoveries: { ...actual.noteDiscoveries, list: vi.fn(async () => ({ items: [], available: false, automaticEnabled: false, timeZone: 'Asia/Shanghai', run: { status: 'idle' } })) } };
+});
 vi.mock('../../services/inspirationService', () => ({
   getUnviewedInspirationCount: async () => 0,
 }));
@@ -69,6 +74,7 @@ describe('chat page entry', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     searchParams.value = '';
+    vi.mocked(noteDiscoveries.list).mockResolvedValue({items:[],available:false,automaticEnabled:false,timeZone:'Asia/Shanghai',run:{status:'idle'}});
     router.replace.mockImplementation((href: string) => { searchParams.value = new URL(href, 'http://localhost').search.slice(1); });
     localStorage.clear();
     sessionStorage.clear();
@@ -257,6 +263,7 @@ describe('chat page entry', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('无法打开这段对话');
 
     searchParams.value = '';
+    vi.mocked(noteDiscoveries.list).mockResolvedValue({items:[],available:false,automaticEnabled:false,timeZone:'Asia/Shanghai',run:{status:'idle'}});
     page.rerender(<ChatPage />);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByText('这是历史消息')).not.toBeInTheDocument();
@@ -941,4 +948,19 @@ describe('chat page entry', () => {
     expect(JSON.parse(localStorage.getItem('chat_sessions_user-1')!).map((session: IChat) => session.id))
       .toContain('new-server-id');
   });
+  it('opens the authoritative discovery action session and displays all snapshots with the correct scope', async () => {
+    const snapshot={noteId:'n1',title:'来源一',contentText:'原文一',revision:2,updatedAt:'2026-11-17T00:00:00Z',hasImages:false};
+    const bound: IChat={id:'discovery-real',title:'已选择的行动',sourceMode:'multi_note_discovery',discoveryId:'finding',selectedSourceIds:['n1','n2'],messages:[{role:'user',content:'推进选中行动'},{role:'assistant',content:'已直接推进，不再重复询问',sourceSnapshots:[snapshot,{...snapshot,noteId:'n2',title:'来源二',revision:4}]}]};
+    vi.mocked(noteDiscoveries.list).mockResolvedValue({items:[{id:'finding',kind:'connection',title:'可继续的联系',observation:'从原文看出的线索',whyNow:'有了新进展',qualification:'待确认',suggestedAction:'推进选中行动',status:'ready',createdAt:'2026-11-17T00:00:00Z',evidence:[]}],available:true,automaticEnabled:true,timeZone:'Asia/Shanghai',run:{status:'completed'}});
+    authFetch.mockImplementation(async (url: string) => url.endsWith('/session') ? {ok:true,json:async()=>({data:{session:bound,reused:false}})} : sessionsResponse([history]));
+    render(<ChatPage />);
+    await act(async()=>{await Promise.resolve();});
+    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'继续探索'}));});
+    expect(screen.getByText('已直接推进，不再重复询问')).toBeInTheDocument();
+    expect(screen.getAllByRole('region',{name:'本次回答依据'})).toHaveLength(2);
+    expect(screen.getByText(/从笔记发现继续/)).toBeInTheDocument();
+    expect(screen.queryByText(/如需围绕笔记提问/)).toBeNull();
+    expect(JSON.parse(localStorage.getItem('chat_sessions_user-1')!)[0]).toMatchObject({id:'discovery-real',sourceMode:'multi_note_discovery',discoveryId:'finding'});
+  });
+
 });

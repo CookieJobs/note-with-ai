@@ -145,3 +145,13 @@ describe('ChatMessage answer sources', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 });
+
+it('displays every per-turn discovery snapshot without converting it to a single-note opening', () => {
+ const snapshot={noteId:'n1', title:'第一篇',contentText:'原文一',revision:2,updatedAt:'2026-11-17T00:00:00Z',hasImages:false};
+ render(<ChatMessage role="assistant" content="两篇之间的联系" sourceSnapshots={[snapshot,{...snapshot,noteId:'n2',title:'第二篇',contentText:'原文二',revision:5}]} />);
+ expect(screen.getAllByRole('region',{name:'本次回答依据'})).toHaveLength(2);
+ expect(screen.getByRole('link',{name:'第一篇'})).toHaveAttribute('href','/notes?highlight=n1');
+ expect(screen.getByRole('link',{name:'第二篇'})).toHaveAttribute('href','/notes?highlight=n2');
+ expect(screen.getByText('版本 5')).toBeInTheDocument();
+ expect(screen.queryByText('AI 开场提问')).toBeNull();
+});

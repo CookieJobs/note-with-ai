@@ -1,5 +1,5 @@
 /*
-Input: 聊天消息、绑定笔记、开场来源、来源快照与滚动恢复位置
+Input: 聊天消息、绑定笔记、开场来源、单篇或多篇来源快照与滚动恢复位置
 Output: 首问后将历史开场收为来源入口，保留真实消息、回答来源和返回位置
 Pos: 聊天页主体消息容器
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
@@ -86,6 +86,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ messages, isLoading, 
                       role={msg.role} 
                       content={msg.content} 
                       sourceSnapshot={msg.sourceSnapshot}
+                      sourceSnapshots={msg.sourceSnapshots}
                       relatedNotes={msg.relatedNotes}
                       openingNote={index === 0 && msg.role === 'assistant' && !msg.sourceSnapshot && sourceNoteId
                         ? openingNote ?? { noteId: sourceNoteId, title: '' }

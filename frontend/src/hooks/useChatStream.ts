@@ -54,13 +54,17 @@ type CommittedSessionPayload = IChat & {
 
 export const useChatStream = (
   onSessionIdChange?: (previousId: string, nextId: string) => void,
+  ownerId?: string,
 ): UseChatStreamReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [errorSessionId, setErrorSessionId] = useState<string | null>(null);
   const loadingRef = useRef(false);
+  const turnRequests = useRef(new Map<string, string>());
   const abortControllerRef = useRef<AbortController | null>(null);
+  const owner = useRef({ id: ownerId, active: true });
+  if (owner.current.id !== ownerId) owner.current = { id: ownerId, active: true };
 
   const isAbortError = (err: unknown): boolean => {
     if (err instanceof DOMException) return err.name === 'AbortError';
@@ -69,11 +73,16 @@ export const useChatStream = (
   };
 
   useEffect(() => {
+    const currentOwner = owner.current;
+    currentOwner.active = true;
+    loadingRef.current = false;
+    setLoading(false); setActiveSessionId(null); setError(''); setErrorSessionId(null);
     return () => {
+      currentOwner.active = false;
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
     };
-  }, []);
+  }, [ownerId]);
 
   const applyCommittedSession = (
     previousSessionId: string,
@@ -125,6 +134,9 @@ export const useChatStream = (
       return false;
     }
 
+    const requestOwner = owner.current;
+    const isCurrentOwner = () => requestOwner.active && owner.current === requestOwner;
+
     // 确保消息的role严格为'user'或'assistant'
     const userMessage: IMessage = { role: 'user', content: input };
     const lastMessage = currentSession.messages.at(-1);
@@ -132,6 +144,16 @@ export const useChatStream = (
     const updatedMessages: IMessage[] = lastMessage?.role === 'user' && lastMessage.content === input
       ? currentSession.messages
       : [...currentSession.messages, userMessage];
+
+    const turnKey = JSON.stringify([userId, currentSession.id, updatedMessages.length, input]);
+    const requestStorageKey = `chat_discovery_turn_${userId}_${currentSession.id}`;
+    let storedRequest: { key?: string; id?: string } = {};
+    try { storedRequest = JSON.parse(sessionStorage.getItem(requestStorageKey) || '{}'); } catch {}
+    const requestId = turnRequests.current.get(turnKey) || (storedRequest.key === turnKey ? storedRequest.id : undefined) || crypto.randomUUID();
+    if (currentSession.sourceMode === 'multi_note_discovery') {
+      try { sessionStorage.setItem(requestStorageKey, JSON.stringify({ key: turnKey, id: requestId })); } catch {}
+    }
+    turnRequests.current.set(turnKey, requestId);
 
     // 先更新本地状态
     updateSessionMessages(currentSession.id, updatedMessages, userId);
@@ -173,12 +195,13 @@ export const useChatStream = (
         method: 'POST',
         signal: abortController.signal,
         body: JSON.stringify({
-          messages: updatedMessages.map(({ sourceSnapshot: _sourceSnapshot, ...message }) => message),
+          messages: updatedMessages.map(({ sourceSnapshot: _sourceSnapshot, sourceSnapshots: _sourceSnapshots, ...message }) => message),
           sessionId: serverSessionId,
+          ...(currentSession.sourceMode === 'multi_note_discovery' ? { requestId } : {}),
           sourceNoteId: currentSession.sourceNoteId,
         }),
       });
-      if (finished) return false;
+      if (finished || !isCurrentOwner()) return false;
 
       if (!res.ok) {
         let errorMessage = '请求失败';
@@ -205,7 +228,7 @@ export const useChatStream = (
       let shouldStop = false;
       while (!shouldStop && !hasCommittedSession && !finished) {
         const { done, value } = await reader.read();
-        if (finished) return false;
+        if (finished || !isCurrentOwner()) return false;
         if (done) break;
         if (value?.byteLength) refreshIdleTimer();
 
@@ -251,6 +274,8 @@ export const useChatStream = (
             const committedSessionId = nextSession.id || nextSession._id || effectiveSessionId;
             applyCommittedSession(effectiveSessionId, nextSession, userId, setSessions);
             hasCommittedSession = true;
+            turnRequests.current.delete(turnKey);
+            if (currentSession.sourceMode === 'multi_note_discovery') { try { sessionStorage.removeItem(requestStorageKey); } catch {} }
             if (committedSessionId !== effectiveSessionId) {
               onSessionIdChange?.(effectiveSessionId, committedSessionId);
             }
@@ -268,6 +293,7 @@ export const useChatStream = (
       onAccepted?.();
       return await Promise.race([streamOperation(), timeoutPromise]);
     } catch (err: unknown) {
+      if (!isCurrentOwner()) return false;
       setErrorSessionId(effectiveSessionId);
       if (!hasCommittedSession) {
         updateSessionMessages(effectiveSessionId, updatedMessages, userId);
@@ -288,10 +314,9 @@ export const useChatStream = (
       }
       if (abortControllerRef.current === abortController) {
         abortControllerRef.current = null;
+        loadingRef.current = false;
       }
-      loadingRef.current = false;
-      setLoading(false);
-      setActiveSessionId(null);
+      if (isCurrentOwner()) { setLoading(false); setActiveSessionId(null); }
     }
   };
 

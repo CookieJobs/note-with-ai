@@ -17,6 +17,7 @@ export interface IMessage {
   searchingNotes?: boolean;
   // Authored by the server for the exact note version supplied for this answer.
   sourceSnapshot?: ISourceSnapshot;
+  sourceSnapshots?: ISourceSnapshot[];
 }
 
 export interface IRelatedNote {
@@ -44,6 +45,9 @@ export interface IChat {
   messages: IMessage[];
   relatedNotes?: IRelatedNote[];
   sourceNoteId?: string;
+  sourceMode?: 'single_note' | 'multi_note_discovery';
+  discoveryId?: string;
+  selectedSourceIds?: string[];
   createdAt?: string;
   updatedAt?: string;
 }

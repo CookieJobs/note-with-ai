@@ -1,5 +1,5 @@
 /*
-Input: 用户身份、聊天历史、单篇笔记绑定、来源往返上下文及流式回复
+Input: 用户身份、聊天历史、单篇及发现会话绑定、来源往返上下文及流式回复
 Output: 来源默认在聊天旁只读预览，保留对话与草稿；主动打开完整笔记才记录往返状态，不改变会话绑定
 Pos: frontend/src/app/chat 页面入口
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
@@ -20,13 +20,15 @@ import DeleteConfirmModal from '../../components/DeleteConfirmModal';
 import { useChatSession } from '../../hooks/useChatSession';
 import { useChatStream } from '../../hooks/useChatStream';
 import CareAssistantPanel from '../../components/CareAssistantPanel';
+import NoteDiscoveryPanel from '../../components/NoteDiscoveryPanel';
+import { normalizeChatSession, persistChatSessions } from '../../hooks/chatSessionStore';
 import ChatRelatedNotesPanel from '../../components/ChatRelatedNotesPanel';
 import ChatNotePreview from '../../components/ChatNotePreview';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
 import { usePanelDismiss } from '../../hooks/usePanelDismiss';
 import { rememberChatSourceReturn, takeChatSourceReturn, type ChatSourceReturn } from '../../utils/chatSourceReturn';
 import { useWorkspace } from '../../components/workspace/WorkspaceContext';
-import type { CareIntro } from '../../types';
+import type { CareIntro, IChat } from '../../types';
 
 function ChatPageContent() {
   const workspace = useWorkspace();
@@ -87,7 +89,7 @@ function ChatPageContent() {
     sendMessage: sendMessageHook,
   } = useChatStream((previousId, nextId) => {
     setCurrentSessionId(selectedId => selectedId === previousId ? nextId : selectedId);
-  });
+  }, user?.id);
 
   const loading = streamBusy && activeSessionId === currentSessionId;
   const error = entryError || careError || (errorSessionId === currentSessionId ? streamError : '');
@@ -303,6 +305,18 @@ function ChatPageContent() {
     }
   };
 
+  const adoptDiscoverySession = (rawSession: IChat) => {
+    if (!user?.id || streamBusy) return;
+    const session = normalizeChatSession(rawSession);
+    if (!session) return;
+    setSessions(previous => {
+      const next = [session, ...previous.filter(item => item.id !== session.id)];
+      persistChatSessions(user.id, next);
+      return next;
+    });
+    selectSession(session.id);
+  };
+
   const handleCareSend = async (text: string, intro?: CareIntro) => {
     if (startingCare) return;
     if (streamBusy) { toast('另一段对话正在回复，请等待完成后再开始笔记对话。'); return; }
@@ -407,6 +421,8 @@ function ChatPageContent() {
                 <span className={styles.sourceContextHint}>每次提问读取最新保存的文字</span>
               </>}
             </section>
+          ) : currentSession?.sourceMode === 'multi_note_discovery' ? (
+            <p className={styles.scopeHint}>从笔记发现继续 · 每次提问读取来源最新保存的文字，历史回答保留当轮依据。</p>
           ) : messages.length > 0 ? (
             <p className={styles.scopeHint}>如需围绕笔记提问，请开启新对话，选择“从这条笔记聊起”。</p>
           ) : null}
@@ -432,12 +448,12 @@ function ChatPageContent() {
             placeholder={isNoteOpening ? '接着聊聊你的想法，也可以问点别的…' : undefined}
             suggestionComponent={
               showCare && !sourceNoteId && !explicitSessionId ? (
-                <CareAssistantPanel 
+                <NoteDiscoveryPanel key={user.id} userId={user.id} busy={streamBusy} onSession={adoptDiscoverySession} onBusyChange={setStartingCare} fallback={<CareAssistantPanel
                   auto={true} 
                   onInsert={handleCareInsert} 
                   onSend={handleCareSend}
                   cacheKey={`care_intro_cache_${user.id}`}
-                />
+                />} />
               ) : null
             }
           />

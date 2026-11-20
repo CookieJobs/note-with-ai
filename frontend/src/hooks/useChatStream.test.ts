@@ -757,3 +757,45 @@ describe('useChatStream', () => {
     expect(updateMessages2).toHaveBeenCalled();
   });
 });
+
+it('reuses a discovery request ID after uncertain failure and keeps committed multi-note snapshots', async () => {
+ const snapshot={noteId:'n1',title:'第一篇',contentText:'原文',revision:2,updatedAt:'2026-11-17T00:00:00Z',hasImages:false};
+ const session=makeSession({sourceMode:'multi_note_discovery',discoveryId:'finding',messages:[]});
+ const committed={...session,messages:[{role:'user' as const,content:'继续'},{role:'assistant' as const,content:'已保存回答',sourceSnapshots:[snapshot,{...snapshot,noteId:'n2'}]}]};
+ const state=makeSetSessionsMock([session]);
+ const update=vi.fn();
+ mockAuthFetchFn.mockRejectedValueOnce(new Error('连接失败'));
+ let hook=renderHook(()=>useChatStream());
+ await act(async()=>{await hook.result.current.sendMessage('继续',session,'u-multi',update,state.setSessions);});
+ const first=JSON.parse(mockAuthFetchFn.mock.calls.at(-1)![1].body);
+ hook.unmount();
+ hook=renderHook(()=>useChatStream());
+ const trailing={...session,messages:[{role:'user' as const,content:'继续'}]};
+ mockAuthFetchSuccess(makeSseReader([`data: ${JSON.stringify({type:'committed',session:committed})}\n\n`]));
+ await act(async()=>{await hook.result.current.sendMessage('继续',trailing,'u-multi',update,state.setSessions);});
+ const second=JSON.parse(mockAuthFetchFn.mock.calls.at(-1)![1].body);
+ expect(first.requestId).toBeTruthy();
+ expect(second.requestId).toBe(first.requestId);
+ expect(second.messages).toEqual([{role:'user',content:'继续'}]);
+ expect(state.getState()[0].messages[1].sourceSnapshots).toHaveLength(2);
+ expect(state.getState()[0]).toMatchObject({sourceMode:'multi_note_discovery',discoveryId:'finding'});
+ hook.unmount();
+});
+
+it('aborts a previous owner and excludes late committed discovery sessions', async () => {
+ let resolve!: (value: unknown) => void;
+ mockAuthFetchFn.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+ const hook=renderHook(({owner})=>useChatStream(undefined,owner),{initialProps:{owner:'owner-a'}});
+ const state=makeSetSessionsMock([]),update=vi.fn();
+ let pending!: Promise<boolean>;
+ act(()=>{pending=hook.result.current.sendMessage('继续',makeSession({sourceMode:'multi_note_discovery'}),'owner-a',update,state.setSessions);});
+ const signal=mockAuthFetchFn.mock.calls.at(-1)![1].signal;
+ hook.rerender({owner:'owner-b'});
+ const calls=update.mock.calls.length;
+ await act(async()=>{resolve({ok:true,body:{getReader:()=>makeSseReader([`data: ${JSON.stringify({type:'committed',session:makeSession()})}\n\n`])}});await pending;});
+ expect(signal.aborted).toBe(true);
+ expect(state.getState()).toEqual([]);
+ expect(update).toHaveBeenCalledTimes(calls);
+ expect(hook.result.current.loading).toBe(false);
+ hook.unmount();
+});

@@ -17,3 +17,5 @@
 工作区内 `TopNavigation` 不再绘制，独立环境保留原行为。页面链接先完成业务来源记录，再进入统一未保存保护。来源展示回归见 [ChatMessage.test.tsx](ChatMessage.test.tsx)，会话恢复见[聊天页说明](../app/chat/README.md)。
 
 [brand/BrandIcon](brand/BrandIcon.tsx) 是统一品牌图形入口，覆盖工作区、独立导航、认证、后台和普通 AI 回答身份。仅替换品牌露出，功能图标沿用原语义；素材与生成说明见 [品牌资源](../../public/brand/README.md)。
+
+[NoteDiscoveryPanel](NoteDiscoveryPanel.tsx) 通过真实发现 API 读取开关、运行状态和证据，默认一条、展开最多三条；继续探索只接纳服务端已绑定并推进选中行动的会话。支持原文版本、原生来源对话框、反馈/撤销和编辑草稿保存；失败保留草稿并以相同操作标识重试，成功给出真实笔记入口。仅服务端明确关闭功能时使用旧建议，启用后的失败、无结果和额度状态均明确展示。读取按账号隔离，轮询有上限并在隐藏/卸载时停止。对话回复支持 `sourceSnapshots[]` 全部当轮来源，兼容单篇 `sourceSnapshot`。

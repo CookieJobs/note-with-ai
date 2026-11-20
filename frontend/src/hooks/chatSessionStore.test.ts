@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mergeChatSessions, readChatSessionsFromStorage, saveChatSessionRemote } from './chatSessionStore';
+import { fetchChatSessionsRemote, mergeChatSessions, readChatSessionsFromStorage, saveChatSessionRemote } from './chatSessionStore';
 import type { IChat } from '../types';
 
 const { authFetch } = vi.hoisted(() => ({ authFetch: vi.fn() }));
@@ -44,4 +44,30 @@ describe('single-note session storage', () => {
       { role: 'user', content: '继续问' },
     ]);
   });
+});
+
+describe('multi-note discovery session migration', () => {
+ it('retains binding and every server snapshot through normalization, merge and cache; strips both snapshot fields from writes', async () => {
+  const second = {...snapshot, noteId:'note-2',revision:7};
+  const server: IChat = {id:'discovery-session', title:'联系', sourceMode:'multi_note_discovery',discoveryId:'finding',selectedSourceIds:['note-1','note-2'],messages:[{role:'assistant',content:'完整回答',sourceSnapshots:[snapshot,second]}]};
+  const local: IChat = {...server,messages:[{role:'assistant',content:'片段'}, {role:'user',content:'继续'}]};
+  const merged = mergeChatSessions([server],[local]);
+  localStorage.setItem('chat_sessions_multi',JSON.stringify(merged));
+  expect(readChatSessionsFromStorage('multi')[0]).toMatchObject({...server,messages:[server.messages[0],local.messages[1]]});
+  authFetch.mockResolvedValue({ok:true,json:async()=>({data:{sessionId:server.id}})});
+  await saveChatSessionRemote(server);
+  const body=JSON.parse(authFetch.mock.calls.at(-1)![1].body);
+  expect(body.messages).toEqual([{role:'assistant',content:'完整回答'}]);
+  expect(body).not.toHaveProperty('discoveryId');
+  expect(body).not.toHaveProperty('sourceSnapshots');
+ });
+});
+
+
+it('normalizes remote discovery identities without dropping multi-note evidence', async () => {
+ const remote={_id:'remote-discovery',title:'联系',sourceMode:'multi_note_discovery',discoveryId:'finding',messages:[{role:'assistant',content:'回答',sourceSnapshots:[snapshot,{...snapshot,noteId:'note-2'}]}]};
+ authFetch.mockResolvedValue({ok:true,json:async()=>({success:true,data:{sessions:[remote]}})});
+ const sessions=await fetchChatSessionsRemote();
+ expect(sessions[0]).toMatchObject({...remote,id:'remote-discovery'});
+ expect(sessions[0].messages[0].sourceSnapshots).toHaveLength(2);
 });
