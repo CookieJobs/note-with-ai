@@ -77,6 +77,17 @@ export class NoteDiscoveryWorker {
       try { await this.schedule.reconcile(userId); }
       catch { logger.warn('Note discovery reconciliation failed', { code: 'DISCOVERY_RECONCILE_FAILED' }); }
     };
+    const deferPendingDispatch = (
+      agent: NoteContinuationAgent | undefined,
+      status: 'cancelled' | 'failed', failureCategory?: DiscoveryExecutionError['category'],
+    ): boolean => {
+      const cleanup = agent?.getPendingDispatchCleanup();
+      if (!cleanup) return false;
+      void cleanup.then(async (settled) => {
+        if (settled && await finish(status, agent?.getUsage(), failureCategory)) await reconcile();
+      }).catch(() => logger.warn('Note discovery dispatch cleanup needs lease recovery', { code: 'DISCOVERY_DISPATCH_CLEANUP_FAILED' }));
+      return true;
+    };
 
     let terminal = false;
     let agent: NoteContinuationAgent | undefined;
@@ -97,6 +108,9 @@ export class NoteDiscoveryWorker {
       });
       const outcome = await agent.runDiscovery(userId, runId, async () =>
         await this.schedule.canPublish(run) && !activeSignal.aborted && this.enabled());
+      // External abort returns cancelled normally, but its pre-send storage write
+      // may still need cleanup. Keep it recoverable just as on deadline failure.
+      if (outcome === 'cancelled' && deferPendingDispatch(agent, 'cancelled')) return;
       if (outcome === 'completed') terminal = true;
       else terminal = await finish(outcome, agent.getUsage());
       if (outcome === 'no_result' && !terminal && !await this.schedule.canPublish(run)) {
@@ -104,13 +118,7 @@ export class NoteDiscoveryWorker {
       }
     } catch (error) {
       const category = error instanceof DiscoveryExecutionError ? error.category : 'internal_error';
-      const cleanup = agent?.getPendingDispatchCleanup();
-      if (cleanup) {
-        void cleanup.then(async (settled) => {
-          if (settled && await finish('failed', agent?.getUsage(), category)) await reconcile();
-        }).catch(() => logger.warn('Note discovery dispatch cleanup needs lease recovery', { code: 'DISCOVERY_DISPATCH_CLEANUP_FAILED' }));
-        return;
-      }
+      if (deferPendingDispatch(agent, 'failed', category)) return;
       if (error instanceof DiscoveryReservationRecoveryError) return;
       terminal = await finish('failed', agent?.getUsage(), category);
     } finally {

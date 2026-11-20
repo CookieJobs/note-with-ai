@@ -5,6 +5,7 @@ import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
 import NoteDiscoveryBudget from '../models/NoteDiscoveryBudget';
 import { createDiscoveryProvider } from '../services/noteDiscoveryProvider';
 import { NoteDiscoveryWorker } from '../services/noteDiscoveryWorker';
+import { DiscoveryReservationRecoveryError } from '../services/noteDiscoveryBudgetService';
 import { connectNoteDiscoveryTestMongo, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
 import { fixturePrice, makeNote, makeRun, ownerId, providerResponse, scriptTransport } from './noteDiscoveryRunnerFixture';
 
@@ -213,6 +214,70 @@ describe('independent note discovery worker', noteDiscoveryMongoTestOptions, () 
       assert.equal(reservation?.state, 'settled');
       assert.equal(reservation?.delivery, paused === 'retry' ? 'response_received' : 'not_sent');
       if (paused !== 'retry') assert.equal(reservation?.settledMicros, 0);
+    });
+  }
+
+  for (const cleanup of ['acknowledged', 'lost-on-shutdown'] as const) {
+    test(`external abort preserves pending reservation cleanup when ${cleanup}`, { timeout: 5000 }, async context => {
+      let clock = new Date();
+      const fixture = await makeRun(ownerId(), { now: () => clock, leaseMs: 5000 });
+      await makeNote(fixture.userId);
+      const controller = new AbortController();
+      let release!: () => void;
+      const waiting = new Promise<void>(resolve => { release = resolve; });
+      let notify!: () => void;
+      const entered = new Promise<void>(resolve => { notify = resolve; });
+      const reserve = fixture.budget.reserve.bind(fixture.budget);
+      context.mock.method(fixture.budget, 'reserve', async (...args: Parameters<typeof reserve>) => {
+        const reservation = await reserve(...args);
+        assert.ok(reservation);
+        notify();
+        await waiting;
+        return reservation;
+      });
+      if (cleanup === 'lost-on-shutdown') {
+        // A disconnected process cannot refund its committed reservation.
+        context.mock.method(fixture.budget, 'releaseUnsent', async () => {
+          throw new DiscoveryReservationRecoveryError();
+        });
+      }
+      const { transport, calls } = scriptTransport();
+      const worker = new NoteDiscoveryWorker({
+        ...fixture, enabled: () => true, heartbeatMs: 30,
+        agentOptions: { provider: createDiscoveryProvider(fixturePrice, transport)!, telemetry: false },
+      });
+      const ticking = worker.tick(controller.signal);
+      let pendingStatus: string | undefined;
+      try {
+        await entered;
+        controller.abort();
+        assert.equal(await Promise.race([ticking.then(() => 'released'), delay(500, 'blocked')]), 'released');
+        pendingStatus = (await fixture.store.getRun(fixture.userId, fixture.runId))?.status;
+      } finally {
+        release();
+        await ticking;
+      }
+      assert.equal(pendingStatus, 'running', 'a terminal run would be invisible to expired-lease recovery');
+      if (cleanup === 'acknowledged') {
+        for (let i = 0; i < 50; i++) {
+          if ((await fixture.store.getRun(fixture.userId, fixture.runId))?.status === 'cancelled') break;
+          await delay(10);
+        }
+        assert.equal((await fixture.store.getRun(fixture.userId, fixture.runId))?.status, 'cancelled');
+      } else {
+        clock = new Date(clock.getTime() + 5001);
+        const recovered = await fixture.store.claimNext();
+        assert.equal(recovered?._id.toHexString(), fixture.runId);
+        assert.equal(recovered?.generation, 2);
+        assert.equal(await fixture.store.finish(fixture.runId, recovered!.leaseToken, 'cancelled'), true);
+      }
+      const ledger = await NoteDiscoveryBudget.findOne({ 'reservations.runId': fixture.runId }).lean();
+      const reservation = ledger?.reservations.find(item => String(item.runId) === fixture.runId);
+      assert.equal(reservation?.state, 'settled');
+      assert.equal(reservation?.delivery, cleanup === 'acknowledged' ? 'not_sent' : 'delivery_unknown');
+      assert.equal(reservation?.settledMicros, cleanup === 'acknowledged' ? 0 : reservation?.reservedMicros);
+      assert.equal(calls.length, 0);
+      assert.equal(ledger?.reservedTotalMicros, 0);
     });
   }
 });
