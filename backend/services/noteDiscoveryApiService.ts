@@ -8,7 +8,8 @@ import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
 import { NoteDiscoveryAction } from '../models/NoteDiscoveryAction';
 import { NoteDiscoveryChatTurn } from '../models/NoteDiscoveryChatTurn';
 import Chat from '../models/Chat';
-import { noteWriteModule } from './NoteUpdateOrchestrator';
+import { Note } from '../models/Note';
+import { noteWriteModule, toNoteDto } from './NoteUpdateOrchestrator';
 import { noteDiscoveryScheduleService, discoveryLocalDate } from './noteDiscoveryScheduleService';
 import { canUseDiscovery } from './noteDiscoveryService';
 import { chatService } from './chatService';
@@ -42,7 +43,10 @@ export class NoteDiscoveryApiService {
     if (!await canUseDiscovery(userId, item)) throw error('来源已变化或不可访问，请重新寻找发现', 'DISCOVERY_STALE', 409);
   }
   private async assertActive(userId: string) {
-    if (await isDiscoveryUserCleaningUp(userId)) throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
+    if (await isDiscoveryUserCleaningUp(userId)) {
+      await eraseDiscoveryUserData(userId);
+      throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
+    }
   }
   async list(userId: string, options: { history?: boolean; timeZone?: string } = {}): Promise<DiscoveryListDto> {
     await this.assertActive(userId);
@@ -51,9 +55,14 @@ export class NoteDiscoveryApiService {
     catch (e) { throw error(e instanceof Error && /zone/i.test(e.message) ? '请选择有效的时区' : '暂时无法读取发现状态，请稍后重试', 'DISCOVERY_STATUS_UNAVAILABLE'); }
     const preference = await NoteDiscoveryPreference.findOne({ userId }).lean();
     const timeZone = preference?.timeZone || 'Asia/Shanghai';
-    const records = await NoteDiscovery.find({ userId, ...(options.history ? {} : { status: 'ready' }) }).sort({ createdAt: -1, _id: -1 }).limit(100);
+    const records = await NoteDiscovery.find({ userId }).sort({ createdAt: -1, _id: -1 }).limit(100);
     const items = [];
     for (const item of records) {
+      const feedback = preference?.feedback.find(f => String(f.discoveryId) === item.id && !f.revokedAt
+        && (!f.expiresAt || f.expiresAt > this.now()));
+      item.status = feedback ? (feedback.kind === 'already_finished' ? 'completed' : 'dismissed')
+        : item.status === 'stale' ? 'stale' : 'ready';
+      if (!options.history && item.status !== 'ready') continue;
       // Even history never reveals stale/deleted/foreign current evidence or unpublished candidates.
       if (!await canUseDiscovery(userId, item)) continue;
       if (!item.exposedAt) {
@@ -66,6 +75,7 @@ export class NoteDiscoveryApiService {
       }
       if (await canUseDiscovery(userId, item)) items.push(serializeDiscovery(item));
     }
+    await this.assertActive(userId);
     const latest = admission.currentRun || await NoteDiscoveryRun.findOne({ userId }).sort({ createdAt: -1 }).lean();
     let run: DiscoveryRunDto = { status: 'idle' };
     if (latest) {
@@ -82,7 +92,9 @@ export class NoteDiscoveryApiService {
     try { await NoteDiscoveryExposure.updateOne({ userId }, { $setOnInsert: { receipts: [], version: 0 } }, { upsert: true, writeConcern }); }
     catch (e) { if ((e as { code?: number }).code !== 11000) throw e; }
     for (let attempt = 0; attempt < 30; attempt++) {
+      await this.assertActive(userId);
       const current: any = await NoteDiscoveryExposure.findOne({ userId }).lean();
+      if (!current) { await this.assertActive(userId); throw error('发现正在更新，请稍后重试', 'DISCOVERY_BUSY', 409); }
       const existing = current.receipts.find((r: any) => String(r.discoveryId) === discoveryId);
       if (existing) return existing.at;
       const now = this.now();
@@ -91,7 +103,13 @@ export class NoteDiscoveryApiService {
       if (receipts.filter((r: any) => discoveryLocalDate(new Date(r.at), timeZone) === day).length >= 3) return null;
       const result = await NoteDiscoveryExposure.updateOne({ _id: current._id, version: current.version },
         { $set: { receipts: [...receipts, { discoveryId: new Types.ObjectId(discoveryId), at: now }] }, $inc: { version: 1 } }, { writeConcern });
-      if (result.modifiedCount) return now;
+      if (result.modifiedCount) {
+        if (await isDiscoveryUserCleaningUp(userId)) {
+          await NoteDiscoveryExposure.deleteMany({ userId });
+          await this.assertActive(userId);
+        }
+        return now;
+      }
     }
     throw error('发现正在更新，请稍后重试', 'DISCOVERY_BUSY', 409);
   }
@@ -129,24 +147,27 @@ export class NoteDiscoveryApiService {
     await NoteDiscoveryPreference.updateOne({ userId }, [{ $set: { feedback: { $concatArrays: [
       { $filter: { input: '$feedback', as: 'f', cond: { $ne: ['$$f.discoveryId', item._id] } } }, { $literal: [feedback] },
     ] } } }], { writeConcern });
-    await NoteDiscovery.updateOne({ _id: item._id, userId }, { $set: { status: kind === 'already_finished' ? 'completed' : 'dismissed' } }, { writeConcern });
+    await this.assertActive(userId);
     return { kind, discoveryId: id, createdAt: now.toISOString(), ...(feedback.expiresAt ? { expiresAt: feedback.expiresAt.toISOString() } : {}) };
   }
   async revokeFeedback(userId: string, id: string) {
     const item = await this.owned(userId, id);
     await NoteDiscoveryPreference.updateOne({ userId }, { $set: { 'feedback.$[f].revokedAt': this.now() } },
       { arrayFilters: [{ 'f.discoveryId': item._id, 'f.revokedAt': { $exists: false } }], writeConcern });
-    const usable = await canUseDiscovery(userId, item);
-    await NoteDiscovery.updateOne({ _id: item._id, userId }, { $set: { status: usable ? 'ready' : 'stale' } }, { writeConcern });
+    await this.assertActive(userId);
     return { revoked: true };
   }
   private async action(userId: string, discoveryId: string, kind: 'session' | 'save', payload: unknown) {
-    try { return await NoteDiscoveryAction.create([{ userId, discoveryId, kind, targetId: new Types.ObjectId(), payload }], { writeConcern }).then(rows => rows[0]); }
+    let action;
+    try { action = await NoteDiscoveryAction.create([{ userId, discoveryId, kind, targetId: new Types.ObjectId(), payload }], { writeConcern }).then(rows => rows[0]); }
     catch (e) {
       if ((e as { code?: number }).code !== 11000) throw e;
-      return (await NoteDiscoveryAction.findOne({ userId, discoveryId, kind }))!;
+      action = (await NoteDiscoveryAction.findOne({ userId, discoveryId, kind }))!;
     }
+    await this.assertActive(userId);
+    return action;
   }
+
   async session(userId: string, id: string) {
     const item = await this.owned(userId, id);
     let action: any = await NoteDiscoveryAction.findOne({ userId, discoveryId: id, kind: 'session' });
@@ -187,34 +208,60 @@ export class NoteDiscoveryApiService {
     const action = await this.action(userId, id, 'save', { text: input.text.trim(), title: input.title || item.title, idempotencyKey: input.idempotencyKey });
     await this.usable(userId, item);
     await this.assertActive(userId);
-    const result = await noteWriteModule.create({ userId, body: { kind: 'plain-text', text: action.payload.text }, title: action.payload.title, stableNoteId: String(action.targetId) });
+    let note;
+    if (action.completedAt) {
+      const existing = await Note.findOne({ _id: action.targetId, userId });
+      if (!existing) throw error('已保存的笔记已删除，不会重复创建', 'DISCOVERY_SAVED_NOTE_DELETED', 410);
+      note = toNoteDto(existing as any);
+    } else {
+      const result = await noteWriteModule.create({ userId, body: { kind: 'plain-text', text: action.payload.text }, title: action.payload.title, stableNoteId: String(action.targetId) });
+      if (await isDiscoveryUserCleaningUp(userId)) {
+        // Persist this exact pending target before compensation; a crash is repaired by the worker.
+        await NoteDiscoveryCleanup.updateOne({ userId }, { $addToSet: { cancelledSaveTargets: action.targetId } }, { writeConcern });
+        await Note.deleteOne({ _id: action.targetId, userId });
+        await this.assertActive(userId);
+      }
+      await NoteDiscoveryAction.updateOne({ _id: action._id, userId }, { $set: { completedAt: this.now() } }, { writeConcern });
+      note = result.note;
+    }
+    await this.assertActive(userId);
     item.savedNoteId = action.targetId;
     await NoteDiscovery.updateOne({ _id: item._id, userId }, { $set: { savedNoteId: action.targetId } }, { writeConcern });
-    return { note: result.note, discovery: serializeDiscovery(item) };
+    return { note, discovery: serializeDiscovery(item) };
   }
   async cleanupUser(userId: string): Promise<void> {
     validId(userId);
     try { await NoteDiscoveryCleanup.updateOne({ userId }, { $setOnInsert: { requestedAt: this.now() } }, { upsert: true, writeConcern }); }
     catch (e) { if ((e as { code?: number }).code !== 11000) throw e; }
-    await NoteDiscoveryRun.updateMany({ userId }, { $set: { executionCancelled: true, cleanupRequested: true },
-      $unset: { pendingWatermark: 1, pendingIdempotencyKey: 1, pendingAvailableAt: 1, pendingTrigger: 1 } }, { writeConcern });
-    // Bypass payload immutability only to erase content during explicitly requested account cleanup.
-    await NoteDiscoveryChatTurn.collection.updateMany({ userId: new Types.ObjectId(userId) }, [
-      { $set: { executionCancelled: true, cleanupRequested: true, requestId: { $concat: ['cleanup:', { $toString: '$_id' }] } } },
-      { $unset: ['payload', 'reply'] },
-    ], { writeConcern });
-    await Promise.all([NoteDiscovery.deleteMany({ userId }), NoteDiscoveryPreference.deleteMany({ userId }),
-      NoteDiscoveryAction.deleteMany({ userId }), NoteDiscoveryExposure.deleteMany({ userId }),
-      Chat.deleteMany({ userId, sourceMode: 'multi_note_discovery' })]);
     await recoverDiscoveryUserCleanup(userId);
   }
 }
+
+/** Replaying a durable marker repeats erasure, including writes that raced the initial pass. */
+async function eraseDiscoveryUserData(userId: string): Promise<void> {
+  await NoteDiscoveryRun.updateMany({ userId }, { $set: { executionCancelled: true, cleanupRequested: true },
+    $unset: { pendingWatermark: 1, pendingIdempotencyKey: 1, pendingAvailableAt: 1, pendingTrigger: 1 } }, { writeConcern });
+  await NoteDiscoveryChatTurn.collection.updateMany({ userId: new Types.ObjectId(userId) }, [
+    { $set: { executionCancelled: true, cleanupRequested: true, requestId: { $concat: ['cleanup:', { $toString: '$_id' }] } } },
+    { $unset: ['payload', 'reply'] },
+  ], { writeConcern });
+  const pending = await NoteDiscoveryAction.find({ userId, kind: 'save', completedAt: { $exists: false } }).select('targetId').lean();
+  if (pending.length) await NoteDiscoveryCleanup.updateOne({ userId },
+    { $addToSet: { cancelledSaveTargets: { $each: pending.map(a => a.targetId) } } }, { writeConcern });
+  const marker: any = await NoteDiscoveryCleanup.findOne({ userId }).lean();
+  if (marker?.cancelledSaveTargets?.length) await Note.deleteMany({ userId, _id: { $in: marker.cancelledSaveTargets } });
+  await Promise.all([NoteDiscovery.deleteMany({ userId }), NoteDiscoveryPreference.deleteMany({ userId }),
+    NoteDiscoveryAction.deleteMany({ userId }), NoteDiscoveryExposure.deleteMany({ userId }),
+    Chat.deleteMany({ userId, sourceMode: 'multi_note_discovery' })]);
+}
+
 export async function recoverDiscoveryUserCleanup(userId?: string): Promise<number> {
   let examined = 0;
   const tombstones = NoteDiscoveryCleanup.find(userId ? { userId } : {}).lean().cursor({ batchSize: 100 });
   for await (const tombstone of tombstones) {
     examined += 1;
     const owner = tombstone.userId;
+    await eraseDiscoveryUserData(String(owner));
     const runs = await NoteDiscoveryRun.find({ userId: owner, cleanupRequested: true }).select('_id').limit(100).lean();
     const turns = await NoteDiscoveryChatTurn.find({ userId: owner, cleanupRequested: true }).select('_id').limit(100).lean();
     for (const run of runs) await noteDiscoveryBudgetService.recoverCleanupOperation('discovery', String(run._id));

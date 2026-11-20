@@ -246,6 +246,7 @@ export class NoteDiscoveryScheduleService {
     const users = Note.aggregate<{ _id: Types.ObjectId }>([{ $group: { _id: '$userId' } }, { $sort: { _id: 1 } }]).cursor({ batchSize: 100 });
     for await (const user of users) {
       const userId = user._id.toHexString();
+      if (await isDiscoveryUserCleaningUp(userId)) continue;
       const latest = await this.readLatest(userId);
       await this.mutate(userId, (_pref, state) => {
         state.initialized = true;
@@ -378,6 +379,10 @@ export class NoteDiscoveryScheduleService {
   private async mutate(userId: string, change: (pref: Preference, state: DiscoveryScheduleState) => void, guard?: () => Promise<boolean>): Promise<Preference> {
     await NoteDiscoveryPreference.init();
     for (;;) {
+      if (await isDiscoveryUserCleaningUp(userId)) {
+        await NoteDiscoveryPreference.deleteMany({ userId });
+        throw new Error('Discovery user cleanup in progress');
+      }
       let pref = await NoteDiscoveryPreference.findOne({ userId }).lean();
       if (!pref) {
         try {
@@ -395,7 +400,13 @@ export class NoteDiscoveryScheduleService {
       const updated = await NoteDiscoveryPreference.findOneAndUpdate({ _id: pref._id, 'schedule.version': pref.schedule ? version : null }, {
         $set: { schedule: state, automaticEnabled: pref.automaticEnabled, timeZone: pref.timeZone },
       }, { returnDocument: 'after', runValidators: true, writeConcern }).lean();
-      if (updated) return updated;
+      if (updated) {
+        if (await isDiscoveryUserCleaningUp(userId)) {
+          await NoteDiscoveryPreference.deleteMany({ userId });
+          throw new Error('Discovery user cleanup in progress');
+        }
+        return updated;
+      }
     }
   }
 }

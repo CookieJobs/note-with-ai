@@ -328,9 +328,9 @@ export class NoteUpdateOrchestrator {
         enrichment,
       };
       if (input.stableNoteId) {
-        created = await Note.findOneAndUpdate({ _id: input.stableNoteId, userId: input.userId },
-          { $setOnInsert: { _id: input.stableNoteId, ...creation } },
-          { upsert: true, new: true, runValidators: true, writeConcern: { w: 'majority', j: true } }) as unknown as NoteRecord;
+        const existing = await Note.findOne({ _id: input.stableNoteId, userId: input.userId });
+        if (existing) return this.toResult(existing as unknown as NoteRecord);
+        created = await Note.create({ _id: input.stableNoteId, ...creation }) as unknown as NoteRecord;
       } else {
         created = await Note.create(creation) as unknown as NoteRecord;
       }

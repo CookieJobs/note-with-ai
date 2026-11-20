@@ -80,6 +80,61 @@ describe('metered durable discovery conversation turns', noteDiscoveryMongoTestO
     for (let index = 2; index <= 4; index++) await chatTurnCommitService.streamAndCommit({ ...input, requestId: `turn-${index}` });
     assert.equal(f.scripted.calls.length, 4, 'four conversation turns must not consume the three manual discovery allowance');
   });
+  it('rejects stale authoritative history before paying and replays a committed turn after source deletion', async () => {
+    const f = await fixture();
+    const { chatService } = await import('../services/chatService');
+    const { chatTurnCommitService } = await import('../services/chatTurnCommitService');
+    const { noteDiscoveryConversationService } = await import('../services/noteDiscoveryConversationService');
+    const { Note } = await import('../models/Note');
+    mock.method(noteDiscoveryConversationService, 'execute', f.service.execute.bind(f.service));
+    const original = chatService.prepareTurn.bind(chatService);
+    let resume!: () => void;
+    let captured!: () => void;
+    const ready = new Promise<void>(resolve => { captured = resolve; });
+    const held = new Promise<void>(resolve => { resume = resolve; });
+    let first = true;
+    mock.method(chatService, 'prepareTurn', async (...args: Parameters<typeof original>) => {
+      const prepared = await original(...args);
+      if (first) { first = false; captured(); await held; }
+      return prepared;
+    });
+    const input = { userId: f.userId, sessionId: f.chat.id, messages: [{ role: 'user' as const, content: '继续' }], onChunk: () => true };
+    const stale = chatTurnCommitService.streamAndCommit({ ...input, requestId: 'stale' });
+    await ready;
+    const committed = await chatTurnCommitService.streamAndCommit({ ...input, requestId: 'winner' });
+    resume();
+    await assert.rejects(stale, /对话已变化/);
+    assert.equal(f.scripted.calls.length, 1);
+    await Note.deleteMany({ _id: { $in: f.notes.map(n => n._id) } });
+    const replay = await chatTurnCommitService.streamAndCommit({ ...input, requestId: 'winner' });
+    assert.deepEqual(replay.session.messages, committed.session.messages);
+    await assert.rejects(chatTurnCommitService.streamAndCommit({ ...input, requestId: 'new-after-deletion' }), /不存在|无法访问/);
+    assert.equal(f.scripted.calls.length, 1);
+  });
+  it('bounds held eligibility and settlement acknowledgements while retaining sweep recovery', async () => {
+    for (const phase of ['isDispatchableReservation', 'settle'] as const) {
+      const f = await fixture();
+      const { NoteDiscoveryConversationService } = await import('../services/noteDiscoveryConversationService');
+      const { NoteDiscoveryChatTurn } = await import('../models/NoteDiscoveryChatTurn');
+      let resume!: () => void;
+      const held = new Promise<void>(resolve => { resume = resolve; });
+      const original = f.budget[phase].bind(f.budget) as any;
+      const stub = mock.method(f.budget, phase, (async (...args: any[]) => {
+        const result = await original(...args); await held; return result;
+      }) as any);
+      const service = new NoteDiscoveryConversationService({ enabled: () => true, provider: f.provider, budget: f.budget, timeoutMs: 150 });
+      const start = Date.now();
+      await assert.rejects(service.execute({ userId: f.userId, chatId: f.chat.id, requestId: phase,
+        messages: f.prepared.messages, sourceSnapshots: f.prepared.sourceSnapshots! }), /超时/);
+      assert.ok(Date.now() - start < 1000);
+      assert.equal(f.scripted.calls.length, phase === 'settle' ? 1 : 0);
+      resume(); stub.mock.restore();
+      const turn = await NoteDiscoveryChatTurn.findOne({ userId: f.userId, requestId: phase });
+      await f.budget.recoverConversation(String(turn._id));
+      assert.equal((await NoteDiscoveryChatTurn.findById(turn._id)).status, 'failed');
+      await assert.rejects(service.execute({ userId: f.userId, chatId: f.chat.id, requestId: phase, messages: [], sourceSnapshots: [] }), /未完成|过期/);
+    }
+  });
   it('retains trusted snapshots through public /save and rejects arbitrary replacement history', async () => {
     const f = await fixture();
     const { chatService } = await import('../services/chatService');
@@ -140,6 +195,30 @@ describe('metered durable discovery conversation turns', noteDiscoveryMongoTestO
     assert.equal(replay.session.messages[1].sourceSnapshots!.length, 2);
     assert.equal(f.scripted.calls.length, 1);
     assert.equal((await NoteDiscoveryChatTurn.findById(pending._id)).status, 'completed');
+  });
+  it('returns at the deadline during a held chat-write acknowledgement and independently replays its committed answer', async () => {
+    const f = await fixture();
+    const Chat = (await import('../models/Chat')).default;
+    const { NoteDiscoveryConversationService } = await import('../services/noteDiscoveryConversationService');
+    const { NoteDiscoveryChatTurn } = await import('../models/NoteDiscoveryChatTurn');
+    const original = Chat.findOneAndUpdate.bind(Chat);
+    let resume!: () => void;
+    const held = new Promise<void>(resolve => { resume = resolve; });
+    const stub = mock.method(Chat, 'findOneAndUpdate', (async (...args: any[]) => {
+      const result = await (original as any)(...args); await held; return result;
+    }) as any);
+    const service = new NoteDiscoveryConversationService({ enabled: () => true, provider: f.provider, budget: f.budget, timeoutMs: 150 });
+    const input = { userId: f.userId, chatId: f.chat.id, requestId: 'held-commit', messages: f.prepared.messages, sourceSnapshots: f.prepared.sourceSnapshots! };
+    const start = Date.now();
+    await assert.rejects(service.execute(input), /超时/);
+    assert.ok(Date.now() - start < 1000);
+    const turn = await NoteDiscoveryChatTurn.findOne({ userId: f.userId, requestId: input.requestId });
+    await f.budget.recoverConversation(String(turn._id));
+    const replay = await service.execute(input);
+    assert.equal(replay.fullReply, turn.reply);
+    assert.equal(replay.session.messages.length, 2);
+    assert.equal(f.scripted.calls.length, 1);
+    resume(); stub.mock.restore();
   });
   it('bounds a hanging pre-send reservation acknowledgement and leaves recovery ownership intact', async () => {
     const f = await fixture();

@@ -6,6 +6,7 @@ const schema = new mongoose.Schema({
   discoveryId: { type: mongoose.Schema.Types.ObjectId, required: true, immutable: true },
   kind: { type: String, enum: ['session', 'save'], required: true, immutable: true },
   targetId: { type: mongoose.Schema.Types.ObjectId, required: true, immutable: true },
+  completedAt: Date,
   payload: { type: mongoose.Schema.Types.Mixed, required: true, immutable: true },
 }, { timestamps: true });
 schema.index({ userId: 1, discoveryId: 1, kind: 1 }, { unique: true });

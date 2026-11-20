@@ -20,6 +20,7 @@ type PreparedChatTurn = {
   sourceSnapshot?: ChatSourceSnapshot;
   sourceSnapshots?: ChatSourceSnapshot[];
   sourceMode?: 'multi_note_discovery';
+  baseVersion?: number;
 };
 
 function cleanMessages(messages: IMessage[], trusted = false): IMessage[] {
@@ -126,7 +127,7 @@ class ChatService {
       const ids = session.selectedSourceIds?.map(String);
       if (!ids?.length || ids.length > 5) throw ErrorHandler.createValidationError('会话来源不可用，请重新选择笔记');
       const sourceSnapshots = await Promise.all(ids.map(id => loadChatNoteSource(userId, id)));
-      return { sourceMode: 'multi_note_discovery', sourceSnapshots,
+      return { sourceMode: 'multi_note_discovery', sourceSnapshots, baseVersion: (session as any).__v || 0,
         messages: [...cleanMessages(session.messages, true), { role: 'user', content: last.content.trim() }] };
     }
     const storedSourceId = session?.sourceNoteId ? String(session.sourceNoteId) : undefined;

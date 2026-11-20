@@ -46,11 +46,18 @@ class ChatTurnCommitService {
     onChunk,
     onAborted,
   }: StreamAndCommitInput): Promise<StreamAndCommitResult> {
+    if (sessionId && requestId) {
+      const replay = await noteDiscoveryConversationService.replayExisting(userId, sessionId, requestId);
+      if (replay) {
+        if (!onChunk(replay.fullReply)) throw new Error('CHAT_STREAM_ABORTED');
+        return { fullReply: replay.fullReply, session: chatService.formatSession(replay.session as any) };
+      }
+    }
     const prepared = await chatService.prepareTurn(userId, messages, sessionId, sourceNoteId);
     messages = prepared.messages;
     if (prepared.sourceMode === 'multi_note_discovery' && sessionId && prepared.sourceSnapshots) {
       const result = await noteDiscoveryConversationService.execute({ userId, chatId: sessionId, requestId,
-        messages, sourceSnapshots: prepared.sourceSnapshots });
+        messages, sourceSnapshots: prepared.sourceSnapshots, baseVersion: prepared.baseVersion });
       if (!onChunk(result.fullReply)) {
         await onAborted?.();
         throw new Error('CHAT_STREAM_ABORTED');

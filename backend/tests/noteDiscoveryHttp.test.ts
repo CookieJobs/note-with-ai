@@ -127,10 +127,14 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     const targetId = new Types.ObjectId();
     await NoteDiscoveryAction.create({ userId, discoveryId: second._id, kind: 'save', targetId, payload: { text: '崩溃前确认文本', title: '继续测试' } });
     await noteWriteModule.create({ userId, stableNoteId: String(targetId), body: { kind: 'plain-text', text: '崩溃前确认文本' }, title: '继续测试' });
+    const storedBeforeRepair = (await Note.findById(targetId))!.toObject();
+    const scheduledBeforeRepair = stub.mock.callCount();
     const recovered = await request(`/${second.id}/save`, 'POST', { text: '重放新文本', idempotencyKey: 'recover' });
     assert.equal(recovered.status, 200);
     assert.equal(recovered.json.data.note._id, String(targetId));
     assert.equal(recovered.json.data.note.contentText, '崩溃前确认文本');
+    assert.deepEqual((await Note.findById(targetId))!.toObject(), storedBeforeRepair);
+    assert.equal(stub.mock.callCount(), scheduledBeforeRepair, 'create/reference repair must not reschedule existing note');
     stub.mock.restore();
   });
   it('creates one server-bound continuation session, advances its action and reuses a reference-gap session', async () => {
@@ -159,6 +163,112 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     assert.equal(scripted.calls.length, 1);
     assert.equal(await Chat.countDocuments({ userId, discoveryId: item._id }), 1);
     stub.mock.restore();
+  });
+  it('orders feedback from one authoritative record when POST acknowledgement is delayed across DELETE', async () => {
+    const { Preference } = await modules();
+    const original = Preference.updateOne.bind(Preference);
+    let resume!: () => void;
+    let reached!: () => void;
+    const held = new Promise<void>(resolve => { resume = resolve; });
+    const ready = new Promise<void>(resolve => { reached = resolve; });
+    const stub = mock.method(Preference, 'updateOne', (async (...args: any[]) => {
+      const result = await (original as any)(...args);
+      if (Array.isArray(args[1])) { reached(); await held; }
+      return result;
+    }) as any);
+    const post = service.feedback(userId, item.id, 'not_interested');
+    await ready;
+    await service.revokeFeedback(userId, item.id);
+    resume(); await post; stub.mock.restore();
+    const visible = await service.list(userId, { history: true });
+    assert.equal(visible.items.find((d: any) => d.id === item.id).status, 'ready');
+  });
+  it('replays completed saves read-only and never recreates a deleted completed target', async () => {
+    const { Note } = await modules();
+    const { NoteDiscoveryAction } = await import('../models/NoteDiscoveryAction');
+    const { noteWriteModule } = await import('../services/NoteUpdateOrchestrator');
+    const action = await NoteDiscoveryAction.findOne({ userId, discoveryId: item._id, kind: 'save' });
+    assert.ok(action.completedAt);
+    const before = (await Note.findOne({ _id: action.targetId, userId }))!.toObject();
+    const stub = mock.method(noteWriteModule, 'create', () => { assert.fail('completed save must never re-enter create or schedule enrichment'); });
+    const replay = await service.save(userId, item.id, { text: '再次确认', idempotencyKey: 'completed-readonly' });
+    assert.equal(replay.note._id, String(action.targetId));
+    assert.deepEqual((await Note.findOne({ _id: action.targetId, userId }))!.toObject(), before);
+    await Note.deleteOne({ _id: action.targetId, userId });
+    await assert.rejects(service.save(userId, item.id, { text: '不要复活', idempotencyKey: 'deleted' }), /已删除/);
+    assert.equal(await Note.countDocuments({ _id: action.targetId }), 0);
+    stub.mock.restore();
+  });
+  it('resumes erasure from a marker-only crash and compensates exposure/action/draft writes racing cleanup', async () => {
+    const { Note, Discovery, Run, Preference } = await modules();
+    const { NoteDiscoveryCleanup } = await import('../models/NoteDiscoveryCleanup');
+    const { NoteDiscoveryAction } = await import('../models/NoteDiscoveryAction');
+    const { NoteDiscoveryExposure, recoverDiscoveryUserCleanup } = await import('../services/noteDiscoveryApiService');
+    const { NoteDiscoveryScheduleService } = await import('../services/noteDiscoveryScheduleService');
+    const { noteWriteModule } = await import('../services/NoteUpdateOrchestrator');
+    const owners: string[] = [];
+    async function fresh() {
+      const owner = String(new Types.ObjectId()); owners.push(owner);
+      const note = await Note.create({ userId: owner, content: '私有已保存正文', contentText: '私有已保存正文', revision: 1 });
+      const run = await Run.create({ userId: owner, status: 'completed', trigger: 'manual', idempotencyKey: 'cleanup-test', generation: 1, watermark: { changedAt: now }, availableAt: now });
+      const copy = item.toObject(); delete copy._id; delete copy.exposedAt; delete copy.savedNoteId; delete copy.sessionId;
+      const discovery = await Discovery.create({ ...copy, userId: owner, runId: run._id, evidence: [{ noteId: note._id, revision: 1, title: '原文', noteDate: now, excerpt: '已保存', hasImages: false }] });
+      return { owner, note, discovery };
+    }
+    const crashed = await fresh();
+    const Chat = (await import('../models/Chat')).default;
+    const { NoteDiscoveryChatTurn } = await import('../models/NoteDiscoveryChatTurn');
+    const abandonedChat = await Chat.create({ userId: crashed.owner, title: '待清理会话', sourceMode: 'multi_note_discovery', discoveryId: crashed.discovery._id, selectedSourceIds: [crashed.note._id], messages: [{ role: 'user', content: '待清理私有正文' }] });
+    const abandonedTurn = await NoteDiscoveryChatTurn.create({ userId: crashed.owner, chatId: abandonedChat._id, requestId: 'marker-crash', status: 'running', generation: 1, leaseToken: 'retain-fence', leaseUntil: new Date(Date.now() + 5000), payload: { messages: [{ content: '待清理私有正文' }] } });
+    await NoteDiscoveryAction.create({ userId: crashed.owner, discoveryId: crashed.discovery._id, kind: 'save', targetId: new Types.ObjectId(), payload: { text: '待清理私有草稿' } });
+    await NoteDiscoveryCleanup.create({ userId: crashed.owner, requestedAt: now });
+    await recoverDiscoveryUserCleanup(crashed.owner);
+    assert.equal(await Discovery.countDocuments({ userId: crashed.owner }), 0);
+    assert.equal(await Chat.countDocuments({ userId: crashed.owner }), 0);
+    assert.equal(await NoteDiscoveryAction.countDocuments({ userId: crashed.owner }), 0);
+    const retainedCrashFence: any = await NoteDiscoveryChatTurn.findById(abandonedTurn._id).lean();
+    assert.equal(retainedCrashFence.cleanupRequested, true);
+    assert.equal(JSON.stringify(retainedCrashFence).includes('私有正文'), false);
+    for (const phase of ['exposure', 'action', 'draft'] as const) {
+      const f = await fresh();
+      let resume!: () => void;
+      let reached!: () => void;
+      const held = new Promise<void>(resolve => { resume = resolve; });
+      const ready = new Promise<void>(resolve => { reached = resolve; });
+      let stub;
+      if (phase === 'exposure') {
+        const original = NoteDiscoveryExposure.updateOne.bind(NoteDiscoveryExposure);
+        stub = mock.method(NoteDiscoveryExposure, 'updateOne', (async (...args: any[]) => {
+          if (args[1]?.$inc) { reached(); await held; }
+          return (original as any)(...args);
+        }) as any);
+      } else if (phase === 'action') {
+        const original = NoteDiscoveryAction.create.bind(NoteDiscoveryAction);
+        stub = mock.method(NoteDiscoveryAction, 'create', (async (...args: any[]) => {
+          reached(); await held; return (original as any)(...args);
+        }) as any);
+      } else {
+        const original = noteWriteModule.create.bind(noteWriteModule);
+        stub = mock.method(noteWriteModule, 'create', async (...args: Parameters<typeof original>) => {
+          reached(); await held; return original(...args);
+        });
+      }
+      const scheduleStub = mock.method((noteWriteModule as any).scheduler, 'schedule', () => undefined);
+      const pending = phase === 'exposure' ? service.list(f.owner) : service.save(f.owner, f.discovery.id, { text: '清理竞态草稿', idempotencyKey: phase });
+      const rejected = assert.rejects(pending, /清理|不可用/);
+      await ready;
+      await service.cleanupUser(f.owner);
+      resume();
+      await rejected;
+      stub.mock.restore(); scheduleStub.mock.restore();
+      await recoverDiscoveryUserCleanup(f.owner);
+      assert.equal(await NoteDiscoveryExposure.countDocuments({ userId: f.owner }), 0);
+      assert.equal(await NoteDiscoveryAction.countDocuments({ userId: f.owner }), 0);
+      assert.equal(await Note.countDocuments({ userId: f.owner }), 1, 'preserve ordinary source, remove only raced draft target');
+    }
+    const schedule = new NoteDiscoveryScheduleService({ enabled: true });
+    await schedule.initializeOnStartup();
+    assert.equal(await Preference.countDocuments({ userId: { $in: owners } }), 0);
   });
   it('cleans private data immediately while retaining and recovering only active accounting fences', async () => {
     const { NoteDiscoveryChatTurn } = await import('../models/NoteDiscoveryChatTurn');
