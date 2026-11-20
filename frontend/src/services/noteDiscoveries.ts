@@ -14,19 +14,19 @@ export interface DiscoveryList {
 }
 export type DiscoveryFeedback = 'not_interested' | 'not_related' | 'already_finished';
 export const discoveryOperationId = () => crypto.randomUUID();
-export class DiscoveryApiError extends Error { constructor(message: string, public status: number) { super(message); } }
+export class DiscoveryApiError extends Error { constructor(message: string, public status: number, public code?: string, public retryEligible = false, public requestId?: string) { super(message); } }
 async function request<T>(path = '', options: RequestInit = {}): Promise<T> {
   const response = await authFetch(`/api/note-discoveries${path}`, { ...options, signal: options.signal ?? AbortSignal.timeout(75_000) });
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new DiscoveryApiError(payload?.message || payload?.error || '操作没有完成，请稍后重试。', response.status);
+  if (!response.ok) throw new DiscoveryApiError(payload?.message || payload?.error || '操作没有完成，请稍后重试。', response.status, payload?.code, payload?.retryEligible === true && payload?.code === 'CHAT_BUDGET_EXHAUSTED', payload?.requestId);
   return payload.data as T;
 }
 export const noteDiscoveries = {
-  list: (signal?: AbortSignal, history = false) => request<DiscoveryList>(history ? '?history=true' : '', { signal }),
+  list: (signal?: AbortSignal, history = false, admit = false) => request<DiscoveryList>(`?admit=${admit}&history=${history}`, { signal }),
   run: (idempotencyKey: string) => request('/run', { method: 'POST', body: JSON.stringify({ idempotencyKey }) }),
   preferences: (automaticEnabled: boolean) => request<Pick<DiscoveryList, 'automaticEnabled' | 'available' | 'timeZone'>>('/preferences', { method: 'PATCH', body: JSON.stringify({ automaticEnabled }) }),
   feedback: (id: string, kind: DiscoveryFeedback) => request(`/${id}/feedback`, { method: 'POST', body: JSON.stringify({ kind }) }),
   undo: (id: string) => request(`/${id}/feedback`, { method: 'DELETE' }),
-  session: (id: string) => request<{session: IChat; reused: boolean}>(`/${id}/session`, { method: 'POST' }),
+  session: (id: string, retryOfRequestId?: string) => request<{session: IChat; reused: boolean}>(`/${id}/session`, { method: 'POST', body: JSON.stringify(retryOfRequestId ? { retryOfRequestId } : {}) }),
   save: (id: string, payload: { text: string; idempotencyKey: string }) => request<{note: INote; discovery: NoteDiscovery}>(`/${id}/save`, { method: 'POST', body: JSON.stringify(payload) }),
 };

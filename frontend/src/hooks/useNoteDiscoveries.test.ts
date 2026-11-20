@@ -29,3 +29,25 @@ describe('discovery polling', () => {
   view.unmount();
  });
 });
+
+it('admits only on initial visible visit and excludes superseded or mutation-obsolete same-owner reads', async () => {
+ let late!: (value: typeof running)=>void;
+ const view=renderHook(()=>useNoteDiscoveries('u'));
+ await act(async()=>{});
+ expect(vi.mocked(noteDiscoveries.list).mock.calls[0][2]).toBe(true);
+ vi.mocked(noteDiscoveries.list).mockImplementationOnce(()=>new Promise(r=>{late=r;}));
+ act(()=>document.dispatchEvent(new Event('visibilitychange')));
+ expect(vi.mocked(noteDiscoveries.list).mock.calls[1][2]).toBe(false);
+ act(()=>view.result.current.update(data=>({...data,automaticEnabled:false})));
+ await act(async()=>late(running));
+ expect(view.result.current.data?.automaticEnabled).toBe(false);
+ let hiddenLate!: (value: typeof running)=>void;
+ vi.mocked(noteDiscoveries.list).mockImplementationOnce(()=>new Promise(r=>{hiddenLate=r;}));
+ act(()=>document.dispatchEvent(new Event('visibilitychange')));
+ const hidden=vi.spyOn(document,'hidden','get').mockReturnValue(true);
+ act(()=>document.dispatchEvent(new Event('visibilitychange')));
+ await act(async()=>hiddenLate(running));
+ expect(view.result.current.data?.automaticEnabled).toBe(false);
+ hidden.mockReturnValue(false);
+ view.unmount();
+});

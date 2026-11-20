@@ -14,6 +14,7 @@ import { noteWriteModule, toNoteDto } from './NoteUpdateOrchestrator';
 import { noteDiscoveryScheduleService, discoveryLocalDate } from './noteDiscoveryScheduleService';
 import { canUseDiscovery } from './noteDiscoveryService';
 import { chatService } from './chatService';
+import { discoveryRetryRequestId } from './noteDiscoveryConversationService';
 import { chatTurnCommitService } from './chatTurnCommitService';
 import { AppError, ErrorType } from '../utils/errorHandler';
 import { serializeDiscovery, DISCOVERY_FEEDBACK_KINDS, type DiscoveryFeedbackKind, type DiscoveryListDto, type DiscoveryRunDto } from '../types/noteDiscovery';
@@ -49,10 +50,10 @@ export class NoteDiscoveryApiService {
       throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
     }
   }
-  async list(userId: string, options: { history?: boolean; timeZone?: string } = {}): Promise<DiscoveryListDto> {
+  async list(userId: string, options: { history?: boolean; timeZone?: string; admit?: boolean } = {}): Promise<DiscoveryListDto> {
     await this.assertActive(userId);
-    let admission;
-    try { admission = await this.schedule.initializeOnVisit(userId, options.timeZone, this.now()); }
+    let admission: Awaited<ReturnType<typeof this.schedule.initializeOnVisit>> = { status: 'idle', currentRun: null };
+    try { if (options.admit === true) admission = await this.schedule.initializeOnVisit(userId, options.timeZone, this.now()); }
     catch (e) { throw error(e instanceof Error && /zone/i.test(e.message) ? '请选择有效的时区' : '暂时无法读取发现状态，请稍后重试', 'DISCOVERY_STATUS_UNAVAILABLE'); }
     const preference = await NoteDiscoveryPreference.findOne({ userId }).lean();
     const timeZone = preference?.timeZone || 'Asia/Shanghai';
@@ -172,7 +173,7 @@ export class NoteDiscoveryApiService {
     return action;
   }
 
-  async session(userId: string, id: string) {
+  async session(userId: string, id: string, input: { retryOfRequestId?: string } = {}) {
     const item = await this.owned(userId, id);
     let action: any = await NoteDiscoveryAction.findOne({ userId, discoveryId: id, kind: 'session' });
     let existing = action ? await Chat.findOne({ _id: action.targetId, userId }) : null;
@@ -197,7 +198,9 @@ export class NoteDiscoveryApiService {
     await NoteDiscovery.updateOne({ _id: item._id, userId }, { $set: { sessionId: existing._id } }, { writeConcern });
     const reused = existing.messages.length > 0;
     if (!existing.messages.length) {
-      const committed = await chatTurnCommitService.streamAndCommit({ userId, sessionId: String(existing._id), requestId: 'discovery-initial',
+      const latestTurn: any = await NoteDiscoveryChatTurn.findOne({ userId, chatId: existing._id }).sort({ createdAt: -1, _id: -1 }).lean();
+      const initialRequestId = input.retryOfRequestId ? discoveryRetryRequestId(input.retryOfRequestId) : latestTurn?.requestId || 'discovery-initial';
+      const committed = await chatTurnCommitService.streamAndCommit({ userId, sessionId: String(existing._id), requestId: initialRequestId, retryOfRequestId: input.retryOfRequestId,
         messages: [{ role: 'user', content: action.payload.opening }], title: existing.title, onChunk: () => true });
       return { session: committed.session, reused: false };
     }

@@ -8,9 +8,12 @@ export function useNoteDiscoveries(userId: string) {
   const [state, setState] = useState<{ owner: string; data?: DiscoveryList; error: string; loading: boolean; paused?: boolean }>({ owner: userId, error: '', loading: true });
   const owner = useRef(userId);
   owner.current = userId;
+  const revision = useRef(0);
+  const visit = useRef({ owner: userId, admitted: false });
+  if (visit.current.owner !== userId) visit.current = { owner: userId, admitted: false };
   const [refreshKey, setRefreshKey] = useState(0);
   const reload = useCallback(() => setRefreshKey(key => key + 1), []);
-  const update = (updater: (data: DiscoveryList) => DiscoveryList) => setState(prev => prev.owner === userId && prev.data ? { ...prev, data: updater(prev.data) } : prev);
+  const update = (updater: (data: DiscoveryList) => DiscoveryList) => { revision.current++; setState(prev => prev.owner === userId && prev.data ? { ...prev, data: updater(prev.data) } : prev); };
   useEffect(() => {
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -22,15 +25,18 @@ export function useNoteDiscoveries(userId: string) {
       controller?.abort();
       controller = new AbortController();
       const requestController = controller;
+      const readRevision = revision.current;
+      const admit = !visit.current.admitted;
+      visit.current.admitted = true;
       try {
-        const data = await noteDiscoveries.list(requestController.signal);
-        if (!current()) return;
+        const data = await noteDiscoveries.list(requestController.signal, false, admit);
+        if (!current() || requestController.signal.aborted || controller !== requestController || readRevision !== revision.current) return;
         const pending = ['queued', 'running'].includes(data.run.status);
         const paused = pending && polls >= DISCOVERY_POLL_LIMIT;
         setState({ owner: userId, data, error: '', loading: false, paused });
         if (pending && !paused) { polls++; timer = setTimeout(load, DISCOVERY_POLL_MS); }
       } catch (error) {
-        if (!current() || requestController.signal.aborted) return;
+        if (!current() || requestController.signal.aborted || controller !== requestController || readRevision !== revision.current) return;
         setState(prev => ({ ...prev, owner: userId, error: '发现暂时加载失败，请重试。', loading: false }));
       }
     };

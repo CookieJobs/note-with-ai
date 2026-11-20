@@ -276,4 +276,35 @@ describe('metered durable discovery conversation turns', noteDiscoveryMongoTestO
     assert.equal((await NoteDiscoveryChatTurn.findById(turn._id)).status, 'failed');
     assert.equal(f.scripted.calls.length, 0);
   });
+  it('allows only explicit deterministic retry of confirmed pre-send budget denial', async () => {
+    const f = await fixture();
+    const { discoveryRetryRequestId } = await import('../services/noteDiscoveryConversationService');
+    const { NoteDiscoveryChatTurn } = await import('../models/NoteDiscoveryChatTurn');
+    const original = f.budget.reserveConversation.bind(f.budget);
+    const denied = mock.method(f.budget, 'reserveConversation', async () => null);
+    const input = {userId:f.userId,chatId:f.chat.id,requestId:'budget-denied',messages:f.prepared.messages,sourceSnapshots:f.prepared.sourceSnapshots!};
+    await assert.rejects(f.service.execute(input), (e: any) => e.details?.retryEligible === true && e.details?.requestId === input.requestId);
+    const prior = await NoteDiscoveryChatTurn.findOne({userId:f.userId,requestId:input.requestId});
+    assert.equal(prior.status,'failed');assert.equal(prior.providerStartedAt,undefined);
+    denied.mock.restore();
+    await assert.rejects(f.service.execute(input), (e: any) => e.details?.retryEligible === true);
+    assert.equal(f.scripted.calls.length,0,'budget recovery alone must not resend old ID');
+    const retry = {...input,requestId:discoveryRetryRequestId(input.requestId),retryOfRequestId:input.requestId};
+    const results = await Promise.allSettled([f.service.execute(retry),f.service.execute(retry)]);
+    assert.ok(results.some(result=>result.status==='fulfilled'));
+    await f.service.execute(retry);
+    assert.equal(f.scripted.calls.length,1,'concurrent explicit retries and response-loss replay share one paid winner');
+    assert.equal(await NoteDiscoveryChatTurn.countDocuments({userId:f.userId}),2);
+    await assert.rejects(f.service.execute({...input,requestId:discoveryRetryRequestId(retry.requestId),retryOfRequestId:retry.requestId}), /尚不能重新申请/);
+    assert.equal(typeof original,'function');
+  });
+  it('rejects explicit new attempts for unknown paid delivery', async () => {
+    const f = await fixture();
+    const { NoteDiscoveryChatTurn } = await import('../models/NoteDiscoveryChatTurn');
+    const { discoveryRetryRequestId } = await import('../services/noteDiscoveryConversationService');
+    await NoteDiscoveryChatTurn.create({userId:f.userId,chatId:f.chat.id,requestId:'unknown-retry',status:'failed',errorCode:'CHAT_GENERATION_FAILED',providerStartedAt:new Date(),generation:1,leaseToken:'test',leaseUntil:new Date(),payload:{messages:f.prepared.messages,sourceSnapshots:f.prepared.sourceSnapshots}});
+    await assert.rejects(f.service.execute({userId:f.userId,chatId:f.chat.id,requestId:discoveryRetryRequestId('unknown-retry'),retryOfRequestId:'unknown-retry',messages:f.prepared.messages,sourceSnapshots:f.prepared.sourceSnapshots!}), /尚不能重新申请/);
+    assert.equal(f.scripted.calls.length,0);
+  });
+
 });

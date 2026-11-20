@@ -10,6 +10,7 @@ interface UseChatStreamReturn {
   activeSessionId: string | null;
   errorSessionId: string | null;
   error: string;
+  retryableFailure: { sessionId: string; requestId: string } | null;
   setError: React.Dispatch<React.SetStateAction<string>>;
   sendMessage: (
     input: string,
@@ -18,6 +19,7 @@ interface UseChatStreamReturn {
     updateSessionMessages: (sessionId: string, messages: IMessage[], userId?: string) => void,
     setSessions: React.Dispatch<React.SetStateAction<IChat[]>>,
     onAccepted?: () => void,
+    retryOfRequestId?: string,
   ) => Promise<boolean>;
 }
 
@@ -58,6 +60,7 @@ export const useChatStream = (
 ): UseChatStreamReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [retryableFailure, setRetryableFailure] = useState<{ sessionId: string; requestId: string } | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [errorSessionId, setErrorSessionId] = useState<string | null>(null);
   const loadingRef = useRef(false);
@@ -76,7 +79,7 @@ export const useChatStream = (
     const currentOwner = owner.current;
     currentOwner.active = true;
     loadingRef.current = false;
-    setLoading(false); setActiveSessionId(null); setError(''); setErrorSessionId(null);
+    setLoading(false); setActiveSessionId(null); setError(''); setErrorSessionId(null); setRetryableFailure(null);
     return () => {
       currentOwner.active = false;
       abortControllerRef.current?.abort();
@@ -118,6 +121,7 @@ export const useChatStream = (
     updateSessionMessages: (sessionId: string, messages: IMessage[], userId?: string) => void,
     setSessions: React.Dispatch<React.SetStateAction<IChat[]>>,
     onAccepted?: () => void,
+    retryOfRequestId?: string,
   ) => {
     if (loadingRef.current) {
       return false;
@@ -147,11 +151,12 @@ export const useChatStream = (
 
     const turnKey = JSON.stringify([userId, currentSession.id, updatedMessages.length, input]);
     const requestStorageKey = `chat_discovery_turn_${userId}_${currentSession.id}`;
-    let storedRequest: { key?: string; id?: string } = {};
+    let storedRequest: { key?: string; id?: string; retryOfRequestId?: string } = {};
     try { storedRequest = JSON.parse(sessionStorage.getItem(requestStorageKey) || '{}'); } catch {}
     const requestId = turnRequests.current.get(turnKey) || (storedRequest.key === turnKey ? storedRequest.id : undefined) || crypto.randomUUID();
+    const effectiveRetryOf = retryOfRequestId || (storedRequest.key === turnKey ? storedRequest.retryOfRequestId : undefined);
     if (currentSession.sourceMode === 'multi_note_discovery') {
-      try { sessionStorage.setItem(requestStorageKey, JSON.stringify({ key: turnKey, id: requestId })); } catch {}
+      try { sessionStorage.setItem(requestStorageKey, JSON.stringify({ key: turnKey, id: requestId, retryOfRequestId: effectiveRetryOf })); } catch {}
     }
     turnRequests.current.set(turnKey, requestId);
 
@@ -171,6 +176,7 @@ export const useChatStream = (
     let idleTimer: ReturnType<typeof setTimeout> | undefined;
     let totalTimer: ReturnType<typeof setTimeout> | undefined;
     let timeoutCode: string | null = null;
+    let eligibleRetryRequest: string | undefined;
     let rejectTimeout!: (error: Error) => void;
     const timeoutPromise = new Promise<never>((_resolve, reject) => { rejectTimeout = reject; });
     const refreshIdleTimer = () => {
@@ -197,7 +203,7 @@ export const useChatStream = (
         body: JSON.stringify({
           messages: updatedMessages.map(({ sourceSnapshot: _sourceSnapshot, sourceSnapshots: _sourceSnapshots, ...message }) => message),
           sessionId: serverSessionId,
-          ...(currentSession.sourceMode === 'multi_note_discovery' ? { requestId } : {}),
+          ...(currentSession.sourceMode === 'multi_note_discovery' ? { requestId, ...(effectiveRetryOf ? { retryOfRequestId: effectiveRetryOf } : {}) } : {}),
           sourceNoteId: currentSession.sourceNoteId,
         }),
       });
@@ -258,6 +264,7 @@ export const useChatStream = (
             continue;
           }
           if (typeof data.error === 'string') {
+            if (data.retryEligible === true && data.code === 'CHAT_BUDGET_EXHAUSTED' && typeof data.requestId === 'string') eligibleRetryRequest = data.requestId;
             shouldStop = true;
             throw new Error(data.error);
           }
@@ -274,6 +281,7 @@ export const useChatStream = (
             const committedSessionId = nextSession.id || nextSession._id || effectiveSessionId;
             applyCommittedSession(effectiveSessionId, nextSession, userId, setSessions);
             hasCommittedSession = true;
+            setRetryableFailure(null);
             turnRequests.current.delete(turnKey);
             if (currentSession.sourceMode === 'multi_note_discovery') { try { sessionStorage.removeItem(requestStorageKey); } catch {} }
             if (committedSessionId !== effectiveSessionId) {
@@ -294,6 +302,7 @@ export const useChatStream = (
       return await Promise.race([streamOperation(), timeoutPromise]);
     } catch (err: unknown) {
       if (!isCurrentOwner()) return false;
+      setRetryableFailure(eligibleRetryRequest ? { sessionId: effectiveSessionId, requestId: eligibleRetryRequest } : null);
       setErrorSessionId(effectiveSessionId);
       if (!hasCommittedSession) {
         updateSessionMessages(effectiveSessionId, updatedMessages, userId);
@@ -325,6 +334,7 @@ export const useChatStream = (
     activeSessionId,
     errorSessionId,
     error,
+    retryableFailure,
     setError,
     sendMessage,
   };

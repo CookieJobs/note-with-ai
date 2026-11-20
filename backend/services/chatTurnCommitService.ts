@@ -1,7 +1,7 @@
 import { IMessage } from '../types';
 import { chatRelatedNoteRecallService } from './chatRelatedNoteRecallService';
 import { chatService } from './chatService';
-import { noteDiscoveryConversationService } from './noteDiscoveryConversationService';
+import { discoveryRetryRequestId, noteDiscoveryConversationService } from './noteDiscoveryConversationService';
 import { trackProductEventBestEffort } from './productEventService';
 
 type SessionSnapshot = ReturnType<typeof chatService.formatSession>;
@@ -11,6 +11,7 @@ type StreamAndCommitInput = {
   messages: IMessage[];
   sessionId?: string;
   requestId?: string;
+  retryOfRequestId?: string;
   title?: string;
   sourceNoteId?: string;
   onChunk: (chunk: string) => boolean;
@@ -41,11 +42,13 @@ class ChatTurnCommitService {
     messages,
     sessionId,
     requestId,
+    retryOfRequestId,
     title,
     sourceNoteId,
     onChunk,
     onAborted,
   }: StreamAndCommitInput): Promise<StreamAndCommitResult> {
+    if (retryOfRequestId) requestId = discoveryRetryRequestId(retryOfRequestId);
     if (sessionId && requestId) {
       const replay = await noteDiscoveryConversationService.replayExisting(userId, sessionId, requestId);
       if (replay) {
@@ -56,7 +59,7 @@ class ChatTurnCommitService {
     const prepared = await chatService.prepareTurn(userId, messages, sessionId, sourceNoteId);
     messages = prepared.messages;
     if (prepared.sourceMode === 'multi_note_discovery' && sessionId && prepared.sourceSnapshots) {
-      const result = await noteDiscoveryConversationService.execute({ userId, chatId: sessionId, requestId,
+      const result = await noteDiscoveryConversationService.execute({ userId, chatId: sessionId, requestId, retryOfRequestId,
         messages, sourceSnapshots: prepared.sourceSnapshots, baseVersion: prepared.baseVersion });
       if (!onChunk(result.fullReply)) {
         await onAborted?.();

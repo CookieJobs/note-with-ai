@@ -47,7 +47,7 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
   const user = await UserValidator.authenticateUser(req);
   const userId = user._id.toString();
 
-  const { messages, sessionId, title, sourceNoteId, requestId } = req.body;
+  const { messages, sessionId, title, sourceNoteId, requestId, retryOfRequestId } = req.body;
   logger.info('🟢 收到聊天请求 (流式):', messages?.length, '条消息, sessionId:', sessionId, 'userId:', userId);
 
   let clientClosed = false;
@@ -83,6 +83,7 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
       title,
       sourceNoteId,
       requestId,
+      retryOfRequestId,
       onChunk: (chunk) => {
         if (!isWritable()) return false;
         safeWrite(`data: ${JSON.stringify({ chunk })}\n\n`);
@@ -125,7 +126,7 @@ export const streamChat = async (req: Request, res: Response): Promise<void> => 
 
     if (isWritable()) {
       const message = error instanceof AppError && error.isOperational ? error.message : 'AI 服务暂时不可用，请稍后重试';
-      safeWrite(`data: ${JSON.stringify({ error: message })}\n\n`);
+      safeWrite(`data: ${JSON.stringify({ error: message, ...(error instanceof AppError ? { code: error.details?.code, ...(error.details?.retryEligible === true ? { retryEligible: true, requestId: error.details.requestId } : {}) } : {}) })}\n\n`);
       res.end();
     }
   }

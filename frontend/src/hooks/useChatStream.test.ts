@@ -799,3 +799,23 @@ it('aborts a previous owner and excludes late committed discovery sessions', asy
  expect(hook.result.current.loading).toBe(false);
  hook.unmount();
 });
+
+it('offers typed unsent retry only after server confirmation and persists explicit intent through response loss', async () => {
+ vi.clearAllMocks(); sessionStorage.clear();
+ const session=makeSession({sourceMode:'multi_note_discovery',messages:[]});
+ const state=makeSetSessionsMock([session]),update=vi.fn();
+ const hook=renderHook(()=>useChatStream());
+ mockAuthFetchSuccess(makeSseReader([`data: ${JSON.stringify({error:'额度不足',code:'CHAT_BUDGET_EXHAUSTED',retryEligible:true,requestId:'confirmed-failed'})}\n\n`]));
+ await act(async()=>{await hook.result.current.sendMessage('继续',session,'typed-owner',update,state.setSessions);});
+ expect(hook.result.current.retryableFailure).toEqual({sessionId:session.id,requestId:'confirmed-failed'});
+ expect(mockAuthFetchFn).toHaveBeenCalledTimes(1);
+ mockAuthFetchFn.mockRejectedValueOnce(new Error('连接中断'));
+ await act(async()=>{await hook.result.current.sendMessage('继续',session,'typed-owner',update,state.setSessions,undefined,'confirmed-failed');});
+ const retry=JSON.parse(mockAuthFetchFn.mock.calls.at(-1)![1].body);
+ expect(retry.retryOfRequestId).toBe('confirmed-failed');
+ mockAuthFetchFn.mockRejectedValueOnce(new Error('连接中断'));
+ await act(async()=>{await hook.result.current.sendMessage('继续',session,'typed-owner',update,state.setSessions);});
+ expect(JSON.parse(mockAuthFetchFn.mock.calls.at(-1)![1].body)).toEqual(retry);
+ expect(hook.result.current.retryableFailure).toBeNull();
+ hook.unmount();
+});

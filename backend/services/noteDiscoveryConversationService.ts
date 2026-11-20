@@ -1,5 +1,5 @@
 import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import Chat from '../models/Chat';
 import { NoteDiscoveryChatTurn } from '../models/NoteDiscoveryChatTurn';
 import { config } from '../config';
@@ -11,13 +11,16 @@ import type { ChatSourceSnapshot } from '../types/chatSource';
 
 const writeConcern = { w: 'majority', j: true } as const;
 const error = (message: string, code: string, status = 409) => new AppError(message, ErrorType.VALIDATION, status, true, { code });
+export const discoveryRetryRequestId = (prior: string) => `retry:${createHash('sha256').update(prior).digest('hex')}`;
+const canRetry = (turn: any) => turn.status === 'failed' && turn.errorCode === 'CHAT_BUDGET_EXHAUSTED' && !turn.providerStartedAt && !turn.providerReservationId && !turn.reply && !turn.cleanupRequested;
+const retryError = (turn: any) => new AppError('本轮额度不足，尚未发送；额度恢复后可明确重试。', ErrorType.VALIDATION, 429, true, { code: 'CHAT_BUDGET_EXHAUSTED', retryEligible: true, requestId: turn.requestId });
 export class NoteDiscoveryConversationService {
   constructor(private readonly options: {
     provider?: DiscoveryProvider | null; budget?: NoteDiscoveryBudgetService; enabled?: () => boolean;
     now?: () => Date; timeoutMs?: number;
   } = {}) {}
 
-  async execute(input: { userId: string; chatId: string; requestId?: string; messages: IMessage[]; sourceSnapshots: ChatSourceSnapshot[]; baseVersion?: number }) {
+  async execute(input: { userId: string; chatId: string; requestId?: string; retryOfRequestId?: string; messages: IMessage[]; sourceSnapshots: ChatSourceSnapshot[]; baseVersion?: number }) {
     const { userId, chatId, requestId } = input;
     const now = this.options.now?.() ?? new Date();
     const deadline = new Date(now.getTime() + (this.options.timeoutMs ?? 60_000));
@@ -39,6 +42,13 @@ export class NoteDiscoveryConversationService {
     if (!requestId?.trim() || requestId.length > 150) throw error('请为本次对话提供有效请求标识', 'CHAT_REQUEST_ID_REQUIRED', 400);
     const existing = await bounded(NoteDiscoveryChatTurn.findOne({ userId, chatId, requestId }).lean());
     if (existing) return await bounded(this.replay(existing, userId, chatId));
+    if (input.retryOfRequestId) {
+      const prior: any = await bounded(NoteDiscoveryChatTurn.findOne({ userId, chatId, requestId: input.retryOfRequestId }).lean());
+      if (!prior || !canRetry(prior) || requestId !== discoveryRetryRequestId(input.retryOfRequestId)
+        || JSON.stringify(prior.payload?.messages?.map((m: IMessage) => ({ role: m.role, content: m.content }))) !== JSON.stringify(input.messages.map(m => ({ role: m.role, content: m.content })))) {
+        throw error('上次请求尚不能重新申请，请保留原请求核对结果', 'CHAT_RETRY_NOT_ALLOWED');
+      }
+    }
     if (!(this.options.enabled?.() ?? config.NOTE_DISCOVERY_RUNNABLE)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
     const provider = this.options.provider === undefined ? noteDiscoveryProvider : this.options.provider;
     if (!provider) throw error('AI 服务暂时不可用，请稍后重试', 'CHAT_PROVIDER_UNAVAILABLE', 503);
@@ -137,8 +147,9 @@ export class NoteDiscoveryConversationService {
       // Unknown acknowledgement or unsettled sent attempts remain sweepable, never silently terminalized.
       if ((settled || (!reservation && !(e instanceof Error && e.message.includes('recovery'))))
         && (e as AppError).details?.code !== 'CHAT_STORAGE_WAIT_EXPIRED' && !commitPhase) {
-        await bounded(NoteDiscoveryChatTurn.updateOne({ _id: operation._id, status: 'running', cleanupRequested: { $ne: true }, leaseToken: operation.leaseToken },
+        const terminal = await bounded(NoteDiscoveryChatTurn.updateOne({ _id: operation._id, status: 'running', cleanupRequested: { $ne: true }, leaseToken: operation.leaseToken },
           { $set: { status: 'failed', errorCode: (e as AppError).details?.code || 'CHAT_GENERATION_FAILED' } }, { writeConcern }));
+        if (terminal.modifiedCount && !reservation && !sent && (e as AppError).details?.code === 'CHAT_BUDGET_EXHAUSTED') throw retryError({ requestId });
       }
       throw e;
     }
@@ -161,6 +172,7 @@ export class NoteDiscoveryConversationService {
       }
     }
     if (turn.status === 'running') throw error('本次对话仍在处理，请稍后查看', 'CHAT_TURN_IN_PROGRESS');
+    if (canRetry(turn)) throw retryError(turn);
     if (turn.status !== 'completed') throw error('本次生成未完成；如需继续，请发送新的问题', turn.errorCode || 'CHAT_GENERATION_FAILED', 409);
     const session = await Chat.findOne({ _id: chatId, userId });
     if (!session) throw error('会话不存在或无权限', 'CHAT_UNAVAILABLE', 404);

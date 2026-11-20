@@ -12,6 +12,6 @@ router.post('/run', validate(z.object({ body: z.object({ idempotencyKey: key }) 
 router.patch('/preferences', validate(z.object({ body: z.object({ automaticEnabled: z.boolean().optional(), timeZone: z.string().min(1).max(100).optional() }).refine(v => v.automaticEnabled !== undefined || v.timeZone !== undefined, '请提供要修改的偏好') })), asyncHandler(controller.updateDiscoveryPreferences));
 router.post('/:id/feedback', validate(z.object({ body: z.object({ kind: z.enum(['not_interested', 'not_related', 'already_finished']) }) })), asyncHandler(controller.createDiscoveryFeedback));
 router.delete('/:id/feedback', asyncHandler(controller.revokeDiscoveryFeedback));
-router.post('/:id/session', asyncHandler(controller.startDiscoverySession));
+router.post('/:id/session', validate(z.object({ body: z.object({ retryOfRequestId: key.optional() }).default({}) })), asyncHandler(controller.startDiscoverySession));
 router.post('/:id/save', validate(z.object({ body: z.object({ text: z.string().trim().min(1).max(16000), title: z.string().max(100).optional(), idempotencyKey: key }) })), asyncHandler(controller.saveDiscoveryDraft));
 export default router;

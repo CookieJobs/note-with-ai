@@ -36,3 +36,5 @@
 [llmService.ts](llmService.ts) 是 DeepSeek 对话、摘要、概念扩展和重排的惰性入口，Note 路径不直接创建 `DeepSeekApiClient`。
 
 [apiClient.ts](../utils/apiClient.ts) 提供通用 HTTP 与 DeepSeek 客户端。DeepSeek 默认最多两次 HTTP 总尝试；流式首响应和空闲等待各 45 秒，总时限 120 秒，仅收到 `[DONE]` 或 `finish_reason=stop/length` 才视为完整结束。流式错误日志限于请求 ID、阶段、错误分类、HTTP 状态、白名单网络原因和耗时。生产环境不记录完整模型响应；其他调试输出保留已有截断限制。
+
+发现列表仅显式 `admit:true` 才初始化/协调调度；`admit:false`（公共 GET 默认）读取最新状态，不派生新生成轮次，真实首次曝光仍保留原有可见性及日上限收据。发现对话明确重试仅接受落库 `failed/CHAT_BUDGET_EXHAUSTED` 且无发送标记、预留、回答或清理标记的上次尝试；`retryOfRequestId` 经服务端验证并确定性派生下一 ID，同一上次失败的并发重试与响应丢失回放只有一个付费胜者。已提交回答优先，运行中及已付费/未知投递不提供重新申请资格。HTTP/SSE 只为确认未发送的预算拒绝公开 `retryEligible/requestId`。

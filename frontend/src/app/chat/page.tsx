@@ -21,6 +21,7 @@ import { useChatSession } from '../../hooks/useChatSession';
 import { useChatStream } from '../../hooks/useChatStream';
 import CareAssistantPanel from '../../components/CareAssistantPanel';
 import NoteDiscoveryPanel from '../../components/NoteDiscoveryPanel';
+import { noteDiscoveries } from '../../services/noteDiscoveries';
 import { normalizeChatSession, persistChatSessions } from '../../hooks/chatSessionStore';
 import ChatRelatedNotesPanel from '../../components/ChatRelatedNotesPanel';
 import ChatNotePreview from '../../components/ChatNotePreview';
@@ -55,6 +56,11 @@ function ChatPageContent() {
   }, [isRelatedNotesModal]);
 
   const { user, isClient } = useAuthGuard();
+  const interactionLock = useRef<object | null>(null);
+  const navigationIntent = useRef(0);
+  const latestOwner = useRef(user?.id); latestOwner.current = user?.id;
+  const streamBusyRef = useRef(false);
+  useEffect(() => { interactionLock.current = null; navigationIntent.current++; setStartingCare(false); }, [user?.id]);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const mainCenterRef = useRef<HTMLDivElement>(null);
   const noteOpenerRef = useRef<HTMLElement | null>(null);
@@ -86,11 +92,13 @@ function ChatPageContent() {
     activeSessionId,
     errorSessionId,
     error: streamError,
+    retryableFailure,
     sendMessage: sendMessageHook,
   } = useChatStream((previousId, nextId) => {
     setCurrentSessionId(selectedId => selectedId === previousId ? nextId : selectedId);
   }, user?.id);
 
+  streamBusyRef.current = streamBusy;
   const loading = streamBusy && activeSessionId === currentSessionId;
   const error = entryError || careError || (errorSessionId === currentSessionId ? streamError : '');
   const preview = notePreview?.userId === user?.id && notePreview?.sessionId === currentSessionId ? notePreview : null;
@@ -195,6 +203,7 @@ function ChatPageContent() {
   const handleSourceLink = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
       || !(event.target instanceof Element)) return;
+    if (event.target.closest('[data-discovery-entry]')) return;
     const anchor = event.target.closest('a');
     if (!anchor || anchor.target === '_blank') return;
     const target = new URL(anchor.href, window.location.href);
@@ -213,6 +222,7 @@ function ChatPageContent() {
   };
 
   const selectSession = (sessionId: string) => {
+    navigationIntent.current++;
     setEntryError(''); setCareError('');
     leaveExplicitSession();
     setSourceReturn(null);
@@ -224,6 +234,7 @@ function ChatPageContent() {
   const nonEmptySessions = useMemo(() => sessions.filter(s => s.sourceNoteId || (s.messages && s.messages.length > 0)), [sessions]);
 
   const startNewSession = async () => {
+    navigationIntent.current++;
     setEntryError(''); setCareError('');
     leaveExplicitSession();
     setSourceReturn(null);
@@ -271,13 +282,15 @@ function ChatPageContent() {
     setSessionToDelete('');
   };
 
-  const handleSend = async () => {
-    if (!user?.id || startingCare) return;
+  const handleSend = async (retryOfRequestId?: string) => {
+    if (!user?.id || startingCare || interactionLock.current) return;
     if (entryError || (explicitSessionId && explicitSessionHandled.current !== explicitSessionId)) {
       toast('请先选择有效对话或开启新对话；你的草稿已保留。');
       return;
     }
     if (streamBusy) { toast('另一段对话正在回复，请等待完成后再发送；你的草稿已保留。'); return; }
+    const token = {}; interactionLock.current = token;
+    try {
     setCareError('');
     setSourceReturn(null);
     
@@ -298,11 +311,13 @@ function ChatPageContent() {
         () => {
           if (inputRef.current === submittedInput) updateInput('');
         },
+        retryOfRequestId,
       );
       if (!sent && inputRef.current === '' && selectedSessionIdRef.current === session.id) {
         updateInput(submittedInput);
       }
     }
+    } finally { if (interactionLock.current === token) interactionLock.current = null; }
   };
 
   const adoptDiscoverySession = (rawSession: IChat) => {
@@ -315,6 +330,19 @@ function ChatPageContent() {
       return next;
     });
     selectSession(session.id);
+  };
+
+  const startDiscoverySession = async (id: string, retryOfRequestId?: string) => {
+    if (!user?.id || interactionLock.current || streamBusyRef.current) throw new Error('另一段对话正在处理，请等待完成。');
+    const token = {}; interactionLock.current = token;
+    const owner = user.id, navigation = navigationIntent.current;
+    setStartingCare(true);
+    try {
+      const result = await noteDiscoveries.session(id, retryOfRequestId);
+      if (latestOwner.current === owner && interactionLock.current === token && navigationIntent.current === navigation && !streamBusyRef.current) adoptDiscoverySession(result.session);
+    } finally {
+      if (interactionLock.current === token) { interactionLock.current = null; if (latestOwner.current === owner) setStartingCare(false); }
+    }
   };
 
   const handleCareSend = async (text: string, intro?: CareIntro) => {
@@ -437,6 +465,7 @@ function ChatPageContent() {
 
           {sessionsError && <div role="alert" className={styles.chatError}>{sessionsError} <button type="button" disabled={sessionsLoading} onClick={() => { void retrySessions(); }}>{sessionsLoading ? '正在重试…' : '重试加载对话'}</button></div>}
           {streamBusy && !loading && <p role="status" className={styles.streamNotice}>另一段对话正在回复，完成后可继续发送。你的草稿会保留。</p>}
+          {retryableFailure?.sessionId === currentSessionId && <button type="button" disabled={streamBusy || startingCare} onClick={() => void handleSend(retryableFailure.requestId)}>额度恢复后重新尝试这次提问</button>}
           <ChatInputArea
             input={input}
             loading={loading || startingCare}
@@ -448,7 +477,7 @@ function ChatPageContent() {
             placeholder={isNoteOpening ? '接着聊聊你的想法，也可以问点别的…' : undefined}
             suggestionComponent={
               showCare && !sourceNoteId && !explicitSessionId ? (
-                <NoteDiscoveryPanel key={user.id} userId={user.id} busy={streamBusy} onSession={adoptDiscoverySession} onBusyChange={setStartingCare} fallback={<CareAssistantPanel
+                <NoteDiscoveryPanel key={user.id} userId={user.id} busy={streamBusy} onSession={adoptDiscoverySession} onStartSession={startDiscoverySession} fallback={<CareAssistantPanel
                   auto={true} 
                   onInsert={handleCareInsert} 
                   onSend={handleCareSend}
