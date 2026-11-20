@@ -75,3 +75,7 @@ Next.js 15/React 18 承载网页，Tiptap 编辑富文本；Express 5/Mongoose �
 ## 验证与发布
 
 测试命令见 [README](README.md#检查与构建)，已完成工作区发布及验证边界见 [版本记录](docs/releases/2026-10-workspace-ui.md)。测试数是特定提交的历史证据，不是以后每次修改都自动通过的保证。前后端涉及绑定/写入契约时须成套发布；回退代码不能通过恢复旧数据库抹去发布后的用户数据。
+
+## 笔记自动发现执行链
+
+发现能力使用独立 `backend/scripts/run_note_discovery_worker.ts`，API 不启动收费循环。调度 outbox、lease token/generation、预算预留及发布完成态分别约束任务合并、断点恢复、费用和可见性；完整正文由账户封闭的工具读取，发布及使用前重新核对 revision。此实现为自管 JSON 工具循环，尚不能称供应商托管 Agent 框架。语义质量须通过真实模型人工验收，固定 mock 只验证契约。参见[评估与运行边界](docs/note-continuation-evaluation.md)。

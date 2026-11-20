@@ -120,3 +120,13 @@ Compose 从服务器项目根目录 `.env` 插值注入 worker 环境；不会�
 完成本地整体验收、备份与单独发布批准后，在批准的精确 commit 构建 worker 镜像（`docker compose --profile inspiration build inspiration-worker`）；候选检查通过，确认镜像对应同一业务版本后，才运行 `docker compose --profile inspiration up -d --no-deps --no-build inspiration-worker`。使用自定义环境文件时，两条命令都必须带相同的 `--env-file`。检查 `docker compose --profile inspiration ps`、实际 worker 镜像和只含安全状态码的日志；设置接口显示用户上次检查结果。不能复用未经版本核对的旧 worker 镜像。
 
 如需暂停新的自动研究，先关闭用户开关，或执行 `docker compose --profile inspiration stop inspiration-worker`。已发出的外部请求无法撤回；停掉 worker 不会删除历史灵感。恢复时只处理仍符合频率约束的任务，不补跑停机期间的每一天。
+
+## 笔记自动发现 worker（默认关闭）
+
+本节是准备说明，不授权发布或启用。依本指南核对 `origin/main` 精确 SHA、配置/数据库/旧镜像备份、候选构建检查后，才可按会话发布授权切换。独立 worker 入口为 `npm run worker:note-discovery`（backend 构建后），当前 `docker-compose.yml` 尚未声明对应服务；发布前须为该入口配置独立 worker 进程/服务及与 API 一致的环境注入，不能假设已有 Compose 服务；API 与 worker 配置须一致。保留默认 `NOTE_DISCOVERY_ENABLED=false`，供应商单价或人民币上限未核实时保持关闭。真实模型质量及配置前置条件见 [评估说明](../docs/note-continuation-evaluation.md)。
+
+关闭：将 API 与 worker 的 flag 均设 false 并按当前运行方式重启；停止 worker 可立即阻止新发送，但已经发出的请求仍可能收费。disabled worker tick 仍执行清理恢复并取消排队任务。不要删除预算账本或重置发送未知标记来重试。
+
+恢复：保留 Mongo 账本/租约/run，worker 重启后按过期租约恢复；generation fence 阻止旧进程发布。发送未知保守按预留结算且禁止自动重发；结算或 marker 清理失败留给租约恢复。观察失败类别、reserved/spent 和未知费用，不根据进程已启动声称恢复完成。清理 staging 行由 worker 定期执行，不直接全表删除。
+
+用户清理：当前未发现账户删除 API/service。未来账户删除调用方必须显式调用 `noteDiscoveryApiService.cleanupUser(userId)`，等待幂等清理及恢复链完成；不能声称已接入账户删除。笔记删除/修订另有引用失效链。账本属于财务恢复约束，遵循现有 cleanup 服务语义，不能为了“清理”抹除已发生费用。

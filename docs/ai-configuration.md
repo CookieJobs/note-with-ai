@@ -27,3 +27,7 @@
 本地环境文件读取及 `/api` 代理见 [项目说明](../README.md#本地开发)。生产 Compose 注入明确列出的变量；没有列入 Compose 的配置项，不会因为写进根 `.env` 就自动进入容器。变更需要同时核对 Compose 与服务实际环境。
 
 `EMBEDDING_TEST_MODE` 在开发模板里可能为 true；它不是实际生产任务已启用的证据。自动灵感需要用户开关与独立 worker；启动/停用和费用控制见 [部署指南](../deploy/DEPLOY_GUIDE.md)。
+
+## 自动发现笔记延续
+
+`NOTE_DISCOVERY_ENABLED` 默认 false。即使打开，也需 `NOTE_DISCOVERY_PRICED_MODEL` 精确匹配模型、输入/输出及 embedding 单价已填、priced embedding provider/model 匹配，并配置 `NOTE_DISCOVERY_USER_DAILY_CNY`、`NOTE_DISCOVERY_GLOBAL_DAILY_CNY`、`NOTE_DISCOVERY_RUN_RESERVATION_CNY`；否则 fail closed。单价不得从测试 fixture 复制。API 与独立 worker 必须使用同一套核实后的配置。硬上限是 3 次模型、8 次工具、12 篇、24000 输入 / 4000 输出 tokens、90 秒，配置只可缩小。完整真实模型评估、预算及观测定义见[评估说明](note-continuation-evaluation.md)。
