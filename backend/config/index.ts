@@ -98,6 +98,7 @@ const envSchema = z.object({
   DASHSCOPE_EMBEDDING_CNY_PER_MILLION: z.coerce.number().nonnegative().optional(),
 
   NOTE_DISCOVERY_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+  NOTE_DISCOVERY_LOCAL_USER_ID: z.string().trim().regex(/^[a-f0-9]{24}$/i).transform((value) => value.toLowerCase()).optional(),
   NOTE_DISCOVERY_MODEL: z.string().trim().min(1).max(200).default('deepseek-flash'),
   // Discovery generation uses DeepSeek. Rates are only valid for the identified model.
   NOTE_DISCOVERY_PRICED_MODEL: pricedModel,
@@ -148,6 +149,9 @@ export function parseConfig(environment: Environment = process.env) {
   if (result.data.NODE_ENV !== 'development' && result.data.ADMIN_LOCAL_PASSWORD_ONLY) {
     throw new Error('ADMIN_LOCAL_PASSWORD_ONLY is only allowed in development');
   }
+  if (result.data.NODE_ENV !== 'development' && result.data.NOTE_DISCOVERY_LOCAL_USER_ID) {
+    throw new Error('NOTE_DISCOVERY_LOCAL_USER_ID is only allowed in development');
+  }
   const {
     NOTE_DISCOVERY_USER_DAILY_CNY: NOTE_DISCOVERY_USER_DAILY_CNY_MICROS,
     NOTE_DISCOVERY_GLOBAL_DAILY_CNY: NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
@@ -176,3 +180,7 @@ export function parseConfig(environment: Environment = process.env) {
 }
 
 export const config = parseConfig();
+
+export function isNoteDiscoveryAccountAllowed(userId: string, settings = config): boolean {
+  return !settings.NOTE_DISCOVERY_LOCAL_USER_ID || settings.NOTE_DISCOVERY_LOCAL_USER_ID === userId.toLowerCase();
+}

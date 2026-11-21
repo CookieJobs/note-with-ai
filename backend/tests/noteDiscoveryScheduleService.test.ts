@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { Types } from 'mongoose';
+import { config } from '../config';
 import { Note } from '../models/Note';
 import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
@@ -42,6 +43,27 @@ describe('durable discovery scheduling', noteDiscoveryMongoTestOptions, () => {
     await store.finish(run._id.toHexString(), run.leaseToken, status);
     return run;
   }
+  it('scopes startup, edits and paid admission to the configured local account', async () => {
+    const other = new Types.ObjectId().toHexString();
+    const previous = config.NOTE_DISCOVERY_LOCAL_USER_ID;
+    config.NOTE_DISCOVERY_LOCAL_USER_ID = userId;
+    try {
+      await Note.create([{ userId, content: '测试记录', revision: 1 }, { userId: other, content: '另一个账号的记录', revision: 1 }]);
+      assert.equal(await service.initializeOnStartup(now), 1);
+      assert.equal(await NoteDiscoveryPreference.exists({ userId: other }), null);
+      assert.equal((await service.requestManual(other, 'outside-scope')).status, 'disabled');
+      await service.scheduleChanged(other, noteId, 1, now);
+      assert.equal(await store.getActiveRun(other), null);
+      const run = await store.enqueue(other, { changedAt: now }, 'old-outside-scope', { trigger: 'manual' });
+      assert.ok(run);
+      const claimed = await store.claimNext(new Date(now.getTime() + 1));
+      assert.ok(claimed);
+      const outside = claimed.userId.toHexString() === other ? claimed : await store.claimNext(new Date(now.getTime() + 1));
+      assert.equal(outside?.userId.toHexString(), other);
+      assert.equal((await service.authorizeRun(outside!)).status, 'disabled');
+      assert.equal(await service.canPublish(outside!), false);
+    } finally { config.NOTE_DISCOVERY_LOCAL_USER_ID = previous; }
+  });
   it('debounces concurrent changes without charging admission before execution', async () => {
     await Promise.all(Array.from({ length: 12 }, (_, i) => create().scheduleChanged(userId, noteId, i + 1, new Date(now.getTime() + i * 1000))));
     const run = await store.getActiveRun(userId);

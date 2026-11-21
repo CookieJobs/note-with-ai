@@ -1,6 +1,6 @@
 import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { Types } from 'mongoose';
-import { config } from '../config';
+import { config, isNoteDiscoveryAccountAllowed } from '../config';
 import { Note } from '../models/Note';
 import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
@@ -117,7 +117,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async scheduleChanged(userId: string, noteId: string, revision: number, now = this.now()): Promise<void> {
-    if (!this.enabled || await isDiscoveryUserCleaningUp(userId)) return;
+    if (!this.enabled || !isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return;
     if (!Types.ObjectId.isValid(noteId) || !Number.isSafeInteger(revision) || revision < 1 || !Number.isFinite(now.getTime())) {
       throw new Error('Invalid discovery change');
     }
@@ -132,7 +132,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async initializeOnVisit(userId: string, timeZone?: string, now = this.now()): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
+    if (!this.enabled || !isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     const zone = timeZone === undefined ? undefined : validZone(timeZone);
     const latest = await this.readLatest(userId);
     const preference = await this.mutate(userId, (pref, state) => {
@@ -154,7 +154,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async setAutomaticEnabled(userId: string, enabled: boolean, now = this.now()): Promise<DiscoveryAdmissionResult> {
-    if (await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
+    if (!isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     // Preferences remain editable while the global feature is off.
     const latest = enabled && this.enabled ? await this.readLatest(userId) : null;
     await this.mutate(userId, (pref, state) => {
@@ -175,7 +175,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async requestManual(userId: string, key: string, now = this.now()): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
+    if (!this.enabled || !isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     if (!key.trim() || key.length > 150) throw new Error('Invalid manual idempotency key');
     // Replay precedes quota checks, including terminal requests.
     const replay = await NoteDiscoveryRun.findOne({ userId, $or: [{ idempotencyKey: `manual:${key}` }, { idempotencyAliases: `manual:${key}` }] }).lean();
@@ -201,7 +201,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async reconcile(userId: string, now = this.now(), force = false): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
+    if (!this.enabled || !isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     const success = await NoteDiscoveryRun.findOne({ userId, status: { $in: ['completed', 'no_result'] } })
       .sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1, finishedAt: -1, _id: -1 }).lean();
     // Search the durable account history, not only the most recent attempt. A later
@@ -243,7 +243,11 @@ export class NoteDiscoveryScheduleService {
   async initializeOnStartup(now = this.now()): Promise<number> {
     if (!this.enabled) return 0;
     let count = 0;
-    const users = Note.aggregate<{ _id: Types.ObjectId }>([{ $group: { _id: '$userId' } }, { $sort: { _id: 1 } }]).cursor({ batchSize: 100 });
+    const localUserId = config.NOTE_DISCOVERY_LOCAL_USER_ID;
+    const users = Note.aggregate<{ _id: Types.ObjectId }>([
+      ...(localUserId ? [{ $match: { userId: new Types.ObjectId(localUserId) } }] : []),
+      { $group: { _id: '$userId' } }, { $sort: { _id: 1 } },
+    ]).cursor({ batchSize: 100 });
     for await (const user of users) {
       const userId = user._id.toHexString();
       if (await isDiscoveryUserCleaningUp(userId)) continue;
@@ -269,7 +273,8 @@ export class NoteDiscoveryScheduleService {
     for (;;) {
       const users = await NoteDiscoveryPreference.find({ automaticEnabled: true,
         'schedule.changedWatermark': { $exists: true }, 'schedule.dueAt': { $lte: now },
-        ...(after ? { userId: { $gt: after } } : {}),
+        ...(config.NOTE_DISCOVERY_LOCAL_USER_ID ? { userId: config.NOTE_DISCOVERY_LOCAL_USER_ID }
+          : after ? { userId: { $gt: after } } : {}),
       }).sort({ userId: 1 }).select('userId').limit(100).lean();
       for (const user of users) await this.reconcile(user.userId.toHexString(), now);
       count += users.length;
@@ -281,7 +286,7 @@ export class NoteDiscoveryScheduleService {
   async authorizeRun(run: ClaimedDiscoveryRun, now = this.now()): Promise<DiscoveryAdmissionResult> {
     if (!this.enabled || run.executionCancelled) return this.result('disabled', run);
     const userId = run.userId.toHexString();
-    if (await isDiscoveryUserCleaningUp(userId)) return this.result('disabled', run);
+    if (!isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled', run);
     const fence = { runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken };
     // Store promotion and crash recovery can reach admission without reconcile.
     // Enforce the durable paid-state barrier at this independent execution boundary.
@@ -344,7 +349,7 @@ export class NoteDiscoveryScheduleService {
   async canPublish(run: ClaimedDiscoveryRun): Promise<boolean> {
     if (!this.enabled) return false;
     const userId = run.userId.toHexString();
-    if (await isDiscoveryUserCleaningUp(userId)) return false;
+    if (!isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return false;
     if (run.trigger === 'automatic' && await NoteDiscoveryPreference.exists({ userId, automaticEnabled: false })) return false;
     return this.store.isCurrentFence({ runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken });
   }

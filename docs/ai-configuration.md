@@ -31,3 +31,5 @@
 ## 自动发现笔记延续
 
 `NOTE_DISCOVERY_ENABLED` 默认 false。即使打开，也需 `NOTE_DISCOVERY_PRICED_MODEL` 精确匹配模型、输入/输出及 embedding 单价已填、priced embedding provider/model 匹配，并配置 `NOTE_DISCOVERY_USER_DAILY_CNY`、`NOTE_DISCOVERY_GLOBAL_DAILY_CNY`、`NOTE_DISCOVERY_RUN_RESERVATION_CNY`；否则 fail closed。单价不得从测试 fixture 复制。API 与独立 worker 必须使用同一套核实后的配置。硬上限是 3 次模型、8 次工具、12 篇、24000 输入 / 4000 输出 tokens、90 秒，配置只可缩小。完整真实模型评估、预算及观测定义见[评估说明](note-continuation-evaluation.md)。
+
+只为一个本地账号体验时，可以在开发进程设置 `NOTE_DISCOVERY_LOCAL_USER_ID` 为该账号在本地数据库的 ObjectId。后端和独立 worker 使用同一份开发配置，例如在各自的 Node 启动命令中使用 `--env-file /绝对路径/本地配置.env`。其他账号不显示发现入口，自动扫描和新请求也不会为它们调用模型。该变量仅供 `development` 环境使用，配置文件保留在本机。

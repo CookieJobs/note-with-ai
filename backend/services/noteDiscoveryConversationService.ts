@@ -2,7 +2,7 @@ import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { createHash, randomUUID } from 'node:crypto';
 import Chat from '../models/Chat';
 import { NoteDiscoveryChatTurn } from '../models/NoteDiscoveryChatTurn';
-import { config } from '../config';
+import { config, isNoteDiscoveryAccountAllowed } from '../config';
 import { noteDiscoveryProvider, type DiscoveryProvider } from './noteDiscoveryProvider';
 import { noteDiscoveryBudgetService, discoveryCostMicros, type NoteDiscoveryBudgetService } from './noteDiscoveryBudgetService';
 import { AppError, ErrorType } from '../utils/errorHandler';
@@ -29,6 +29,7 @@ export class NoteDiscoveryConversationService {
 
   async execute(input: { userId: string; chatId: string; requestId?: string; retryOfRequestId?: string; messages: IMessage[]; sourceSnapshots: ChatSourceSnapshot[]; baseVersion?: number }) {
     const { userId, chatId, requestId } = input;
+    if (!isNoteDiscoveryAccountAllowed(userId)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
     const now = this.options.now?.() ?? new Date();
     const deadline = new Date(now.getTime() + (this.options.timeoutMs ?? 60_000));
     const abort = new AbortController();

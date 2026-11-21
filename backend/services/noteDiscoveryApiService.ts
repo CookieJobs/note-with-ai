@@ -2,7 +2,7 @@ import { fenceDiscoveryNoteTarget } from './discoveryNoteDeletionFence';
 import { NoteDiscoveryCleanup, isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { noteDiscoveryBudgetService } from './noteDiscoveryBudgetService';
 import mongoose, { Types } from 'mongoose';
-import { config } from '../config';
+import { config, isNoteDiscoveryAccountAllowed } from '../config';
 import NoteDiscovery from '../models/NoteDiscovery';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
 import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
@@ -45,12 +45,16 @@ export class NoteDiscoveryApiService {
     if (!await canUseDiscovery(userId, item)) throw error('来源已变化或不可访问，请重新寻找发现', 'DISCOVERY_STALE', 409);
   }
   private async assertActive(userId: string) {
+    if (!isNoteDiscoveryAccountAllowed(userId)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
     if (await isDiscoveryUserCleaningUp(userId)) {
       await eraseDiscoveryUserData(userId);
       throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
     }
   }
   async list(userId: string, options: { history?: boolean; timeZone?: string; admit?: boolean } = {}): Promise<DiscoveryListDto> {
+    if (!isNoteDiscoveryAccountAllowed(userId)) {
+      return { items: [], run: { status: 'idle' }, available: false, automaticEnabled: false, timeZone: 'Asia/Shanghai' };
+    }
     await this.assertActive(userId);
     let admission: Awaited<ReturnType<typeof this.schedule.initializeOnVisit>> = { status: 'idle', currentRun: null };
     try { if (options.admit === true) admission = await this.schedule.initializeOnVisit(userId, options.timeZone, this.now()); }

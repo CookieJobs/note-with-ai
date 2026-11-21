@@ -74,6 +74,20 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     base = `http://127.0.0.1:${server.address().port}`;
   });
   after(async () => { mock.restoreAll(); await new Promise<void>(resolve => server?.close(() => resolve())); await cleanup?.(); });
+  it('hides and rejects discovery for a signed-in account outside the local allowlist', async () => {
+    const { config } = await import('../config');
+    const previous = config.NOTE_DISCOVERY_LOCAL_USER_ID;
+    config.NOTE_DISCOVERY_LOCAL_USER_ID = new Types.ObjectId().toHexString();
+    try {
+      const read = await request('?admit=true');
+      assert.equal(read.status, 200);
+      assert.equal(read.json.data.available, false);
+      assert.deepEqual(read.json.data.items, []);
+      const run = await request('/run', 'POST', { idempotencyKey: 'blocked-local' });
+      assert.equal(run.status, 503);
+      assert.equal(run.json.code, 'DISCOVERY_DISABLED');
+    } finally { config.NOTE_DISCOVERY_LOCAL_USER_ID = previous; }
+  });
   it('returns the current manual denial and retry time through the authenticated route', async () => {
     const retryAt = new Date('2026-11-22T00:00:00Z');
     const stub = mock.method(service.schedule, 'requestManual', async () => ({status:'limited',currentRun:null,retryAt}));
