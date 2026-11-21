@@ -7,6 +7,7 @@ import * as controller from '../controllers/noteDiscoveryController';
 const router = express.Router();
 router.use(authenticateToken);
 const key = z.string().trim().min(1).max(150);
+router.get('/availability', asyncHandler(controller.getDiscoveryAvailability));
 router.get('/', asyncHandler(controller.listDiscoveries));
 router.post('/run', validate(z.object({ body: z.object({ idempotencyKey: key }) })), asyncHandler(controller.runDiscoveries));
 router.patch('/preferences', validate(z.object({ body: z.object({ automaticEnabled: z.boolean().optional(), timeZone: z.string().min(1).max(100).optional() }).refine(v => v.automaticEnabled !== undefined || v.timeZone !== undefined, '请提供要修改的偏好') })), asyncHandler(controller.updateDiscoveryPreferences));

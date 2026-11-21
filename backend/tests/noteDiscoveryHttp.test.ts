@@ -79,6 +79,9 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     const previous = config.NOTE_DISCOVERY_LOCAL_USER_ID;
     config.NOTE_DISCOVERY_LOCAL_USER_ID = new Types.ObjectId().toHexString();
     try {
+      const availability = await request('/availability');
+      assert.equal(availability.status, 200);
+      assert.deepEqual(availability.json.data, { available: false });
       const read = await request('?admit=true');
       assert.equal(read.status, 200);
       assert.equal(read.json.data.available, false);
@@ -100,6 +103,7 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
   });
   it('requires authentication and rejects foreign/unpublished discovery actions without data leakage', async () => {
     assert.equal((await request('', 'GET', undefined, '')).status, 401);
+    assert.equal((await request('/availability', 'GET', undefined, '')).status, 401);
     assert.equal((await request(`/${new Types.ObjectId()}/feedback`, 'POST', { kind: 'not_related' })).status, 404);
     const { Discovery } = await modules();
     await Discovery.updateOne({ _id: item._id }, { $set: { generation: 2 } });
@@ -107,6 +111,23 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     await Discovery.updateOne({ _id: item._id }, { $set: { generation: 1 } });
   });
   it('atomically caps concurrent first exposure at three local-day slots, keeps candidates and permits explicit history', async () => {
+    const { config } = await import('../config');
+    const previous = config.NOTE_DISCOVERY_LOCAL_USER_ID;
+    const wasRunnable = config.NOTE_DISCOVERY_RUNNABLE;
+    config.NOTE_DISCOVERY_LOCAL_USER_ID = userId;
+    try {
+      config.NOTE_DISCOVERY_RUNNABLE = false;
+      assert.deepEqual((await request('/availability')).json.data, { available: false });
+      config.NOTE_DISCOVERY_RUNNABLE = true;
+      const available = await request('/availability');
+      assert.equal(available.status, 200);
+      assert.deepEqual(available.json.data, { available: true });
+      const { Discovery } = await modules();
+      assert.equal(await Discovery.countDocuments({ userId, exposedAt: { $exists: true } }), 0);
+    } finally {
+      config.NOTE_DISCOVERY_LOCAL_USER_ID = previous;
+      config.NOTE_DISCOVERY_RUNNABLE = wasRunnable;
+    }
     const results = await Promise.all(Array.from({ length: 5 }, () => request('')));
     assert.ok(results.every(r => r.status === 200));
     const { Discovery } = await modules();
