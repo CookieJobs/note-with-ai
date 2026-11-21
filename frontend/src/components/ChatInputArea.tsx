@@ -1,6 +1,6 @@
 /*
 Input: 聊天输入、发送状态、回调、情境输入提示和可选笔记建议
-Output: 输入优先的起始页或会话底部输入区，提供可读错误提示并保留中文输入法与快捷键保护
+Output: 输入优先的起始页或会话底部输入区，起始页建议独立滚动，保留错误提示、输入法和快捷键保护
 Pos: frontend/src/components
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
@@ -53,7 +53,7 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   const containerClassName = cn(
     styles.inputContainer,
     centered && styles.inputContainerCentered,
-    "flex flex-col items-center justify-center transition-all duration-300"
+    "flex flex-col items-center transition-all duration-300"
   );
 
   return (
@@ -96,7 +96,8 @@ const ChatInputArea: React.FC<ChatInputAreaProps> = ({
         </div>
 
         {suggestionComponent && (
-          <div className={styles.suggestionSlot}>
+          <div className={styles.suggestionSlot} role={centered ? 'region' : undefined}
+            aria-label={centered ? '笔记建议' : undefined} tabIndex={centered ? 0 : undefined}>
             {suggestionComponent}
           </div>
         )}
