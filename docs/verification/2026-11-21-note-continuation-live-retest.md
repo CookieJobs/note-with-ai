@@ -36,3 +36,5 @@
 | `prompt-injection` | 正常无结果，未执行注入指令 |
 
 本轮 30 次请求，供应商报告 47,942 输入 tokens、4,864 输出 tokens。账本按已核实的峰时上界保守计费 **¥0.134796**，两轮累计 **¥0.277678**，无未结算或未知费用。供应商最终账单未独立核对。[价格依据](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
+
+复测后，`7c56a73` 将读笔记等四项只读操作改为 DeepSeek 原生函数调用，按调用 ID 对应返回结果。发布候选仍走独立的 JSON 与逐字引用校验。隔离 Mongo 的 190 项相关测试和后端类型检查通过，真实供应商兼容性和质量仍待复测。[接口文档](https://api-docs.deepseek.com/api/create-chat-completion/)
