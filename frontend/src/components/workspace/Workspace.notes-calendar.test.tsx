@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, expect, it, vi } from 'vitest';
 import WorkspaceRoot from './WorkspaceRoot';
 import { useWorkspace } from './WorkspaceContext';
+import { beijingDate } from '../../app/notes/utils/noteFeed';
 const mocks = vi.hoisted(() => ({ pathname: '/notes', fetch: vi.fn() }));
 vi.mock('next/navigation', () => ({ usePathname: () => mocks.pathname, useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('../../utils/auth', () => ({ getUser: () => ({ id:'calendar-user',username:'月历用户' }), authFetch: mocks.fetch, logout: vi.fn() }));
@@ -32,4 +33,29 @@ it('refreshes sidebar calendar after notes write without resetting its selected 
   await act(async()=>fireEvent.click(screen.getByRole('button',{name:'模拟笔记写入成功'})));
   await waitFor(()=>expect(mocks.fetch.mock.calls.at(-1)![0]).toBe(previous));
   expect(mocks.fetch.mock.calls.filter(([url])=>url.includes('/calendar'))).toHaveLength(3);
+});
+
+it('shows fixed heat levels for daily counts and marks today independently', async () => {
+  const today = beijingDate();
+  const month = today.slice(0, 7);
+  const dates = ['01', '02', '03', '04', '05', '06', '07', '08']
+    .map(day => `${month}-${day}`)
+    .filter(date => date !== today);
+  const counts = [0, 1, 2, 3, 4, 6, 7];
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ success: true, data: {
+    month, timezone: 'Asia/Shanghai', noteCount: 23, recordedDayCount: 6,
+    days: dates.slice(1, counts.length).map((date, index) => ({ date, count: counts[index + 1] })),
+  } }) });
+
+  render(<WorkspaceRoot><main>笔记正文</main></WorkspaceRoot>);
+  const calendar = await screen.findByRole('group', { name: `${month}记录日历` });
+  const levels = [0, 1, 2, 2, 3, 3, 4];
+  for (const [index, count] of counts.entries()) {
+    const date = dates[index];
+    const cell = within(calendar).getByTitle(`${date}，${count} 篇笔记`);
+    expect(cell).toHaveAttribute('data-heat-level', String(levels[index]));
+  }
+  const current = within(calendar).getByTitle(`${today}，0 篇笔记`);
+  expect(current).toHaveAttribute('aria-current', 'date');
+  expect(current).toHaveAttribute('data-heat-level', '0');
 });
