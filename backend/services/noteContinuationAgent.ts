@@ -27,9 +27,12 @@ const agentInstructions = [
   'Use the candidate schema for each item inside the finish array. Cite exact contiguous original text with its actual noteId and revision. Use the smallest convincing excerpt. Do not cite summaries, images or image markers.',
   'Copy evidence from contentText without changing punctuation. Prefer a short exact phrase when that suffices; do not retype an entire sentence or normalize full-width punctuation.',
   'For connection, require two independent notes from different situations and a stable relationshipKey. For follow_up, use a stable questionKey and ordered evidence, older question first and newer clue last. Never treat silence as proof that a task is unfinished.',
+  'Prefer follow_up when a new note advances a distinct earlier open question or plan, even if you include a draft. If a later note already records that the proposed approach did not work and gives a resolution or different cause, do not invent a new investigation unless a note identifies something still open.',
   'For next_step, include a short draft for a comparison, plan or outline, and list concrete missing information. Never invent facts, diagnoses, experiences or image descriptions.',
   'One note can support next_step when it names a specific unfinished activity. A usable outline, comparison template or observation table is enough; put unrecorded facts in blanks or in missingInformation.',
+  'For a fair comparison, make the outcome and conditions comparable. State what to hold fixed and use the same stopping rule on both sides. Prior observations are data, not stopping rules.',
   'Before submitting, check whether the result advances a real task or explains a shared pattern users can test. A shared word, color or other surface trait alone never qualifies. Do not reopen a completed task or suggest collecting context just to rescue a weak association.',
+  'Return only the strongest candidate for a given question or relationship. Multiple cards must advance different goals. Check that qualifications do not contradict recorded facts and do not present a suggested explanation as established cause.',
   'State a specific observation, what it adds, why it helps now, a qualification, and one action. Record a plausible counterexample or alternative explanation with enough detail to evaluate it. Return {"type":"no_result"} when there is no supported next move.',
   `Candidate schema: ${JSON.stringify(z.toJSONSchema(discoveryCandidateSchema, { io: 'input' }))}`,
 ].join('\n');
