@@ -5,7 +5,7 @@ import Discovery from '../models/NoteDiscovery';
 import { NoteContinuationAgent } from '../services/noteContinuationAgent';
 import { createDiscoveryProvider } from '../services/noteDiscoveryProvider';
 import { evaluationCases } from './fixtures/noteContinuation/cases';
-import { fixturePrice, makeCandidate, makeNote, makeRun, ownerId, providerResponse } from './noteDiscoveryRunnerFixture';
+import { fixturePrice, makeCandidate, makeNote, makeRun, nativeToolResponse, ownerId, providerResponse } from './noteDiscoveryRunnerFixture';
 import { connectNoteDiscoveryTestMongo, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
 
 test('fixed corpus contains four positives per kind and all twelve negative categories', () => {
@@ -40,9 +40,9 @@ describe('synthetic corpus through production runner (contracts only, not semant
       if (item.attack === 'fault') throw new Error('synthetic transport failure');
       // Semantic negatives deliberately script abstention: this verifies execution, not model judgement.
       if (item.expectation === 'abstain' && !item.attack) return providerResponse({ type: 'no_result' });
-      if (calls === 1) return providerResponse({ type: 'tools', calls: notes.map(note => ({
+      if (calls === 1) return nativeToolResponse(notes.map(note => ({
         name: 'readOwnNote', arguments: { noteId: String(note._id) },
-      })) });
+      })));
       if (item.attack === 'revision') await Note.updateOne({ _id: notes[0]._id }, { $set: { revision: 2 } });
       if (item.attack === 'deleted') await Note.deleteOne({ _id: notes[0]._id });
       return providerResponse({ type: 'finish', candidates: item.attack === 'duplicate' ? [candidate, candidate] : [candidate] });

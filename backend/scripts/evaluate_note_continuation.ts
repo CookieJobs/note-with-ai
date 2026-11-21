@@ -81,7 +81,10 @@ async function main() {
         const prepared = noteDiscoveryProvider.prepare(...args);
         return { ...prepared, async send(signal: AbortSignal) {
           const result = await prepared.send(signal);
-          if (result.delivery === 'response_received' && result.content) syntheticActions.push(result.content);
+          if (result.delivery === 'response_received') {
+            if (result.response === 'ok') syntheticActions.push(result.content);
+            if (result.response === 'tools') syntheticActions.push(JSON.stringify(result.message.tool_calls));
+          }
           return result;
         } };
       },

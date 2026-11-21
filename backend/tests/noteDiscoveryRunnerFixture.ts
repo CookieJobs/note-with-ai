@@ -57,7 +57,21 @@ export function providerResponse(action: unknown, usage: unknown = {
 }) {
   return {
     status: 200,
-    data: { choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(action) } }], usage },
+    data: { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(action) } }], usage },
+  };
+}
+
+export function nativeToolResponse(calls: Array<{ name: string; arguments: unknown; id?: string }>, usage: unknown = {
+  prompt_tokens: 100, completion_tokens: 60, total_tokens: 160,
+}) {
+  return {
+    status: 200,
+    data: { choices: [{ finish_reason: 'tool_calls', message: {
+      role: 'assistant', content: null, tool_calls: calls.map(call => ({
+        type: 'function', id: call.id ?? `call_${randomUUID()}`,
+        function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+      })),
+    } }], usage },
   };
 }
 
