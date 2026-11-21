@@ -4,7 +4,7 @@
 
 ## 页面接口与导航
 
-[WorkspaceContext](WorkspaceContext.tsx) 是模块接口：页面登记最新编辑状态、保存动作、最近笔记和真实聊天操作，外壳不拥有第二套业务草稿。登记清理核对身份，旧 effect 不能清除后来登记。
+[WorkspaceContext](WorkspaceContext.tsx) 是模块接口：页面登记最新编辑状态、保存动作、最近笔记和真实聊天操作，外壳不拥有第二套业务草稿。登记清理核对身份，旧 effect 不能清除后来登记。笔记与灵感通过顶栏挂载点渲染当前视图所需的导航、操作或搜索。顶栏独立于正文滚动，页面离开时自动卸载自己的操作。宽屏展开侧栏时，没有操作的顶栏不占空间。笔记详情和发现阅读通过 WorkspaceBackButton 在顶栏左侧同一位置显示返回，其他操作留在右侧。
 
 [useWorkspaceNavigation](useWorkspaceNavigation.ts) 统一程序导航、`beforeunload` 和浏览器前进后退保护。未保存时允许保存并继续、放弃或继续编辑；保存失败/冲突或保存期间后来输入不得静默跳转。[WorkspacePopstateBridge](WorkspacePopstateBridge.tsx) 在路由边界持续挂载，工作区活动订阅先于 Next 历史恢复处理；退出工作区移除订阅和 history 包装，认证与后台不修改历史行为。
 
@@ -16,7 +16,7 @@
 
 [useWorkspaceRecentNotes](useWorkspaceRecentNotes.ts) 仅维护最近五条链接投影。冷进入其他工作区页面且没有当前账户可信投影时，从现有 `/api/notes` 读取首屏；不加载 `useNotes`/Tiptap、不填充 React Query 笔记缓存。笔记页成功登记（含确认空库）优先于迟到读取，未加载/失败不冒充空库；成功投影同账户跨路由复用、不轮询，失败可重试。账户、路由或卸载废弃旧请求。
 
-聊天侧栏消费页面登记的真实历史与操作，不另建会话 hook；长历史列表保留内部滚动，桌面折叠与窄窗抽屉分别处理。定期灵感设置由外壳唯一 controller 拥有，页面与设置共用服务端确认值，详见[灵感模块](../../app/inspiration/README.md)。
+笔记和灵感页的主导航上方省去新建笔记入口，笔记页从主内容区新建。AI 对话页在主导航下方的对话历史区顶部提供「新建对话」，桌面折叠时保留加号按钮。聊天侧栏消费页面登记的真实历史与操作，不另建会话 hook；长历史列表保留内部滚动，桌面折叠与窄窗抽屉分别处理。定期灵感设置由外壳唯一 controller 拥有，页面与设置共用服务端确认值，详见[灵感模块](../../app/inspiration/README.md)。
 
 [useWorkspacePreferences](useWorkspacePreferences.ts) 校验并恢复本机主题、字号、动效和侧栏偏好。[Workspace.module.scss](Workspace.module.scss) 将 tokens 和旧变量桥接限制在根容器及工作区弹层，不给 html/body 设置全局深色。实色按钮使用 `button.类名` 抵抗 Tailwind reset，默认、悬停、禁用和深浅主题均需浏览器检查。
 

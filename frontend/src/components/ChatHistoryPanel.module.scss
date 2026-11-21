@@ -212,5 +212,19 @@ button.deleteButton {
 
 .sidebar.embedded { width: 100%; flex: 1; position: relative; inset: auto; border: 0; background: transparent; visibility: visible; transform: none; z-index: auto; }
 .embedded .search { margin: 8px 0 18px; }
-.embedded .list { padding: 0 0 12px; }
+.embedded .list {
+  padding: 0 0 12px;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--workspace-muted, #6f6f6f) transparent;
+  scrollbar-color: color-mix(in srgb, var(--workspace-ink, #17191d) 50%, var(--ws-sidebar, #f8f9fb)) transparent;
+
+  &:hover,
+  &:focus-within {
+    scrollbar-color: color-mix(in srgb, var(--workspace-ink, #17191d) 68%, var(--ws-sidebar, #f8f9fb)) transparent;
+  }
+
+  @media (forced-colors: active) {
+    scrollbar-width: auto;
+  }
+}
 .embedded .listHeading { padding: 0 8px 10px; }

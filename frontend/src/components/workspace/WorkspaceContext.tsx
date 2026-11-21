@@ -1,6 +1,6 @@
 /*
 Input: 工作区外壳提供的导航、编辑会话与最近笔记
-Output: 页面共享工作区接口；隔离渲染时返回 null
+Output: 页面共享工作区接口，包括顶栏操作挂载点；隔离渲染时返回 null
 Pos: frontend/src/components/workspace
 Note: 修改时同步本目录 README。
 */
@@ -36,6 +36,8 @@ export type WorkspaceContextValue = {
   requestAction: (action: () => void) => void;
   registerEditor: (editor: WorkspaceEditor) => () => void;
   setRecentNotes: (notes: WorkspaceRecentNote[]) => void;
+  topbarBack?: HTMLDivElement | null;
+  topbarActions?: HTMLDivElement | null;
   refreshNotesCalendar?: () => void;
   user?: User | null;
   openSettings?: (tab?: WorkspaceSettingsTab) => void;

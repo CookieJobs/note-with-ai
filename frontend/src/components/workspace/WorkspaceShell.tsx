@@ -138,7 +138,9 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
     userRef.current = next; setUser(next);
     try { localStorage.setItem('user', JSON.stringify(next)); } catch { /* The server save remains valid if local cache is unavailable. */ }
   }, []);
-  const context = useMemo(() => ({ navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar }), [navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar]);
+  const [topbarBack, setTopbarBack] = useState<HTMLDivElement | null>(null);
+  const [topbarActions, setTopbarActions] = useState<HTMLDivElement | null>(null);
+  const context = useMemo(() => ({ navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar, topbarBack, topbarActions }), [navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar, topbarBack, topbarActions]);
   const closeSettings = () => { setSettingsOpen(false); };
   const interceptLink = (event: MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !(event.target instanceof Element)) return;
@@ -148,7 +150,6 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
     if (url.origin !== window.location.origin || link.getAttribute('href')?.startsWith('#')) return;
     event.preventDefault(); navigate(`${url.pathname}${url.search}${url.hash}`); setDrawerOpen(false);
   };
-  const label = links.find(link => pathname.startsWith(link.href))?.label || '个人页面';
 
   return <WorkspaceContext.Provider value={context}>
     <div className={styles.root} data-workspace="" data-theme={theme} data-reading-size={preferences.readingSize} data-reduce-motion={preferences.reduceMotion || undefined} data-collapsed={preferences.collapsed} data-drawer-open={drawerOpen} onClick={interceptLink}>
@@ -156,16 +157,43 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
       {drawerOpen && <button type="button" className={styles.scrim} aria-label="关闭侧栏" onClick={() => setDrawerOpen(false)} />}
       <aside className={styles.sidebar} ref={sidebarRef} aria-label="工作区侧栏" aria-hidden={narrow && !drawerOpen || undefined} role={narrow && drawerOpen ? 'dialog' : undefined} aria-modal={narrow && drawerOpen || undefined}>
         <div className={styles.brandRow}><a href="/notes" className={styles.brand} aria-label="NoteWithAI 笔记首页"><span className={styles.brandMark}><BrandIcon size={29} /></span><span className={styles.expandedLabel}>NoteWithAI</span></a><button type="button" className={`${styles.iconButton} ${styles.collapse}`} aria-label="收起侧栏" onClick={() => { setPreferences(previous => ({ ...previous, collapsed: true })); setDrawerOpen(false); }}><PanelLeft size={18} /></button></div>
-        {pathname.startsWith('/chat') ? <button type="button" className={styles.newNote} aria-label="开启新对话" disabled={!chatNavigation} onClick={() => { void chatNavigation?.onNewSession(); setDrawerOpen(false); }}><Plus size={18} strokeWidth={1.75} /><span className={styles.expandedLabel}>新对话</span></button> : <a href="/notes?compose=1" className={styles.newNote}><Plus size={18} strokeWidth={1.75} /><span className={styles.expandedLabel}>新建笔记</span></a>}
+        {pathname.startsWith('/profile') && <a href="/notes?compose=1" className={styles.newNote}><Plus size={18} strokeWidth={1.75} /><span className={styles.expandedLabel}>新建笔记</span></a>}
         <nav aria-label="主导航" className={styles.mainNav}>{links.map(({ href, label: itemLabel, Icon }) => <a key={href} href={href} title={itemLabel} aria-label={itemLabel} aria-current={pathname.startsWith(href) ? 'page' : undefined}><Icon size={18} strokeWidth={1.75} /><span className={styles.expandedLabel}>{itemLabel}</span>{href === '/inspiration' && count > 0 && <span className={styles.badge} aria-label={`${count} 条新灵感`}>{count > 99 ? '99+' : count}</span>}</a>)}</nav>
-        {pathname.startsWith('/chat') ? <section className={`${styles.chatHistory} ${styles.expandedLabel}`} aria-label="对话历史">{chatNavigation ? <ChatHistoryPanel embedded {...chatNavigation} onSessionSelect={id => { chatNavigation.onSessionSelect(id); setDrawerOpen(false); }} onNewSession={() => { void chatNavigation.onNewSession(); setDrawerOpen(false); }} onClose={() => setDrawerOpen(false)} /> : <p>正在加载对话历史…</p>}</section> : pathname.startsWith('/notes') ? <section className={`${styles.notesCalendar} ${styles.expandedLabel}`} aria-label="记录月历"><NotesCalendar userId={user?.id ?? null} version={notesCalendarVersion} /></section> : <section className={`${styles.recent} ${styles.expandedLabel}`} aria-label="最近笔记"><h2>最近笔记</h2>{recentNotes.length ? <div>{recentNotes.map(note => <a key={note.id} href={note.href} title={note.title}>{note.title}</a>)}</div> : recentStatus === 'error' ? <><p role="alert">最近笔记加载失败。</p><button type="button" className={styles.button} aria-label="重试最近笔记" onClick={retryRecentNotes}>重试</button></> : <p>{recentStatus === 'ready' ? '还没有笔记。' : recentStatus === 'idle' ? '登录后查看最近笔记。' : '正在加载最近笔记…'}</p>}</section>}
+        {pathname.startsWith('/chat') ? (
+          <section className={styles.chatSection} aria-label="对话历史">
+            <button
+              type="button"
+              className={styles.newChat}
+              aria-label="新建对话"
+              disabled={!chatNavigation}
+              onClick={() => { void chatNavigation?.onNewSession(); setDrawerOpen(false); }}
+            >
+              <Plus size={18} strokeWidth={1.75} />
+              <span className={styles.expandedLabel}>新建对话</span>
+            </button>
+            <div className={`${styles.chatHistory} ${styles.expandedLabel}`}>
+              {chatNavigation ? (
+                <ChatHistoryPanel
+                  embedded
+                  {...chatNavigation}
+                  onSessionSelect={id => { chatNavigation.onSessionSelect(id); setDrawerOpen(false); }}
+                  onNewSession={() => { void chatNavigation.onNewSession(); setDrawerOpen(false); }}
+                  onClose={() => setDrawerOpen(false)}
+                />
+              ) : <p>正在加载对话历史…</p>}
+            </div>
+          </section>
+        ) : pathname.startsWith('/notes') ? <section className={`${styles.notesCalendar} ${styles.expandedLabel}`} aria-label="记录月历"><NotesCalendar userId={user?.id ?? null} version={notesCalendarVersion} /></section> : <section className={`${styles.recent} ${styles.expandedLabel}`} aria-label="最近笔记"><h2>最近笔记</h2>{recentNotes.length ? <div>{recentNotes.map(note => <a key={note.id} href={note.href} title={note.title}>{note.title}</a>)}</div> : recentStatus === 'error' ? <><p role="alert">最近笔记加载失败。</p><button type="button" className={styles.button} aria-label="重试最近笔记" onClick={retryRecentNotes}>重试</button></> : <p>{recentStatus === 'ready' ? '还没有笔记。' : recentStatus === 'idle' ? '登录后查看最近笔记。' : '正在加载最近笔记…'}</p>}</section>}
         <div className={styles.accountArea} ref={accountMenuRef}>
           {accountOpen && <div className={styles.accountMenu} id="workspace-account-menu"><div className={styles.accountDetails}><strong>{user?.username || '我的账户'}</strong><span>{user?.email}</span></div><a href="/profile" onClick={() => setAccountOpen(false)}><UserRound size={17} />个人页面</a><button type="button" onClick={() => openSettings()}><Settings size={17} />设置</button><button type="button" onClick={() => { setAccountOpen(false); requestAction(logout); }}><LogOut size={17} />退出登录</button></div>}
           <button ref={accountRef} type="button" className={styles.accountButton} aria-label="账户菜单" aria-expanded={accountOpen} aria-controls="workspace-account-menu" onClick={() => setAccountOpen(value => !value)}><WorkspaceAvatar user={user} /><span className={`${styles.accountCopy} ${styles.expandedLabel}`}><strong>{user?.username || '我的账户'}</strong><small>个人工作区</small></span><ChevronDown size={15} className={styles.expandedLabel} /></button>
         </div>
       </aside>
       <div className={styles.main}>
-        <header className={styles.topbar}><button type="button" className={`${styles.iconButton} ${styles.expand}`} aria-label="展开侧栏" onClick={() => { if (window.matchMedia('(max-width: 980px)').matches) setDrawerOpen(true); else setPreferences(previous => ({ ...previous, collapsed: false })); }}><PanelLeft size={19} /></button><span className={styles.breadcrumb}>NoteWithAI<span>/</span><strong>{label}</strong></span></header>
+        <header className={styles.topbar}><button type="button" className={`${styles.iconButton} ${styles.expand}`} aria-label="展开侧栏" onClick={() => { if (window.matchMedia('(max-width: 980px)').matches) setDrawerOpen(true); else setPreferences(previous => ({ ...previous, collapsed: false })); }}><PanelLeft size={19} /></button>
+          <div className={styles.topbarBack} ref={setTopbarBack} />
+          <div className={styles.topbarActions} ref={setTopbarActions} />
+        </header>
         <div id="workspace-content" tabIndex={-1} className={styles.content} data-page={pathname.split('/')[1]}>{children}</div>
       </div>
       <WorkspaceSettings open={settingsOpen} initialTab={settingsTab} onClose={closeSettings} returnFocus={restoreSettingsFocus} preferences={preferences} setPreferences={setPreferences} storageError={storageError} />

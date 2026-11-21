@@ -189,11 +189,25 @@ describe('工作区边界与外观', () => {
     expect(screen.queryByRole('dialog', { name: '修改密码' })).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '用户名' })).toHaveValue('未保存名字');
   });
-  it('uses the registered chat sidebar and new-session action without a second session owner', async () => {
+  it.each(['/notes', '/inspiration'])('omits the sidebar create actions on %s', path => {
+    pathname.mockReturnValue(path);
+    render(<WorkspaceRoot><WorkspaceProbe /></WorkspaceRoot>);
+    const sidebar = within(screen.getByRole('complementary', { name: '工作区侧栏' }));
+    expect(sidebar.queryByRole('link', { name: '新建笔记' })).not.toBeInTheDocument();
+    expect(sidebar.queryByRole('button', { name: '新建对话' })).not.toBeInTheDocument();
+  });
+  it('places the registered new-session action below navigation and inside chat history', async () => {
     pathname.mockReturnValue('/chat'); render(<WorkspaceRoot><WorkspaceProbe /></WorkspaceRoot>);
-    fireEvent.click(await screen.findByRole('button', { name: '一段真实历史' }));
+    const history = screen.getByRole('region', { name: '对话历史' });
+    const inspiration = screen.getByRole('link', { name: '灵感' });
+    const newSession = within(history).getByRole('button', { name: '新建对话' });
+    const existingSession = await within(history).findByRole('button', { name: '一段真实历史' });
+    expect(inspiration.compareDocumentPosition(newSession) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(newSession.compareDocumentPosition(existingSession) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '新建对话' })).toHaveLength(1);
+    fireEvent.click(existingSession);
     expect(selectChat).toHaveBeenCalledWith('c1');
-    fireEvent.click(screen.getByRole('button', { name: '开启新对话' }));
+    fireEvent.click(newSession);
     expect(newChat).toHaveBeenCalledOnce();
     expect(screen.queryByText('在对话页面查看和查找历史。')).not.toBeInTheDocument();
   });
