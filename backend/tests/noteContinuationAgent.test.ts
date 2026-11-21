@@ -258,18 +258,29 @@ describe('note continuation agent', noteDiscoveryMongoTestOptions, () => {
     await fixture.store.finish(fixture.runId, fixture.claim.leaseToken, 'failed');
   });
 
-  test('overlarge multibyte read cannot enter cumulative model input', async () => {
+  test('omits an oversized read, keeps smaller evidence and rejects citations to omitted text', async () => {
     const { calls, transport } = scriptTransport();
-    let noteId = '';
+    let largeId = '', smallId = '';
     const fixture = await arrange({ provider: createDiscoveryProvider(fixturePrice, async request => {
       calls.push(request);
-      return nativeToolResponse([toolCall('readOwnNote', { noteId })]);
+      if (calls.length === 1) return nativeToolResponse([
+        toolCall('readOwnNote', { noteId: largeId }, 'call_large'),
+        toolCall('readOwnNote', { noteId: smallId }, 'call_small'),
+      ]);
+      const paired = request.body.messages.filter(message => message.role === 'tool');
+      assert.match(paired[0].content, /context_limit/);
+      assert.match(paired[1].content, /ran out of water/);
+      assert.equal(JSON.stringify(request.body).includes('河'.repeat(10)), false);
+      return providerResponse({ type: 'finish', candidates: [makeCandidate(largeId, '河'.repeat(8)), makeCandidate(smallId)] });
     })! });
     const source = await makeNote(fixture.userId, '河'.repeat(9000));
-    noteId = source._id.toHexString();
-    await assert.rejects(fixture.start(), { message: 'limit_exceeded' });
-    assert.equal(calls.length, 1);
-    await fixture.store.finish(fixture.runId, fixture.claim.leaseToken, 'failed');
+    largeId = source._id.toHexString();
+    smallId = fixture.note._id.toHexString();
+    assert.equal(await fixture.start(), 'completed');
+    assert.equal(calls.length, 2);
+    const discoveries = await Discovery.find({ runId: fixture.runId }).lean();
+    assert.equal(discoveries.length, 1);
+    assert.equal(String(discoveries[0].evidence[0].noteId), smallId);
   });
 
   test('tool execution counts initial metadata and refuses to exceed eight calls', async () => {
