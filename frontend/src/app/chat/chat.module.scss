@@ -221,6 +221,11 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
   padding-inline: 4px;
   overscroll-behavior-y: contain;
 
+  &:has([data-discovery-home]) {
+    block-size: auto;
+    min-block-size: 0;
+  }
+
   &:focus-visible {
     outline: 2px solid var(--ws-accent, #266fe1);
     outline-offset: -2px;

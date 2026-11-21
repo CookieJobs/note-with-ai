@@ -1,12 +1,12 @@
 /*
 Input: 用户身份、聊天历史、单篇及发现会话绑定、来源往返上下文及流式回复
-Output: 来源默认在聊天旁只读预览，保留对话与草稿；主动打开完整笔记才记录往返状态，不改变会话绑定
+Output: 支持发现全文阅读、聊天旁来源预览及返回时恢复对话与草稿
 Pos: frontend/src/app/chat 页面入口
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -20,7 +20,7 @@ import DeleteConfirmModal from '../../components/DeleteConfirmModal';
 import { useChatSession } from '../../hooks/useChatSession';
 import { useChatStream } from '../../hooks/useChatStream';
 import CareAssistantPanel from '../../components/CareAssistantPanel';
-import NoteDiscoveryPanel from '../../components/NoteDiscoveryPanel';
+import NoteDiscoveryPanel, { clearDiscoveryReaderLocation } from '../../components/NoteDiscoveryPanel';
 import { noteDiscoveries } from '../../services/noteDiscoveries';
 import { normalizeChatSession, persistChatSessions } from '../../hooks/chatSessionStore';
 import ChatRelatedNotesPanel from '../../components/ChatRelatedNotesPanel';
@@ -42,6 +42,7 @@ function ChatPageContent() {
   const router = useRouter();
   const [input, setInput] = useState('');
   const inputRef = useRef(input);
+  const discoveryHomeDraft = useRef<{ owner: string; text: string }>();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string>('');
   const [showCare, setShowCare] = useState(false);
@@ -218,6 +219,7 @@ function ChatPageContent() {
     // A deliberate selection supersedes the entry URL. Source return must reopen
     // the conversation the user actually left, rather than the old URL target.
     explicitSessionHandled.current = explicitSessionId;
+    clearDiscoveryReaderLocation();
     if (explicitSessionId) router.replace('/chat', { scroll: false });
   };
 
@@ -247,6 +249,10 @@ function ChatPageContent() {
     }
 
     if (user?.id) {
+      if (discoveryHomeDraft.current?.owner === user.id) {
+        updateInput(discoveryHomeDraft.current.text);
+        discoveryHomeDraft.current = undefined;
+      }
       await startNewSessionHook(user.id);
     }
   };
@@ -325,6 +331,8 @@ function ChatPageContent() {
     if (!user?.id || streamBusy) return;
     const session = normalizeChatSession(rawSession);
     if (!session) return;
+    discoveryHomeDraft.current = { owner: user.id, text: inputRef.current };
+    updateInput('');
     setSessions(previous => {
       const next = [session, ...previous.filter(item => item.id !== session.id)];
       persistChatSessions(user.id, next);
@@ -425,6 +433,14 @@ function ChatPageContent() {
     updateInput(text);
   };
 
+  const renderComposer = (suggestion?: ReactNode) => (
+    <ChatInputArea input={input} loading={loading || startingCare} error={error}
+      onInputChange={handleInputChange} onSend={handleSendClick} centered={messages.length === 0}
+      title={sourceNoteId && messages.length === 0 ? '围绕这篇笔记提问' : undefined}
+      placeholder={isNoteOpening ? '接着聊聊你的想法，也可以问点别的…' : undefined}
+      suggestionComponent={suggestion} />
+  );
+
   return (
     <div className={`${styles.container} ${messages.length === 0 ? styles.emptyContainer : ''}`} onClickCapture={handleSourceLink}>
       {!workspace && <TopNavigation onMenuClick={() => setIsMobileSidebarOpen(true)} />}
@@ -467,26 +483,12 @@ function ChatPageContent() {
           {sessionsError && <div role="alert" className={styles.chatError}>{sessionsError} <button type="button" disabled={sessionsLoading} onClick={() => { void retrySessions(); }}>{sessionsLoading ? '正在重试…' : '重试加载对话'}</button></div>}
           {streamBusy && !loading && <p role="status" className={styles.streamNotice}>另一段对话正在回复，完成后可继续发送。你的草稿会保留。</p>}
           {retryableFailure?.sessionId === currentSessionId && <button type="button" disabled={streamBusy || startingCare} onClick={() => void handleSend(retryableFailure.requestId, retryableFailure.input)}>额度恢复后重新尝试这次提问</button>}
-          <ChatInputArea
-            input={input}
-            loading={loading || startingCare}
-            error={error}
-            onInputChange={handleInputChange}
-            onSend={handleSendClick}
-            centered={messages.length === 0}
-            title={sourceNoteId && messages.length === 0 ? '围绕这篇笔记提问' : undefined}
-            placeholder={isNoteOpening ? '接着聊聊你的想法，也可以问点别的…' : undefined}
-            suggestionComponent={
-              showCare && !sourceNoteId && !explicitSessionId ? (
-                <NoteDiscoveryPanel key={user.id} userId={user.id} busy={streamBusy} onSession={adoptDiscoverySession} onStartSession={startDiscoverySession} fallback={<CareAssistantPanel
-                  auto={true} 
-                  onInsert={handleCareInsert} 
-                  onSend={handleCareSend}
-                  cacheKey={`care_intro_cache_${user.id}`}
-                />} />
-              ) : null
-            }
-          />
+          {showCare && messages.length === 0 && !sourceNoteId && !explicitSessionId && currentSession?.sourceMode !== 'multi_note_discovery' ? (
+            <NoteDiscoveryPanel key={user.id} userId={user.id} busy={streamBusy} onSession={adoptDiscoverySession}
+              onStartSession={startDiscoverySession} onReaderNavigation={() => { navigationIntent.current++; }}
+              renderHome={renderComposer} fallback={<CareAssistantPanel auto={true} onInsert={handleCareInsert}
+                onSend={handleCareSend} cacheKey={`care_intro_cache_${user.id}`} />} />
+          ) : renderComposer()}
         </div>
 
         {otherRelatedNotes.length > 0 && (

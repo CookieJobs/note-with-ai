@@ -8,7 +8,7 @@
 
 [ChatMainContent](ChatMainContent.tsx) 透传每条消息的快照和页面提供的来源返回位置。[ChatOpeningNote](ChatOpeningNote.tsx) 为旧历史中的真实开场展示“笔记原文”摘录和 AI 身份，超过 160 字可展开；无标题直接显示正文，不虚构标题。绑定会话首条助手消息没有快照时，可用会话上下文识别开场，但不能借用后来回答的快照。新笔记入口创建空绑定会话，不由组件生成固定 AI 消息。
 
-[ChatInputArea](ChatInputArea.tsx) 支持普通起始页和笔记提问情境，来源错误用可访问的内联提示。起始页的笔记建议在独立区域滚动，展开依据或编辑草稿时保留标题和输入框的位置。`CareAssistantPanel` 兼容真实开场、原文和来源，无来源时不暗示已读取笔记。旧 `relatedNotes` 是讨论线索，不冒充回答依据。
+[ChatInputArea](ChatInputArea.tsx) 支持普通起始页和笔记提问情境，来源错误用可访问的内联提示。[NoteDiscoveryPanel](NoteDiscoveryPanel.tsx) 在起始页显示短卡，打开后使用主内容区阅读依据、编辑草稿和继续探索。返回时保留原输入和焦点。`CareAssistantPanel` 兼容真实开场、原文和来源，无来源时不暗示已读取笔记。旧 `relatedNotes` 是讨论线索，不冒充回答依据。
 
 [ReferenceNote](ReferenceNote.tsx) 供笔记/聊天关联区共用，标题完整换行，摘要与日期分开显示。`ChatRelatedNotesPanel` 用于发现其他记录；绑定笔记去重和可见性由聊天页负责。`ChatHistoryPanel` embedded 模式复用真实搜索、选择和删除，隐藏重复工具栏；流式等待/错误与删除确认由页面或工作区控制。
 

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>从你的笔记继续 · 阅读原型</title>
+<style>
+  :root {
+    color-scheme: light;
+    --canvas: #fff; --side: #f6f7f9; --panel: #f8f9fb; --ink: #17191d;
+    --muted: #646b78; --line: #e6e9ef; --blue: #2365d7; --accent: #1559bf; --active: #edf4ff;
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--canvas); color: var(--ink); }
+  button, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible, textarea:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--blue); outline-offset: 3px;
+  }
+  .workspace { min-height: 100dvh; display: grid; grid-template-columns: 274px minmax(0, 1fr); }
+  aside {
+    position: sticky; top: 0; height: 100dvh; background: var(--side);
+    border-right: 1px solid var(--line); padding: 20px 16px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; font-size: 17px; font-weight: 650; }
+  .brand img { width: 30px; height: 30px; border-radius: 8px; }
+  .new { border: 1px solid var(--line); text-decoration: none; color: var(--ink); background: var(--canvas); border-radius: 10px; padding: 9px 12px; }
+  .new span { color: var(--blue); padding-right: 9px; }
+  nav { display: grid; gap: 5px; }
+  nav > * { padding: 8px 12px; border-radius: 9px; color: var(--muted); }
+  nav a { background: var(--active); font-weight: 620; color: var(--accent); text-decoration: none; }
+  .history { font-size: 13px; }
+  .history p { margin: 0 12px 8px; color: var(--muted); }
+  .history span { display: block; padding: 8px 12px; }
+  .account { margin-top: auto; padding: 10px 6px 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .top {
+    height: 58px; position: sticky; top: 0; z-index: 2; background: var(--canvas);
+    border-bottom: 1px solid var(--line); display: flex; align-items: center;
+    justify-content: space-between; padding: 0 32px; color: var(--muted); font-size: 13px;
+  }
+  .top a { color: inherit; text-decoration: none; }
+  .top .demo { font-size: 12px; }
+  .home { width: min(100%, 816px); margin: 0 auto; padding: clamp(56px, 14vh, 136px) 24px 64px; }
+  h1 { font-size: 28px; line-height: 1.35; margin: 0 0 24px; letter-spacing: -.025em; font-weight: 650; }
+  .home h1 { text-align: center; }
+  .composer {
+    display: flex; align-items: flex-end; gap: 12px; border: 1px solid var(--line);
+    border-radius: 26px; padding: 16px 18px; background: var(--canvas);
+  }
+  .composer:focus-within { border-color: #aac3f1; }
+  .composer textarea {
+    flex: 1; min-width: 0; min-height: 34px; border: 0; outline: 0;
+    resize: vertical; padding: 4px 0; background: transparent;
+  }
+  .composer button { border: 0; border-radius: 50%; width: 36px; height: 36px; background: var(--blue); color: white; font-size: 20px; }
+  .composer button:disabled { background: var(--panel); color: var(--muted); cursor: default; }
+  .disclaimer { color: var(--muted); text-align: center; font-size: 12px; margin: 10px 0 0; }
+  .discovery { margin-top: 34px; }
+  .discovery h2 { font-size: 15px; font-weight: 620; margin: 0 0 10px; }
+  .preview {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 24px; align-items: center;
+    padding: 20px 24px; border: 1px solid var(--line); border-radius: 14px;
+    color: inherit; text-decoration: none;
+  }
+  .preview:hover { border-color: #aac3f1; background: #fbfdff; }
+  .preview h3 { margin: 0 0 4px; font-size: 17px; font-weight: 650; }
+  .preview p { margin: 0; color: var(--muted); font-size: 14px; }
+  .preview .read { color: var(--accent); font-size: 13px; white-space: nowrap; }
+  .preview .source-count { font-size: 12px; }
+  .reader, .thread { width: min(100%, 816px); margin: 0 auto; padding: 32px 24px 36px; }
+  .back { color: var(--muted); text-decoration: none; font-size: 13px; }
+  .back:hover { color: var(--accent); }
+  .reader article { padding: 24px 0 12px; font-size: 16px; line-height: 1.85; }
+  .reader h1 { margin-bottom: 12px; }
+  .lede { font-size: 18px; line-height: 1.75; margin: 0 0 28px; }
+  .reader article section { padding: 20px 0; border-top: 1px solid var(--line); }
+  .reader h2 { font-size: 16px; line-height: 1.5; margin: 0 0 9px; font-weight: 640; }
+  .reader p { margin: 0 0 10px; }
+  .reader aside.note { position: static; height: auto; display: block; border: 0; background: var(--panel); border-radius: 10px; padding: 14px 16px; margin-top: 12px; }
+  .note strong { font-size: 13px; }
+  .note p { color: var(--muted); margin: 2px 0 0; font-size: 14px; }
+  .sources { display: grid; gap: 8px; }
+  details { border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; font-size: 14px; }
+  summary { cursor: pointer; }
+  .source-meta { color: var(--muted); font-size: 12px; margin-left: 7px; }
+  blockquote { margin: 12px 0; padding-left: 12px; border-left: 2px solid #d7e5ff; }
+  details .whole { white-space: pre-line; color: var(--muted); }
+  .primary, .secondary {
+    display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 9px;
+    padding: 7px 13px; font-size: 14px; background: var(--canvas); text-decoration: none;
+  }
+  .primary { background: var(--blue); color: white; border-color: transparent; }
+  .primary:hover { background: var(--accent); }
+  .secondary:hover { background: var(--panel); }
+  .action-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .reader-footer {
+    position: sticky; bottom: 0; background: var(--canvas); border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0;
+  }
+  .editor { margin-top: 12px; }
+  .editor textarea {
+    display: block; width: 100%; min-height: 145px; resize: vertical; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--canvas); padding: 10px 12px; margin: 6px 0 10px;
+  }
+  #save-state { font-size: 13px; color: var(--muted); }
+  .thread h1 { margin: 28px 0 10px; }
+  .thread .scope { font-size: 13px; color: var(--muted); padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .reply { padding: 28px 0; font-size: 16px; line-height: 1.85; }
+  .reply h2 { font-size: 16px; margin: 0 0 8px; }
+  .reply p { margin-top: 0; }
+  .thread-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  .thread-table th, .thread-table td { text-align: left; padding: 8px 9px; border-bottom: 1px solid var(--line); }
+  .thread-table th { background: var(--panel); }
+  .chat-message { width: fit-content; max-width: 100%; margin: 12px 0 12px auto; border-radius: 16px; padding: 8px 12px; background: var(--panel); overflow-wrap: anywhere; }
+  @media (max-width: 850px) {
+    .workspace { grid-template-columns: 196px minmax(0, 1fr); }
+    .top { padding: 0 24px; }
+  }
+  @media (max-width: 600px) {
+    .workspace { display: block; }
+    .workspace > aside { display: none; }
+    .top { padding: 0 16px; }
+    .home, .reader, .thread { padding-inline: 16px; }
+    .preview { grid-template-columns: 1fr; padding: 16px; }
+    .reader-footer .back { white-space: nowrap; }
+  }
+</style>
+</head>
+<body>
+<div class="workspace">
+  <aside aria-label="工作区侧栏">
+    <div class="brand"><img src="brand.png" alt="">NoteWithAI</div>
+    <a class="new" href="#chat"><span>＋</span>新对话</a>
+    <nav aria-label="工作区">
+      <span>笔记</span>
+      <a href="#chat" aria-current="page">AI 对话</a>
+      <span>灵感</span>
+    </nav>
+    <div class="history">
+      <p>你的聊天</p>
+      <span>新人入职体验怎么复盘</span>
+      <span>整理试讲反馈</span>
+    </div>
+    <div class="account">示例工作区</div>
+  </aside>
+  <main>
+    <header class="top">
+      <div><a href="#chat">NoteWithAI</a> ／ <a href="#chat">AI 对话</a><span id="trail"></span></div>
+      <span class="demo">交互原型 · 合成数据</span>
+    </header>
+    <section class="home" data-view="chat">
+      <h1 tabindex="-1">今天，想从哪里聊起？</h1>
+      <form class="composer" id="home-form">
+        <textarea id="home-draft" rows="1" aria-label="新对话草稿" placeholder="输入您的问题…"></textarea>
+        <button aria-label="发送新对话" disabled>↑</button>
+      </form>
+      <p class="disclaimer">AI 也可能会犯错。请核查重要信息</p>
+      <section class="discovery" aria-labelledby="discovery-title">
+        <h2 id="discovery-title">从你的笔记继续</h2>
+        <a class="preview" id="open-reader" href="#discovery">
+          <div><h3>新人卡的是版本，还是操作步骤？</h3>
+          <p>两次答疑暴露了不同的卡点。你可以各试一种改动，看看哪一种能让新人独立完成第一次配置。</p></div>
+          <span class="read">查看发现 →</span>
+          <span class="source-count">依据 2 条笔记</span>
+        </a>
+      </section>
+    </section>
+    <section class="reader" data-view="discovery" hidden>
+      <a class="back" href="#chat">← 返回新对话</a>
+      <article>
+        <h1 tabindex="-1">新人卡的是版本，还是操作步骤？</h1>
+        <p class="lede">两次答疑暴露了不同的卡点。把「确认正确版本」和「看懂设置顺序」分开试，才知道该先改清单还是补演示。</p>
+        <section aria-labelledby="finding">
+          <h2 id="finding">发现</h2>
+          <p>周一，两位新人在选择 Node 版本时停住了，补上版本号后才继续。周四，另一位新人已经用了正确版本，还是没找到设置入口，看过录屏以后才完成。</p>
+          <p>这两条记录给了同一个问题两种线索。第一步让人知道<strong>选什么</strong>，第二步让人知道<strong>去哪里做</strong>。可以按卡点分别修改，再看陌生读者是不是还会问同样的问题。</p>
+          <aside class="note"><strong>判断的边界</strong><p>目前是三位新人的经历，遇到的任务和工具版本也可能不同。还不能判断哪种卡点更常见。</p></aside>
+        </section>
+        <section aria-labelledby="evidence">
+          <h2 id="evidence">原文依据</h2>
+          <div class="sources">
+            <details><summary>新人答疑记录<span class="source-meta">11 月 16 日 · 版本 2</span></summary>
+              <blockquote>两位新人都问该用哪个 Node 版本。把清单上缺的版本号补上后，他们就继续了。</blockquote>
+              <p class="whole">周一：两位新人都问该用哪个 Node 版本。把清单上缺的版本号补上后，他们就继续了。
+暂未记录他们完成配置所花的总时间。</p>
+            </details>
+            <details><summary>配置录屏试验<span class="source-meta">11 月 19 日 · 版本 1</span></summary>
+              <blockquote>这位新人版本没装错，还是找不到设置入口。给他看了三分钟录屏后，他完成了。</blockquote>
+              <p class="whole">周四：这位新人版本没装错，还是找不到设置入口。给他看了三分钟录屏后，他完成了。
+下次想请对方先自己找一遍，把卡住的步骤记下来。</p>
+            </details>
+          </div>
+        </section>
+        <section aria-labelledby="next-step">
+          <h2 id="next-step">下一步</h2>
+          <p>请两位没看过文档的同事完成同一项配置。记录他们从哪一步停住、是否需要帮助，以及是否独立完成。</p>
+          <button id="edit-result" type="button" class="secondary" aria-controls="result-editor" aria-expanded="false">编辑成果草稿</button>
+          <div id="result-editor" class="editor" hidden>
+            <label for="result-draft">第一次配置观察表</label>
+            <textarea id="result-draft">任务：按清单完成第一次配置。
+版本是否正确：
+第一次卡住的步骤：
+看到提示或录屏后是否继续：
+是否独立完成：
+下次优先调整：</textarea>
+            <div class="action-row"><button id="save-result" type="button" class="secondary">模拟保存为笔记</button><span id="save-state" role="status"></span></div>
+          </div>
+        </section>
+      </article>
+      <footer class="reader-footer">
+        <a class="back" href="#chat">← 返回新对话</a>
+        <a class="primary" href="#thread">继续探索</a>
+      </footer>
+    </section>
+    <section class="thread" data-view="thread" hidden>
+      <a class="back" href="#discovery">← 返回这条发现</a>
+      <h1 tabindex="-1">把新人配置卡点拆开测</h1>
+      <p class="scope">从笔记发现继续 · 依据「新人答疑记录」与「配置录屏试验」</p>
+      <div class="reply">
+        <h2>先把两种卡点放进同一张观察表</h2>
+        <p>让同事按同一份清单配置。先观察停在哪一步，再按卡点给帮助。可以用下面两行开跑，结果留空。</p>
+        <table class="thread-table">
+          <thead><tr><th>停在哪一步</th><th>给什么帮助</th><th>结果</th></tr></thead>
+          <tbody><tr><td>不知道选哪个版本</td><td>给出准确版本号</td><td>待记录</td></tr><tr><td>已选正确版本，找不到入口</td><td>给对应步骤的短录屏</td><td>待记录</td></tr></tbody>
+        </table>
+      </div>
+      <div id="thread-messages" aria-live="polite"></div>
+      <form class="composer" id="thread-form">
+        <textarea id="thread-draft" rows="1" aria-label="继续探索的提问" placeholder="接着问，比如：怎么减少试验里的干扰？"></textarea>
+        <button aria-label="发送追问" disabled>↑</button>
+      </form>
+    </section>
+  </main>
+</div>
+<script>
+  const views = [...document.querySelectorAll('[data-view]')];
+  let activeView;
+  function showView() {
+    const hash = location.hash.slice(1);
+    const next = ['chat', 'discovery', 'thread'].includes(hash) ? hash : 'chat';
+    if (activeView === next) return;
+    const previous = activeView;
+    activeView = next;
+    views.forEach(view => { view.hidden = view.dataset.view !== next; });
+    document.querySelector('#trail').textContent = { chat: '', discovery: ' ／ 从你的笔记继续', thread: ' ／ 继续探索' }[next];
+    window.scrollTo(0, 0);
+    if (previous) {
+      const focus = next === 'chat' && previous === 'discovery' ? '#open-reader' : '[data-view="' + next + '"] h1';
+      document.querySelector(focus).focus({ preventScroll: true });
+    }
+  }
+  window.addEventListener('hashchange', showView);
+  showView();
+  document.querySelector('#edit-result').addEventListener('click', event => {
+    const editor = document.querySelector('#result-editor');
+    editor.hidden = !editor.hidden;
+    event.currentTarget.setAttribute('aria-expanded', String(!editor.hidden));
+    event.currentTarget.textContent = editor.hidden ? '编辑成果草稿' : '收起草稿';
+    if (!editor.hidden) document.querySelector('#result-draft').focus();
+  });
+  document.querySelector('#save-result').addEventListener('click', () => {
+    if (document.querySelector('#result-draft').value.trim()) document.querySelector('#save-state').textContent = '已在原型中模拟保存。';
+  });
+  document.querySelector('#result-draft').addEventListener('input', () => { document.querySelector('#save-state').textContent = ''; });
+  for (const form of document.querySelectorAll('.composer')) {
+    const input = form.querySelector('textarea');
+    const send = form.querySelector('button');
+    input.addEventListener('input', () => { send.disabled = !input.value.trim(); });
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      if (!input.value.trim()) return;
+      if (form.id === 'home-form') {
+        window.alert('这是独立原型。正式的新对话会从这里发出。草稿仍保留。');
+        return;
+      }
+      const message = document.createElement('p');
+      message.className = 'chat-message';
+      message.textContent = input.value.trim();
+      document.querySelector('#thread-messages').append(message);
+      input.value = '';
+      send.disabled = true;
+    });
+  }
+</script>
+</body>
+</html>

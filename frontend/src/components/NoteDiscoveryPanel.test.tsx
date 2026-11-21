@@ -6,8 +6,25 @@ vi.mock('../services/noteDiscoveries', async importOriginal => ({ ...await impor
 export const card: NoteDiscovery = { id: 'a', kind: 'connection', title: '一个联系', observation: '观察到的具体线索', whyNow: '最近有新进展', qualification: '还需要确认', suggestedAction: '从一个小步骤开始', draft: '原来的草稿', evidence: [{ noteId: 'n1', title: '来源一', revision: 3, excerpt: '原文依据', hasImages: false, noteDate: '2026-11-17T00:00:00Z' }], status: 'ready', createdAt: '2026-11-17T00:00:00Z' };
 const list = (overrides: Partial<DiscoveryList> = {}): DiscoveryList => ({ items: [card], available: true, automaticEnabled: false, timeZone: 'Asia/Shanghai', run: {status: 'completed'}, ...overrides });
 const props = { userId: 'u1', busy: false, onSession: vi.fn(), fallback: <p>旧版建议</p> };
-beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); vi.mocked(noteDiscoveries.list).mockResolvedValue(list()); });
+beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); window.history.replaceState(null, '', '/chat'); vi.mocked(noteDiscoveries.list).mockResolvedValue(list()); });
+async function openFinding(title = '一个联系') {
+  fireEvent.click(await screen.findByRole('button', {name: '查看发现：' + title}));
+}
 describe('discovery entry', () => {
+ it('opens the full discovery outside home and preserves the unsent composer draft on return', async () => {
+  let draft = '我还在写的提问';
+  render(<NoteDiscoveryPanel {...props} renderHome={preview => <section aria-label="新对话"><textarea aria-label="聊天消息" defaultValue={draft} onChange={event => { draft = event.target.value; }} />{preview}</section>} />);
+  fireEvent.change(screen.getByRole('textbox', {name: '聊天消息'}), {target: {value: '草稿保留'}});
+  const open = await screen.findByRole('button', {name: /查看发现/});
+  expect(screen.queryByText('原文依据')).not.toBeInTheDocument();
+  fireEvent.click(open);
+  expect(screen.queryByRole('region', {name: '新对话'})).not.toBeInTheDocument();
+  expect(screen.getByText('还需要确认')).toBeInTheDocument();
+  expect(screen.getByText(/版本 3/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', {name: '返回新对话'}));
+  expect(await screen.findByRole('textbox', {name: '聊天消息'})).toHaveValue('草稿保留');
+  expect(await screen.findByRole('button', {name: /查看发现/})).toHaveFocus();
+ });
  it('shows one finding first and expands at most three, with real source revisions', async () => {
   vi.mocked(noteDiscoveries.list).mockResolvedValue(list({items: Array.from({length: 4}, (_, i) => ({...card, id: String(i), title: `发现${i}`}))}));
   render(<NoteDiscoveryPanel {...props} />);
@@ -15,12 +32,15 @@ describe('discovery entry', () => {
   expect(screen.queryByRole('article', {name: '发现1'})).toBeNull();
   fireEvent.click(screen.getByText('查看其他发现'));
   expect(screen.getAllByRole('article', {name: /发现/})).toHaveLength(3);
-  expect(screen.getAllByText(/版本 3/)).toHaveLength(6);
+  expect(screen.queryByText(/版本 3/)).toBeNull();
+  await openFinding('发现1');
+  expect(screen.getByText(/版本 3/)).toBeInTheDocument();
  });
  it('adopts the server session without asking an opening question and blocks during stream', async () => {
   const session = {id: 'server', title: '发现', sourceMode: 'multi_note_discovery' as const, messages: [{role: 'assistant' as const, content: '已推进选中行动'}]};
   vi.mocked(noteDiscoveries.session).mockResolvedValue({session, reused: false});
   const view = render(<NoteDiscoveryPanel {...props} busy />);
+  await openFinding();
   expect(await screen.findByText('继续探索')).toBeDisabled();
   view.rerender(<NoteDiscoveryPanel {...props} />);
   fireEvent.click(screen.getByText('继续探索'));
@@ -29,7 +49,8 @@ describe('discovery entry', () => {
  it('retains edited draft on failure and retries exactly the same operation; shows actual saved note', async () => {
   vi.mocked(noteDiscoveries.save).mockRejectedValueOnce(new Error('保存失败')).mockResolvedValueOnce({note: {_id:'saved-real'} as never, discovery: card});
   render(<NoteDiscoveryPanel {...props} />);
-  fireEvent.click(await screen.findByText('编辑成果草稿'));
+  await openFinding();
+ fireEvent.click(await screen.findByText('编辑成果草稿'));
   fireEvent.change(screen.getByRole('textbox', {name: '成果草稿'}), {target: {value: '我确认的正文'}});
   fireEvent.click(screen.getByText('保存为新笔记'));
   await screen.findByText('保存失败');
@@ -45,14 +66,15 @@ describe('discovery entry', () => {
   vi.mocked(noteDiscoveries.preferences).mockRejectedValue(new Error('失败'));
   vi.mocked(noteDiscoveries.undo).mockRejectedValue(new Error('撤销失败'));
   render(<NoteDiscoveryPanel {...props} />);
-  fireEvent.click(await screen.findByText('不感兴趣'));
+  await openFinding();
+ fireEvent.click(await screen.findByText('不感兴趣'));
   await screen.findByText('反馈失败');
   expect(screen.getByText('一个联系')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('不感兴趣'));
+  await screen.findByText('已收起这条发现');
   fireEvent.click(screen.getByText('自动发现：关闭'));
   await screen.findByText(/操作没有完成/);
   expect(screen.getByText('自动发现：关闭')).toBeInTheDocument();
-  fireEvent.click(screen.getByText('不感兴趣'));
-  await screen.findByText('已收起这条发现');
   fireEvent.click(screen.getByText('撤销'));
   await screen.findByText(/操作没有完成/);
   expect(screen.getByText('已收起这条发现')).toBeInTheDocument();
@@ -85,26 +107,29 @@ describe('discovery entry', () => {
 it('withdraws the actual stale409 source contract immediately, while deleted save targets remain explicit', async () => {
  vi.mocked(noteDiscoveries.feedback).mockRejectedValue(new DiscoveryApiError('来源已变化',409,'DISCOVERY_STALE'));
  render(<NoteDiscoveryPanel {...props} />);
+ await openFinding();
  fireEvent.click(await screen.findByText('不感兴趣'));
- await waitFor(()=>expect(screen.queryByText('一个联系')).toBeNull());
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'查看发现：一个联系'})).toBeNull());
  expect(screen.queryByText('来源已变化')).toBeNull();
 });
-it('shares a synchronous continuation lock across expanded cards', async () => {
+it('prevents concurrent continuation requests in the reader', async () => {
  vi.mocked(noteDiscoveries.list).mockResolvedValue(list({items:[card,{...card,id:'b',title:'第二卡'}]}));
  let resolve!: (value: never)=>void;
  vi.mocked(noteDiscoveries.session).mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
  render(<NoteDiscoveryPanel {...props} />);
  fireEvent.click(await screen.findByText('查看其他发现'));
- const buttons=screen.getAllByRole('button',{name:'继续探索'});
- act(()=>{fireEvent.click(buttons[0]);fireEvent.click(buttons[1]);});
+ await openFinding('第二卡');
+ const button=screen.getByRole('button',{name:'继续探索'});
+ act(()=>{fireEvent.click(button);fireEvent.click(button);});
  expect(noteDiscoveries.session).toHaveBeenCalledTimes(1);
- expect(buttons[1]).toBeDisabled();
+ expect(button).toBeDisabled();
  await act(async()=>resolve({session:{id:'chosen',title:'发现',messages:[]},reused:false} as never));
 });
 it('keeps undo available after the real list excludes feedback and across remount', async () => {
  vi.mocked(noteDiscoveries.feedback).mockResolvedValue({});
  vi.mocked(noteDiscoveries.undo).mockResolvedValue({});
  const view=render(<NoteDiscoveryPanel {...props} />);
+ await openFinding();
  fireEvent.click(await screen.findByText('不感兴趣'));
  await screen.findByText('已收起这条发现');
  vi.mocked(noteDiscoveries.list).mockResolvedValue(list({items:[],run:{status:'no_result'}}));
@@ -122,13 +147,17 @@ it('retains secondary draft text and frozen save operation after collapse, reord
  vi.mocked(noteDiscoveries.save).mockRejectedValueOnce(new Error('响应丢失')).mockResolvedValueOnce({note:{_id:'real-saved'} as never,discovery:second});
  const view=render(<NoteDiscoveryPanel {...props} />);
  fireEvent.click(await screen.findByText('查看其他发现'));
- fireEvent.click(screen.getAllByText('编辑成果草稿')[1]);
+ await openFinding('第二卡');
+ fireEvent.click(screen.getByText('编辑成果草稿'));
  fireEvent.change(screen.getByRole('textbox',{name:'成果草稿'}),{target:{value:'第二条确认的正文'}});
  fireEvent.click(screen.getByText('保存为新笔记'));
  await screen.findByText('响应丢失');
  const first=vi.mocked(noteDiscoveries.save).mock.calls[0];
+ fireEvent.click(screen.getByRole('button',{name:'返回新对话'}));
+ await screen.findByRole('button',{name:'查看发现：第二卡'});
  fireEvent.click(screen.getByText('收起其他发现'));
  fireEvent.click(screen.getByText('查看其他发现'));
+ await openFinding('第二卡');
  expect(screen.getByRole('textbox',{name:'成果草稿'})).toHaveValue('第二条确认的正文');
  view.unmount();
  vi.mocked(noteDiscoveries.list).mockResolvedValue(list({items:[second,card]}));
@@ -141,6 +170,7 @@ it('retains secondary draft text and frozen save operation after collapse, reord
 it('creates a new initial attempt only through the typed explicit retry action and keeps it stable on response loss', async () => {
  vi.mocked(noteDiscoveries.session).mockRejectedValueOnce(new DiscoveryApiError('预算不足',429,'CHAT_BUDGET_EXHAUSTED',true,'discovery-initial')).mockRejectedValueOnce(new Error('响应丢失')).mockResolvedValueOnce({session:{id:'stable',title:'发现',messages:[]},reused:true});
  render(<NoteDiscoveryPanel {...props} />);
+ await openFinding();
  fireEvent.click(await screen.findByText('继续探索'));
  await screen.findByText('额度恢复后重新尝试');
  expect(noteDiscoveries.session).toHaveBeenCalledTimes(1);
@@ -155,6 +185,7 @@ it('creates a new initial attempt only through the typed explicit retry action a
 it('keeps a deleted saved-note target error distinct from unavailable discovery sources', async () => {
  vi.mocked(noteDiscoveries.save).mockRejectedValue(new DiscoveryApiError('已保存的笔记已删除',410,'DISCOVERY_SAVED_NOTE_DELETED'));
  render(<NoteDiscoveryPanel {...props} />);
+ await openFinding();
  fireEvent.click(await screen.findByText('编辑成果草稿'));
  fireEvent.click(screen.getByText('保存为新笔记'));
  await screen.findByText('已保存的笔记已删除');
@@ -185,7 +216,7 @@ it('loads explicit history separately, leaves home cards bounded and aborts hist
  const read=vi.mocked(noteDiscoveries.list).mock.calls.find(call=>call[1]===true)!;
  expect(read[2]).toBe(false);
  fireEvent.click(screen.getByRole('button',{name:'关闭历史发现'}));
- expect(read[0]?.aborted).toBe(true);
+ await waitFor(()=>expect(read[0]?.aborted).toBe(true));
  expect(screen.queryByText('更早的发现')).toBeNull();
  expect(screen.getAllByRole('article',{name:'一个联系'})).toHaveLength(1);
 });

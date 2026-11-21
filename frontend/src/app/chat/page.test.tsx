@@ -74,6 +74,7 @@ describe('chat page entry', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     searchParams.value = '';
+    window.history.replaceState(null, '', '/chat');
     vi.mocked(noteDiscoveries.list).mockResolvedValue({items:[],available:false,automaticEnabled:false,timeZone:'Asia/Shanghai',run:{status:'idle'}});
     router.replace.mockImplementation((href: string) => { searchParams.value = new URL(href, 'http://localhost').search.slice(1); });
     localStorage.clear();
@@ -955,12 +956,17 @@ describe('chat page entry', () => {
     authFetch.mockImplementation(async (url: string) => url.endsWith('/session') ? {ok:true,json:async()=>({data:{session:bound,reused:false}})} : sessionsResponse([history]));
     render(<ChatPage />);
     await act(async()=>{await Promise.resolve();});
+    fireEvent.change(screen.getByRole('textbox',{name:'聊天消息'}), {target:{value:'留在新对话的草稿'}});
+    fireEvent.click(screen.getByRole('button',{name:'查看发现：可继续的联系'}));
     await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'继续探索'}));});
     expect(screen.getByText('已直接推进，不再重复询问')).toBeInTheDocument();
+    expect(screen.getByRole('textbox',{name:'聊天消息'})).toHaveValue('');
     expect(screen.getAllByRole('region',{name:'本次回答依据'})).toHaveLength(2);
     expect(screen.getByText(/从笔记发现继续/)).toBeInTheDocument();
     expect(screen.queryByText(/如需围绕笔记提问/)).toBeNull();
     expect(JSON.parse(localStorage.getItem('chat_sessions_user-1')!)[0]).toMatchObject({id:'discovery-real',sourceMode:'multi_note_discovery',discoveryId:'finding'});
+    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'开启新对话'}));});
+    expect(screen.getByRole('textbox',{name:'聊天消息'})).toHaveValue('留在新对话的草稿');
   });
 
   it('keeps a chosen history session when a pending discovery opening finishes and prevents a concurrent ordinary send', async () => {
@@ -972,7 +978,9 @@ describe('chat page entry', () => {
     await act(async()=>{await Promise.resolve();});
     await loadServerHistory();
     fireEvent.change(screen.getByRole('textbox',{name:'聊天消息'}),{target:{value:'普通草稿'}});
-    act(()=>{fireEvent.click(screen.getByRole('button',{name:'继续探索'}));fireEvent.click(screen.getByRole('button',{name:'发送消息'}));});
+    fireEvent.click(screen.getByRole('button',{name:'查看发现：待继续的联系'}));
+    expect(screen.queryByRole('button',{name:'发送消息'})).toBeNull();
+    act(()=>fireEvent.click(screen.getByRole('button',{name:'继续探索'})));
     expect(authFetch.mock.calls.filter(([url])=>url==='/api/chat')).toHaveLength(0);
     fireEvent.click(screen.getByRole('button',{name:'上次的对话'}));
     await act(async()=>{complete({ok:true,json:async()=>({data:{session:{id:'late-discovery',title:'晚到的发现',sourceMode:'multi_note_discovery',messages:[{role:'assistant',content:'不应抢走当前选择'}]},reused:false}})});});
