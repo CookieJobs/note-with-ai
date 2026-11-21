@@ -13,7 +13,7 @@ NOTE_DISCOVERY_TEST_MONGO_URI=mongodb://127.0.0.1:27028/nwai_discovery_test_eval
 
 ## 真实模型评估
 
-首轮未达到质量门槛。[2026-11-21 基线记录](verification/2026-11-21-note-continuation-live-baseline.md)包含逐例评分、费用与随后的修正。正式启用前需用相同案例复测。
+两轮均未达到质量门槛。[2026-11-21 基线记录](verification/2026-11-21-note-continuation-live-baseline.md)为 3/12，[第二轮复测记录](verification/2026-11-21-note-continuation-live-retest.md)为 5/12。两轮沿用同一个 ¥2.10 批次，累计保守计费 ¥0.277678。正式启用前需在修正供应商协议后用相同案例复测。
 
 费用使用已获批准的批次上限，密钥只能通过已有受控环境注入。2026-11-21 对照 [DeepSeek 模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/) 核实 deepseek-flash 高峰缓存未命中输入为 ¥2/百万 tokens，输出为 ¥8/百万 tokens。执行前复核，测试单价不可用于运行。首轮上限 ¥2.10，进程级配置未写入 `.env` 或生产环境。配置须包含匹配的模型、单价，以及用户、全局和单次预留限额；未知保持关闭。
 

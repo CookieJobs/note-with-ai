@@ -19,7 +19,7 @@
 
 ## 待验收能力
 
-笔记自动发现已完成本地工具、引用和预算契约实现，`NOTE_DISCOVERY_ENABLED` 默认关闭。首轮真实模型评估有 3/12 个正例通过，低于 9/12 的质量门槛，提示调整后待复测。独立生产 worker、收费配置和发布均未验收。见[评估与运行边界](docs/note-continuation-evaluation.md)。
+笔记自动发现已完成本地工具、引用和预算契约实现，`NOTE_DISCOVERY_ENABLED` 默认关闭。两轮真实模型评估分别有 3/12 和 5/12 个正例通过，均低于 9/12 的质量门槛。独立生产 worker、收费配置和发布均未验收。见[评估与运行边界](docs/note-continuation-evaluation.md)。
 
 ## 已退役及边界
 
