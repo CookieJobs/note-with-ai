@@ -4,6 +4,15 @@
   background: var(--ws-bg, #fff);
 }
 .main { width: min(100% - 64px, 800px); margin: 38px auto 0; }
+.sectionBack:not(:empty) { margin-bottom: 14px; }
+.introActions { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; }
+button.historyButton {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 7px 10px;
+  border: 1px solid var(--ws-line, #e6e9ef); border-radius: 8px;
+  color: var(--ws-secondary, #525252); background: transparent; font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer;
+  &:hover { color: var(--ws-ink, #0d0d0d); background: var(--ws-hover, #f8f9fb); }
+  &:focus-visible { outline: 2px solid var(--ws-focus, #266fe1); outline-offset: 2px; }
+}
 .intro { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 20px; }
 .pageTitle { margin: 0; color: var(--ws-ink, #0d0d0d); font-size: 26px; font-weight: 600; line-height: 1.35; letter-spacing: -.025em; }
 .pageDescription { margin: 8px 0 0; color: var(--ws-muted, #6f6f6f); font-size: 13px; line-height: 1.7; }
@@ -81,9 +90,7 @@ button.manageDiscovery { flex: none; }
   }
 }
 .scheduleDisclosure, .scheduleStatus { margin: 12px 0 0; color: var(--ws-muted, #6f6f6f); font-size: 12px; line-height: 1.75; }
-.history { margin-top: 36px; }
 .historyHeading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
-  h2 { margin: 0; font-size: 16px; font-weight: 500; }
   span { color: var(--ws-muted, #6f6f6f); font-size: 12px; }
 }
 .historyTabs { display: flex; gap: 18px; margin-top: 10px; border-bottom: 1px solid var(--ws-line, rgba(13,13,13,.09)); }

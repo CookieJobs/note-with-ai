@@ -1,14 +1,16 @@
 /*
 Input: 当前账户、Workspace 唯一设置控制器和真实灵感 API
-Output: 开放文章阅读、手动研究、历史整理和定期发现设置入口
+Output: 独立的灵感首页、历史列表与文章阅读，保留历史筛选、分页及返回位置
 Pos: frontend/src/app/inspiration
 Note: 修改时同步本目录 README.md。
 */
 'use client';
 
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { History } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import TopNavigation from '../../components/TopNavigation';
+import WorkspaceBackButton from '../../components/workspace/WorkspaceBackButton';
 import {
   changeInspirationState,
   getInspiration,
@@ -85,6 +87,15 @@ type HistoryPage = { items: InspirationItem[]; nextCursor: string | null; loaded
 const emptyPage = (): HistoryPage => ({ items: [], nextCursor: null, loaded: false });
 const viewLabels: Record<InspirationView, string> = { recent: '最近', saved: '已保存', dismissed: '已忽略' };
 const views: InspirationView[] = ['recent', 'saved', 'dismissed'];
+const historyHash = '#inspiration-history';
+const readerPrefix = '#inspiration=';
+
+function getReaderId(hash: string): string | null {
+  if (!hash.startsWith(readerPrefix)) return null;
+  try { return decodeURIComponent(hash.slice(readerPrefix.length)) || null; }
+  catch { return null; }
+}
+
 function announceInspirationCountChanged() {
   window.dispatchEvent(new Event('inspiration-count-changed'));
 }
@@ -120,7 +131,27 @@ function StandaloneInspiration({ user }: { user: User | null }) {
 
 function InspirationContent({ user, controller }: { user: User | null; controller?: InspirationSettingsController }) {
   const workspace = useWorkspace();
-  const [item, setItem] = useState<InspirationItem | null>(null);
+  const [latestItem, setLatestItem] = useState<InspirationItem | null>(null);
+  const [detailItem, setDetailItem] = useState<InspirationItem | null>(null);
+  const [location, setLocation] = useState('');
+  const isHistory = location === historyHash;
+  const detailId = getReaderId(location);
+  const item = detailId ? (detailItem?.id === detailId ? detailItem : null) : latestItem;
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [readerError, setReaderError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const locationRef = useRef('');
+  const goingBack = useRef(false);
+  const historyScroll = useRef(0);
+  const latestScroll = useRef(0);
+  const historyOpenerId = useRef<string | null>(null);
+  const navigationFocus = useRef(false);
+  const readerHeading = useRef<HTMLHeadingElement>(null);
+  const readerStatus = useRef<HTMLDivElement>(null);
+  const historyHeading = useRef<HTMLHeadingElement>(null);
+  const overviewHeading = useRef<HTMLHeadingElement>(null);
+  const historyList = useRef<HTMLUListElement>(null);
   const [view, setView] = useState<InspirationView>('recent');
   const [pages, setPages] = useState<Record<InspirationView, HistoryPage>>({ recent: emptyPage(), saved: emptyPage(), dismissed: emptyPage() });
   const [loading, setLoading] = useState(true);
@@ -137,6 +168,68 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
   const organizeLock = useRef(false);
   const countRequest = useRef(0);
   const historyRevision = useRef(0);
+  const pendingViewed = useRef(new Set<string>());
+  const getScroller = useCallback(() =>
+    mainRef.current?.closest('#workspace-content') ?? document.scrollingElement ?? document.documentElement, []);
+  const syncLocation = useCallback(() => {
+    const hash = window.location.hash;
+    const next = hash === historyHash || getReaderId(hash) ? hash : '';
+    const previous = locationRef.current;
+    goingBack.current = false;
+    if (next === previous) return;
+    if (previous === historyHash) historyScroll.current = getScroller().scrollTop;
+    else if (!previous) latestScroll.current = getScroller().scrollTop;
+    locationRef.current = next;
+    navigationFocus.current = true;
+    ++selection.current;
+    setOpeningId(null);
+    setReaderError(null);
+    setHistoryError(null);
+    setActionError(null);
+    setLocation(next);
+  }, [getScroller]);
+  useEffect(() => {
+    syncLocation();
+    window.addEventListener('popstate', syncLocation);
+    window.addEventListener('hashchange', syncLocation);
+    return () => {
+      window.removeEventListener('popstate', syncLocation);
+      window.removeEventListener('hashchange', syncLocation);
+    };
+  }, [syncLocation]);
+  const navigate = useCallback((hash: string) => {
+    if (locationRef.current === hash) return;
+    window.history.pushState({ ...window.history.state, inspirationFrom: locationRef.current }, '',
+      window.location.pathname + window.location.search + hash);
+    syncLocation();
+  }, [syncLocation]);
+  const back = (hash: string) => {
+    if (goingBack.current) return;
+    if (window.history.state?.inspirationFrom === hash) {
+      goingBack.current = true;
+      window.history.back();
+      return;
+    }
+    window.history.replaceState({ ...window.history.state, inspirationFrom: null }, '',
+      window.location.pathname + window.location.search + hash);
+    syncLocation();
+  };
+  useLayoutEffect(() => {
+    if (!navigationFocus.current) return;
+    getScroller().scrollTop = isHistory ? historyScroll.current : detailId ? 0 : latestScroll.current;
+    if (detailId && !item) {
+      readerStatus.current?.focus({ preventScroll: true });
+      return;
+    }
+    navigationFocus.current = false;
+    const openerId = historyOpenerId.current;
+    const opener = isHistory && openerId
+      ? Array.from(historyList.current?.querySelectorAll<HTMLButtonElement>('[data-inspiration-id]') ?? [])
+        .find((button) => button.dataset.inspirationId === openerId)
+      : undefined;
+    (isHistory ? opener ?? historyHeading.current : detailId ? readerHeading.current : overviewHeading.current)
+      ?.focus({ preventScroll: true });
+  }, [detailId, getScroller, isHistory, item, readerError]);
   const refreshCount = useCallback(() => {
     const request = ++countRequest.current;
     void getUnviewedInspirationCount().then((count) => {
@@ -144,17 +237,21 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
     }).catch(() => undefined);
   }, []);
   const invalidateSelection = useCallback(() => { ++selection.current; }, []);
-  const markViewed = useCallback((entry: InspirationItem, selected: number) => {
-    if (entry.viewedAt) return;
+  const markViewed = useCallback((entry: InspirationItem) => {
+    if (entry.viewedAt || pendingViewed.current.has(entry.id)) return;
+    pendingViewed.current.add(entry.id);
     void markInspirationViewed(entry.id).then((viewed) => {
-      if (!active.current) return;
+      if (!active.current || viewed.id !== entry.id) return;
       ++historyRevision.current;
       // Merge read metadata only, preserving any later save/dismiss result.
-      if (selection.current === selected) setItem((current) => current?.id === viewed.id ? { ...current, viewedAt: viewed.viewedAt } : current);
-      setPages((previous) => Object.fromEntries(views.map((key) => [key, { ...previous[key], items: previous[key].items.map((current) => current.id === viewed.id ? { ...current, viewedAt: viewed.viewedAt } : current) }])) as Record<InspirationView, HistoryPage>);
+      const withViewedAt = <T extends InspirationItem | null>(current: T): T => current?.id === viewed.id && current.viewedAt !== viewed.viewedAt
+        ? { ...current, viewedAt: viewed.viewedAt } : current;
+      setLatestItem(withViewedAt);
+      setDetailItem(withViewedAt);
+      setPages((previous) => Object.fromEntries(views.map((key) => [key, { ...previous[key], items: previous[key].items.map(withViewedAt) }])) as Record<InspirationView, HistoryPage>);
       announceInspirationCountChanged();
       refreshCount();
-    }).catch(() => undefined);
+    }).catch(() => undefined).finally(() => { pendingViewed.current.delete(entry.id); });
   }, [refreshCount]);
 
   const loadHistoryPage = useCallback(async (targetView: InspirationView, cursor: string | null, isCurrent: () => boolean = () => true) => {
@@ -183,26 +280,30 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
     active.current = true;
     if (!user?.id) return () => { active.current = false; };
     let mounted = true;
-    const selected = selection.current;
     setLoading(true);
     refreshCount();
     loadHistoryPage('recent', null, () => mounted)
       .then((first) => {
         if (!mounted || !first) return;
         const newest = first.items[0];
-        if (newest && selection.current === selected) {
-          setItem(newest);
-          markViewed(newest, selected);
-        }
+        if (newest) setLatestItem((current) => current ?? newest);
       })
       .catch((error: InspirationApiErrorType) => {
         if (mounted) setHistoryError(`加载失败，请重试。${messageForInspirationError(error)}`);
       })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; active.current = false; invalidateSelection(); };
-  }, [user?.id, refreshCount, markViewed, invalidateSelection, loadHistoryPage]);
+  }, [user?.id, refreshCount, invalidateSelection, loadHistoryPage]);
+
+  useEffect(() => {
+    if (!isHistory && item) markViewed(item);
+  }, [isHistory, item, markViewed]);
 
   const loadView = async (nextView: InspirationView) => {
+    if (nextView !== view && openingId) {
+      invalidateSelection();
+      setOpeningId(null);
+    }
     setView(nextView);
     setHistoryError(null);
     if (pages[nextView].loaded || loadingViews.current.has(nextView)) return;
@@ -220,7 +321,8 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
 
   const loadMore = async () => {
     const cursor = pages[view].nextCursor;
-    if (!cursor || listLoading) return;
+    if (!cursor || loadingViews.current.has(view)) return;
+    loadingViews.current.add(view);
     setListLoading(true);
     setHistoryError(null);
     try {
@@ -228,45 +330,56 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
     } catch {
       setHistoryError('加载失败，请重试。已显示的灵感不会丢失。');
     } finally {
+      loadingViews.current.delete(view);
       setListLoading(loadingViews.current.size > 0);
     }
   };
 
-  const openItem = async (entry: InspirationItem) => {
+  const openItem = useCallback(async (id: string, fromHistory: boolean) => {
     const selected = ++selection.current;
-    setHistoryError(null);
+    const setError = fromHistory ? setHistoryError : setReaderError;
+    setOpeningId(id);
+    setError(null);
     try {
-      const full = await getInspiration(entry.id);
+      const full = await getInspiration(id);
       if (!active.current || selection.current !== selected) return;
-      setItem(full);
-      markViewed(full, selected);
+      if (full.id !== id) throw new Error('灵感详情与选择不一致');
+      setDetailItem(full);
+      if (fromHistory) {
+        historyOpenerId.current = id;
+        navigate(readerPrefix + encodeURIComponent(id));
+      }
     } catch {
-      if (active.current && selection.current === selected) setHistoryError('加载失败，请重试。当前灵感仍会保留。');
+      if (active.current && selection.current === selected) {
+        setError(fromHistory ? '加载失败，请重试。当前灵感仍会保留。' : '加载灵感失败，请重试。');
+      }
+    } finally {
+      if (active.current && selection.current === selected) setOpeningId(null);
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    if (user?.id && detailId && detailId !== detailItem?.id) void openItem(detailId, false);
+  }, [detailId, detailItem?.id, openItem, user?.id]);
 
   const organize = async (operation: InspirationStateOperation) => {
     if (!item || organizeLock.current) return;
     organizeLock.current = true;
     const selected = ++selection.current;
     setOrganizing(true);
-    setHistoryError(null);
+    setActionError(null);
     try {
       const updated = await changeInspirationState(item.id, operation);
       if (!active.current) return;
       ++historyRevision.current;
       setPages((previous) => updatePages(previous, updated));
-      if (selection.current === selected) {
-        if (belongsInView(updated, view)) setItem(updated);
-        else {
-          const fallback = pages[view].items.find((entry) => entry.id !== updated.id) || null;
-          setItem(fallback);
-          if (fallback) markViewed(fallback, selected);
-        }
-      }
+      setDetailItem((current) => current?.id === updated.id ? updated : current);
+      const latestFallback = belongsInView(updated, 'recent') ? updated
+        : pages.recent.items.find((entry) => entry.id !== updated.id) ?? null;
+      setLatestItem((current) => current?.id === updated.id ? latestFallback : current);
       if (operation === 'dismiss') refreshCount();
     } catch {
-      if (active.current) setHistoryError('操作未成功，请重试。已显示的灵感未改变。');
+      if (active.current && selection.current === selected) setActionError('操作未成功，请重试。已显示的灵感未改变。');
     } finally {
       organizeLock.current = false;
       if (active.current) setOrganizing(false);
@@ -289,9 +402,7 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
       ++historyRevision.current;
       setPages((previous) => updatePages(previous, result.item));
       if (selection.current === selected) {
-        setItem(result.item);
-        setView('recent');
-        markViewed(result.item, selected);
+        setLatestItem(result.item);
       }
     } catch (error) {
       if (active.current) setMessage({ kind: 'error', text: messageForInspirationError(error) });
@@ -304,32 +415,49 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
   return (
     <div className={styles.page}>
       <TopNavigation />
-      <main className={styles.main}>
-        <header className={styles.intro}>
-          <div><h2 className={styles.pageTitle}>灵感</h2><p className={styles.pageDescription}>从近期笔记出发，发现值得继续探索的线索。</p></div>
-          <button className={styles.researchButton} type="button" onClick={handleResearch} disabled={requesting || loading || !user}>
-            {requesting ? '正在检索并整理来源…' : '为我研究一条灵感'}
-          </button>
-        </header>
+      <main className={styles.main} ref={mainRef}>
+        {(detailId || isHistory) && <div className={styles.sectionBack}>
+          <WorkspaceBackButton label={detailId ? '返回历史' : '返回灵感'} onClick={() => back(detailId ? historyHash : '')} />
+        </div>}
+        {!isHistory && !detailId && <>
+          <header className={styles.intro}>
+            <div><h2 ref={overviewHeading} tabIndex={-1} className={styles.pageTitle}>灵感</h2><p className={styles.pageDescription}>从近期笔记出发，发现值得继续探索的线索。</p></div>
+            <div className={styles.introActions}>
+              <button className={styles.historyButton} type="button" onClick={() => navigate(historyHash)}>
+                <History size={16} aria-hidden="true" />灵感历史
+              </button>
+              <button className={styles.researchButton} type="button" onClick={handleResearch} disabled={requesting || loading || !user}>
+                {requesting ? '正在检索并整理来源…' : '为我研究一条灵感'}
+              </button>
+            </div>
+          </header>
 
-        <p className={styles.privacyNotice}>
-          本次只会使用近期笔记的标题（若有）和短摘要；不会发送笔记正文。
-        </p>
+          <p className={styles.privacyNotice}>
+            本次只会使用近期笔记的标题（若有）和短摘要；不会发送笔记正文。
+          </p>
 
-        <section className={styles.actionSection} aria-label="手动研究灵感">
-          {requesting && <p className={styles.progress} role="status">正在阅读近期主题并检索公开来源，请稍候。</p>}
-          {loading && <p className={styles.progress} role="status">正在加载最近的灵感…</p>}
-          {!loading && message && (
-            <p className={message.kind === 'error' ? styles.errorMessage : styles.emptyMessage} role="status" aria-live="polite">
-              {message.text}
-            </p>
-          )}
-        </section>
+          <section className={styles.actionSection} aria-label="手动研究灵感">
+            {requesting && <p className={styles.progress} role="status">正在阅读近期主题并检索公开来源，请稍候。</p>}
+            {loading && <p className={styles.progress} role="status">正在加载最近的灵感…</p>}
+            {!loading && message && (
+              <p className={message.kind === 'error' ? styles.errorMessage : styles.emptyMessage} role="status" aria-live="polite">
+                {message.text}
+              </p>
+            )}
+            {!loading && !item && historyError && <p className={styles.errorMessage} role="alert">{historyError}</p>}
+          </section>
+        </>}
 
-        {item && (
+        {detailId && !item && <div ref={readerStatus} tabIndex={-1}>
+          {readerError ? <>
+            <p className={styles.errorMessage} role="alert">{readerError}</p>
+            <button type="button" className={styles.organizeButton} onClick={() => void openItem(detailId, false)}>重新加载</button>
+          </> : <p className={styles.progress} role="status">正在读取灵感…</p>}
+        </div>}
+        {!isHistory && item && (
           <article className={styles.researchCard} aria-labelledby="inspiration-headline">
             <div className={styles.articleMeta}><p className={styles.topicLabel}>{item.topicLabel}</p><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleDateString('zh-CN')}</time></div>
-            <h1 id="inspiration-headline" className={styles.headline}>{item.headline}</h1>
+            <h1 id="inspiration-headline" ref={readerHeading} tabIndex={-1} className={styles.headline}>{item.headline}</h1>
             <p className={styles.brief}>{renderBrief(item.brief, item)}</p>
             <section className={styles.detailSection}>
               <h2>与你的记录有关</h2>
@@ -371,10 +499,11 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
                 </>
               )}
             </div>
+            {actionError && <p className={styles.errorMessage} role="alert">{actionError}</p>}
           </article>
         )}
 
-        {workspace?.openSettings ? (
+        {!isHistory && !detailId && (workspace?.openSettings ? (
           <section className={styles.discoveryRow} aria-label="定期发现">
             <div>
               <h2>定期发现</h2>
@@ -385,11 +514,11 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
             </div>
             <button type="button" className={styles.manageDiscovery} onClick={() => workspace.openSettings?.('inspiration')}>管理定期发现</button>
           </section>
-        ) : controller && <ScheduledDiscoverySettings controller={controller} />}
+        ) : controller && <ScheduledDiscoverySettings controller={controller} />)}
 
-        <section className={styles.history} aria-label="灵感历史">
+        {isHistory && <section aria-label="灵感历史">
           <div className={styles.historyHeading}>
-            <h2>灵感历史</h2>
+            <h1 ref={historyHeading} tabIndex={-1} className={styles.pageTitle}>灵感历史</h1>
             <span>{unviewedCount > 0 ? `${unviewedCount} 条新灵感` : '研究过的内容都会留在这里'}</span>
           </div>
           <div className={styles.historyTabs} role="tablist" aria-label="灵感历史分类">
@@ -404,11 +533,12 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
             {pages[view].loaded && pages[view].items.length === 0 && (
               <p className={styles.historyEmpty}>{view === 'recent' ? '这里还没有灵感。你可以先研究一条，之后再回来查看。' : `这里还没有${viewLabels[view]}的灵感。`}</p>
             )}
-            <ul className={styles.historyList}>
+            <ul className={styles.historyList} ref={historyList}>
               {pages[view].items.map((entry) => (
                 <li key={entry.id}>
-                  <button type="button" className={styles.historyRow} onClick={() => void openItem(entry)}
-                    aria-current={item?.id === entry.id ? 'true' : undefined}>
+                  <button type="button" className={styles.historyRow} onClick={() => void openItem(entry.id, true)}
+                    data-inspiration-id={entry.id} aria-busy={openingId === entry.id}
+                    aria-current={historyOpenerId.current === entry.id ? 'true' : undefined}>
                     <span className={styles.historyRowTitle}>{entry.headline}</span>
                     <span className={styles.historyMeta}>
                       {entry.origin === 'scheduled' && <span>定期发现</span>}
@@ -425,10 +555,11 @@ function InspirationContent({ user, controller }: { user: User | null; controlle
                 {listLoading ? '正在加载…' : '加载更多灵感'}
               </button>
             )}
-            {listLoading && !pages[view].nextCursor && <p className={styles.progress} role="status">正在加载灵感…</p>}
+            {((loading && view === 'recent') || (listLoading && !pages[view].nextCursor)) && <p className={styles.progress} role="status">正在加载灵感…</p>}
+            {openingId && <p className={styles.progress} role="status">正在读取灵感…</p>}
             {historyError && <p className={styles.errorMessage} role="alert">{historyError}</p>}
           </div>
-        </section>
+        </section>}
       </main>
     </div>
   );

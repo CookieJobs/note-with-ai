@@ -2,6 +2,8 @@
 
 [page.tsx](page.tsx) 在持续工作区内展示正文、为何相关、下一问题、真实编号来源及 recent/saved/dismissed 历史。来源标题、编号、站点、链接和检索日期取自真实 DTO；检索日期不能称作发布时间。[SourceExcerpt](components/SourceExcerpt.tsx) 以安全纯文本展示和展开摘录。
 
+灵感首页标题区在研究按钮旁提供「灵感历史」，列表与详情的返回操作位于工作区顶栏。历史列表与文章独立显示，打开历史条目时从正文顶部开始，返回时恢复原筛选、已加载页、滚动位置和触发项焦点。浏览器前进和后退同步这三种视图。历史详情使用真实详情接口加载，失败留在原列表，可点击同一条目重试。
+
 ## 定期设置的唯一所有者
 
 [WorkspaceShell](../../components/workspace/WorkspaceShell.tsx) 唯一挂载 [useInspirationSettings](../../hooks/useInspirationSettings.ts)，通过 context 供页面与设置共用。页面提供真实简要状态和 `openSettings('inspiration')` 入口，[ScheduledDiscoverySettings](components/ScheduledDiscoverySettings.tsx) 展示完整说明与开关。只有脱离工作区独立渲染时才挂载 fallback hook，不重复 GET/PUT，不增加本机 consent 门禁。
@@ -12,7 +14,7 @@
 
 ## 阅读与请求隔离
 
-阅读状态按账户隔离，详情、研究和整理按选择代次归属：A 后选 B，A 的迟到结果不能替换 B；研究期间改选历史，研究完成只进入历史，不抢当前阅读。已读响应仅合并 `viewedAt`，不能覆盖之后的收藏/忽略状态。手动研究与整理均同步防重入。
+阅读状态按账户隔离，详情和研究按选择代次归属：A 后选 B，A 的迟到结果不能替换 B；研究期间改选历史，研究完成只进入历史。已读响应按灵感 ID 合并 `viewedAt`，保留后续收藏或忽略状态。历史详情整理成功后保持原文章，可以从该文章继续调整状态。手动研究、整理和同一筛选的分页均同步防重入。
 
 筛选或分页失败保留当前详情；收藏、取消、忽略、恢复用真实服务结果。分页使用服务端游标，不凭本地条数伪造统计。未读数通过既有 API 与 `inspiration-count-changed` 事件同步。
 

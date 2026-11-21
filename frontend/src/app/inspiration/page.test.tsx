@@ -43,9 +43,24 @@ const latest = {
     publisher: 'example.com', snippet: '来源摘要', retrievedAt: '2026-09-22T00:00:00.000Z' }],
 };
 
+async function showHistory() {
+  if (screen.queryByRole('tabpanel')) return;
+  const button = screen.queryByRole('button', { name: '返回历史' })
+    ?? await screen.findByRole('button', { name: '灵感历史' });
+  fireEvent.click(button);
+  await screen.findByRole('tabpanel');
+}
+
+async function showOverview() {
+  await showHistory();
+  fireEvent.click(screen.getByRole('button', { name: '返回灵感' }));
+  await screen.findByRole('button', { name: '为我研究一条灵感' });
+}
+
 describe('InspirationPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState(null, '', '/inspiration');
     mockAuthenticated.mockReturnValue(true);
     mockGetUser.mockReturnValue({ id: 'user-1' });
     mockPathname.mockReturnValue('/inspiration');
@@ -60,6 +75,46 @@ describe('InspirationPage', () => {
     mockRequestInspiration.mockResolvedValue({ status: 'created', item: latest });
   });
 
+  it('opens a reading view at the top and restores the saved history page, scroll position and opener', async () => {
+    const first = { ...latest, viewedAt: '2026-09-22T00:00:00Z' };
+    const saved = { ...first, id: 'saved-2', headline: '第二页收藏', userState: 'saved' as const };
+    mockListInspirations.mockImplementation(async (view: string, cursor: string | null) => view === 'recent'
+      ? { items: [first], nextCursor: null }
+      : cursor ? { items: [saved], nextCursor: null } : { items: [], nextCursor: 'saved-page-2' });
+    mockGetInspiration.mockResolvedValue(saved);
+    render(<div id="workspace-content"><InspirationPage /></div>);
+    const scroller = document.getElementById('workspace-content')!;
+
+    fireEvent.click(await screen.findByRole('button', { name: '灵感历史' }));
+    fireEvent.click(screen.getByRole('tab', { name: '已保存' }));
+    fireEvent.click(await screen.findByRole('button', { name: '加载更多灵感' }));
+    const row = await screen.findByRole('button', { name: /第二页收藏/ });
+    scroller.scrollTop = 320;
+    fireEvent.click(row);
+
+    expect(await screen.findByRole('heading', { name: '第二页收藏', level: 1 })).toHaveFocus();
+    expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument();
+    expect(scroller.scrollTop).toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: '返回历史' }));
+
+    expect(await screen.findByRole('tab', { name: '已保存' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: /第二页收藏/ })).toHaveFocus();
+    expect(scroller.scrollTop).toBe(320);
+    expect(mockListInspirations.mock.calls.filter(([view, cursor]) => view === 'saved' && cursor === 'saved-page-2')).toHaveLength(1);
+  });
+
+  it('loads a direct reading link at the top and offers retry when the detail request fails', async () => {
+    window.history.replaceState(null, '', '/inspiration#inspiration=i1');
+    mockGetInspiration.mockRejectedValueOnce(new Error('offline'));
+    render(<div id="workspace-content"><InspirationPage /></div>);
+    const scroller = document.getElementById('workspace-content')!;
+    expect(await screen.findByRole('alert')).toHaveTextContent('加载灵感失败');
+    fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+    expect(await screen.findByRole('heading', { name: latest.headline, level: 1 })).toHaveFocus();
+    expect(scroller.scrollTop).toBe(0);
+    expect(mockGetInspiration.mock.calls).toEqual([['i1'], ['i1']]);
+  });
+
   it('starts source excerpts collapsed and resets them when opening another item with the same source', async () => {
     const source = { ...latest.sources[0], snippet: '# 来源标题\n' + '完整摘录'.repeat(80) };
     const first = { ...latest, viewedAt: '2026-09-22T00:00:00Z', sources: [source] };
@@ -71,6 +126,7 @@ describe('InspirationPage', () => {
     fireEvent.click(toggle);
     expect(screen.getByRole('button', { name: '收起来源摘录' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '参考来源：来源标题' })).toHaveAttribute('href', source.canonicalUrl);
+    await showHistory();
     fireEvent.click(screen.getByRole('button', { name: /另一条灵感/ }));
     await screen.findByRole('heading', { name: '另一条灵感', level: 1 });
     expect(screen.getByRole('button', { name: '展开来源摘录' })).toHaveAttribute('aria-expanded', 'false');
@@ -150,6 +206,7 @@ describe('InspirationPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '保存灵感' }));
     expect(await screen.findByRole('button', { name: '取消保存' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: '把零散记录转成可检验的问题' })).toBeInTheDocument();
+    await showHistory();
     fireEvent.click(screen.getByRole('tab', { name: '已保存' }));
     expect(mockListInspirations).toHaveBeenCalledWith('saved', null);
   });
@@ -158,6 +215,7 @@ describe('InspirationPage', () => {
     mockListInspirations.mockResolvedValueOnce({ items: [latest], nextCursor: 'page-2' })
       .mockRejectedValueOnce(new Error('offline'));
     render(<InspirationPage />);
+    await showHistory();
     const row = await screen.findByRole('button', { name: /把零散记录转成可检验的问题/ });
     const more = screen.getByRole('button', { name: '加载更多灵感' });
     expect(row.compareDocumentPosition(more)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -208,9 +266,11 @@ describe('InspirationPage', () => {
     mockMarkInspirationViewed.mockResolvedValue({ ...scheduled, viewedAt: '2026-09-26T00:00:00Z' });
     mockGetCount.mockImplementation(async () => mockMarkInspirationViewed.mock.calls.length > 0 ? 0 : 1);
     render(<InspirationPage />);
+    await showHistory();
     expect(await screen.findByText('1 条新灵感')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /新的研究主题/ }));
     await waitFor(() => expect(mockMarkInspirationViewed).toHaveBeenCalledWith('i2'));
+    await showHistory();
     expect(await screen.findByText('研究过的内容都会留在这里')).toBeInTheDocument();
   });
   it('keeps B selected when the earlier A detail request arrives last', async () => {
@@ -220,6 +280,7 @@ describe('InspirationPage', () => {
     mockListInspirations.mockResolvedValue({ items: [{ ...latest, viewedAt: a.viewedAt }, a, b], nextCursor: null });
     mockGetInspiration.mockImplementation((id: string) => id === 'a' ? late.promise : Promise.resolve(b));
     render(<InspirationPage />);
+    await showHistory();
     fireEvent.click(await screen.findByRole('button', { name: /历史 A/ }));
     fireEvent.click(screen.getByRole('button', { name: /历史 B/ }));
     await screen.findByRole('heading', { name: '历史 B', level: 1 });
@@ -235,8 +296,10 @@ describe('InspirationPage', () => {
     mockGetInspiration.mockImplementation(async (id: string) => id === 'a' ? a : b);
     mockMarkInspirationViewed.mockReturnValue(late.promise);
     render(<InspirationPage />);
+    await showHistory();
     fireEvent.click(await screen.findByRole('button', { name: /历史 A/ }));
     await screen.findByRole('heading', { name: '历史 A', level: 1 });
+    await showHistory();
     fireEvent.click(screen.getByRole('button', { name: /历史 B/ }));
     await screen.findByRole('heading', { name: '历史 B', level: 1 });
     await act(async () => { late.resolve({ ...a, viewedAt: b.viewedAt }); await late.promise; });
@@ -253,7 +316,8 @@ describe('InspirationPage', () => {
     mockRequestInspiration.mockReturnValue(research.promise); mockMarkInspirationViewed.mockReturnValue(viewed.promise);
     render(<InspirationPage />);
     fireEvent.click(await screen.findByRole('button', { name: '为我研究一条灵感' }));
-    fireEvent.click(screen.getByRole('button', { name: /把零散记录转成可检验的问题/ }));
+    await showHistory();
+    fireEvent.click(await screen.findByRole('button', { name: /把零散记录转成可检验的问题/ }));
     await act(async () => { research.resolve({ status: 'created', item: generated }); await research.promise; });
     await act(async () => { viewed.resolve({ ...generated, viewedAt: history.viewedAt }); await viewed.promise; });
     expect(screen.getByRole('heading', { name: history.headline, level: 1 })).toBeInTheDocument();
@@ -265,6 +329,7 @@ describe('InspirationPage', () => {
     mockListInspirations.mockResolvedValue({ items: [latest, history], nextCursor: null });
     mockGetInspiration.mockResolvedValue(history); mockMarkInspirationViewed.mockReturnValue(late.promise);
     render(<InspirationPage />);
+    await showHistory();
     fireEvent.click(await screen.findByRole('button', { name: /已选择历史/ }));
     await screen.findByRole('heading', { name: history.headline, level: 1 });
     await act(async () => { late.resolve({ ...latest, viewedAt: history.viewedAt }); await late.promise; });
@@ -299,7 +364,8 @@ describe('InspirationPage', () => {
     render(<InspirationPage />);
     fireEvent.click(await screen.findByRole('button', { name: '为我研究一条灵感' }));
     await screen.findByRole('heading', { name: '新研究', level: 1 });
-    fireEvent.click(screen.getByRole('button', { name: /把零散记录转成可检验的问题/ }));
+    await showHistory();
+    fireEvent.click(await screen.findByRole('button', { name: /把零散记录转成可检验的问题/ }));
     await screen.findByRole('heading', { name: history.headline, level: 1 });
     await act(async () => { viewed.resolve({ ...generated, viewedAt: history.viewedAt }); await viewed.promise; });
     expect(screen.getByRole('heading', { name: history.headline, level: 1 })).toBeInTheDocument();
@@ -331,7 +397,8 @@ describe('InspirationPage', () => {
     mockGetInspiration.mockResolvedValue(second); mockChangeInspirationState.mockReturnValue(pending.promise);
     render(<InspirationPage />);
     fireEvent.click(await screen.findByRole('button', { name: '保存灵感' }));
-    fireEvent.click(screen.getByRole('button', { name: /新选择/ }));
+    await showHistory();
+    fireEvent.click(await screen.findByRole('button', { name: /新选择/ }));
     await screen.findByRole('heading', { name: '新选择', level: 1 });
     await act(async () => { pending.resolve({ ...first, userState: 'saved' }); await pending.promise; });
     expect(screen.getByRole('heading', { name: '新选择', level: 1 })).toBeInTheDocument();
@@ -348,10 +415,13 @@ describe('InspirationPage', () => {
     mockMarkInspirationViewed.mockReturnValue(viewed.promise);
     mockGetCount.mockImplementation(async () => serverCount);
     render(<InspirationPage />);
+    await showHistory();
     await screen.findByText('1 条新灵感');
+    await showOverview();
     fireEvent.click(await screen.findByRole('button', { name: '忽略' }));
     await screen.findByRole('heading', { name: b.headline, level: 1 });
     expect(mockMarkInspirationViewed).toHaveBeenCalledWith(b.id);
+    await showHistory();
     const row = screen.getByRole('button', { name: /自动展示 B/ });
     expect(within(row).getByText('新')).toBeInTheDocument();
     await act(async () => {
@@ -375,10 +445,12 @@ describe('InspirationPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '忽略' }));
     await screen.findByRole('heading', { name: b.headline, level: 1 });
     expect(mockMarkInspirationViewed).toHaveBeenCalledWith(b.id);
+    await showHistory();
     fireEvent.click(screen.getByRole('button', { name: /随后选择 C/ }));
     await screen.findByRole('heading', { name: c.headline, level: 1 });
     await act(async () => { viewed.resolve({ ...b, viewedAt: '2026-10-25T10:00:00Z' }); await viewed.promise; });
     expect(screen.getByRole('heading', { name: c.headline, level: 1 })).toBeInTheDocument();
+    await showHistory();
     expect(within(screen.getByRole('button', { name: /自动展示 B/ })).queryByText('新')).not.toBeInTheDocument();
   });
 
@@ -393,12 +465,13 @@ describe('InspirationPage', () => {
     mockChangeInspirationState.mockImplementation(async () => { saved = true; return { ...a, userState: 'saved' }; });
     render(<InspirationPage />);
     await screen.findByRole('heading', { name: a.headline, level: 1 });
+    await showHistory();
     fireEvent.click(screen.getByRole('tab', { name: '已保存' }));
-    fireEvent.click(screen.getByRole('tab', { name: '最近' }));
+    await showOverview();
     fireEvent.click(screen.getByRole('button', { name: '保存灵感' }));
     await screen.findByRole('button', { name: '取消保存' });
     await act(async () => { stale.resolve({ items: [], nextCursor: null }); await stale.promise; });
-    fireEvent.click(screen.getByRole('tab', { name: '已保存' }));
+    await showHistory();
     const panel = screen.getByRole('tabpanel', { name: '已保存灵感' });
     expect(await within(panel).findByRole('button', { name: new RegExp(a.headline) })).toHaveTextContent('已保存');
     expect(within(panel).queryByText('这里还没有已保存的灵感。')).not.toBeInTheDocument();
@@ -417,10 +490,13 @@ describe('InspirationPage', () => {
     });
     mockChangeInspirationState.mockImplementation(async () => { dismissed = true; return { ...a, userState: 'dismissed' }; });
     render(<InspirationPage />);
+    await showHistory();
     fireEvent.click(await screen.findByRole('button', { name: '加载更多灵感' }));
+    await showOverview();
     fireEvent.click(screen.getByRole('button', { name: '忽略' }));
     await screen.findByRole('heading', { name: b.headline, level: 1 });
     await act(async () => { stale.resolve({ items: [a, c], nextCursor: 'server-page-3' }); await stale.promise; });
+    await showHistory();
     const panel = screen.getByRole('tabpanel', { name: '最近灵感' });
     await within(panel).findByRole('button', { name: new RegExp(c.headline) });
     expect(within(panel).queryByRole('button', { name: new RegExp(a.headline) })).not.toBeInTheDocument();
@@ -440,13 +516,17 @@ describe('InspirationPage', () => {
       return unsaved ? Promise.resolve({ items: [c], nextCursor: null }) : stale.promise;
     });
     mockChangeInspirationState.mockImplementation(async () => { unsaved = true; return { ...a, userState: 'regular' }; });
+    mockGetInspiration.mockResolvedValue(a);
     render(<InspirationPage />);
     await screen.findByRole('button', { name: '取消保存' });
+    await showHistory();
     fireEvent.click(screen.getByRole('tab', { name: '已保存' }));
     fireEvent.click(await screen.findByRole('button', { name: '加载更多灵感' }));
-    fireEvent.click(screen.getByRole('button', { name: '取消保存' }));
-    await screen.findByRole('heading', { name: b.headline, level: 1 });
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(a.headline) }));
+    fireEvent.click(await screen.findByRole('button', { name: '取消保存' }));
+    expect(await screen.findByRole('button', { name: '保存灵感' })).toBeInTheDocument();
     await act(async () => { stale.resolve({ items: [a, c], nextCursor: null }); await stale.promise; });
+    await showHistory();
     const panel = screen.getByRole('tabpanel', { name: '已保存灵感' });
     await within(panel).findByRole('button', { name: new RegExp(c.headline) });
     expect(within(panel).queryByRole('button', { name: new RegExp(a.headline) })).not.toBeInTheDocument();
