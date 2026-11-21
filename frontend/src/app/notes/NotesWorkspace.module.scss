@@ -56,7 +56,11 @@ button.primaryButton { background: var(--ws-accent); color: white; &:hover { bac
   h1 { margin: 0 0 28px; color: var(--ws-ink); font-size: 30px; font-weight: 600; line-height: 1.35; letter-spacing: -.025em; overflow-wrap: anywhere; }
 }
 .readerToolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 28px; color: var(--ws-muted); font-size: 12px; }
-.readerTools { display: flex; align-items: center; gap: 2px; }
+.readerTools, .detailNav { display: flex; align-items: center; gap: 2px; }
+@media (max-width: 600px) {
+  .detailNav .detailActionLabel, .readerTools .detailActionLabel { display: none; }
+  .detailNav > button, .readerTools > button { min-width: 34px; padding-inline: 7px; }
+}
 .readingBody, .editorBody { min-width: 0; color: var(--ws-ink); font-size: var(--ws-reading-size); line-height: 1.85; overflow-wrap: anywhere;
   :global(.ProseMirror) { max-width: 100%; color: var(--ws-ink) !important; font-size: var(--ws-reading-size) !important; line-height: 1.85; overflow-wrap: anywhere; }
   :global(.ProseMirror) p { color: inherit; }
@@ -121,6 +125,9 @@ button.primaryButton { background: var(--ws-accent); color: white; &:hover { bac
   input::placeholder { color: var(--ws-muted); }
   .iconButton { width: 24px; min-height: 24px; flex-shrink: 0; }
 }
+.topSearch { flex: 0 1 auto; min-width: 0; }
+.topSearchBox { width: min(280px, 58vw); }
+.topSearchLabel { max-width: min(180px, 38vw); overflow: hidden; text-overflow: ellipsis; }
 .feedLayout { min-width: 0; }
 .feedMain { min-width: 0; }
 .noteFeed { position: relative; display: flex; flex-direction: column; gap: 20px; min-width: 0; }

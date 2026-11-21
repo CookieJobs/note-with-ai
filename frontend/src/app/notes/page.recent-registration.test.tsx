@@ -13,7 +13,10 @@ import WorkspaceRoot from '../../components/workspace/WorkspaceRoot';
 const mocks = vi.hoisted(() => ({ pathname: '/notes', fetch: vi.fn(), router: { push: vi.fn(), replace: vi.fn() } }));
 vi.mock('next/navigation', () => ({ usePathname: () => mocks.pathname, useSearchParams: () => new URLSearchParams(), useRouter: () => mocks.router }));
 vi.mock('../../utils/auth', () => ({ getUser: () => ({ id: 'recent-user', username: '最近笔记用户' }), isAuthenticated: () => true, authFetch: mocks.fetch, logout: vi.fn() }));
-// Calendar requests are independent of the recent-note projection exercised here.
+// Discovery and calendar requests are independent of the recent-note projection.
+vi.mock('../../services/noteDiscoveries', () => ({ noteDiscoveries: { list: async () => ({
+  items: [], available: false, automaticEnabled: false, timeZone: 'Asia/Shanghai', run: { status: 'idle' },
+}) } }));
 vi.mock('./components/NotesCalendar', () => ({ default: () => null }));
 vi.mock('../../services/inspirationService', () => ({ getUnviewedInspirationCount: async () => 0 }));
 vi.mock('../../hooks/useInspirationSettings', () => ({ useInspirationSettings: () => ({ settings: null, loading: false, saving: false, error: null, refetch: vi.fn(), setEnabled: vi.fn() }) }));

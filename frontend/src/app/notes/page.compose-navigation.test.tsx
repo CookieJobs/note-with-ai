@@ -81,6 +81,17 @@ describe('compose URL and real workspace navigation', () => {
     expect(await screen.findByRole('textbox', { name: '笔记标题' })).toHaveValue('待继续的草稿');
   });
 
+  it('returns to Notes with the local draft and restores it when quick capture reopens', async () => {
+    render(<Harness />);
+    fireEvent.change(await screen.findByRole('textbox', { name: '笔记标题' }), {target: {value: '稍后再写'}});
+    fireEvent.click(screen.getByRole('button', { name: '保留草稿并返回' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByTestId('notes-list-scroll')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '打开快速记录' }));
+    expect(await screen.findByRole('textbox', { name: '笔记标题' })).toHaveValue('稍后再写');
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
   it('projects a completed back/forward URL change and restores the existing browser draft', async () => {
     localStorage.setItem('quick-capture-draft:compose-user', JSON.stringify({ version: 2, title: '前进后恢复', text: '仍在本机的正文', json: null }));
     render(<Harness />);

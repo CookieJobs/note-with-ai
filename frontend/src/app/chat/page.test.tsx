@@ -26,7 +26,7 @@ vi.mock('../../utils/auth', () => ({
 }));
 vi.mock('../../services/noteDiscoveries', async importOriginal => {
   const actual = await importOriginal<typeof import('../../services/noteDiscoveries')>();
-  return { ...actual, noteDiscoveries: { ...actual.noteDiscoveries, list: vi.fn(async () => ({ items: [], available: false, automaticEnabled: false, timeZone: 'Asia/Shanghai', run: { status: 'idle' } })) } };
+  return { ...actual, noteDiscoveries: { ...actual.noteDiscoveries, availability: vi.fn(async () => ({ available: false })) } };
 });
 vi.mock('../../services/inspirationService', () => ({
   getUnviewedInspirationCount: async () => 0,
@@ -75,7 +75,7 @@ describe('chat page entry', () => {
     vi.clearAllMocks();
     searchParams.value = '';
     window.history.replaceState(null, '', '/chat');
-    vi.mocked(noteDiscoveries.list).mockResolvedValue({items:[],available:false,automaticEnabled:false,timeZone:'Asia/Shanghai',run:{status:'idle'}});
+    vi.mocked(noteDiscoveries.availability).mockResolvedValue({available:false});
     router.replace.mockImplementation((href: string) => { searchParams.value = new URL(href, 'http://localhost').search.slice(1); });
     localStorage.clear();
     sessionStorage.clear();
@@ -264,7 +264,7 @@ describe('chat page entry', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('无法打开这段对话');
 
     searchParams.value = '';
-    vi.mocked(noteDiscoveries.list).mockResolvedValue({items:[],available:false,automaticEnabled:false,timeZone:'Asia/Shanghai',run:{status:'idle'}});
+    vi.mocked(noteDiscoveries.availability).mockResolvedValue({available:false});
     page.rerender(<ChatPage />);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByText('这是历史消息')).not.toBeInTheDocument();
@@ -952,41 +952,25 @@ describe('chat page entry', () => {
   it('opens the authoritative discovery action session and displays all snapshots with the correct scope', async () => {
     const snapshot={noteId:'n1',title:'来源一',contentText:'原文一',revision:2,updatedAt:'2026-11-17T00:00:00Z',hasImages:false};
     const bound: IChat={id:'discovery-real',title:'已选择的行动',sourceMode:'multi_note_discovery',discoveryId:'finding',selectedSourceIds:['n1','n2'],messages:[{role:'user',content:'推进选中行动'},{role:'assistant',content:'已直接推进，不再重复询问',sourceSnapshots:[snapshot,{...snapshot,noteId:'n2',title:'来源二',revision:4}]}]};
-    vi.mocked(noteDiscoveries.list).mockResolvedValue({items:[{id:'finding',kind:'connection',title:'可继续的联系',observation:'从原文看出的线索',whyNow:'有了新进展',qualification:'待确认',suggestedAction:'推进选中行动',status:'ready',createdAt:'2026-11-17T00:00:00Z',evidence:[]}],available:true,automaticEnabled:true,timeZone:'Asia/Shanghai',run:{status:'completed'}});
-    authFetch.mockImplementation(async (url: string) => url.endsWith('/session') ? {ok:true,json:async()=>({data:{session:bound,reused:false}})} : sessionsResponse([history]));
+    searchParams.value = 'session=discovery-real';
+    authFetch.mockImplementation(async () => sessionsResponse([history, bound]));
     render(<ChatPage />);
-    await act(async()=>{await Promise.resolve();});
-    fireEvent.change(screen.getByRole('textbox',{name:'聊天消息'}), {target:{value:'留在新对话的草稿'}});
-    fireEvent.click(screen.getByRole('button',{name:'查看发现：可继续的联系'}));
-    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'继续探索'}));});
+    await loadServerHistory();
     expect(screen.getByText('已直接推进，不再重复询问')).toBeInTheDocument();
     expect(screen.getByRole('textbox',{name:'聊天消息'})).toHaveValue('');
     expect(screen.getAllByRole('region',{name:'本次回答依据'})).toHaveLength(2);
     expect(screen.getByText(/从笔记发现继续/)).toBeInTheDocument();
     expect(screen.queryByText(/如需围绕笔记提问/)).toBeNull();
-    expect(JSON.parse(localStorage.getItem('chat_sessions_user-1')!)[0]).toMatchObject({id:'discovery-real',sourceMode:'multi_note_discovery',discoveryId:'finding'});
-    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'开启新对话'}));});
-    expect(screen.getByRole('textbox',{name:'聊天消息'})).toHaveValue('留在新对话的草稿');
+    expect(noteDiscoveries.availability).not.toHaveBeenCalled();
   });
 
-  it('keeps a chosen history session when a pending discovery opening finishes and prevents a concurrent ordinary send', async () => {
-    const finding={id:'finding',kind:'connection' as const,title:'待继续的联系',observation:'具体线索',whyNow:'新进展',qualification:'待确认',suggestedAction:'推进',status:'ready' as const,createdAt:'2026-11-17T00:00:00Z',evidence:[]};
-    vi.mocked(noteDiscoveries.list).mockResolvedValue({items:[finding],available:true,automaticEnabled:true,timeZone:'Asia/Shanghai',run:{status:'completed'}});
-    let complete!: (value: unknown)=>void;
-    authFetch.mockImplementation(async (url:string)=>url.endsWith('/session') ? new Promise(resolve=>{complete=resolve;}) : sessionsResponse([history]));
+  it('keeps the composer available and does not admit discoveries from a new chat', async () => {
+    vi.mocked(noteDiscoveries.availability).mockResolvedValue({available:true});
     render(<ChatPage />);
-    await act(async()=>{await Promise.resolve();});
     await loadServerHistory();
-    fireEvent.change(screen.getByRole('textbox',{name:'聊天消息'}),{target:{value:'普通草稿'}});
-    fireEvent.click(screen.getByRole('button',{name:'查看发现：待继续的联系'}));
-    expect(screen.queryByRole('button',{name:'发送消息'})).toBeNull();
-    act(()=>fireEvent.click(screen.getByRole('button',{name:'继续探索'})));
-    expect(authFetch.mock.calls.filter(([url])=>url==='/api/chat')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button',{name:'上次的对话'}));
-    await act(async()=>{complete({ok:true,json:async()=>({data:{session:{id:'late-discovery',title:'晚到的发现',sourceMode:'multi_note_discovery',messages:[{role:'assistant',content:'不应抢走当前选择'}]},reused:false}})});});
-    expect(screen.getByText('这是历史消息')).toBeInTheDocument();
-    expect(screen.queryByText('不应抢走当前选择')).toBeNull();
-    expect(screen.getByRole('button',{name:'上次的对话'})).toHaveAttribute('aria-current','page');
+    expect(screen.getByRole('textbox',{name:'聊天消息'})).toBeVisible();
+    expect(screen.queryByRole('button',{name:/查看发现/})).not.toBeInTheDocument();
+    expect(noteDiscoveries.availability).toHaveBeenCalledWith(expect.any(AbortSignal));
   });
 
   it.each(['另一份编辑中的草稿',''])('retries the frozen failed question while preserving a different current draft %j', async draft => {

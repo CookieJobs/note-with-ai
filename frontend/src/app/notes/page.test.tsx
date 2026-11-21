@@ -128,7 +128,7 @@ describe('notes workspace', () => {
     renderPage();
     expect(screen.getByText(/已删除或当前账号无权查看/)).toBeInTheDocument();
     expect(screen.queryByLabelText('笔记阅读')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '返回笔记列表' }));
+    fireEvent.click(screen.getByRole('button', { name: '返回笔记' }));
     expect(mocks.request).toHaveBeenCalled(); expect(mocks.push).toHaveBeenCalledWith('/notes', { scroll: false });
   });
 
@@ -155,7 +155,7 @@ describe('notes workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: /一条记录/ }));
     view.rerender(<WorkspaceContext.Provider value={context}><NotesPage /></WorkspaceContext.Provider>);
     await screen.findByLabelText('笔记阅读');
-    fireEvent.click(screen.getByRole('button', { name: '返回笔记列表' }));
+    fireEvent.click(screen.getByRole('button', { name: '返回笔记' }));
     view.rerender(<WorkspaceContext.Provider value={context}><NotesPage /></WorkspaceContext.Provider>);
     await waitFor(() => expect(screen.getByTestId('notes-list-scroll').scrollTop).toBe(280));
     fireEvent.click(screen.getByRole('button', { name: /加载更早的笔记/ }));

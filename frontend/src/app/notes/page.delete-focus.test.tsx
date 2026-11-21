@@ -41,6 +41,30 @@ describe('real reading menu and page delete confirmation focus', () => {
     else expect(mocks.push).not.toHaveBeenCalled();
   });
 
+  it('keeps the real detail controls and delete focus in the workspace header', async () => {
+    const topbarActions = document.createElement('div');
+    const topbarBack = document.createElement('div');
+    document.body.append(topbarBack, topbarActions);
+    const view = render(<WorkspaceContext.Provider value={{ ...context, topbarBack, topbarActions }}><NotesPage /></WorkspaceContext.Provider>);
+    try {
+      const header = within(topbarActions);
+      expect(within(topbarBack).getByRole('button', {name: '返回笔记'})).toBeVisible();
+      expect(await header.findByRole('button', {name: '编辑笔记'})).toBeVisible();
+      const more = header.getByRole('button', {name: '更多笔记操作'});
+      more.focus();
+      fireEvent.click(more);
+      expect(header.getByRole('menuitemcheckbox', {name: '相关笔记'})).toBeVisible();
+      fireEvent.click(header.getByRole('menuitem', {name: '删除笔记'}));
+      fireEvent.click(within(screen.getByRole('dialog', {name: '删除笔记'})).getByRole('button', {name: '取消'}));
+      expect(more).toHaveFocus();
+      view.unmount();
+      expect(topbarActions).toBeEmptyDOMElement();
+    } finally {
+      topbarBack.remove();
+      topbarActions.remove();
+    }
+  });
+
   it.each(['取消', 'Escape', '遮罩'])('returns focus to the stable more trigger after %s closes the dialog', async (choice) => {
     render(<WorkspaceContext.Provider value={context}><NotesPage /></WorkspaceContext.Provider>);
     const more = await screen.findByRole('button', { name: '更多笔记操作' });

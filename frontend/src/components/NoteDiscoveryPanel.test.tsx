@@ -5,25 +5,47 @@ import { DiscoveryApiError, noteDiscoveries, type DiscoveryList, type NoteDiscov
 vi.mock('../services/noteDiscoveries', async importOriginal => ({ ...await importOriginal<typeof import('../services/noteDiscoveries')>(), noteDiscoveries: { list: vi.fn(), preferences: vi.fn(), session: vi.fn(), feedback: vi.fn(), undo: vi.fn(), save: vi.fn(), run: vi.fn() } }));
 export const card: NoteDiscovery = { id: 'a', kind: 'connection', title: '一个联系', observation: '观察到的具体线索', whyNow: '最近有新进展', qualification: '还需要确认', suggestedAction: '从一个小步骤开始', draft: '原来的草稿', evidence: [{ noteId: 'n1', title: '来源一', revision: 3, excerpt: '原文依据', hasImages: false, noteDate: '2026-11-17T00:00:00Z' }], status: 'ready', createdAt: '2026-11-17T00:00:00Z' };
 const list = (overrides: Partial<DiscoveryList> = {}): DiscoveryList => ({ items: [card], available: true, automaticEnabled: false, timeZone: 'Asia/Shanghai', run: {status: 'completed'}, ...overrides });
-const props = { userId: 'u1', busy: false, onSession: vi.fn(), fallback: <p>旧版建议</p> };
-beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); window.history.replaceState(null, '', '/chat'); vi.mocked(noteDiscoveries.list).mockResolvedValue(list()); });
+const props = { userId: 'u1', onSession: vi.fn() };
+beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); window.history.replaceState(null, '', '/notes#note-discovery-settings'); vi.mocked(noteDiscoveries.list).mockResolvedValue(list()); });
 async function openFinding(title = '一个联系') {
   fireEvent.click(await screen.findByRole('button', {name: '查看发现：' + title}));
 }
 describe('discovery entry', () => {
- it('opens the full discovery outside home and preserves the unsent composer draft on return', async () => {
-  let draft = '我还在写的提问';
-  render(<NoteDiscoveryPanel {...props} renderHome={preview => <section aria-label="新对话"><textarea aria-label="聊天消息" defaultValue={draft} onChange={event => { draft = event.target.value; }} />{preview}</section>} />);
-  fireEvent.change(screen.getByRole('textbox', {name: '聊天消息'}), {target: {value: '草稿保留'}});
-  const open = await screen.findByRole('button', {name: /查看发现/});
-  expect(screen.queryByText('原文依据')).not.toBeInTheDocument();
-  fireEvent.click(open);
-  expect(screen.queryByRole('region', {name: '新对话'})).not.toBeInTheDocument();
+ it('opens a dedicated reader from Notes and restores the originating control', async () => {
+  window.history.replaceState(null, '', '/notes');
+  render(<NoteDiscoveryPanel {...props} renderLayout={(entry, reader) => <>
+    <section hidden={!!reader} aria-label="笔记首页">{entry}</section>{reader}
+  </>} />);
+  await openFinding();
+  expect(screen.queryByRole('region', {name: '笔记首页'})).not.toBeInTheDocument();
   expect(screen.getByText('还需要确认')).toBeInTheDocument();
-  expect(screen.getByText(/版本 3/)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', {name: '返回新对话'}));
-  expect(await screen.findByRole('textbox', {name: '聊天消息'})).toHaveValue('草稿保留');
-  expect(await screen.findByRole('button', {name: /查看发现/})).toHaveFocus();
+  fireEvent.click(screen.getByText('展开原文依据（1）'));
+  expect(screen.getByText(/版本 3/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', {name: '返回笔记'}));
+  expect(await screen.findByRole('region', {name: '笔记首页'})).toBeVisible();
+  expect(screen.getByRole('button', {name: /查看发现/})).toHaveFocus();
+ });
+ it('opens management from the reader and returns to that same finding', async () => {
+  window.history.replaceState(null, '', '/notes');
+  render(<NoteDiscoveryPanel {...props} />);
+  const finding = await screen.findByRole('button', {name: '查看发现：一个联系'});
+  expect(screen.queryByRole('button', {name: '管理发现'})).not.toBeInTheDocument();
+  fireEvent.click(finding);
+  fireEvent.click(screen.getByRole('button', {name: '管理发现'}));
+  expect(screen.getByRole('region', {name: '管理发现'})).toBeVisible();
+  fireEvent.click(screen.getByRole('button', {name: '返回发现'}));
+  expect(await screen.findByRole('heading', {name: '一个联系', level: 1})).toBeVisible();
+  expect(screen.getByRole('button', {name: '管理发现'})).toHaveFocus();
+  fireEvent.click(screen.getByRole('button', {name: '返回笔记'}));
+  expect(await screen.findByRole('button', {name: '查看发现：一个联系'})).toHaveFocus();
+ });
+ it('keeps access to discovery when there is no finding to read', async () => {
+  window.history.replaceState(null, '', '/notes');
+  vi.mocked(noteDiscoveries.list).mockResolvedValue(list({items: [], run: {status: 'no_result'}}));
+  render(<NoteDiscoveryPanel {...props} />);
+  fireEvent.click(await screen.findByRole('button', {name: /打开发现/}));
+  expect(screen.getByText('暂时没有新的发现')).toBeVisible();
+  expect(screen.getByRole('button', {name: '自动发现：关闭'})).toBeVisible();
  });
  it('shows one finding first and expands at most three, with real source revisions', async () => {
   vi.mocked(noteDiscoveries.list).mockResolvedValue(list({items: Array.from({length: 4}, (_, i) => ({...card, id: String(i), title: `发现${i}`}))}));
@@ -36,13 +58,11 @@ describe('discovery entry', () => {
   await openFinding('发现1');
   expect(screen.getByText(/版本 3/)).toBeInTheDocument();
  });
- it('adopts the server session without asking an opening question and blocks during stream', async () => {
+ it('adopts the server session without asking an opening question after explicit continuation', async () => {
   const session = {id: 'server', title: '发现', sourceMode: 'multi_note_discovery' as const, messages: [{role: 'assistant' as const, content: '已推进选中行动'}]};
   vi.mocked(noteDiscoveries.session).mockResolvedValue({session, reused: false});
-  const view = render(<NoteDiscoveryPanel {...props} busy />);
+  render(<NoteDiscoveryPanel {...props} />);
   await openFinding();
-  expect(await screen.findByText('继续探索')).toBeDisabled();
-  view.rerender(<NoteDiscoveryPanel {...props} />);
   fireEvent.click(screen.getByText('继续探索'));
   await waitFor(() => expect(props.onSession).toHaveBeenCalledWith(session));
  });
@@ -85,10 +105,12 @@ describe('discovery entry', () => {
   await screen.findByText(status === 'failed' ? '这次没有完成分析' : status === 'no_result' ? '暂时没有新的发现' : '发现额度暂时已用完');
   expect(screen.queryByText('旧版建议')).toBeNull();
  });
- it('uses fallback only when backend marks feature unavailable', async () => {
+ it('has no Notes entry when the backend marks discovery unavailable', async () => {
+  window.history.replaceState(null, '', '/notes');
   vi.mocked(noteDiscoveries.list).mockResolvedValue(list({available: false}));
-  render(<NoteDiscoveryPanel {...props} />);
-  await screen.findByText('旧版建议');
+  const view = render(<NoteDiscoveryPanel {...props} />);
+  await waitFor(() => expect(noteDiscoveries.list).toHaveBeenCalled());
+  expect(view.container).toBeEmptyDOMElement();
  });
  it('rejects late data from a previous owner and cancels its request', async () => {
   let resolve!: (value: DiscoveryList) => void;
@@ -125,6 +147,18 @@ it('prevents concurrent continuation requests in the reader', async () => {
  expect(button).toBeDisabled();
  await act(async()=>resolve({session:{id:'chosen',title:'发现',messages:[]},reused:false} as never));
 });
+it('does not switch to Chat when continuation finishes after leaving the reader', async () => {
+  window.history.replaceState(null, '', '/notes');
+  let finish!: (value: Awaited<ReturnType<typeof noteDiscoveries.session>>) => void;
+  vi.mocked(noteDiscoveries.session).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  render(<NoteDiscoveryPanel {...props} />);
+  await openFinding();
+  fireEvent.click(screen.getByRole('button', {name: '继续探索'}));
+  fireEvent.click(screen.getByRole('button', {name: '返回笔记'}));
+  await screen.findByRole('button', {name: '查看发现：一个联系'});
+  await act(async () => finish({session:{id:'late',title:'晚到的会话',messages:[]},reused:false}));
+  expect(props.onSession).not.toHaveBeenCalled();
+});
 it('keeps undo available after the real list excludes feedback and across remount', async () => {
  vi.mocked(noteDiscoveries.feedback).mockResolvedValue({});
  vi.mocked(noteDiscoveries.undo).mockResolvedValue({});
@@ -153,7 +187,7 @@ it('retains secondary draft text and frozen save operation after collapse, reord
  fireEvent.click(screen.getByText('保存为新笔记'));
  await screen.findByText('响应丢失');
  const first=vi.mocked(noteDiscoveries.save).mock.calls[0];
- fireEvent.click(screen.getByRole('button',{name:'返回新对话'}));
+ fireEvent.click(screen.getByRole('button',{name:'返回管理发现'}));
  await screen.findByRole('button',{name:'查看发现：第二卡'});
  fireEvent.click(screen.getByText('收起其他发现'));
  fireEvent.click(screen.getByText('查看其他发现'));

@@ -1,11 +1,12 @@
 /*
 Input: 真实卡片列表、只读搜索/月历、highlight 来源、fromChat 原会话标记、新建意图与持久工作区
-Output: 列表 / 阅读 / 编辑流程；聊天来源显示固定返回栏，相关跳转保留原会话，返回经过未保存保护
+Output: 列表、笔记发现、阅读与编辑流程；列表搜索与详情操作接入固定顶栏，相关跳转保留原会话，返回经过未保存保护
 Pos: notes 页面入口；修改时同步 ./README.md
 */
 'use client';
 
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import dynamicComponent from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, PencilLine, Plus, Search, X } from 'lucide-react';
@@ -13,12 +14,14 @@ import { getUser, isAuthenticated } from '../../utils/auth';
 import { noteReferenceDisplay } from '../../utils/noteReference';
 import { startNoteConversation } from '../../services/noteConversation';
 import { readChatSourceReturn, type ChatSourceReturn } from '../../utils/chatSourceReturn';
+import WorkspaceBackButton from '../../components/workspace/WorkspaceBackButton';
 import { useWorkspace } from '../../components/workspace/WorkspaceContext';
 import { useAuthGuard } from './hooks/useAuthGuard';
 import { NoteWriteConflict, useNotes } from './hooks/useNotes';
 import type { CreateNoteCommand, Note } from './hooks/useNotes';
 import { useFocusedSourceNote } from './hooks/useFocusedSourceNote';
 import styles from './NotesWorkspace.module.scss';
+import NoteDiscoveryPanel from '../../components/NoteDiscoveryPanel';
 import NotesFeed from './components/NotesFeed';
 import { useNoteSearch } from './hooks/useNoteSearch';
 
@@ -48,6 +51,16 @@ function NotesContent() {
   const deleteRef = useRef<HTMLDivElement>(null);
   const deleteReturnFocus = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const inlineSearch = useRef<HTMLDivElement>(null);
+  const inlineSearchInput = useRef<HTMLInputElement>(null);
+  const topSearchTrigger = useRef<HTMLButtonElement>(null);
+  const topSearchInput = useRef<HTMLInputElement>(null);
+  const focusTopSearch = useCallback((input: HTMLInputElement | null) => {
+    topSearchInput.current = input;
+    input?.focus({preventScroll: true});
+  }, []);
+  const [searchScrolledPast, setSearchScrolledPast] = useState(false);
+  const [topSearchOpen, setTopSearchOpen] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
   const listScroll = useRef(0);
   const createdNote = useRef<Note | null>(null);
@@ -84,6 +97,22 @@ function NotesContent() {
   const { captureMutation, applyCanonical, applyRecommendCache } = focused;
   const currentNote = notes.find((note) => note._id === highlightId) ?? focusedNote;
   const detail = Boolean(highlightId) || compose;
+  const topbar = workspace?.topbarActions;
+  useEffect(() => {
+    const root = listRef.current;
+    const searchBox = inlineSearch.current;
+    if (!topbar || detail || !root || !searchBox || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.rootBounds && root.clientHeight > 0) {
+        setSearchScrolledPast(entry.boundingClientRect.bottom <= entry.rootBounds.top);
+      }
+    }, {root});
+    observer.observe(searchBox);
+    return () => observer.disconnect();
+  }, [detail, topbar, user?.id]);
+  useEffect(() => {
+    if (detail) setTopSearchOpen(false);
+  }, [detail]);
   const discussionOwner = useRef({ userId: user?.id, noteId: highlightId });
   if (discussionOwner.current.userId !== user?.id || discussionOwner.current.noteId !== highlightId) {
     // Returning to the same IDs starts a new source session, never reviving old work.
@@ -191,9 +220,51 @@ function NotesContent() {
     };
   }, [pendingDelete]);
 
-  return (
-    <main className={styles.workspace + (relatedId ? ' ' + styles.withRelated : '')}>
-      <div ref={listRef} data-testid="notes-list-scroll" className={styles.scroll} hidden={detail}
+  const clearSearch = () => { setSearchInput(''); setQuery(''); };
+  const renderSearchBox = (compact = false) => (
+    <div className={`${styles.searchBox}${compact ? ' ' + styles.topSearchBox : ''}`}
+      ref={compact ? undefined : inlineSearch}
+      style={!compact && topSearchOpen ? {visibility: 'hidden'} : undefined}>
+      <Search size={16} aria-hidden="true" />
+      <input type="search" ref={compact ? focusTopSearch : inlineSearchInput}
+        aria-label="搜索笔记" placeholder="找找曾经写下的想法" value={searchInput} maxLength={100}
+        onCompositionStart={() => setComposingSearch(true)} onCompositionEnd={() => setComposingSearch(false)}
+        onChange={event => setSearchInput(event.target.value)} />
+      {searchInput && <button type="button" aria-label="清除搜索" className={styles.iconButton}
+        onClick={() => { (compact ? topSearchInput : inlineSearchInput).current?.focus({preventScroll: true}); clearSearch(); }}>
+        <X size={15} aria-hidden="true" />
+      </button>}
+    </div>
+  );
+  const renderTopSearch = () => (
+    <div className={styles.topSearch}
+      onBlur={event => {
+        if (topSearchOpen && !event.currentTarget.contains(event.relatedTarget)) setTopSearchOpen(false);
+      }}
+      onKeyDown={event => {
+        if (!topSearchOpen || event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        setTopSearchOpen(false);
+        requestAnimationFrame(() => (topSearchTrigger.current ?? inlineSearchInput.current)?.focus({preventScroll: true}));
+      }}>
+      {topSearchOpen ? renderSearchBox(true) : <button type="button" ref={topSearchTrigger} className={styles.button}
+        aria-label="搜索笔记" title={searchInput || '搜索笔记'} onClick={() => setTopSearchOpen(true)}>
+        <Search size={16} aria-hidden="true" /><span className={styles.topSearchLabel}>{searchInput || '搜索笔记'}</span>
+      </button>}
+    </div>
+  );
+  const backToList = <button type="button" className={topbar ? styles.button : styles.backButton} onClick={() => go('/notes')}
+    aria-label="返回笔记" title="返回笔记">
+    <ArrowLeft size={15} aria-hidden="true" /><span className={styles.detailActionLabel}>返回笔记</span>
+  </button>;
+  const backToChat = returnContext && <button type="button" className={styles.primaryButton}
+    title={returnContext.sessionTitle?.trim() || '回到刚才的位置，继续未发送的内容'}
+    onClick={() => go('/chat?session=' + encodeURIComponent(returnContext.sessionId))}>
+    <ArrowLeft size={15} aria-hidden="true" />返回刚才的对话
+  </button>;
+
+  const renderDiscoveryLayout = (entry?: ReactNode, reader?: ReactNode) => <>
+      <div ref={listRef} data-testid="notes-list-scroll" className={styles.scroll} hidden={detail || Boolean(reader)}
         onScroll={(event) => { if (!detail && !search.isLoading) { listScroll.current = event.currentTarget.scrollTop; scrollPositions.current.set(query, listScroll.current); } }}>
         <div className={styles.listPage} data-notes-list-page>
           <header className={styles.pageHeader}>
@@ -203,15 +274,10 @@ function NotesContent() {
           <button type="button" className={styles.quickCapture} onClick={() => go('/notes?compose=1')} aria-label="打开快速记录">
             <span className={styles.captureIcon}><PencilLine size={16} /></span><span>记下一个想法…</span><Plus size={17} />
           </button>
+          {entry}
           <div className={styles.listTools}>
             <h2>{query ? '搜索结果' : '最近记录'} <span>已加载 {listNotes.length} 条</span></h2>
-            <div className={styles.searchBox}>
-              <Search size={16} aria-hidden="true" />
-              <input type="search" aria-label="搜索笔记" placeholder="找找曾经写下的想法" value={searchInput} maxLength={100}
-                onCompositionStart={() => setComposingSearch(true)} onCompositionEnd={() => setComposingSearch(false)}
-                onChange={event => setSearchInput(event.target.value)} />
-              {searchInput && <button type="button" aria-label="清除搜索" className={styles.iconButton} onClick={() => { setSearchInput(''); setQuery(''); }}><X size={15} /></button>}
-            </div>
+            {renderSearchBox()}
           </div>
           <div className={styles.feedLayout}>
             <div className={styles.feedMain} aria-busy={query ? search.isLoading : isLoading}>
@@ -229,12 +295,25 @@ function NotesContent() {
           </div>
         </div>
       </div>
+      {!detail && reader}
+      {!detail && !reader && topbar && (searchScrolledPast || topSearchOpen) && createPortal(renderTopSearch(), topbar)}
+    </>;
+
+  return (
+    <main className={styles.workspace + (relatedId ? ' ' + styles.withRelated : '')}>
+      {user?.id ? <NoteDiscoveryPanel key={user.id} userId={user.id} enabled={!detail} renderLayout={renderDiscoveryLayout}
+        onSession={session => go('/chat?session=' + encodeURIComponent(session.id))} /> : renderDiscoveryLayout()}
       {detail && <section className={styles.detail} aria-label="笔记详情">
-        {highlightId && returnContext && <nav className={styles.chatReturn} aria-label="返回原对话">
+        {workspace?.topbarBack && <WorkspaceBackButton
+          label={returnContext ? '返回刚才的对话' : '返回笔记'}
+          title={returnContext?.sessionTitle}
+          onClick={() => go(returnContext ? '/chat?session=' + encodeURIComponent(returnContext.sessionId) : '/notes')} />}
+        {topbar && returnContext && createPortal(<nav className={styles.detailNav} aria-label="笔记导航">
+          {backToList}
+        </nav>, topbar)}
+        {!workspace?.topbarBack && highlightId && returnContext && <nav className={styles.chatReturn} aria-label="返回原对话">
           <div className={styles.chatReturnInner}>
-            <button type="button" className={styles.primaryButton} onClick={() => go('/chat?session=' + encodeURIComponent(returnContext.sessionId))}>
-              <ArrowLeft size={15} aria-hidden="true" />返回刚才的对话
-            </button>
+            {backToChat}
             <div className={styles.chatReturnCopy}>
               <strong title={returnContext.sessionTitle?.trim() || '刚才的对话'}>{returnContext.sessionTitle?.trim() || '刚才的对话'}</strong>
               <span>回到刚才的位置，继续未发送的内容</span>
@@ -243,8 +322,9 @@ function NotesContent() {
         </nav>}
         <div className={styles.scroll} ref={detailRef}>
         <div className={styles.page}>
-          <button type="button" className={styles.backButton} onClick={() => go('/notes')}><ArrowLeft size={15} />返回笔记列表</button>
+          {(!workspace?.topbarBack || (returnContext && !topbar)) && backToList}
           {compose ? <NoteWorkspaceEditor key={'compose:' + (user?.id ?? '')} mode="compose" userId={user?.id ?? null} createNote={create}
+            onKeepDraft={() => router.push('/notes', { scroll: false })}
             onCancel={() => router.push('/notes', { scroll: false })}
             onSaved={() => { const id = createdNote.current?._id; router.push(id ? '/notes?highlight=' + encodeURIComponent(id) : '/notes', { scroll: false }); }} />
             : currentNote ? editing === user?.id + ':' + currentNote._id ?

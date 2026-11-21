@@ -23,7 +23,7 @@ import styles from '../NotesWorkspace.module.scss';
 type Common = { userId: string | null; onSaved: () => void; onCancel: () => void };
 type Props = Common & (
   | { mode: 'edit'; note: Note; updateNote: (command: UpdateNoteCommand) => Promise<Note> }
-  | { mode: 'compose'; createNote: (command: CreateNoteCommand) => Promise<Note> }
+  | { mode: 'compose'; onKeepDraft?: () => void; createNote: (command: CreateNoteCommand) => Promise<Note> }
 );
 type Session = {
   title: string; json: JSONContent; text: string; error: string; status?: string; saving: boolean;
@@ -61,7 +61,7 @@ function FormattingToolbar({ editor }: { editor: Editor | null }) {
   </div>;
 }
 
-function EditorForm({ session, sessionId, userId, onSaved, onCancel }: Common & { session: Session; sessionId: string }) {
+function EditorForm({ session, sessionId, userId, onSaved, onCancel, onKeepDraft }: Common & { session: Session; sessionId: string; onKeepDraft?: () => void }) {
   const workspace = useWorkspace();
   const rootRef = useRef<HTMLDivElement>(null);
   const [tiptapEditor, setTiptapEditor] = useState<Editor | null>(null);
@@ -130,6 +130,7 @@ function EditorForm({ session, sessionId, userId, onSaved, onCancel }: Common & 
       {session.status && !session.error && <p className={styles.status} role="status">{session.status}</p>}
       <div className={styles.editorActions}>
         <span>⌘ / Ctrl + Enter 保存</span>
+        {onKeepDraft && <button type="button" className={styles.button} onClick={onKeepDraft} disabled={session.saving}>保留草稿并返回</button>}
         <button type="button" className={styles.button} onClick={cancel} disabled={session.saving}>取消</button>
         <button type="button" className={styles.primaryButton} disabled={session.saving || (sessionId === 'compose' && !session.text.trim())} onClick={() => void saveAndRead()}>{session.saving ? '保存中…' : '保存'}</button>
       </div>
@@ -158,7 +159,10 @@ function ComposeEditor(props: Extract<Props, { mode: 'compose' }>) {
   const draft = useRef({ title: capture.newTitle, text: capture.newContentText });
   draft.current = { title: capture.newTitle, text: capture.newContentText };
   const saving = useRef(false);
-  return <EditorForm {...props} sessionId="compose" session={{
+  return <EditorForm {...props} sessionId="compose"
+    onKeepDraft={capture.localDraftState === 'saved' ? () => {
+      if (!saving.current) props.onKeepDraft?.();
+    } : undefined} session={{
     title: capture.newTitle, json: capture.newContentJson ?? fromPlain(capture.newContentText), text: capture.newContentText,
     error: capture.saveError, status: capture.draftRestored ? '已恢复上次未保存的草稿。' : capture.localDraftState === 'saved' ? '草稿已保存在此浏览器' : '',
     saving: capture.loading,

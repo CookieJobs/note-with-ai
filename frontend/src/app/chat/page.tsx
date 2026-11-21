@@ -1,6 +1,6 @@
 /*
 Input: 用户身份、聊天历史、单篇及发现会话绑定、来源往返上下文及流式回复
-Output: 支持发现全文阅读、聊天旁来源预览及返回时恢复对话与草稿
+Output: 接续笔记发现会话、聊天旁来源预览及返回时恢复对话与草稿
 Pos: frontend/src/app/chat 页面入口
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
@@ -20,16 +20,14 @@ import DeleteConfirmModal from '../../components/DeleteConfirmModal';
 import { useChatSession } from '../../hooks/useChatSession';
 import { useChatStream } from '../../hooks/useChatStream';
 import CareAssistantPanel from '../../components/CareAssistantPanel';
-import NoteDiscoveryPanel, { clearDiscoveryReaderLocation } from '../../components/NoteDiscoveryPanel';
 import { noteDiscoveries } from '../../services/noteDiscoveries';
-import { normalizeChatSession, persistChatSessions } from '../../hooks/chatSessionStore';
 import ChatRelatedNotesPanel from '../../components/ChatRelatedNotesPanel';
 import ChatNotePreview from '../../components/ChatNotePreview';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
 import { usePanelDismiss } from '../../hooks/usePanelDismiss';
 import { rememberChatSourceReturn, takeChatSourceReturn, type ChatSourceReturn } from '../../utils/chatSourceReturn';
 import { useWorkspace } from '../../components/workspace/WorkspaceContext';
-import type { CareIntro, IChat } from '../../types';
+import type { CareIntro } from '../../types';
 
 function ChatPageContent() {
   const workspace = useWorkspace();
@@ -42,10 +40,9 @@ function ChatPageContent() {
   const router = useRouter();
   const [input, setInput] = useState('');
   const inputRef = useRef(input);
-  const discoveryHomeDraft = useRef<{ owner: string; text: string }>();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string>('');
-  const [showCare, setShowCare] = useState(false);
+  const [legacyCareOwner, setLegacyCareOwner] = useState<string | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isRelatedNotesOpen, setIsRelatedNotesOpen] = useState(false);
   const [startingCare, setStartingCare] = useState(false);
@@ -58,10 +55,7 @@ function ChatPageContent() {
 
   const { user, isClient } = useAuthGuard();
   const interactionLock = useRef<object | null>(null);
-  const navigationIntent = useRef(0);
-  const latestOwner = useRef(user?.id); latestOwner.current = user?.id;
-  const streamBusyRef = useRef(false);
-  useEffect(() => { interactionLock.current = null; navigationIntent.current++; setStartingCare(false); }, [user?.id]);
+  useEffect(() => { interactionLock.current = null; setStartingCare(false); }, [user?.id]);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const mainCenterRef = useRef<HTMLDivElement>(null);
   const noteOpenerRef = useRef<HTMLElement | null>(null);
@@ -99,7 +93,6 @@ function ChatPageContent() {
     setCurrentSessionId(selectedId => selectedId === previousId ? nextId : selectedId);
   }, user?.id);
 
-  streamBusyRef.current = streamBusy;
   const loading = streamBusy && activeSessionId === currentSessionId;
   const error = entryError || careError || (errorSessionId === currentSessionId ? streamError : '');
   const preview = notePreview?.userId === user?.id && notePreview?.sessionId === currentSessionId ? notePreview : null;
@@ -204,7 +197,6 @@ function ChatPageContent() {
   const handleSourceLink = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
       || !(event.target instanceof Element)) return;
-    if (event.target.closest('[data-discovery-entry]')) return;
     const anchor = event.target.closest('a');
     if (!anchor || anchor.target === '_blank') return;
     const target = new URL(anchor.href, window.location.href);
@@ -219,12 +211,10 @@ function ChatPageContent() {
     // A deliberate selection supersedes the entry URL. Source return must reopen
     // the conversation the user actually left, rather than the old URL target.
     explicitSessionHandled.current = explicitSessionId;
-    clearDiscoveryReaderLocation();
     if (explicitSessionId) router.replace('/chat', { scroll: false });
   };
 
   const selectSession = (sessionId: string) => {
-    navigationIntent.current++;
     setEntryError(''); setCareError('');
     leaveExplicitSession();
     setSourceReturn(null);
@@ -236,7 +226,6 @@ function ChatPageContent() {
   const nonEmptySessions = useMemo(() => sessions.filter(s => s.sourceNoteId || (s.messages && s.messages.length > 0)), [sessions]);
 
   const startNewSession = async () => {
-    navigationIntent.current++;
     setEntryError(''); setCareError('');
     leaveExplicitSession();
     setSourceReturn(null);
@@ -249,10 +238,6 @@ function ChatPageContent() {
     }
 
     if (user?.id) {
-      if (discoveryHomeDraft.current?.owner === user.id) {
-        updateInput(discoveryHomeDraft.current.text);
-        discoveryHomeDraft.current = undefined;
-      }
       await startNewSessionHook(user.id);
     }
   };
@@ -327,33 +312,6 @@ function ChatPageContent() {
     } finally { if (interactionLock.current === token) interactionLock.current = null; }
   };
 
-  const adoptDiscoverySession = (rawSession: IChat) => {
-    if (!user?.id || streamBusy) return;
-    const session = normalizeChatSession(rawSession);
-    if (!session) return;
-    discoveryHomeDraft.current = { owner: user.id, text: inputRef.current };
-    updateInput('');
-    setSessions(previous => {
-      const next = [session, ...previous.filter(item => item.id !== session.id)];
-      persistChatSessions(user.id, next);
-      return next;
-    });
-    selectSession(session.id);
-  };
-
-  const startDiscoverySession = async (id: string, retryOfRequestId?: string) => {
-    if (!user?.id || interactionLock.current || streamBusyRef.current) throw new Error('另一段对话正在处理，请等待完成。');
-    const token = {}; interactionLock.current = token;
-    const owner = user.id, navigation = navigationIntent.current;
-    setStartingCare(true);
-    try {
-      const result = await noteDiscoveries.session(id, retryOfRequestId);
-      if (latestOwner.current === owner && interactionLock.current === token && navigationIntent.current === navigation && !streamBusyRef.current) adoptDiscoverySession(result.session);
-    } finally {
-      if (interactionLock.current === token) { interactionLock.current = null; if (latestOwner.current === owner) setStartingCare(false); }
-    }
-  };
-
   const handleCareSend = async (text: string, intro?: CareIntro) => {
     if (startingCare) return;
     if (streamBusy) { toast('另一段对话正在回复，请等待完成后再开始笔记对话。'); return; }
@@ -382,17 +340,18 @@ function ChatPageContent() {
   }), [nonEmptySessions, currentSessionId, isClient, stableNavigation]);
   useEffect(() => registerChatNavigation?.(chatNavigation), [registerChatNavigation, chatNavigation]);
 
-  // 仅在新会话且消息为空时显示“随机漫步”，并对每个会话只激活一次
+  const owner = user?.id;
+  const canShowLegacyCare = !!owner && !messages.length && !sourceNoteId && !explicitSessionId
+    && currentSession?.sourceMode !== 'multi_note_discovery';
   useEffect(() => {
-    // 只要消息为空，就显示（无论是否有 currentSession，没有 session 意味着是新用户或新会话状态）
-    const hasMessages = Array.isArray(messages) && messages.length > 0;
-    if (hasMessages) {
-      setShowCare(false);
-    } else {
-      setShowCare(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length]);
+    if (!owner || !canShowLegacyCare) return;
+    const controller = new AbortController();
+    // Availability check only. The Notes homepage owns discovery admission.
+    void noteDiscoveries.availability(controller.signal).then(data => {
+      if (!controller.signal.aborted) setLegacyCareOwner(data.available === false ? owner : null);
+    }).catch(() => {});
+    return () => { controller.abort(); setLegacyCareOwner(null); };
+  }, [owner, canShowLegacyCare]);
 
   // 如果是服务端渲染，或者正在验证用户身份，返回占位符但保留 TopNavigation 以防闪烁
   if (!isClient || !user) {
@@ -468,8 +427,6 @@ function ChatPageContent() {
             </section>
           ) : currentSession?.sourceMode === 'multi_note_discovery' ? (
             <p className={styles.scopeHint}>从笔记发现继续 · 每次提问读取来源最新保存的文字，历史回答保留当轮依据。</p>
-          ) : messages.length > 0 ? (
-            <p className={styles.scopeHint}>如需围绕笔记提问，请开启新对话，选择“从这条笔记聊起”。</p>
           ) : null}
           <ChatMainContent
             messages={messages}
@@ -483,12 +440,9 @@ function ChatPageContent() {
           {sessionsError && <div role="alert" className={styles.chatError}>{sessionsError} <button type="button" disabled={sessionsLoading} onClick={() => { void retrySessions(); }}>{sessionsLoading ? '正在重试…' : '重试加载对话'}</button></div>}
           {streamBusy && !loading && <p role="status" className={styles.streamNotice}>另一段对话正在回复，完成后可继续发送。你的草稿会保留。</p>}
           {retryableFailure?.sessionId === currentSessionId && <button type="button" disabled={streamBusy || startingCare} onClick={() => void handleSend(retryableFailure.requestId, retryableFailure.input)}>额度恢复后重新尝试这次提问</button>}
-          {showCare && messages.length === 0 && !sourceNoteId && !explicitSessionId && currentSession?.sourceMode !== 'multi_note_discovery' ? (
-            <NoteDiscoveryPanel key={user.id} userId={user.id} busy={streamBusy} onSession={adoptDiscoverySession}
-              onStartSession={startDiscoverySession} onReaderNavigation={() => { navigationIntent.current++; }}
-              renderHome={renderComposer} fallback={<CareAssistantPanel auto={true} onInsert={handleCareInsert}
-                onSend={handleCareSend} cacheKey={`care_intro_cache_${user.id}`} />} />
-          ) : renderComposer()}
+          {renderComposer(canShowLegacyCare && legacyCareOwner === user.id
+            ? <CareAssistantPanel auto={true} onInsert={handleCareInsert} onSend={handleCareSend} cacheKey={`care_intro_cache_${user.id}`} />
+            : undefined)}
         </div>
 
         {otherRelatedNotes.length > 0 && (

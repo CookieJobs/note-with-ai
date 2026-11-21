@@ -214,17 +214,12 @@ Note: Keep this file limited to classes used by the chat page and its direct cha
 }
 
 .inputContainerCentered .suggestionSlot {
-  // Reserve the same space whether a discovery is short, long, or expanded.
+  // Reserve a bounded area for legacy conversation suggestions.
   block-size: min(36dvh, 320px);
   min-block-size: min(20dvh, 112px);
   overflow-y: auto;
   padding-inline: 4px;
   overscroll-behavior-y: contain;
-
-  &:has([data-discovery-home]) {
-    block-size: auto;
-    min-block-size: 0;
-  }
 
   &:focus-visible {
     outline: 2px solid var(--ws-accent, #266fe1);

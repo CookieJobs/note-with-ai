@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DiscoveryList, noteDiscoveries } from '../services/noteDiscoveries';
 export const DISCOVERY_POLL_MS = 4000;
 export const DISCOVERY_POLL_LIMIT = 30;
-export function useNoteDiscoveries(userId: string, history = false) {
+export function useNoteDiscoveries(userId: string, history = false, enabled = true) {
   const [state, setState] = useState<{ owner: string; data?: DiscoveryList; error: string; loading: boolean; paused?: boolean }>({ owner: userId, error: '', loading: true });
   const owner = useRef(userId);
   owner.current = userId;
@@ -15,6 +15,7 @@ export function useNoteDiscoveries(userId: string, history = false) {
   const reload = useCallback(() => setRefreshKey(key => key + 1), []);
   const update = (updater: (data: DiscoveryList) => DiscoveryList) => { revision.current++; setState(prev => prev.owner === userId && prev.data ? { ...prev, data: updater(prev.data) } : prev); };
   useEffect(() => {
+    if (!enabled) return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
@@ -49,6 +50,6 @@ export function useNoteDiscoveries(userId: string, history = false) {
     document.addEventListener('visibilitychange', visibility);
     void load();
     return () => { disposed = true; controller?.abort(); clearTimeout(timer); document.removeEventListener('visibilitychange', visibility); };
-  }, [userId, history, refreshKey]);
+  }, [userId, history, refreshKey, enabled]);
   return { ...(state.owner === userId ? state : { loading: true, error: '', data: undefined, paused: false }), reload, update };
 }

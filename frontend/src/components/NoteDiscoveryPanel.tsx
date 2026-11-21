@@ -1,13 +1,17 @@
 'use client';
-/* Input: authenticated owner, stream lock and authoritative-session callback.
+/* Input: authenticated owner and authoritative-session callback.
  * Output: compact discovery entry, full reader, evidence and guarded draft saving.
- * Pos: ordinary chat entry; unavailable feature may render legacy suggestion. */
+ * Pos: Notes homepage and full-height discovery reader. */
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
+import { ArrowRight, Settings2, Sparkles } from 'lucide-react';
 import { IChat } from '../types';
 import { DiscoveryApiError, DiscoveryFeedback, discoveryOperationId, NoteDiscovery, noteDiscoveries } from '../services/noteDiscoveries';
 import { DiscoveryIntent, useDiscoveryIntents } from '../hooks/discoveryIntents';
 import { useNoteDiscoveries } from '../hooks/useNoteDiscoveries';
+import WorkspaceBackButton from './workspace/WorkspaceBackButton';
+import { useWorkspace } from './workspace/WorkspaceContext';
 import styles from './NoteDiscoveryPanel.module.scss';
 
 function DiscoveryReader({ item, busy, intent, patch, withdraw, feedbackDone, startSession }: { item: NoteDiscovery; busy: boolean; intent: DiscoveryIntent; patch: (patch: Partial<DiscoveryIntent>) => void; withdraw: () => void; feedbackDone: () => void; startSession: (retryOf?: string) => Promise<void> }) {
@@ -44,16 +48,17 @@ function DiscoveryReader({ item, busy, intent, patch, withdraw, feedbackDone, st
       </section>
       <section aria-label="原文依据">
         <h2>原文依据</h2>
+        <details className={styles.evidence}><summary>展开原文依据（{item.evidence.length}）</summary>
         {item.evidence.map((source, index) => <div className={styles.source} key={`${source.noteId}-${index}`}>
           <p><Link href={`/notes?highlight=${encodeURIComponent(source.noteId)}`}>{source.title || '查看原始笔记'}</Link><span className={styles.muted}> · {new Date(source.noteDate).toLocaleDateString('zh-CN')} · 版本 {source.revision}</span></p>
           <blockquote>“{source.excerpt}”</blockquote>{source.hasImages && <p className={styles.muted}>这条依据只使用文字，图片尚未识别。</p>}
         </div>)}
+        </details>
       </section>
       <section aria-label="下一步">
         <h2>下一步</h2>
         <p>{item.suggestedAction}</p>
         {item.draft && <button aria-expanded={draftOpen} onClick={() => patch({draftOpen: !draftOpen})}>编辑成果草稿</button>}
-      {busy && <p role="status" className={styles.muted}>当前对话回复完成后，可以继续探索。</p>}
       {draftOpen && <div className={styles.draft}><label htmlFor={`draft-${item.id}`}>成果草稿</label><p className={styles.muted}>确认后保存为一条新笔记。</p>
         <textarea id={`draft-${item.id}`} value={text} readOnly={!!intent.operation || !!savedId} maxLength={16000} onChange={event => patch({text: event.target.value})} />
         <div className={styles.actions}><button disabled={pending || !text.trim() || !!savedId} onClick={() => void act(async () => {
@@ -102,11 +107,12 @@ function DiscoveryHistory({ userId }: { userId: string }) {
 
 const readerPrefix = '#note-discovery=';
 const historyHash = '#note-discovery-history';
+const settingsHash = '#note-discovery-settings';
 function discoveryLocation() {
   const hash = window.location.hash;
-  return hash === historyHash || hash.startsWith(readerPrefix) ? hash : '';
+  return hash === historyHash || hash === settingsHash || hash.startsWith(readerPrefix) ? hash : '';
 }
-export function clearDiscoveryReaderLocation() {
+function clearDiscoveryReaderLocation() {
   if (!discoveryLocation()) return;
   window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
   window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -119,31 +125,40 @@ function summaryFor(item: NoteDiscovery) {
   return characters.length > 96 ? characters.slice(0, 96).join('') + '…' : first;
 }
 
-export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, onBusyChange, onStartSession, renderHome = value => value, onReaderNavigation }: { userId: string; busy: boolean; onSession: (session: IChat) => void; fallback?: ReactNode; onBusyChange?: (busy: boolean) => void; onStartSession?: (id: string, retryOf?: string) => Promise<void>; renderHome?: (suggestion: ReactNode) => ReactNode; onReaderNavigation?: () => void }) {
-  const { data, error, loading, paused, reload, update } = useNoteDiscoveries(userId);
+interface PanelProps {
+  userId: string;
+  enabled?: boolean;
+  onSession: (session: IChat) => void;
+  renderLayout?: (entry: ReactNode, reader?: ReactNode) => ReactNode;
+}
+
+export default function NoteDiscoveryPanel({ userId, enabled = true, onSession, renderLayout = (entry, reader) => reader ?? entry }: PanelProps) {
+  const topbar = useWorkspace()?.topbarActions;
+  const { data, error, loading, paused, reload, update } = useNoteDiscoveries(userId, false, enabled);
   const intents = useDiscoveryIntents(userId);
-  const sessionLock = useRef<object | null>(null);
+  const sessionLock = useRef(false);
   const [sessionPending, setSessionPending] = useState(false);
-  const busyRef = useRef(busy); busyRef.current = busy;
   const [expanded, setExpanded] = useState(false);
   const [location, setLocation] = useState('');
   const locationRef = useRef('');
-  const onNavigate = useRef(onReaderNavigation);
-  onNavigate.current = onReaderNavigation;
+  const navigation = useRef(0);
   const entry = useRef<string>();
   const restoreEntry = useRef(false);
   const region = useRef<HTMLElement>(null);
+  const manageButton = useRef<HTMLButtonElement>(null);
   const syncLocation = useCallback(() => {
     const next = discoveryLocation();
     if (next === locationRef.current) return;
+    const previous = locationRef.current;
     locationRef.current = next;
-    restoreEntry.current = !next;
+    navigation.current++;
+    restoreEntry.current = !next || next === settingsHash
+      || (previous === settingsHash && next.startsWith(readerPrefix) && window.history.state?.noteDiscoveryFrom !== settingsHash);
     setLocation(next);
-    onNavigate.current?.();
   }, []);
   const open = (hash: string, id?: string) => {
     entry.current = id;
-    window.history.pushState({ ...window.history.state, noteDiscoveryOwner: userId }, '', hash);
+    window.history.pushState({ ...window.history.state, noteDiscoveryOwner: userId, noteDiscoveryFrom: locationRef.current }, '', hash);
     syncLocation();
   };
   const back = () => {
@@ -160,14 +175,14 @@ export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, 
     };
   }, [syncLocation]);
   useEffect(() => {
-    if (location) region.current?.focus({preventScroll: true});
-    else if (restoreEntry.current) {
+    if (restoreEntry.current) {
       restoreEntry.current = false;
       const buttons = region.current?.querySelectorAll<HTMLButtonElement>('[data-discovery-open]');
       const opener = Array.from(buttons ?? []).find(button => button.dataset.discoveryOpen === entry.current)
-        ?? region.current?.querySelector<HTMLElement>('h2');
+        ?? manageButton.current
+        ?? region.current?.querySelector<HTMLElement>('h2, button[data-discovery-open]');
       opener?.focus({preventScroll: true});
-    }
+    } else if (location) region.current?.focus({preventScroll: true});
   }, [location]);
   const [operationError, setOperationError] = useState('');
   const [pending, setPending] = useState(false);
@@ -188,35 +203,71 @@ export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, 
     finally { lock.current = false; if (active.current) setPending(false); }
   };
   const startSession = async (id: string, retryOf?: string) => {
-    if (sessionLock.current || busyRef.current) throw new Error('当前对话正在处理，请等待完成。');
-    const token = {}; sessionLock.current = token; setSessionPending(true); onBusyChange?.(true);
+    if (sessionLock.current) return;
+    const startedAt = window.location.href;
+    const startedNavigation = navigation.current;
+    sessionLock.current = true;
+    setSessionPending(true);
     try {
-      if (onStartSession) await onStartSession(id, retryOf);
-      else { const result = await noteDiscoveries.session(id, retryOf); if (active.current && !busyRef.current) onSession(result.session); }
+      const result = await noteDiscoveries.session(id, retryOf);
+      if (active.current && navigation.current === startedNavigation && window.location.href === startedAt) onSession(result.session);
     } finally {
-      if (sessionLock.current === token) { sessionLock.current = null; if (active.current) setSessionPending(false); onBusyChange?.(false); }
+      sessionLock.current = false;
+      if (active.current) setSessionPending(false);
     }
   };
   const visible = data?.items.filter(item => item.status === 'ready' && !intents.values[item.id]?.feedback && !intents.values[item.id]?.stale) || [];
-  if (data && !data.available && !location) return renderHome(fallback);
-  if (location) {
+  const featured = visible[0];
+  const compactEntry = (data?.available || error) ? <section ref={!location ? region : undefined}
+    className={styles.compact} aria-label="从你的笔记继续">
+    <button type="button" className={styles.compactMain} data-discovery-open={featured?.id ?? ''}
+      aria-label={featured ? `查看发现：${featured.title}` : undefined}
+      onClick={() => featured ? open(readerPrefix + encodeURIComponent(featured.id), featured.id) : open(settingsHash)}>
+      <Sparkles size={18} aria-hidden="true" />
+      <span className={styles.compactCopy}>
+        <span className={styles.compactLabel}>从你的笔记继续</span>
+        {featured && <strong>{featured.title}</strong>}
+      </span>
+      <span className={styles.compactAction}>{featured ? '查看发现' : '打开发现'} <ArrowRight size={14} aria-hidden="true" /></span>
+    </button>
+  </section> : null;
+  if (!enabled) return renderLayout(null);
+  if (!location) return renderLayout(compactEntry);
+
+  const parent = window.history.state?.noteDiscoveryFrom;
+  const renderNavigation = (backLabel: string, showManagement = false) => {
+    const manage = showManagement && <div className={styles.readerNav}>
+      <button ref={manageButton} type="button" className={styles.readerSettings} onClick={() => open(settingsHash)}>
+        <Settings2 size={16} aria-hidden="true" />管理发现
+      </button>
+    </div>;
+    return <div className={styles.readerNavigation}>
+      <WorkspaceBackButton label={backLabel} onClick={back} />
+      {manage && (topbar ? createPortal(manage, topbar) : manage)}
+    </div>;
+  };
+  if (location !== settingsHash) {
     const item = visible.find(candidate => readerPrefix + encodeURIComponent(candidate.id) === location);
     const history = location === historyHash;
-    return <section key={location} ref={region} tabIndex={-1} className={styles.reader} data-discovery-entry="" aria-label={history ? '浏览历史发现' : '发现阅读'}>
+    return renderLayout(compactEntry, <section key={location} ref={region} tabIndex={-1} className={styles.reader} aria-label={history ? '浏览历史发现' : '发现阅读'}>
       <div className={styles.readerColumn}>
-        <button className={styles.back} onClick={back}>{history ? '关闭历史发现' : '返回新对话'}</button>
+        {renderNavigation(history ? '关闭历史发现' : parent === settingsHash ? '返回管理发现' : '返回笔记',
+          !history && Boolean(data?.available) && parent !== settingsHash)}
         {history && data?.available ? <DiscoveryHistory userId={userId} /> : item ? <DiscoveryReader key={item.id} item={item}
-          intent={intents.values[item.id] || {}} patch={patch => intents.set(item.id, patch)} busy={busy || pending || sessionPending}
+          intent={intents.values[item.id] || {}} patch={patch => intents.set(item.id, patch)} busy={pending || sessionPending}
           startSession={retryOf => startSession(item.id, retryOf)}
           withdraw={() => { intents.set(item.id, {stale:true}); update(previous => ({...previous, items:previous.items.filter(record => record.id !== item.id)})); reload(); if (locationRef.current === location) back(); }}
           feedbackDone={() => { intents.set(item.id, {feedback:true}); update(previous => ({...previous,items:previous.items.filter(record => record.id !== item.id)})); reload(); if (locationRef.current === location) back(); }} />
           : <p role="status">{loading ? '正在读取发现…' : error || '这条发现已变化或暂时无法查看。'}</p>}
       </div>
-    </section>;
+    </section>);
   }
   const pendingRun = data && ['queued', 'running'].includes(data.run.status);
   const labels = { idle: '暂时没有新的发现', completed: '暂时没有新的发现', no_result: '暂时没有新的发现', queued: '正在整理近期笔记', running: '正在整理近期笔记', budget_exhausted: '发现额度暂时已用完', failed: '这次没有完成分析' };
-  return renderHome(<section data-discovery-home="" className={styles.panel} ref={region} aria-label="从你的笔记继续">
+  return renderLayout(compactEntry, <section className={styles.reader} ref={region} tabIndex={-1} aria-label="管理发现">
+    <div className={styles.readerColumn}>
+    {renderNavigation(parent?.startsWith(readerPrefix) ? '返回发现' : '返回笔记')}
+    <div className={styles.panel}>
     <div className={styles.header}><h2 tabIndex={-1}>从你的笔记继续</h2>{data && <button disabled={pending} aria-pressed={data.automaticEnabled} onClick={() => void act(async () => {
       const result = await noteDiscoveries.preferences(!data.automaticEnabled);
       if (active.current) { update(previous => ({ ...previous, ...result })); reload(); }
@@ -232,7 +283,7 @@ export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, 
           onClick={() => open(readerPrefix + encodeURIComponent(item.id), item.id)}>查看发现</button>
       </article>)}
       {(pendingRun || data.run.status === 'failed' || data.run.status === 'budget_exhausted' || !visible.length) && <div className={styles.state} role="status"><strong>{labels[data.run.status]}</strong><p className={styles.muted}>{pendingRun ? paused ? '分析仍未结束。你可以稍后检查状态，或先继续记录。' : '找到线索后会显示原文依据。你可以先继续写笔记。' : data.run.status === 'failed' ? '保存的笔记不会受影响，稍后可以再试一次。' : data.run.status === 'budget_exhausted' ? '已有发现仍可查看，额度恢复后再试。' : '现有笔记里还没有足够明确的线索。你可以继续记录，之后再来看看。'}</p>
-        <Link href="/notes">继续记录笔记</Link>{pendingRun ? <button onClick={reload}>检查状态</button> : null}
+        {pendingRun && <button onClick={reload}>检查状态</button>}
       </div>}
       <div className={styles.actions}>
         {!pendingRun && <button disabled={pending} onClick={() => void act(async () => {
@@ -243,5 +294,7 @@ export default function NoteDiscoveryPanel({ userId, busy, onSession, fallback, 
       </div>
       {visible.length > 1 && <button className={styles.quiet} onClick={() => setExpanded(value => !value)}>{expanded ? '收起其他发现' : '查看其他发现'}</button>}
     </>}
+    </div>
+    </div>
   </section>);
 }

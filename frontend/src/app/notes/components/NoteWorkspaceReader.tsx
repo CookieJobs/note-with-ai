@@ -6,6 +6,8 @@ Pos: notes/components；修改时同步 ../README.md
 'use client';
 
 import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useWorkspace } from '../../../components/workspace/WorkspaceContext';
 import { MoreHorizontal, Pencil, Network, Trash2, MessageCircle } from 'lucide-react';
 import type { Note } from '../hooks/useNotes';
 import RichTextViewer from './RichTextViewer';
@@ -13,27 +15,38 @@ import styles from '../NotesWorkspace.module.scss';
 
 type Props = { note: Note; onEdit: () => void; onDelete: (trigger?: HTMLButtonElement | null) => void; onRelated: () => void; relatedOpen: boolean; onDiscuss?: () => void; discussing?: boolean };
 export default function NoteWorkspaceReader({ note, onEdit, onDelete, onRelated, relatedOpen, onDiscuss, discussing }: Props) {
+  const topbar = useWorkspace()?.topbarActions;
   const [more, setMore] = useState(false);
   const moreTriggerRef = useRef<HTMLButtonElement>(null);
   // The original Markdown remains authoritative over its plain-text projection.
   const value = note.contentJson || note.content || note.contentText || '';
   const date = new Date(note.createdAt);
   const dateLabel = Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
+  const tools = <div className={styles.readerTools} aria-label="笔记操作" role="group">
+    {onDiscuss && <button type="button" className={styles.button} disabled={discussing} onClick={onDiscuss}
+      aria-label={discussing ? '正在创建对话…' : '和 AI 讨论'} title="和 AI 讨论">
+      <MessageCircle size={15} aria-hidden="true" /><span className={styles.detailActionLabel}>{discussing ? '正在创建对话…' : '和 AI 讨论'}</span>
+    </button>}
+    {!topbar && <button type="button" className={styles.button} onClick={onRelated} aria-pressed={relatedOpen}><Network size={15} aria-hidden="true" />相关笔记</button>}
+    <button type="button" className={styles.button} onClick={onEdit} aria-label="编辑笔记" title="编辑笔记">
+      <Pencil size={15} aria-hidden="true" /><span className={styles.detailActionLabel}>编辑笔记</span>
+    </button>
+    <div className={styles.more} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMore(false); }}>
+      <button ref={moreTriggerRef} type="button" className={styles.iconButton} aria-label="更多笔记操作" aria-expanded={more} aria-haspopup="menu" onClick={() => setMore(!more)}><MoreHorizontal size={19} aria-hidden="true" /></button>
+      {more && <div className={styles.moreMenu} role="menu" onKeyDown={(event) => { if (event.key === 'Escape') { setMore(false); moreTriggerRef.current?.focus(); } }}>
+        {topbar && <button type="button" role="menuitemcheckbox" aria-checked={relatedOpen} className={styles.button}
+          onClick={() => { moreTriggerRef.current?.focus(); setMore(false); onRelated(); }}>
+          <Network size={15} aria-hidden="true" />相关笔记
+        </button>}
+        <button type="button" role="menuitem" className={styles.dangerButton} onClick={() => { setMore(false); onDelete(moreTriggerRef.current); }}><Trash2 size={15} aria-hidden="true" />删除笔记</button>
+      </div>}
+    </div>
+  </div>;
   return (
     <article aria-label="笔记阅读" className={styles.reader}>
       <div className={styles.readerToolbar}>
         <time dateTime={note.createdAt}>{dateLabel}</time>
-        <div className={styles.readerTools}>
-          {onDiscuss && <button type="button" className={styles.button} disabled={discussing} onClick={onDiscuss}><MessageCircle size={15} />{discussing ? '正在创建对话…' : '和 AI 讨论'}</button>}
-          <button type="button" className={styles.button} onClick={onRelated} aria-pressed={relatedOpen}><Network size={15} />相关笔记</button>
-          <button type="button" className={styles.button} onClick={onEdit}><Pencil size={15} />编辑笔记</button>
-          <div className={styles.more} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMore(false); }}>
-            <button ref={moreTriggerRef} type="button" className={styles.iconButton} aria-label="更多笔记操作" aria-expanded={more} aria-haspopup="menu" onClick={() => setMore(!more)}><MoreHorizontal size={19} /></button>
-            {more && <div className={styles.moreMenu} role="menu" onKeyDown={(event) => { if (event.key === 'Escape') { setMore(false); (event.currentTarget.previousElementSibling as HTMLButtonElement)?.focus(); } }}>
-              <button type="button" role="menuitem" className={styles.dangerButton} onClick={() => { setMore(false); onDelete(moreTriggerRef.current); }}><Trash2 size={15} />删除笔记</button>
-            </div>}
-          </div>
-        </div>
+        {topbar ? createPortal(tools, topbar) : tools}
       </div>
       {note.title?.trim() && <h1>{note.title}</h1>}
       <div className={styles.readingBody}>

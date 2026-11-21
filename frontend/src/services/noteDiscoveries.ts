@@ -22,6 +22,7 @@ async function request<T>(path = '', options: RequestInit = {}): Promise<T> {
   return payload.data as T;
 }
 export const noteDiscoveries = {
+  availability: (signal: AbortSignal) => request<{ available: boolean }>('/availability', { signal }),
   list: (signal?: AbortSignal, history = false, admit = false) => {
     const query = new URLSearchParams({ admit: String(admit), history: String(history) });
     if (admit && !history) {

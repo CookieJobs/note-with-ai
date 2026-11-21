@@ -1,4 +1,4 @@
-.panel, .reader { width: 100%; color: var(--ws-ink, #17191d); text-align: left; font-size: 14px; line-height: 1.65;
+.panel, .reader, .readerNav { width: 100%; color: var(--ws-ink, #17191d); text-align: left; font-size: 14px; line-height: 1.65;
   button, a { font: inherit; }
   button { cursor: pointer; border: 1px solid var(--ws-line, #e6e9ef); border-radius: 8px; padding: 7px 12px; background: var(--ws-surface, #fff); color: inherit; }
   button:hover { background: var(--ws-hover, #f8f9fb); }
@@ -53,9 +53,10 @@
   max-width: 820px;
   margin-inline: auto;
   padding: 28px 24px;
-  .back { border: none; background: transparent; color: var(--ws-accent-ink, #2365d7); padding-inline: 0; }
-  .back::before { content: '←'; margin-inline-end: 8px; }
 }
+.readerNavigation { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.readerNavigation:empty { display: none; }
+.readerSettings { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .reading {
   font-size: 16px;
   line-height: 1.8;
@@ -90,4 +91,48 @@
   .preview { grid-template-columns: minmax(0, 1fr); }
   .preview button { justify-self: start; }
   .readerColumn { padding: 16px; }
+}
+
+.compact {
+  display: flex;
+  margin: -24px 0 28px;
+  padding: 3px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-input);
+  background: var(--ws-subtle);
+  button {
+    border: 0;
+    border-radius: var(--ws-radius-small);
+    background: transparent;
+    color: var(--ws-accent-ink);
+    transition: none;
+    @media (hover: hover) {
+      &:hover { background: var(--ws-accent-soft); }
+    }
+    &:focus-visible { outline: 2px solid var(--ws-focus); outline-offset: -2px; }
+    &:active { background: var(--ws-accent-border); }
+  }
+}
+.compactMain {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  text-align: left;
+  gap: 10px;
+  padding: 10px 14px;
+  min-height: 46px;
+}
+.compactCopy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  strong { min-width: 0; color: var(--ws-ink); font-size: 14px; overflow-wrap: anywhere; }
+}
+.compactLabel { color: var(--ws-secondary); font-size: 13px; }
+.compactAction { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; }
+@media (max-width: 540px) {
+  .compactMain { gap: 8px; padding-inline: 10px; }
 }
