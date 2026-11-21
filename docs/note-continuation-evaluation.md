@@ -13,7 +13,7 @@ NOTE_DISCOVERY_TEST_MONGO_URI=mongodb://127.0.0.1:27028/nwai_discovery_test_eval
 
 ## 真实模型评估
 
-两轮均未达到质量门槛。[2026-11-21 基线记录](verification/2026-11-21-note-continuation-live-baseline.md)为 3/12，[第二轮复测记录](verification/2026-11-21-note-continuation-live-retest.md)为 5/12。两轮沿用同一个 ¥2.10 批次，累计保守计费 ¥0.277678。正式启用前需在修正供应商协议后用相同案例复测。
+[第四轮验收](verification/2026-11-21-note-continuation-native-acceptance.md)通过固定合成集，11/12 个正例达标，6 个语义反例均正常无结果，20 条引用逐字匹配。此前的[基线](verification/2026-11-21-note-continuation-live-baseline.md)和[第二轮](verification/2026-11-21-note-continuation-live-retest.md)分别为 3/12 和 5/12。四轮沿用同一个 ¥2.10 批次，累计保守计费 ¥0.695690。更换模型或主要提示时应复跑同一套验收。
 
 费用使用已获批准的批次上限，密钥只能通过已有受控环境注入。2026-11-21 对照 [DeepSeek 模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/) 核实 deepseek-flash 高峰缓存未命中输入为 ¥2/百万 tokens，输出为 ¥8/百万 tokens。执行前复核，测试单价不可用于运行。首轮上限 ¥2.10，进程级配置未写入 `.env` 或生产环境。配置须包含匹配的模型、单价，以及用户、全局和单次预留限额；未知保持关闭。
 
@@ -37,6 +37,6 @@ npx tsx scripts/evaluate_note_continuation.ts connection-queue
 
 ## 架构与上线限制
 
-这是一段自管工具循环：`NoteDiscoveryScheduleService → NoteDiscoveryWorkerStore → NoteDiscoveryWorker → NoteContinuationAgent → tools/provider → publishDiscoveryRun`，不是已接入供应商托管 Agent 框架的证明。工具检索目前是按用户隔离的字面搜索；schema 和启发式验证提供结构、来源和重复约束，无法证明语义关联、反例处理及增量价值正确。真实模型人工验收及托管框架产品表述仍待决定。
+执行链为 `NoteDiscoveryScheduleService → NoteDiscoveryWorkerStore → NoteDiscoveryWorker → NoteContinuationAgent → tools/provider → publishDiscoveryRun`。Agent 通过 DeepSeek 原生函数调用使用服务端提供的只读工具。检索目前以用户隔离的文字匹配为主。结构、来源及重复约束由服务端校验，语义关联和下一步价值通过固定样本逐例核对。
 
 运行关闭、恢复、删除及生产发布规则见部署指南；任何本地测试通过均不授权推送、部署或启用收费开关。
