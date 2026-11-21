@@ -79,6 +79,16 @@ describe('note continuation agent', noteDiscoveryMongoTestOptions, () => {
     await fixture.store.finish(fixture.runId, fixture.claim.leaseToken, 'no_result');
   });
 
+  test('treats a model finish with no candidates as abstention without a retry', async () => {
+    const { transport, calls } = scriptTransport(providerResponse({ type: 'finish', candidates: [] }));
+    const fixture = await arrange({ provider: createDiscoveryProvider(fixturePrice, transport)!, limits: { maxModelCalls: 1 } });
+    assert.equal(await fixture.start(), 'no_result');
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].body.messages[0].content, /final model turn.*Do not request tools/);
+    assert.equal(await Discovery.countDocuments({ runId: fixture.runId }), 0);
+    await fixture.store.finish(fixture.runId, fixture.claim.leaseToken, 'no_result');
+  });
+
   test('settles retryable response with known usage and reserves independently for its single retry', async () => {
     const data = { usage: { prompt_tokens: 90, completion_tokens: 10, total_tokens: 100 } };
     const { transport, calls } = scriptTransport({ status: 503, data }, providerResponse(noResult));

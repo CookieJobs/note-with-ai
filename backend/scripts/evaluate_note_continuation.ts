@@ -74,7 +74,19 @@ async function main() {
     schedule.scanDue = async () => 0;
     const run = await store.enqueue(userId, { changedAt: new Date() }, `eval-${item.id}`, { trigger: 'manual' });
     assert.ok(run);
-    await new NoteDiscoveryWorker({ store, schedule, budget, enabled: () => true }).tick();
+    const syntheticActions: string[] = [];
+    const provider = {
+      ...noteDiscoveryProvider,
+      prepare(...args: Parameters<typeof noteDiscoveryProvider.prepare>) {
+        const prepared = noteDiscoveryProvider.prepare(...args);
+        return { ...prepared, async send(signal: AbortSignal) {
+          const result = await prepared.send(signal);
+          if (result.delivery === 'response_received' && result.content) syntheticActions.push(result.content);
+          return result;
+        } };
+      },
+    };
+    await new NoteDiscoveryWorker({ store, schedule, budget, enabled: () => true, agentOptions: { provider } }).tick();
     const result = await Run.findById(run._id).lean();
     // Output is deliberately synthetic; production observability never prints discovery prose.
     const discoveries = result?.status === 'completed' ? await Discovery.find({ runId: run._id, generation: result.generation }, { kind: 1, quality: 1, title: 1, observation: 1, whyNow: 1,
@@ -82,7 +94,8 @@ async function main() {
     console.log(JSON.stringify({ caseId: item.id, rubric: item.rubric, status: result?.status,
       failureCategory: result?.failureCategory, generation: result?.generation,
       providerDeliveryUnknown: result?.providerDeliveryUnknown ?? false,
-      settlement: evaluationSettlementSummary(await readLedgers()), usage: result?.usage, discoveries }, null, 2));
+      settlement: evaluationSettlementSummary(await readLedgers()), usage: result?.usage, discoveries,
+      ...(result?.status !== 'completed' ? { syntheticActions } : {}) }, null, 2));
     assertEvaluationBatchSafe(await readLedgers(), result ? [result] : []);
   } finally {
     try { await lock.deleteOne({ _id: 'single-evaluator' as never }); }

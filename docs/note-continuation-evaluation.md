@@ -11,9 +11,11 @@ NOTE_DISCOVERY_TEST_MONGO_URI=mongodb://127.0.0.1:27028/nwai_discovery_test_eval
 
 测试调用实际 `NoteContinuationAgent`，替换 provider transport；验证真实工具、完整正文读取、发布、精确引用位置、预算拒绝、发送未知、修订/删除失效、单次去重及硬上限。正例输出是固定结构模板，只验证契约；语义反例的 no_result 也是脚本安排，不能证明模型能识别它们。跨运行去重、反馈撤销、预算结算及租约恢复须同时执行现有 `noteDiscoveryService`、`noteDiscoveryBudgetService`、`noteDiscoveryWorkerStore`、`noteDiscoveryWorker` 测试。缺少隔离 Mongo 时这些数据库测试会 skip，skip 不等于通过。
 
-## 真实模型评估（待另行执行）
+## 真实模型评估
 
-本轮未运行付费请求，尚无真实模型通过率或“有继续价值”的结论。后续需明确批准具体模型、核实日期、供应商价格依据及合计人民币预算；密钥只能通过已有受控环境注入。官方价格入口为 [DeepSeek 模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)，需执行前重新核实，不能把 test fixture 的虚构单价用于运行配置。2026-11-21 已对照官方中文价格表核实 deepseek-flash 峰时 cache-miss 输入为 ¥2/百万 tokens，输出为 ¥8/百万 tokens；这只是带日期的参考，不设置默认值，执行前需重新核对。24 组各用满累计 24000 输入/4000 输出的最坏合计为 ¥1.92（未计微元逐次取整）；可在明确批准后使用至多 ¥2.1 的保守批次上限。当前本地日限额配置尚缺，不能执行付费评估。只在单次受控进程中注入核实的价格和批准的用户/全局/预留限额，不改持久 .env 或生产配置。配置须包含精确 priced model、输入/输出单价、匹配的 embedding provider/model/单价、用户/全局日上限及单次预留上限；未知保持关闭。
+首轮未达到质量门槛。[2026-11-21 基线记录](verification/2026-11-21-note-continuation-live-baseline.md)包含逐例评分、费用与随后的修正。正式启用前需用相同案例复测。
+
+费用使用已获批准的批次上限，密钥只能通过已有受控环境注入。2026-11-21 对照 [DeepSeek 模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/) 核实 deepseek-flash 高峰缓存未命中输入为 ¥2/百万 tokens，输出为 ¥8/百万 tokens。执行前复核，测试单价不可用于运行。首轮上限 ¥2.10，进程级配置未写入 `.env` 或生产环境。配置须包含匹配的模型、单价，以及用户、全局和单次预留限额；未知保持关闭。
 
 `backend/scripts/evaluate_note_continuation.ts` 每次仅接收一个固定 case ID，调用同一个真实 worker/runner/provider；仅禁用启动全库扫描及自动到期扫描，确保一次只评估指定的手动任务，授权、租约、工具、结算及发布链不替换。它只连接固定专用 `mongodb://127.0.0.1:27028/nwai_discovery_test_live_evaluation`，拒绝其他合法测试后缀，仅植入合成正文。首次运行在固定数据库写入不可变批准记录（审批标识、价格核实日期、模型、价格、限额、执行上限及密钥指纹，不含明文密钥），后续参数改变即拒绝；不得更换数据库或删除批准/账本重置费用。禁止同时启动其他 worker。必须显式设置 `NOTE_DISCOVERY_EVAL_ALLOW_PAID=yes`、`NOTE_DISCOVERY_EVAL_MAX_CNY_MICROS`（批准上限，至多 2100000，即 2.1 元，绝非预计价格）、`NOTE_DISCOVERY_EVAL_APPROVAL_ID`、`NOTE_DISCOVERY_EVAL_PRICE_VERIFIED_AT=YYYY-MM-DD` 和完整显式已核实配置（包括 DeepSeek key、模型、所有单价及限额、embedding provider/model）。配置导入前逐项核验，评估进程设置 `NOTE_DISCOVERY_EVAL_PROCESS_ONLY=true` 跳过项目根 `.env`；无关认证/邮件配置使用固定合成占位值，不读取真实凭据。每次执行前检查累计账本及最坏累计输入/输出费用及三次向上取整保护，运行中仍由生产预算服务逐次预留和结算。若批准的上限不足，停止并重新评估计划，不能修改上限绕过批准。
 
