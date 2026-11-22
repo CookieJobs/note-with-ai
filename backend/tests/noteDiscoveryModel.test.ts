@@ -82,10 +82,10 @@ test('discovery persists supplied evidence with a valid note revision and text l
     keys.userId === 1 && keys.runId === 1 && keys.generation === 1 && keys.observationFingerprint === 1 && options.unique));
 });
 
-test('discovery preference defaults to automatic and stores revocable, expiring feedback', () => {
+test('discovery preference defaults to manual and stores revocable, expiring feedback', () => {
   const document = new NoteDiscoveryPreference({ userId });
   assert.equal(document.validateSync(), undefined);
-  assert.equal(document.automaticEnabled, true);
+  assert.equal(document.automaticEnabled, false);
   assert.equal(document.timeZone, 'Asia/Shanghai');
   assert.equal(new NoteDiscoveryPreference({ userId, timeZone: 'Mars/Olympus' }).validateSync()?.errors.timeZone.kind, 'user defined');
   const feedback = {

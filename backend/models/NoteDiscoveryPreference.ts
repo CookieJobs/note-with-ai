@@ -26,7 +26,7 @@ const FeedbackSchema = new mongoose.Schema<DiscoveryFeedback<mongoose.Types.Obje
 
 const NoteDiscoveryPreferenceSchema = new mongoose.Schema<DiscoveryPreferenceRecord>({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, immutable: true },
-  automaticEnabled: { type: Boolean, required: true, default: true },
+  automaticEnabled: { type: Boolean, required: true, default: false },
   timeZone: {
     type: String, required: true, trim: true, maxlength: 100, default: DEFAULT_DISCOVERY_TIME_ZONE,
     validate: {

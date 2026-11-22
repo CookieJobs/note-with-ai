@@ -1,3 +1,4 @@
+import { isNoteDiscoveryAccessGranted } from './noteDiscoveryAccess';
 import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { randomUUID } from 'node:crypto';
 import { Types } from 'mongoose';
@@ -237,7 +238,9 @@ export class NoteDiscoveryBudgetService {
     if (turn.reply) {
       const finalMessages = [...turn.payload.messages, { role: 'assistant', content: turn.reply, sourceSnapshots: turn.payload.sourceSnapshots }];
       let chat = await Chat.findOne({ _id: turn.chatId, userId: turn.userId, lastDiscoveryTurnId: turn._id });
-      if (!chat) chat = await Chat.findOneAndUpdate({ _id: turn.chatId, userId: turn.userId, __v: turn.payload.baseVersion },
+      if (!chat && await isNoteDiscoveryAccessGranted(String(turn.userId)) && await NoteDiscoveryChatTurn.exists({
+        _id: turn._id, status: 'running', executionCancelled: { $ne: true }, cleanupRequested: { $ne: true },
+      })) chat = await Chat.findOneAndUpdate({ _id: turn.chatId, userId: turn.userId, __v: turn.payload.baseVersion },
         { $set: { messages: finalMessages, lastDiscoveryTurnId: turn._id }, $inc: { __v: 1 } }, { new: true, writeConcern });
       if (chat) {
         await NoteDiscoveryChatTurn.updateOne({ _id: turn._id, status: 'running' }, { $set: { status: 'completed' } }, { writeConcern });

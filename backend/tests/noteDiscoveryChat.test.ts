@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it, after, mock, afterEach } from 'node:test';
 import { Types } from 'mongoose';
 import type { IMessage } from '../types';
-import { connectNoteDiscoveryTestMongo, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
+import { connectNoteDiscoveryTestMongo, grantDiscoveryTestUser, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET ||= 'test-secret';
@@ -19,6 +19,7 @@ describe('discovery multi-note chat', noteDiscoveryMongoTestOptions, () => {
     const Chat = (await import('../models/Chat')).default;
     const { chatService } = await import('../services/chatService');
     const userId = new Types.ObjectId().toString();
+    await grantDiscoveryTestUser(userId);
     const note = await Note.create({ userId, content: '今天已更新为十分钟', contentText: '今天已更新为十分钟', revision: 2 });
     const old = { noteId: note.id, contentText: '旧文', revision: 1, updatedAt: new Date().toISOString(), hasImages: false };
     const chat = await Chat.create({ userId, title: '发现', sourceMode: 'multi_note_discovery', discoveryId: new Types.ObjectId(), selectedSourceIds: [note._id], messages: [{ role: 'assistant', content: '旧答', sourceSnapshots: [old] }] });
@@ -39,6 +40,7 @@ describe('metered durable discovery conversation turns', noteDiscoveryMongoTestO
     const { Note } = await import('../models/Note');
     const Chat = (await import('../models/Chat')).default;
     const userId = new Types.ObjectId().toString();
+    await grantDiscoveryTestUser(userId);
     const contents = sourceCount === 2 ? ['周一练习十分钟', '周三练习十五分钟'] : Array.from({length:sourceCount},(_,i)=>`第${i+1}次练习${i+10}分钟`);
     const notes = await Promise.all(contents.map(content => Note.create({ userId, content, contentText: content, revision: 1 })));
     const chat = await Chat.create({ userId, title: '多篇继续', sourceMode: 'multi_note_discovery', discoveryId: new Types.ObjectId(), selectedSourceIds: notes.map(n => n._id), messages: [] });
@@ -82,6 +84,33 @@ describe('metered durable discovery conversation turns', noteDiscoveryMongoTestO
     for (let index = 2; index <= 4; index++) await chatTurnCommitService.streamAndCommit({ ...input, requestId: `turn-${index}` });
     assert.equal(f.scripted.calls.length, 4, 'four conversation turns must not consume the three manual discovery allowance');
   });
+  it('accounts for a response held across revoke and re-grant without committing it', async () => {
+    const f = await fixture();
+    const User = (await import('../models/User')).default;
+    const Chat = (await import('../models/Chat')).default;
+    const { NoteDiscoveryChatTurn } = await import('../models/NoteDiscoveryChatTurn');
+    const { noteDiscoveryWorkerStore } = await import('../services/noteDiscoveryWorkerStore');
+    const { NoteDiscoveryConversationService } = await import('../services/noteDiscoveryConversationService');
+    const { createDiscoveryProvider } = await import('../services/noteDiscoveryProvider');
+    const { fixturePrice, providerResponse } = await import('./noteDiscoveryRunnerFixture');
+    let calls = 0;
+    const provider = createDiscoveryProvider(fixturePrice, async () => {
+      calls++;
+      await User.updateOne({ _id: f.userId }, { $set: { noteDiscoveryAccess: false } });
+      await noteDiscoveryWorkerStore.cancelAccountRuns(f.userId);
+      await User.updateOne({ _id: f.userId }, { $set: { noteDiscoveryAccess: true } });
+      return providerResponse({ reply: '不能提交这条迟到的回答。' });
+    })!;
+    const service = new NoteDiscoveryConversationService({ provider, budget: f.budget, enabled: () => true });
+    await assert.rejects(service.execute({ ...f.prepared, sourceSnapshots: f.prepared.sourceSnapshots!,
+      userId: f.userId, chatId: f.chat.id, requestId: 'revoked-in-flight' }), /本轮生成已停止/);
+    assert.equal(calls, 1);
+    assert.equal((await Chat.findById(f.chat.id))?.messages.length, 0);
+    const turn = await NoteDiscoveryChatTurn.findOne({ userId: f.userId }).lean();
+    assert.equal((turn as any)?.status, 'failed');
+    assert.equal((turn as any)?.executionCancelled, true);
+  });
+
   it('commits a six-source discovery continuation and reloads every current owned source', async () => {
     const f = await fixture(6);
     const { noteDiscoveryConversationService } = await import('../services/noteDiscoveryConversationService');

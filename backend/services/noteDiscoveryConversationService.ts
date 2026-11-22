@@ -2,7 +2,8 @@ import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { createHash, randomUUID } from 'node:crypto';
 import Chat from '../models/Chat';
 import { NoteDiscoveryChatTurn } from '../models/NoteDiscoveryChatTurn';
-import { config, isNoteDiscoveryAccountAllowed } from '../config';
+import { config } from '../config';
+import { isNoteDiscoveryAccessGranted } from './noteDiscoveryAccess';
 import { noteDiscoveryProvider, type DiscoveryProvider } from './noteDiscoveryProvider';
 import { noteDiscoveryBudgetService, discoveryCostMicros, type NoteDiscoveryBudgetService } from './noteDiscoveryBudgetService';
 import { AppError, ErrorType } from '../utils/errorHandler';
@@ -10,6 +11,7 @@ import type { IMessage } from '../types';
 import type { ChatSourceSnapshot } from '../types/chatSource';
 
 const writeConcern = { w: 'majority', j: true } as const;
+export const DISCOVERY_ACCESS_REVOKED = 'DISCOVERY_ACCESS_REVOKED';
 const error = (message: string, code: string, status = 409) => new AppError(message, ErrorType.VALIDATION, status, true, { code });
 export const discoveryRetryRequestId = (prior: string) => `retry:${createHash('sha256').update(prior).digest('hex')}`;
 const canRetry = (turn: any) => turn.status === 'failed' && turn.errorCode === 'CHAT_BUDGET_EXHAUSTED' && !turn.providerStartedAt && !turn.providerReservationId && !turn.reply && !turn.cleanupRequested;
@@ -29,7 +31,6 @@ export class NoteDiscoveryConversationService {
 
   async execute(input: { userId: string; chatId: string; requestId?: string; retryOfRequestId?: string; messages: IMessage[]; sourceSnapshots: ChatSourceSnapshot[]; baseVersion?: number }) {
     const { userId, chatId, requestId } = input;
-    if (!isNoteDiscoveryAccountAllowed(userId)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
     const now = this.options.now?.() ?? new Date();
     const deadline = new Date(now.getTime() + (this.options.timeoutMs ?? 60_000));
     const abort = new AbortController();
@@ -60,7 +61,7 @@ export class NoteDiscoveryConversationService {
         throw error('上次请求尚不能重新申请，请保留原请求核对结果', 'CHAT_RETRY_NOT_ALLOWED');
       }
     }
-    if (!(this.options.enabled?.() ?? config.NOTE_DISCOVERY_RUNNABLE)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
+    if (!await bounded(isNoteDiscoveryAccessGranted(userId)) || !(this.options.enabled?.() ?? config.NOTE_DISCOVERY_RUNNABLE)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
     const provider = this.options.provider === undefined ? noteDiscoveryProvider : this.options.provider;
     if (!provider) throw error('AI 服务暂时不可用，请稍后重试', 'CHAT_PROVIDER_UNAVAILABLE', 503);
     const chat = await bounded(Chat.findOne({ _id: chatId, userId, sourceMode: 'multi_note_discovery' }).lean());
@@ -98,6 +99,11 @@ export class NoteDiscoveryConversationService {
       throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
     }
     const fence = { runId: String(operation._id), userId, generation: 1, leaseToken: operation.leaseToken };
+    const assertTurnAccess = async () => {
+      if (!await bounded(isNoteDiscoveryAccessGranted(userId)) || await bounded(NoteDiscoveryChatTurn.exists({
+        _id: operation._id, status: 'running', executionCancelled: true, cleanupRequested: { $ne: true },
+      }))) throw error('本轮生成已停止，笔记发现权限已撤销', DISCOVERY_ACCESS_REVOKED, 503);
+    };
     let reservation: Awaited<ReturnType<typeof budget.reserveConversation>> = null;
     let sent = false;
     let settled = false;
@@ -108,16 +114,19 @@ export class NoteDiscoveryConversationService {
       if (!await bounded(Chat.exists({ _id: chatId, userId, __v: baseVersion }))) {
         throw error('对话已变化，请重新打开后继续', 'CHAT_COMMIT_CONFLICT');
       }
+      await assertTurnAccess();
       reservation = await bounded(budget.reserveConversation(String(operation._id), userId, {
         provider: 'deepseek', model: provider.model, inputCnyPerMillion: provider.inputCnyPerMillion,
         outputCnyPerMillion: provider.outputCnyPerMillion, maxInputTokens: request.maxInputTokens, maxOutputTokens: 2000,
       }, { signal: abort.signal, deadline }));
+      await assertTurnAccess();
       if (!reservation) throw error('本轮可用额度不足，请稍后再试', 'CHAT_BUDGET_EXHAUSTED', 429);
       if (abort.signal.aborted || !(this.options.enabled?.() ?? config.NOTE_DISCOVERY_RUNNABLE)
         || !await bounded(budget.isDispatchableReservation(fence, reservation.id))) throw error('本轮生成已停止，请重新发起', 'CHAT_ATTEMPT_EXPIRED');
-      const marked = await bounded(NoteDiscoveryChatTurn.updateOne({ _id: operation._id, status: 'running', cleanupRequested: { $ne: true }, leaseToken: operation.leaseToken,
+      const marked = await bounded(NoteDiscoveryChatTurn.updateOne({ _id: operation._id, status: 'running', cleanupRequested: { $ne: true }, executionCancelled: { $ne: true }, leaseToken: operation.leaseToken,
         $expr: { $gt: ['$leaseUntil', '$$NOW'] }, providerStartedAt: { $exists: false } },
       { $set: { providerStartedAt: new Date(), providerReservationId: reservation.id } }, { writeConcern }));
+      await assertTurnAccess();
       if (!marked.modifiedCount || abort.signal.aborted) throw error('本轮生成已停止', 'CHAT_ATTEMPT_EXPIRED');
       sent = true;
       const result = await bounded(request.send(abort.signal));
@@ -137,11 +146,16 @@ export class NoteDiscoveryConversationService {
         if (typeof parsed.reply !== 'string' || !parsed.reply.trim() || parsed.reply.length > 16000) throw new Error();
         reply = parsed.reply.trim();
       } catch { throw error('AI 回答格式不完整，请重新发起', 'CHAT_GENERATION_FAILED', 503); }
-      commitPhase = true;
-      const replyIntent = await bounded(NoteDiscoveryChatTurn.updateOne({ _id: operation._id, status: 'running', cleanupRequested: { $ne: true }, leaseToken: operation.leaseToken,
+      await assertTurnAccess();
+      const replyIntent = await bounded(NoteDiscoveryChatTurn.updateOne({ _id: operation._id, status: 'running', cleanupRequested: { $ne: true }, executionCancelled: { $ne: true }, leaseToken: operation.leaseToken,
         $expr: { $gt: ['$leaseUntil', '$$NOW'] } },
         { $set: { reply } }, { writeConcern }));
-      if (!replyIntent.matchedCount) throw error('本轮生成已停止', 'CHAT_ATTEMPT_CANCELLED', 409);
+      await assertTurnAccess();
+      if (!replyIntent.matchedCount) {
+        throw error('本轮生成已停止', 'CHAT_ATTEMPT_CANCELLED', 409);
+      }
+      // Once the chat write is dispatched, retain recovery for an uncertain acknowledgement.
+      commitPhase = true;
       const finalMessages = [...operation.payload.messages, { role: 'assistant', content: reply, sourceSnapshots: operation.payload.sourceSnapshots }];
       const updated = await bounded(Chat.findOneAndUpdate({ _id: chatId, userId, __v: operation.payload.baseVersion },
         { $set: { messages: finalMessages, lastDiscoveryTurnId: operation._id }, $inc: { __v: 1 } }, { new: true, writeConcern }));

@@ -19,7 +19,7 @@
 
 ## 待验收能力
 
-笔记自动发现已完成实现，并通过固定合成集的真实模型验收，正例 11/12 达标，6 个语义反例均无结果。`NOTE_DISCOVERY_ENABLED` 默认关闭。独立生产 worker、收费配置和发布仍待正式上线配置。见[评估与运行边界](docs/note-continuation-evaluation.md)。
+笔记自动发现已完成实现，并通过固定合成集的真实模型验收，正例 11/12 达标，6 个语义反例均无结果。`NOTE_DISCOVERY_ENABLED` 默认关闭。试用范围可由管理员按账号在用户详情中管理，新获得权限的用户可先手动检查，再自行开启自动发现。独立生产 Worker、收费配置和启用仍按发布流程处理。见[评估与运行边界](docs/note-continuation-evaluation.md)。
 
 ## 已退役及边界
 

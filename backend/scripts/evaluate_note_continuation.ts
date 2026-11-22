@@ -22,11 +22,11 @@ async function main() {
   process.env.QQ_EMAIL_PASS = 'evaluation-unused';
   const [{ config }, mongooseModule, { Note }, { NoteDiscoveryWorkerStore }, { NoteDiscoveryScheduleService },
     { NoteDiscoveryBudgetService }, { NoteDiscoveryWorker }, { noteDiscoveryProvider }, { default: Discovery },
-    { default: Run }] = await Promise.all([
+    { default: Run }, { default: User }] = await Promise.all([
     import('../config'), import('mongoose'), import('../models/Note'), import('../services/noteDiscoveryWorkerStore'),
     import('../services/noteDiscoveryScheduleService'), import('../services/noteDiscoveryBudgetService'),
     import('../services/noteDiscoveryWorker'), import('../services/noteDiscoveryProvider'), import('../models/NoteDiscovery'),
-    import('../models/NoteDiscoveryRun'),
+    import('../models/NoteDiscoveryRun'), import('../models/User'),
   ]);
   assert.ok(config.NOTE_DISCOVERY_RUNNABLE && noteDiscoveryProvider, 'Verified model/prices, embedding prices, caps and key are required');
   for (const cap of [config.NOTE_DISCOVERY_USER_DAILY_CNY_MICROS, config.NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
@@ -57,6 +57,7 @@ async function main() {
     }
     if (await Run.countDocuments({ status: { $in: ['queued', 'running'] } })) throw new EvaluationSafetyError('EVAL_OTHER_RUN_PENDING');
     const userId = new mongoose.Types.ObjectId().toHexString();
+    await User.collection.insertOne({ _id: new mongoose.Types.ObjectId(userId), email: userId + '@evaluation.invalid', isActive: true, noteDiscoveryAccess: true });
     for (const [index, text] of item.notes.entries()) await Note.create({
       userId, title: `记录 ${index + 1}`, content: text, contentText: text, revision: 1,
       createdAt: new Date(Date.UTC(2026, 0, index + 1)),

@@ -54,8 +54,12 @@ const session = (role: AdminRole): { admin: AdminIdentity } => ({
   },
 });
 
+const discoveryStatus = '/api/admin/ai/note-discovery-status';
+const environment = { enabled: true, runnable: true };
+
 function mockPage(role: AdminRole = 'owner') {
   return vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
     if (url === '/api/admin/auth/me') return Promise.resolve(session(role));
     if (url.startsWith('/api/admin/ai/usage')) return Promise.resolve(usage);
     if (url.startsWith('/api/admin/ai/failures')) return Promise.resolve(failures());
@@ -77,6 +81,7 @@ describe('AiPage', () => {
 
   it('loads identity, usage, and failures independently', async () => {
     vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
       if (url === '/api/admin/auth/me') return new Promise(() => undefined);
       if (url.startsWith('/api/admin/ai/usage')) return Promise.resolve(usage);
       return Promise.resolve(failures());
@@ -92,6 +97,7 @@ describe('AiPage', () => {
 
   it('keeps failure data usable when the usage request fails', async () => {
     vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
       if (url === '/api/admin/auth/me') return Promise.resolve(session('owner'));
       if (url.startsWith('/api/admin/ai/usage')) return Promise.reject(new Error('用量不可用'));
       return Promise.resolve(failures());
@@ -105,6 +111,7 @@ describe('AiPage', () => {
 
   it('keeps usage and failure data visible when identity loading fails', async () => {
     vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
       if (url === '/api/admin/auth/me') return Promise.reject(new Error('身份不可用'));
       if (url.startsWith('/api/admin/ai/usage')) return Promise.resolve(usage);
       return Promise.resolve(failures());
@@ -119,6 +126,7 @@ describe('AiPage', () => {
 
   it('keeps usage data usable when the failure request fails', async () => {
     vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
       if (url === '/api/admin/auth/me') return Promise.resolve(session('owner'));
       if (url.startsWith('/api/admin/ai/usage')) return Promise.resolve(usage);
       return Promise.reject(new Error('失败任务不可用'));
@@ -132,6 +140,7 @@ describe('AiPage', () => {
 
   it('renders explicit empty states for both usage and failures', async () => {
     vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
       if (url === '/api/admin/auth/me') return Promise.resolve(session('viewer'));
       if (url.startsWith('/api/admin/ai/usage')) return Promise.resolve({ ...usage, groups: [] });
       return Promise.resolve(failures([]));
@@ -140,6 +149,27 @@ describe('AiPage', () => {
 
     expect(await screen.findByText('暂无 AI 用量')).toBeInTheDocument();
     expect(screen.getByText('暂无失败任务')).toBeInTheDocument();
+  });
+
+  it('loads and retries note discovery configuration independently of AI usage', async () => {
+    let environmentCalls = 0;
+    vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === '/api/admin/auth/me') return Promise.resolve(session('viewer'));
+      if (url.startsWith('/api/admin/ai/usage')) return Promise.resolve(usage);
+      if (url === discoveryStatus) {
+        environmentCalls += 1;
+        if (environmentCalls === 1) return Promise.reject(new Error('环境配置暂不可读'));
+        return Promise.resolve(environment);
+      }
+      return Promise.resolve(failures());
+    });
+    render(<AiPage />);
+    const panel = within(screen.getByRole('region', { name: '笔记发现 Agent' }));
+    expect(await panel.findByRole('alert')).toHaveTextContent('环境配置暂不可读');
+    expect(screen.getByText('deepseek')).toBeInTheDocument();
+    fireEvent.click(panel.getByRole('button', { name: '重新读取环境配置' }));
+    expect(await panel.findByText('运行配置已就绪')).toBeInTheDocument();
+    expect(panel.getByText('发现任务还需要后台 Worker 运行。')).toBeInTheDocument();
   });
 
   it('switches 7d/30d usage without refetching failure pagination', async () => {
@@ -171,6 +201,7 @@ describe('AiPage', () => {
       groups: [{ ...usage.groups[0], provider: 'seven-day' }],
     };
     vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
       if (url === '/api/admin/auth/me') return Promise.resolve(session('viewer'));
       if (url.startsWith('/api/admin/ai/failures')) return Promise.resolve(failures([]));
       const range = url.endsWith('range=7d') ? '7d' : '30d';
@@ -204,6 +235,7 @@ describe('AiPage', () => {
       groups: [{ ...usage.groups[0], provider: 'seven-day' }],
     };
     vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
       if (url === '/api/admin/auth/me') return Promise.resolve(session('viewer'));
       if (url.startsWith('/api/admin/ai/failures')) return Promise.resolve(failures([]));
       return new Promise<AiUsage>((resolve, reject) => pending.push({ resolve, reject }));
@@ -223,6 +255,7 @@ describe('AiPage', () => {
 
   it('paginates failures independently with nested pagination', async () => {
     const fetch = vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
       if (url === '/api/admin/auth/me') return Promise.resolve(session('owner'));
       if (url.startsWith('/api/admin/ai/usage')) return Promise.resolve(usage);
       if (url.endsWith('page=1&limit=20')) return Promise.resolve(failures([failure], 1, true));
@@ -258,6 +291,7 @@ describe('AiPage', () => {
       ],
     };
     vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
+      if (url === discoveryStatus) return Promise.resolve(environment);
       if (url === '/api/admin/auth/me') return Promise.resolve(session('viewer'));
       if (url.startsWith('/api/admin/ai/usage')) return Promise.resolve(mixedUsage);
       return Promise.resolve(failures([]));

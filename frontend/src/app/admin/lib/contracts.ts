@@ -34,6 +34,16 @@ export type AdminUser = {
   aiKnownTokens30d: number;
 };
 
+export type NoteDiscoveryEnvironment = {
+  enabled: boolean;
+  runnable: boolean;
+};
+
+export type NoteDiscoveryAccess = {
+  granted: boolean;
+  environment: NoteDiscoveryEnvironment;
+};
+
 export type FeedbackStatus = 'open' | 'in_progress' | 'resolved';
 export type FeedbackCategory = 'bug' | 'experience' | 'feature' | 'billing' | 'other';
 

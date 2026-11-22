@@ -180,7 +180,3 @@ export function parseConfig(environment: Environment = process.env) {
 }
 
 export const config = parseConfig();
-
-export function isNoteDiscoveryAccountAllowed(userId: string, settings = config): boolean {
-  return !settings.NOTE_DISCOVERY_LOCAL_USER_ID || settings.NOTE_DISCOVERY_LOCAL_USER_ID === userId.toLowerCase();
-}

@@ -16,6 +16,7 @@ const actionLabels: Record<string, string> = {
   'admin.logout': '管理员退出',
   'admin.permission_denied': '权限校验拒绝',
   'user.status_changed': '修改用户状态',
+  'user.note_discovery_access_changed': '修改笔记发现试用权限',
   'feedback.updated': '更新反馈',
   'ai.artifact_retry': '重试 AI 处理',
 };

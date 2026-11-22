@@ -197,6 +197,7 @@ describe('note discovery quality and publication', noteDiscoveryMongoTestOptions
     assert.ok(manual);
     await fixture.store.finish(fixture.runId, manual.leaseToken, 'cancelled');
     const note = await makeNote(fixture.userId);
+    await Preference.create({ userId: fixture.userId, automaticEnabled: true });
     const queued = await fixture.store.enqueue(fixture.userId, { changedAt: new Date() }, 'automatic-close-race');
     const claim = await fixture.store.claimNext();
     assert.ok(claim && queued && claim._id.equals(queued._id));

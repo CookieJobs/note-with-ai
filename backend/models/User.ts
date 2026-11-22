@@ -1,6 +1,6 @@
 /*
-Input: 待补充
-Output: 待补充
+Input: 应用账户资料与管理员授予的笔记发现权限
+Output: 用户模型，公开 JSON 排除密码和发现授权字段
 Pos: 后端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
@@ -39,6 +39,7 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
+    noteDiscoveryAccess: { type: Boolean, select: false },
     lastActiveAt: {
       type: Date,
       default: null
@@ -73,11 +74,13 @@ UserSchema.methods.comparePassword = async function(candidatePassword: string): 
 UserSchema.methods.toJSON = function() {
   const userObject = this.toObject();
   delete userObject.password;
+  delete userObject.noteDiscoveryAccess;
   return userObject;
 };
 
 UserSchema.index({ createdAt: 1 });
 UserSchema.index({ lastActiveAt: 1 });
+UserSchema.index({ noteDiscoveryAccess: 1, _id: 1 }, { partialFilterExpression: { noteDiscoveryAccess: true } });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 export default User;

@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as api from '../lib/adminApi';
-import type { AdminIdentity, AdminRole, AdminUser, ListResponse } from '../lib/contracts';
+import type { AdminIdentity, AdminRole, AdminUser, ListResponse, NoteDiscoveryAccess } from '../lib/contracts';
 import UserDetailPage from './[id]/page';
 import UsersPage from './page';
 
@@ -49,10 +49,14 @@ function requestedUrl(call: unknown[]): URL {
   return new URL(String(call[0]), 'http://localhost');
 }
 
+const discoveryEndpoint = '/api/admin/users/user-1/note-discovery-access';
+const unopened: NoteDiscoveryAccess = { granted: false, environment: { enabled: false, runnable: false } };
+
 function mockDetail(role: AdminRole, rows: AdminUser[] = [user]) {
   let detailRequest = 0;
   return vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
     if (url === '/api/admin/auth/me') return Promise.resolve(admin(role));
+    if (url === discoveryEndpoint) return Promise.resolve(unopened);
     if (url === '/api/admin/users/user-1') {
       const value = rows[Math.min(detailRequest, rows.length - 1)];
       detailRequest += 1;
@@ -164,6 +168,88 @@ describe('UserDetailPage', () => {
     else expect(screen.queryByRole('button', { name: '禁用用户' })).not.toBeInTheDocument();
   });
 
+  it('opens and revokes trial with a reason and renders the server-confirmed state', async () => {
+    mockDetail('operator');
+    const post = vi.spyOn(api, 'adminPost')
+      .mockResolvedValueOnce({ ...unopened, granted: true })
+      .mockResolvedValueOnce(unopened);
+    render(<UserDetailPage />);
+    const panel = await screen.findByRole('region', { name: '笔记发现 Agent' });
+
+    fireEvent.click(await within(panel).findByRole('button', { name: '开放试用' }));
+    let dialog = within(panel).getByRole('dialog', { name: '开放笔记发现试用' });
+    expect(within(dialog).getByRole('button', { name: '确认' })).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText('原因'), { target: { value: '  邀请用户体验发现功能  ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认' }));
+    expect(post).toHaveBeenNthCalledWith(1, discoveryEndpoint, { granted: true, reason: '邀请用户体验发现功能' });
+    expect(await within(panel).findByText('已开放')).toBeInTheDocument();
+    expect(within(panel).getByText('环境总开关已关闭')).toBeInTheDocument();
+    expect(within(panel).getByText('试用权限可先保存，用户入口在环境配置就绪后可见。')).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole('button', { name: '撤销试用' }));
+    dialog = within(panel).getByRole('dialog', { name: '撤销笔记发现试用' });
+    fireEvent.change(within(dialog).getByLabelText('原因'), { target: { value: '本次试用已结束' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认' }));
+    expect(post).toHaveBeenNthCalledWith(2, discoveryEndpoint, { granted: false, reason: '本次试用已结束' });
+    expect(await within(panel).findByText('未开放')).toBeInTheDocument();
+  });
+
+  it.each(['support', 'viewer'] as const)('shows trial status without controls for %s', async (role) => {
+    mockDetail(role);
+    render(<UserDetailPage />);
+    const panel = within(await screen.findByRole('region', { name: '笔记发现 Agent' }));
+    expect(await panel.findByText('未开放')).toBeInTheDocument();
+    expect(panel.queryByRole('button', { name: '开放试用' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('button', { name: '撤销试用' })).not.toBeInTheDocument();
+  });
+
+  it('preserves the trial dialog and allows retry after a rejected write', async () => {
+    mockDetail('owner');
+    const post = vi.spyOn(api, 'adminPost').mockRejectedValueOnce(new Error('权限更新失败'))
+      .mockResolvedValueOnce({ ...unopened, granted: true });
+    render(<UserDetailPage />);
+    const panel = within(await screen.findByRole('region', { name: '笔记发现 Agent' }));
+    fireEvent.click(await panel.findByRole('button', { name: '开放试用' }));
+    const dialog = within(panel.getByRole('dialog'));
+    const reason = dialog.getByLabelText('原因');
+    fireEvent.change(reason, { target: { value: '邀请用户体验发现功能' } });
+    fireEvent.click(dialog.getByRole('button', { name: '确认' }));
+    expect(await dialog.findByRole('alert')).toHaveTextContent('权限更新失败');
+    expect(panel.getByText('未开放')).toBeInTheDocument();
+    expect(reason).toHaveValue('邀请用户体验发现功能');
+    fireEvent.click(dialog.getByRole('button', { name: '确认' }));
+    expect(await panel.findByText('已开放')).toBeInTheDocument();
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts the old user access read without projecting it onto the next user', async () => {
+    let completeOld!: (value: NoteDiscoveryAccess) => void;
+    let oldSignal: AbortSignal | null | undefined;
+    vi.spyOn(api, 'adminFetch').mockImplementation((url, options) => {
+      if (url === '/api/admin/auth/me') return Promise.resolve(admin('owner'));
+      if (url === discoveryEndpoint) {
+        oldSignal = options?.signal;
+        return new Promise<NoteDiscoveryAccess>(resolve => { completeOld = resolve; });
+      }
+      if (url.endsWith('/note-discovery-access')) return Promise.resolve(unopened);
+      if (url.endsWith('/user-2')) return Promise.resolve({ ...user, id: 'user-2', username: 'bob' });
+      return Promise.resolve(user);
+    });
+    const page = render(<UserDetailPage />);
+    await screen.findByText('正在读取试用权限…');
+    route.id = 'user-2';
+    try {
+      page.rerender(<UserDetailPage />);
+      expect(await screen.findByText('bob')).toBeInTheDocument();
+      expect(oldSignal?.aborted).toBe(true);
+      await act(async () => { completeOld({ ...unopened, granted: true }); });
+      expect(await screen.findByText('未开放')).toBeInTheDocument();
+      expect(screen.queryByText('已开放')).not.toBeInTheDocument();
+    } finally {
+      route.id = 'user-1';
+    }
+  });
+
   it('posts the status body, does not update optimistically, then refetches the canonical detail', async () => {
     const disabledUser = { ...user, isActive: false };
     const fetch = mockDetail('operator', [user, disabledUser]);
@@ -208,6 +294,7 @@ describe('UserDetailPage', () => {
     let detailCalls = 0;
     vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
       if (url === '/api/admin/auth/me') return Promise.resolve(admin('owner'));
+      if (url === discoveryEndpoint) return Promise.resolve(unopened);
       detailCalls += 1;
       return detailCalls === 1 ? Promise.reject(new Error('详情不可用')) : Promise.resolve(user);
     });

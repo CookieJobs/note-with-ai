@@ -6,6 +6,7 @@ import { NoteDiscoveryWorkerStore } from '../services/noteDiscoveryWorkerStore';
 import { NoteDiscoveryScheduleService } from '../services/noteDiscoveryScheduleService';
 import { NoteDiscoveryBudgetService } from '../services/noteDiscoveryBudgetService';
 import type { DiscoveryCandidate } from '../types/noteDiscovery';
+import { grantDiscoveryTestUser } from './noteDiscoveryTestMongo';
 import type { DiscoveryProviderTransport } from '../services/noteDiscoveryProvider';
 
 export const ownerId = () => new Types.ObjectId().toHexString();
@@ -24,6 +25,7 @@ export async function makeNote(userId: string, contentText = firstText, updatedA
 }
 
 export async function makeRun(userId = ownerId(), options: { now?: () => Date; leaseMs?: number } = {}) {
+  await grantDiscoveryTestUser(userId);
   const budget = new NoteDiscoveryBudgetService({
     enabled: true, userCapMicros: 1_000_000, globalCapMicros: 5_000_000, attemptCapMicros: 250_000,
   }, options.now);

@@ -5,9 +5,10 @@ import { config } from '../config';
 import { Note } from '../models/Note';
 import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
+import User from '../models/User';
 import { NoteDiscoveryWorkerStore } from '../services/noteDiscoveryWorkerStore';
 import { NoteDiscoveryScheduleService, discoveryLocalDate } from '../services/noteDiscoveryScheduleService';
-import { connectNoteDiscoveryTestMongo, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
+import { connectNoteDiscoveryTestMongo, grantDiscoveryTestUser, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
 
 it('uses IANA local dates across UTC and DST boundaries', () => {
   assert.equal(discoveryLocalDate(new Date('2026-11-18T16:01:00Z'), 'Asia/Shanghai'), '2026-11-19');
@@ -31,6 +32,10 @@ describe('durable discovery scheduling', noteDiscoveryMongoTestOptions, () => {
   after(async () => { await cleanup?.(); });
   beforeEach(async () => {
     await Promise.all([NoteDiscoveryPreference.deleteMany({}), NoteDiscoveryRun.deleteMany({}), Note.deleteMany({})]);
+    await User.deleteMany({});
+    await grantDiscoveryTestUser(userId);
+    // Most scheduling cases describe an account that explicitly enabled automatic work.
+    await NoteDiscoveryPreference.create({ userId, automaticEnabled: true });
     now = new Date('2026-11-18T00:00:00Z');
     store = new NoteDiscoveryWorkerStore({ now: () => now, leaseMs: 300_000 });
     service = create();
@@ -48,6 +53,8 @@ describe('durable discovery scheduling', noteDiscoveryMongoTestOptions, () => {
     const previous = config.NOTE_DISCOVERY_LOCAL_USER_ID;
     config.NOTE_DISCOVERY_LOCAL_USER_ID = userId;
     try {
+      await User.updateOne({ _id: userId }, { $unset: { noteDiscoveryAccess: '' } });
+      await User.collection.insertOne({ _id: new Types.ObjectId(other), isActive: true });
       await Note.create([{ userId, content: '测试记录', revision: 1 }, { userId: other, content: '另一个账号的记录', revision: 1 }]);
       assert.equal(await service.initializeOnStartup(now), 1);
       assert.equal(await NoteDiscoveryPreference.exists({ userId: other }), null);
@@ -64,6 +71,16 @@ describe('durable discovery scheduling', noteDiscoveryMongoTestOptions, () => {
       assert.equal(await service.canPublish(outside!), false);
     } finally { config.NOTE_DISCOVERY_LOCAL_USER_ID = previous; }
   });
+  it('starts newly granted accounts in manual-only mode until they explicitly opt in', async () => {
+    await NoteDiscoveryPreference.deleteOne({ userId });
+    await service.initializeOnVisit(userId, undefined, now);
+    assert.equal((await NoteDiscoveryPreference.findOne({ userId }).lean())?.automaticEnabled, false);
+    await service.scheduleChanged(userId, noteId, 2, now);
+    assert.equal(await store.getActiveRun(userId), null);
+    assert.equal((await service.setAutomaticEnabled(userId, true, now)).status, 'queued');
+    assert.equal((await store.getActiveRun(userId))?.trigger, 'automatic');
+  });
+
   it('debounces concurrent changes without charging admission before execution', async () => {
     await Promise.all(Array.from({ length: 12 }, (_, i) => create().scheduleChanged(userId, noteId, i + 1, new Date(now.getTime() + i * 1000))));
     const run = await store.getActiveRun(userId);

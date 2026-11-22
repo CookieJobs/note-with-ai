@@ -27,3 +27,12 @@ export async function connectNoteDiscoveryTestMongo(suite: 'budget' | 'worker') 
     }
   };
 }
+
+
+export async function grantDiscoveryTestUser(userId: string) {
+  const User = (await import('../models/User')).default;
+  await User.collection.updateOne({ _id: new mongoose.Types.ObjectId(userId) }, {
+    $setOnInsert: { email: userId + '@discovery-fixture.invalid', isActive: true },
+    $set: { noteDiscoveryAccess: true },
+  }, { upsert: true });
+}

@@ -16,7 +16,7 @@ describe('discovery HTTP public entrypoints', () => {
 
 import { before, after, afterEach, mock } from 'node:test';
 import { Types } from 'mongoose';
-import { connectNoteDiscoveryTestMongo, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
+import { connectNoteDiscoveryTestMongo, grantDiscoveryTestUser, noteDiscoveryMongoTestOptions } from './noteDiscoveryTestMongo';
 
 describe('discovery HTTP ownership, durable exposure and actions', noteDiscoveryMongoTestOptions, () => {
   let cleanup: () => Promise<void>;
@@ -33,6 +33,7 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
   async function freshDiscovery() {
     const { Note, Discovery, Run } = await modules();
     const owner = String(new Types.ObjectId());
+    await grantDiscoveryTestUser(owner);
     const note = await Note.create({ userId: owner, content: '私有已保存正文', contentText: '私有已保存正文', revision: 1 });
     const run = await Run.create({ userId: owner, status: 'completed', trigger: 'manual', idempotencyKey: 'race-test', generation: 1, watermark: { changedAt: now }, availableAt: now });
     const copy = item.toObject(); delete copy._id; delete copy.exposedAt; delete copy.savedNoteId; delete copy.sessionId;
@@ -49,7 +50,7 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     const { Note, Discovery, Run } = await modules();
     const User = (await import('../models/User')).default;
     userId = new Types.ObjectId().toString();
-    await User.collection.insertOne({ _id: new Types.ObjectId(userId), email: 'test@example.invalid', isActive: true });
+    await User.collection.insertOne({ _id: new Types.ObjectId(userId), email: 'test@example.invalid', isActive: true, noteDiscoveryAccess: true });
     token = (await import('../utils/jwt')).generateToken({ userId, username: 'test', email: 'test@example.invalid' });
     const note = await Note.create({ userId, content: '一条已经保存并可核对的正文', contentText: '一条已经保存并可核对的正文', revision: 1 });
     const run = await Run.create({ userId, trigger: 'manual', idempotencyKey: 'published', status: 'completed', generation: 1, watermark: { changedAt: now }, availableAt: now });
@@ -74,11 +75,15 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     base = `http://127.0.0.1:${server.address().port}`;
   });
   after(async () => { mock.restoreAll(); await new Promise<void>(resolve => server?.close(() => resolve())); await cleanup?.(); });
-  it('hides and rejects discovery for a signed-in account outside the local allowlist', async () => {
+  it('hides and rejects discovery until an account is granted and honors an explicit revoke', async () => {
     const { config } = await import('../config');
+    const User = (await import('../models/User')).default;
     const previous = config.NOTE_DISCOVERY_LOCAL_USER_ID;
-    config.NOTE_DISCOVERY_LOCAL_USER_ID = new Types.ObjectId().toHexString();
+    const wasRunnable = config.NOTE_DISCOVERY_RUNNABLE;
+    config.NOTE_DISCOVERY_LOCAL_USER_ID = userId;
+    config.NOTE_DISCOVERY_RUNNABLE = true;
     try {
+      await User.updateOne({ _id: userId }, { $set: { noteDiscoveryAccess: false } });
       const availability = await request('/availability');
       assert.equal(availability.status, 200);
       assert.deepEqual(availability.json.data, { available: false });
@@ -89,7 +94,15 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
       const run = await request('/run', 'POST', { idempotencyKey: 'blocked-local' });
       assert.equal(run.status, 503);
       assert.equal(run.json.code, 'DISCOVERY_DISABLED');
-    } finally { config.NOTE_DISCOVERY_LOCAL_USER_ID = previous; }
+      await User.updateOne({ _id: userId }, { $unset: { noteDiscoveryAccess: '' } });
+      assert.deepEqual((await request('/availability')).json.data, { available: true });
+      config.NOTE_DISCOVERY_LOCAL_USER_ID = undefined;
+      assert.deepEqual((await request('/availability')).json.data, { available: false });
+    } finally {
+      await User.updateOne({ _id: userId }, { $set: { noteDiscoveryAccess: true } });
+      config.NOTE_DISCOVERY_LOCAL_USER_ID = previous;
+      config.NOTE_DISCOVERY_RUNNABLE = wasRunnable;
+    }
   });
   it('returns the current manual denial and retry time through the authenticated route', async () => {
     const retryAt = new Date('2026-11-22T00:00:00Z');
@@ -241,12 +254,42 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     const schedule={initializeOnVisit:async()=>{visits++;return {status:'idle',currentRun:null};}} as any;
     const readService=new NoteDiscoveryApiService({enabled:()=>true,now:()=>now,schedule});
     const owner=String(new Types.ObjectId());
+    await grantDiscoveryTestUser(owner);
     await Run.create({userId:owner,trigger:'automatic',idempotencyKey:'known-failure',status:'failed',failureCategory:'provider_failed',generation:1,watermark:{changedAt:now},availableAt:now});
     await readService.list(owner,{admit:true});
     for(let i=0;i<3;i++) assert.equal((await readService.list(owner,{admit:false})).run.status,'failed');
     assert.equal(visits,1);
     assert.equal(await Run.countDocuments({userId:owner}),1);
   });
+  it('restarts a cancelled opening only when the re-granted account explicitly continues', async context => {
+    const { owner, discovery } = await freshDiscovery();
+    const User = (await import('../models/User')).default;
+    const { noteDiscoveryConversationService, NoteDiscoveryConversationService } = await import('../services/noteDiscoveryConversationService');
+    const { noteDiscoveryWorkerStore } = await import('../services/noteDiscoveryWorkerStore');
+    const { createDiscoveryProvider } = await import('../services/noteDiscoveryProvider');
+    const { fixturePrice, providerResponse } = await import('./noteDiscoveryRunnerFixture');
+    const { NoteDiscoveryBudgetService } = await import('../services/noteDiscoveryBudgetService');
+    let sends = 0;
+    const provider = createDiscoveryProvider(fixturePrice, async () => {
+      if (++sends === 1) {
+        await User.updateOne({ _id: owner }, { $set: { noteDiscoveryAccess: false } });
+        await noteDiscoveryWorkerStore.cancelAccountRuns(owner);
+      }
+      return providerResponse({ reply: '按原文衡量这个下一步。' });
+    });
+    const budget = new NoteDiscoveryBudgetService({ enabled: true, userCapMicros: 1_000_000, globalCapMicros: 5_000_000, attemptCapMicros: 250_000 });
+    const conversation = new NoteDiscoveryConversationService({ enabled: () => true, provider, budget });
+    context.mock.method(noteDiscoveryConversationService, 'execute', conversation.execute.bind(conversation));
+    await assert.rejects(service.session(owner, discovery.id), /笔记发现权限已撤销/);
+    await assert.rejects(service.session(owner, discovery.id), /笔记发现暂未开启/);
+    assert.equal(sends, 1);
+    await User.updateOne({ _id: owner }, { $set: { noteDiscoveryAccess: true } });
+    const reopened = await service.session(owner, discovery.id);
+    const replay = await service.session(owner, discovery.id);
+    assert.equal(String(reopened.session._id), String(replay.session._id));
+    assert.equal(sends, 2);
+  });
+
   it('retries a confirmed unsent initial failure on explicit intent and reuses one stable session', async () => {
     const f=await freshDiscovery();
     const {noteDiscoveryConversationService,NoteDiscoveryConversationService}=await import('../services/noteDiscoveryConversationService');
@@ -259,7 +302,7 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     const execute=mock.method(noteDiscoveryConversationService,'execute',conversation.execute.bind(conversation));
     const denied=mock.method(budget,'reserveConversation',async()=>null);
     const User=(await import('../models/User')).default;
-    await User.collection.insertOne({_id:new Types.ObjectId(f.owner),email:'retry@example.invalid',isActive:true});
+    await User.collection.updateOne({_id:new Types.ObjectId(f.owner)},{$set:{email:'retry@example.invalid'}});
     const auth=(await import('../utils/jwt')).generateToken({userId:f.owner,username:'retry',email:'retry@example.invalid'});
     const rejected=await request(`/${f.discovery.id}/session`,'POST',{},auth);
     assert.equal(rejected.status,429);assert.equal(rejected.json.retryEligible,true);assert.equal(rejected.json.requestId,'discovery-initial');
@@ -355,6 +398,7 @@ describe('discovery HTTP ownership, durable exposure and actions', noteDiscovery
     const owners: string[] = [];
     async function fresh() {
       const owner = String(new Types.ObjectId()); owners.push(owner);
+      await grantDiscoveryTestUser(owner);
       const note = await Note.create({ userId: owner, content: '私有已保存正文', contentText: '私有已保存正文', revision: 1 });
       const run = await Run.create({ userId: owner, status: 'completed', trigger: 'manual', idempotencyKey: 'cleanup-test', generation: 1, watermark: { changedAt: now }, availableAt: now });
       const copy = item.toObject(); delete copy._id; delete copy.exposedAt; delete copy.savedNoteId; delete copy.sessionId;

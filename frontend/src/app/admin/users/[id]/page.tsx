@@ -9,9 +9,14 @@ import ReasonDialog from '../../components/ReasonDialog';
 import { adminFetch, adminPost } from '../../lib/adminApi';
 import { formatDateTime } from '../../lib/presentation';
 import type { AdminIdentity, AdminUser } from '../../lib/contracts';
+import NoteDiscoveryAccessPanel from './NoteDiscoveryAccessPanel';
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
+  return <UserDetail key={id} id={id} />;
+}
+
+function UserDetail({ id }: { id: string }) {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [admin, setAdmin] = useState<AdminIdentity | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,6 +111,7 @@ export default function UserDetailPage() {
           </dl>
         </section>
       </div>
+      <NoteDiscoveryAccessPanel userId={id} canWrite={canWrite && !dialogOpen} isActive={user.isActive} />
       {canWrite && (
         <section className={styles.panel} aria-labelledby="user-status-title">
           <div className={styles.panelHeader}>

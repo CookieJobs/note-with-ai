@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Types } from 'mongoose';
+import { NoteDiscoveryChatTurn } from '../models/NoteDiscoveryChatTurn';
 import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
 import type {
@@ -251,6 +252,21 @@ export class NoteDiscoveryWorkerStore {
       executionCancelled: { $cond: [running, true, '$executionCancelled'] },
       ...Object.fromEntries(pendingFields.map(field => [field, { $cond: [manualPending, `$${field}`, '$$REMOVE'] }])),
     } }], { writeConcern });
+  }
+
+  /** Revoke both triggers without invalidating settlement of paid in-flight calls. */
+  async cancelAccountRuns(userId: string): Promise<void> {
+    const queued = { $eq: ['$status', 'queued'] };
+    await Promise.all([NoteDiscoveryRun.updateMany({
+      userId, $or: [{ status: { $in: activeStatuses } }, { pendingWatermark: { $exists: true } }],
+    }, [{ $set: {
+      status: { $cond: [queued, 'cancelled', '$status'] },
+      finishedAt: { $cond: [queued, this.now(), '$finishedAt'] },
+      executionCancelled: { $cond: [{ $eq: ['$status', 'running'] }, true, '$executionCancelled'] },
+      ...Object.fromEntries(pendingFields.map(field => [field, '$$REMOVE'])),
+    } }], { writeConcern }), NoteDiscoveryChatTurn.updateMany({ userId, status: 'running' }, {
+      $set: { executionCancelled: true },
+    }, { writeConcern })]);
   }
 
   /** Global shutdown suppresses every queued trigger and pending successor. */

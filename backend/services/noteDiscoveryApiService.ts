@@ -2,7 +2,8 @@ import { fenceDiscoveryNoteTarget } from './discoveryNoteDeletionFence';
 import { NoteDiscoveryCleanup, isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { noteDiscoveryBudgetService } from './noteDiscoveryBudgetService';
 import mongoose, { Types } from 'mongoose';
-import { config, isNoteDiscoveryAccountAllowed } from '../config';
+import { config } from '../config';
+import { isNoteDiscoveryAccessGranted } from './noteDiscoveryAccess';
 import NoteDiscovery from '../models/NoteDiscovery';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
 import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
@@ -14,7 +15,7 @@ import { noteWriteModule, toNoteDto } from './NoteUpdateOrchestrator';
 import { noteDiscoveryScheduleService, discoveryLocalDate } from './noteDiscoveryScheduleService';
 import { canUseDiscovery } from './noteDiscoveryService';
 import { chatService } from './chatService';
-import { discoveryRetryRequestId } from './noteDiscoveryConversationService';
+import { DISCOVERY_ACCESS_REVOKED, discoveryRetryRequestId } from './noteDiscoveryConversationService';
 import { chatTurnCommitService } from './chatTurnCommitService';
 import { AppError, ErrorType } from '../utils/errorHandler';
 import { serializeDiscovery, DISCOVERY_FEEDBACK_KINDS, type DiscoveryFeedbackKind, type DiscoveryListDto, type DiscoveryRunDto } from '../types/noteDiscovery';
@@ -45,14 +46,14 @@ export class NoteDiscoveryApiService {
     if (!await canUseDiscovery(userId, item)) throw error('来源已变化或不可访问，请重新寻找发现', 'DISCOVERY_STALE', 409);
   }
   private async assertActive(userId: string) {
-    if (!isNoteDiscoveryAccountAllowed(userId)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
+    if (!await isNoteDiscoveryAccessGranted(userId)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
     if (await isDiscoveryUserCleaningUp(userId)) {
       await eraseDiscoveryUserData(userId);
       throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
     }
   }
   async list(userId: string, options: { history?: boolean; timeZone?: string; admit?: boolean } = {}): Promise<DiscoveryListDto> {
-    if (!isNoteDiscoveryAccountAllowed(userId)) {
+    if (!await isNoteDiscoveryAccessGranted(userId)) {
       return { items: [], run: { status: 'idle' }, available: false, automaticEnabled: false, timeZone: 'Asia/Shanghai' };
     }
     await this.assertActive(userId);
@@ -95,7 +96,7 @@ export class NoteDiscoveryApiService {
           : latest.status === 'queued' && latest.availableAt ? { retryAt: latest.availableAt.toISOString() } : {}) };
     }
     if (admission.status === 'blocked') run = { status: 'idle', errorCode: 'DISCOVERY_DELIVERY_UNCERTAIN' };
-    return { items, run, automaticEnabled: preference?.automaticEnabled ?? true, timeZone, available: this.enabled() };
+    return { items, run, automaticEnabled: preference?.automaticEnabled ?? false, timeZone, available: this.enabled() };
   }
   private async expose(userId: string, discoveryId: string, timeZone: string): Promise<Date | null> {
     try { await NoteDiscoveryExposure.updateOne({ userId }, { $setOnInsert: { receipts: [], version: 0 } }, { upsert: true, writeConcern }); }
@@ -138,7 +139,7 @@ export class NoteDiscoveryApiService {
     if (input.timeZone !== undefined) await this.schedule.initializeOnVisit(userId, input.timeZone, this.now());
     if (input.automaticEnabled !== undefined) await this.schedule.setAutomaticEnabled(userId, input.automaticEnabled, this.now());
     const preference = await NoteDiscoveryPreference.findOne({ userId }).lean();
-    return { automaticEnabled: preference?.automaticEnabled ?? true, timeZone: preference?.timeZone || 'Asia/Shanghai', available: this.enabled() };
+    return { automaticEnabled: preference?.automaticEnabled ?? false, timeZone: preference?.timeZone || 'Asia/Shanghai', available: this.enabled() };
   }
   async feedback(userId: string, id: string, kind: DiscoveryFeedbackKind) {
     if (!DISCOVERY_FEEDBACK_KINDS.includes(kind)) throw error('请选择有效的反馈类型', 'DISCOVERY_FEEDBACK_INVALID');
@@ -195,15 +196,17 @@ export class NoteDiscoveryApiService {
       } catch (e) { if ((e as { code?: number }).code !== 11000) throw e; existing = await Chat.findOne({ _id: action.targetId, userId }); }
     }
     if (!existing || existing.sourceMode !== 'multi_note_discovery' || String(existing.discoveryId) !== id) throw error('会话来源不匹配', 'DISCOVERY_SESSION_CONFLICT', 409);
-    if (await isDiscoveryUserCleaningUp(userId)) {
-      await eraseDiscoveryUserData(userId);
-      throw error('账号发现数据正在清理，当前不可用', 'DISCOVERY_CLEANUP', 409);
-    }
+    await this.assertActive(userId);
     await NoteDiscovery.updateOne({ _id: item._id, userId }, { $set: { sessionId: existing._id } }, { writeConcern });
     const reused = existing.messages.length > 0;
     if (!existing.messages.length) {
       const latestTurn: any = await NoteDiscoveryChatTurn.findOne({ userId, chatId: existing._id }).sort({ createdAt: -1, _id: -1 }).lean();
-      const initialRequestId = input.retryOfRequestId ? discoveryRetryRequestId(input.retryOfRequestId) : latestTurn?.requestId || 'discovery-initial';
+      // A new explicit click after re-grant may restart a deterministically cancelled
+      // opening. Lost acknowledgements always reuse the newly derived request ID.
+      const openingRequestId = latestTurn?.status === 'failed' && latestTurn.errorCode === DISCOVERY_ACCESS_REVOKED
+        ? discoveryRetryRequestId(`access-regranted:${latestTurn.requestId}`)
+        : latestTurn?.requestId || 'discovery-initial';
+      const initialRequestId = input.retryOfRequestId ? discoveryRetryRequestId(input.retryOfRequestId) : openingRequestId;
       const attempt = await NoteDiscoveryChatTurn.exists({ userId, chatId: existing._id, requestId: initialRequestId });
       if (!attempt) await this.usable(userId, item);
       const committed = await chatTurnCommitService.streamAndCommit({ userId, sessionId: String(existing._id), requestId: initialRequestId, retryOfRequestId: input.retryOfRequestId,

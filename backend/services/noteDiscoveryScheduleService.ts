@@ -1,7 +1,9 @@
 import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { Types } from 'mongoose';
-import { config, isNoteDiscoveryAccountAllowed } from '../config';
+import { config } from '../config';
+import { isNoteDiscoveryAccessGranted, noteDiscoveryAccountFilter } from './noteDiscoveryAccess';
 import { Note } from '../models/Note';
+import User from '../models/User';
 import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
 import type { DiscoveryPreferenceRecord, DiscoveryScheduleState, DiscoveryTrigger, DiscoveryWatermark } from '../types/noteDiscovery';
@@ -117,7 +119,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async scheduleChanged(userId: string, noteId: string, revision: number, now = this.now()): Promise<void> {
-    if (!this.enabled || !isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return;
+    if (!this.enabled || !await isNoteDiscoveryAccessGranted(userId) || await isDiscoveryUserCleaningUp(userId)) return;
     if (!Types.ObjectId.isValid(noteId) || !Number.isSafeInteger(revision) || revision < 1 || !Number.isFinite(now.getTime())) {
       throw new Error('Invalid discovery change');
     }
@@ -132,7 +134,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async initializeOnVisit(userId: string, timeZone?: string, now = this.now()): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled || !isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
+    if (!this.enabled || !await isNoteDiscoveryAccessGranted(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     const zone = timeZone === undefined ? undefined : validZone(timeZone);
     const latest = await this.readLatest(userId);
     const preference = await this.mutate(userId, (pref, state) => {
@@ -154,7 +156,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async setAutomaticEnabled(userId: string, enabled: boolean, now = this.now()): Promise<DiscoveryAdmissionResult> {
-    if (!isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
+    if (!await isNoteDiscoveryAccessGranted(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     // Preferences remain editable while the global feature is off.
     const latest = enabled && this.enabled ? await this.readLatest(userId) : null;
     await this.mutate(userId, (pref, state) => {
@@ -175,7 +177,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async requestManual(userId: string, key: string, now = this.now()): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled || !isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
+    if (!this.enabled || !await isNoteDiscoveryAccessGranted(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     if (!key.trim() || key.length > 150) throw new Error('Invalid manual idempotency key');
     // Replay precedes quota checks, including terminal requests.
     const replay = await NoteDiscoveryRun.findOne({ userId, $or: [{ idempotencyKey: `manual:${key}` }, { idempotencyAliases: `manual:${key}` }] }).lean();
@@ -187,6 +189,7 @@ export class NoteDiscoveryScheduleService {
     if (retryAt && active?.trigger !== 'manual' && active?.pendingTrigger !== 'manual') return this.result('limited', active, retryAt);
     const latest = await this.readLatest(userId);
     const watermark = latest ?? { changedAt: now };
+    if (!await isNoteDiscoveryAccessGranted(userId)) return this.result('disabled');
     if (active?.status === 'running' && active.trigger === 'manual' && compare(stored(watermark), active.watermark) <= 0) {
       try {
         const coalesced = await NoteDiscoveryRun.findOneAndUpdate({ _id: active._id, userId, status: 'running', generation: active.generation }, {
@@ -201,7 +204,7 @@ export class NoteDiscoveryScheduleService {
   }
 
   async reconcile(userId: string, now = this.now(), force = false): Promise<DiscoveryAdmissionResult> {
-    if (!this.enabled || !isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
+    if (!this.enabled || !await isNoteDiscoveryAccessGranted(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled');
     const success = await NoteDiscoveryRun.findOne({ userId, status: { $in: ['completed', 'no_result'] } })
       .sort({ 'watermark.changedAt': -1, 'watermark.noteId': -1, 'watermark.revision': -1, finishedAt: -1, _id: -1 }).lean();
     // Search the durable account history, not only the most recent attempt. A later
@@ -233,6 +236,7 @@ export class NoteDiscoveryScheduleService {
       if (compare(current.changedWatermark, state.changedWatermark) === 0) current.dueAt = availableAt;
     });
     const key = `auto:${state.epoch}:${state.changedWatermark.changedAt.getTime()}:${state.changedWatermark.noteId ?? ''}:${state.changedWatermark.revision ?? 0}:${failed?._id ?? ''}`;
+    if (!await isNoteDiscoveryAccessGranted(userId)) return this.result('disabled');
     const run = await this.store.enqueue(userId, publicWatermark(state.changedWatermark), key, { availableAt, trigger: 'automatic' });
     // Close off-vs-enqueue race. Manual promotion remains protected by store's trigger filter.
     if (await NoteDiscoveryPreference.exists({ userId, automaticEnabled: false })) await this.store.cancelQueued(userId);
@@ -243,14 +247,10 @@ export class NoteDiscoveryScheduleService {
   async initializeOnStartup(now = this.now()): Promise<number> {
     if (!this.enabled) return 0;
     let count = 0;
-    const localUserId = config.NOTE_DISCOVERY_LOCAL_USER_ID;
-    const users = Note.aggregate<{ _id: Types.ObjectId }>([
-      ...(localUserId ? [{ $match: { userId: new Types.ObjectId(localUserId) } }] : []),
-      { $group: { _id: '$userId' } }, { $sort: { _id: 1 } },
-    ]).cursor({ batchSize: 100 });
+    const users = User.find(noteDiscoveryAccountFilter()).sort({ _id: 1 }).select('_id').lean().cursor({ batchSize: 100 });
     for await (const user of users) {
-      const userId = user._id.toHexString();
-      if (await isDiscoveryUserCleaningUp(userId)) continue;
+      const userId = String(user._id);
+      if (!await isNoteDiscoveryAccessGranted(userId) || await isDiscoveryUserCleaningUp(userId)) continue;
       const latest = await this.readLatest(userId);
       await this.mutate(userId, (_pref, state) => {
         state.initialized = true;
@@ -271,11 +271,18 @@ export class NoteDiscoveryScheduleService {
     let count = 0;
     let after: Types.ObjectId | undefined;
     for (;;) {
-      const users = await NoteDiscoveryPreference.find({ automaticEnabled: true,
-        'schedule.changedWatermark': { $exists: true }, 'schedule.dueAt': { $lte: now },
-        ...(config.NOTE_DISCOVERY_LOCAL_USER_ID ? { userId: config.NOTE_DISCOVERY_LOCAL_USER_ID }
-          : after ? { userId: { $gt: after } } : {}),
-      }).sort({ userId: 1 }).select('userId').limit(100).lean();
+      const users = await NoteDiscoveryPreference.aggregate<{ userId: Types.ObjectId }>([
+        { $match: { automaticEnabled: true,
+          'schedule.changedWatermark': { $exists: true }, 'schedule.dueAt': { $lte: now },
+          ...(after ? { userId: { $gt: after } } : {}),
+        } },
+        { $sort: { userId: 1 } },
+        { $lookup: { from: User.collection.name, localField: 'userId', foreignField: '_id', as: 'owner' } },
+        { $unwind: '$owner' },
+        { $match: noteDiscoveryAccountFilter('owner.') },
+        { $limit: 100 },
+        { $project: { userId: 1 } },
+      ]);
       for (const user of users) await this.reconcile(user.userId.toHexString(), now);
       count += users.length;
       if (users.length < 100) return count;
@@ -286,7 +293,7 @@ export class NoteDiscoveryScheduleService {
   async authorizeRun(run: ClaimedDiscoveryRun, now = this.now()): Promise<DiscoveryAdmissionResult> {
     if (!this.enabled || run.executionCancelled) return this.result('disabled', run);
     const userId = run.userId.toHexString();
-    if (!isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled', run);
+    if (!await isNoteDiscoveryAccessGranted(userId) || await isDiscoveryUserCleaningUp(userId)) return this.result('disabled', run);
     const fence = { runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken };
     // Store promotion and crash recovery can reach admission without reconcile.
     // Enforce the durable paid-state barrier at this independent execution boundary.
@@ -330,6 +337,10 @@ export class NoteDiscoveryScheduleService {
         outcome = this.result('disabled', current);
         return false;
       }
+      if (!await isNoteDiscoveryAccessGranted(userId)) {
+        outcome = this.result('disabled', current);
+        return false;
+      }
       return !!current && current.status === 'running' && await this.store.isCurrentFence(fence);
     });
     if (outcome.status === 'limited') {
@@ -342,15 +353,15 @@ export class NoteDiscoveryScheduleService {
         },
       }], { writeConcern });
       if (!deferred.matchedCount) return this.result('stale', run);
-    } else if (outcome.status === 'authorized' && !await this.canPublish(run)) return this.result('stale', run);
+    } else if (outcome.status === 'authorized' && !await this.canPublish(run)) return this.result('disabled', run);
     return outcome;
   }
 
   async canPublish(run: ClaimedDiscoveryRun): Promise<boolean> {
     if (!this.enabled) return false;
     const userId = run.userId.toHexString();
-    if (!isNoteDiscoveryAccountAllowed(userId) || await isDiscoveryUserCleaningUp(userId)) return false;
-    if (run.trigger === 'automatic' && await NoteDiscoveryPreference.exists({ userId, automaticEnabled: false })) return false;
+    if (!await isNoteDiscoveryAccessGranted(userId) || await isDiscoveryUserCleaningUp(userId)) return false;
+    if (run.trigger === 'automatic' && !await NoteDiscoveryPreference.exists({ userId, automaticEnabled: true })) return false;
     return this.store.isCurrentFence({ runId: run._id.toHexString(), userId, generation: run.generation, leaseToken: run.leaseToken });
   }
 
@@ -391,7 +402,7 @@ export class NoteDiscoveryScheduleService {
       let pref = await NoteDiscoveryPreference.findOne({ userId }).lean();
       if (!pref) {
         try {
-          await NoteDiscoveryPreference.create([{ userId, timeZone: DEFAULT_DISCOVERY_TIME_ZONE, automaticEnabled: true, schedule: initialState() }], { writeConcern });
+          await NoteDiscoveryPreference.create([{ userId, timeZone: DEFAULT_DISCOVERY_TIME_ZONE, automaticEnabled: false, schedule: initialState() }], { writeConcern });
         } catch (error) { if ((error as { code?: number }).code !== 11000) throw error; }
         continue;
       }

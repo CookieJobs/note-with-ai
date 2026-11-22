@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
+import User from '../models/User';
+import NoteDiscoveryPreference from '../models/NoteDiscoveryPreference';
 import NoteDiscoveryBudget from '../models/NoteDiscoveryBudget';
 import { createDiscoveryProvider } from '../services/noteDiscoveryProvider';
 import { NoteDiscoveryWorker } from '../services/noteDiscoveryWorker';
@@ -29,6 +31,45 @@ describe('independent note discovery worker', noteDiscoveryMongoTestOptions, () 
     assert.equal(calls.length, 1);
     const second = await fixture.schedule.requestManual(fixture.userId, 'immediately-after-completion');
     assert.equal(second.status, 'limited');
+  });
+
+  test('revocation cancels queued work before dispatch, even if the account is re-granted', async () => {
+    const fixture = await makeRun();
+    await makeNote(fixture.userId);
+    await User.updateOne({ _id: fixture.userId }, { $set: { noteDiscoveryAccess: false } });
+    await fixture.store.cancelAccountRuns(fixture.userId);
+    await User.updateOne({ _id: fixture.userId }, { $set: { noteDiscoveryAccess: true } });
+    const { transport, calls } = scriptTransport();
+    const worker = new NoteDiscoveryWorker({
+      ...fixture, enabled: () => true, agentOptions: { provider: createDiscoveryProvider(fixturePrice, transport)!, telemetry: false },
+    });
+    await worker.tick();
+    assert.equal((await fixture.store.getRun(fixture.userId, fixture.runId))?.status, 'cancelled');
+    assert.equal(calls.length, 0);
+  });
+
+  test('settles an in-flight response after revocation without finishing or starting another turn', async () => {
+    const fixture = await makeRun();
+    await makeNote(fixture.userId);
+    let calls = 0;
+    const worker = new NoteDiscoveryWorker({
+      ...fixture, enabled: () => true, agentOptions: { telemetry: false,
+        provider: createDiscoveryProvider(fixturePrice, async () => {
+          calls++;
+          await User.updateOne({ _id: fixture.userId }, { $set: { noteDiscoveryAccess: false } });
+          await fixture.store.cancelAccountRuns(fixture.userId);
+          await User.updateOne({ _id: fixture.userId }, { $set: { noteDiscoveryAccess: true } });
+          return providerResponse({ type: 'no_result' });
+        })!,
+      },
+    });
+    await worker.tick();
+    const run = await fixture.store.getRun(fixture.userId, fixture.runId);
+    assert.equal(calls, 1);
+    assert.equal(run?.status, 'cancelled');
+    assert.equal(run?.usage?.costCnyMicros, 680);
+    const ledger = await NoteDiscoveryBudget.findOne({ 'reservations.runId': run?._id }).lean();
+    assert.equal(ledger?.reservedTotalMicros, 0);
   });
 
   test('long transport outlives the original lease under heartbeat', async () => {
@@ -169,6 +210,7 @@ describe('independent note discovery worker', noteDiscoveryMongoTestOptions, () 
     assert.ok(original);
     await fixture.store.finish(fixture.runId, original.leaseToken, 'cancelled');
     await makeNote(fixture.userId);
+    await NoteDiscoveryPreference.updateOne({ userId: fixture.userId }, { $set: { automaticEnabled: true } }, { upsert: true });
     const run = await fixture.store.enqueue(fixture.userId, { changedAt: new Date() }, 'explicit-automatic-test');
     assert.ok(run);
     let requests = 0;

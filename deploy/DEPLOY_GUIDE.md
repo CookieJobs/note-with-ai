@@ -125,6 +125,8 @@ Compose 从服务器项目根目录 `.env` 插值注入 worker 环境；不会�
 
 本节是准备说明，不授权发布或启用。依本指南核对 `origin/main` 精确 SHA、配置/数据库/旧镜像备份、候选构建检查后，才可按会话发布授权切换。独立 worker 入口为 `npm run worker:note-discovery`（backend 构建后），当前 `docker-compose.yml` 尚未声明对应服务；发布前须为该入口配置独立 worker 进程/服务及与 API 一致的环境注入，不能假设已有 Compose 服务；API 与 worker 配置须一致。保留默认 `NOTE_DISCOVERY_ENABLED=false`，供应商单价或人民币上限未核实时保持关闭。真实模型质量及配置前置条件见 [评估说明](../docs/note-continuation-evaluation.md)。
 
+灰度开放：在生产 Admin 用户管理中按邮箱定位账号，在「笔记发现 Agent」里登记试用权限。账号资格默认关闭，后台可在环境配置就绪前保存授权。正式启用后检查 API 返回用户资格、Worker 运行状态以及对应账号的手动检查与继续探索。使用者可单独开启自动发现。撤销控制该账号的新任务与发布，并保留已发请求的结算记录。AI 管理页的环境状态反映执行配置，Worker 是否运行须通过独立进程核对。
+
 关闭：将 API 与 worker 的 flag 均设 false 并按当前运行方式重启；停止 worker 可立即阻止新发送，但已经发出的请求仍可能收费。disabled worker tick 仍执行清理恢复并取消排队任务。不要删除预算账本或重置发送未知标记来重试。
 
 恢复：保留 Mongo 账本/租约/run，worker 重启后按过期租约恢复；generation fence 阻止旧进程发布。发送未知保守按预留结算且禁止自动重发；结算或 marker 清理失败留给租约恢复。观察失败类别、reserved/spent 和未知费用，不根据进程已启动声称恢复完成。清理 staging 行由 worker 定期执行，不直接全表删除。

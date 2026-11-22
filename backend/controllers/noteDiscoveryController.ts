@@ -2,13 +2,14 @@ import type { Request, Response } from 'express';
 import { UserValidator } from '../utils/userValidation';
 import { ResponseHandler } from '../utils/errorHandler';
 import { noteDiscoveryApiService as service } from '../services/noteDiscoveryApiService';
-import { config, isNoteDiscoveryAccountAllowed } from '../config';
+import { config } from '../config';
+import { isNoteDiscoveryAccessGranted } from '../services/noteDiscoveryAccess';
 import { requireSingleRouteParam } from '../utils/requestParams';
 const userId = async (req: Request) => String((await UserValidator.authenticateUser(req))._id);
 const id = (req: Request) => requireSingleRouteParam(req.params.id, 'id');
 export const getDiscoveryAvailability = async (req: Request, res: Response) => {
   const accountId = await userId(req);
-  ResponseHandler.success(res, { available: config.NOTE_DISCOVERY_RUNNABLE && isNoteDiscoveryAccountAllowed(accountId) });
+  ResponseHandler.success(res, { available: config.NOTE_DISCOVERY_RUNNABLE && await isNoteDiscoveryAccessGranted(accountId) });
 };
 export const listDiscoveries = async (req: Request, res: Response) => { ResponseHandler.success(res, await service.list(await userId(req), { history: req.query.history === 'true', admit: req.query.admit === 'true', timeZone: typeof req.query.timeZone === 'string' ? req.query.timeZone : undefined })); };
 export const runDiscoveries = async (req: Request, res: Response) => { ResponseHandler.success(res, await service.run(await userId(req), req.body.idempotencyKey)); };

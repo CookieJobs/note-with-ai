@@ -2,6 +2,7 @@ import express from 'express';
 import { asyncHandler, ErrorHandler, ResponseHandler } from '../../utils/errorHandler';
 import { requireAdmin, requireAdminMutationOrigin, requireAdminPermission } from '../../middleware/adminAuth';
 import { getUser, listUsers, setUserActive } from '../../services/admin/adminUserService';
+import { getAdminNoteDiscoveryAccess, setAdminNoteDiscoveryAccess } from '../../services/admin/adminNoteDiscoveryService';
 import { runAuditedAdminCommand } from '../../services/admin/adminAuditService';
 import { validateAdminDateRange } from '../../utils/adminQueryValidation';
 
@@ -21,6 +22,24 @@ router.post('/:id/status', requireAdminPermission('users:status'), requireAdminM
   const { isActive, reason } = req.body ?? {};
   if (typeof isActive !== 'boolean' || typeof reason !== 'string' || reason.trim().length < 5 || reason.trim().length > 200) throw ErrorHandler.createValidationError('状态变更原因需为 5-200 个字符');
   const result = await runAuditedAdminCommand({ actorId: req.admin!.id, requestId: req.requestId, action: 'user.status_changed', targetType: 'User', targetId: req.params.id, metadata: { reason: reason.trim(), nextStatus: isActive ? 'active' : 'disabled' } }, () => setUserActive(req.params.id, isActive));
+  ResponseHandler.success(res, result);
+}));
+router.get('/:id/note-discovery-access', asyncHandler(async (req, res) => {
+  ResponseHandler.success(res, await getAdminNoteDiscoveryAccess(req.params.id));
+}));
+router.post('/:id/note-discovery-access', requireAdminPermission('users:status'), requireAdminMutationOrigin, asyncHandler(async (req, res) => {
+  const { granted, reason } = req.body ?? {};
+  if (typeof granted !== 'boolean' || typeof reason !== 'string' || reason.trim().length < 5 || reason.trim().length > 200) {
+    throw ErrorHandler.createValidationError('请提供明确的试用权限和 5-200 个字符的变更原因');
+  }
+  const result = await runAuditedAdminCommand({
+    actorId: req.admin!.id,
+    requestId: req.requestId,
+    action: 'user.note_discovery_access_changed',
+    targetType: 'User',
+    targetId: req.params.id,
+    metadata: { reason: reason.trim(), nextStatus: granted ? 'granted' : 'revoked' },
+  }, () => setAdminNoteDiscoveryAccess(req.params.id, granted));
   ResponseHandler.success(res, result);
 }));
 export default router;

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import styles from '../admin.module.scss';
 import ReasonDialog from '../components/ReasonDialog';
+import NoteDiscoveryEnvironmentPanel from './NoteDiscoveryEnvironmentPanel';
 import { adminFetch, adminPost } from '../lib/adminApi';
 import { formatDateTime, operationLabel, retryStatusLabels } from '../lib/presentation';
 import type {
@@ -143,6 +144,8 @@ export default function AiPage() {
           <p className={styles.pageDescription}>查看调用用量与数据覆盖情况，跟进笔记 AI 处理失败记录。</p>
         </div>
       </header>
+
+      <NoteDiscoveryEnvironmentPanel />
 
       <section aria-labelledby="ai-identity-title">
         <h3 id="ai-identity-title" className={styles.visuallyHidden}>重试权限</h3>

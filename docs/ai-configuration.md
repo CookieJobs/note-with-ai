@@ -32,4 +32,6 @@
 
 `NOTE_DISCOVERY_ENABLED` 默认 false。即使打开，也需 `NOTE_DISCOVERY_PRICED_MODEL` 精确匹配模型、输入/输出及 embedding 单价已填、priced embedding provider/model 匹配，并配置 `NOTE_DISCOVERY_USER_DAILY_CNY`、`NOTE_DISCOVERY_GLOBAL_DAILY_CNY`、`NOTE_DISCOVERY_RUN_RESERVATION_CNY`；否则 fail closed。单价不得从测试 fixture 复制。API 与独立 worker 必须使用同一套核实后的配置。硬上限是 3 次模型、8 次工具、12 篇、24000 输入 / 4000 输出 tokens、90 秒，配置只可缩小。完整真实模型评估、预算及观测定义见[评估说明](note-continuation-evaluation.md)。
 
-只为一个本地账号体验时，可以在开发进程设置 `NOTE_DISCOVERY_LOCAL_USER_ID` 为该账号在本地数据库的 ObjectId。后端和独立 worker 使用同一份开发配置，例如在各自的 Node 启动命令中使用 `--env-file /绝对路径/本地配置.env`。其他账号不显示发现入口，自动扫描和新请求也不会为它们调用模型。该变量仅供 `development` 环境使用，配置文件保留在本机。
+本地和生产分别在各自数据库保存试用权限。管理员登录 `/admin/users`，按邮箱定位账号，在用户详情的「笔记发现 Agent」中开放或撤销试用。管理操作使用既有的管理员权限与审计流程，保存权限无需重启。AI 管理页显示服务端执行配置是否就绪，Worker 运行须单独核对。
+
+新账号和未授权的历史账号默认未开放。获得试用权限后可手动检查，自动发现需用户自行开启，已有明确保存的偏好继续生效。早期本地试用配置 `NOTE_DISCOVERY_LOCAL_USER_ID` 仅在开发环境且该账号还没有明确的后台设置时生效。后台明确撤销后不会回退到本地配置。

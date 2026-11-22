@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isNoteDiscoveryAccountAllowed, parseConfig } from '../config';
+import { parseConfig } from '../config';
 
 const budget = {
   NOTE_DISCOVERY_USER_DAILY_CNY: '0.5',
@@ -14,12 +14,11 @@ const budget = {
   NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION: '0',
 };
 
-test('a local discovery account restriction permits only the selected account', () => {
+test('the legacy local grant accepts only a valid id in development', () => {
   const owner = '507f1f77bcf86cd799439011';
   const restricted = parseConfig({ ...budget, NOTE_DISCOVERY_LOCAL_USER_ID: owner });
-  assert.equal(isNoteDiscoveryAccountAllowed(owner, restricted), true);
-  assert.equal(isNoteDiscoveryAccountAllowed('507f1f77bcf86cd799439012', restricted), false);
-  assert.equal(isNoteDiscoveryAccountAllowed(owner, parseConfig({})), true);
+  assert.equal(restricted.NOTE_DISCOVERY_LOCAL_USER_ID, owner);
+  assert.equal(parseConfig({}).NOTE_DISCOVERY_LOCAL_USER_ID, undefined);
   assert.throws(() => parseConfig({ NOTE_DISCOVERY_LOCAL_USER_ID: 'not-an-id' }));
   assert.throws(() => parseConfig({ NODE_ENV: 'test', NOTE_DISCOVERY_LOCAL_USER_ID: owner }), /only allowed in development/);
 });
