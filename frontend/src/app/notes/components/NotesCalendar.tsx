@@ -26,11 +26,17 @@ export default function NotesCalendar({ userId, version }: { userId: string | nu
     <div className={styles.calendarBody}>
       <div className={styles.monthBar}>
         <strong>{month.replace('-', ' / ')}</strong>
-        <button type="button" className={styles.iconButton} aria-label="上个月" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={15} /></button>
-        <button type="button" className={styles.iconButton} aria-label="下个月" disabled={month >= thisMonth} onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight size={15} /></button>
+        <div className={styles.monthActions} role="group" aria-label="月份切换">
+          {month !== thisMonth && <button type="button" className={`${styles.button} ${styles.calendarReturn}`} onClick={() => setMonth(thisMonth)}>回到本月</button>}
+          <button type="button" className={styles.iconButton} aria-label="上个月" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={15} /></button>
+          <button type="button" className={styles.iconButton} aria-label="下个月" disabled={month >= thisMonth} onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight size={15} /></button>
+        </div>
       </div>
       {loading ? <p className={styles.calendarStatus} role="status">正在加载统计…</p> : error ? <div className={styles.error} role="alert">{error}<button type="button" className={styles.button} onClick={() => void retry()}>重试月历</button></div> : data ? <>
-        <div className={styles.calendarStats}><div><strong>{data.noteCount}</strong><span>{month === thisMonth ? '本月笔记' : '当月笔记'}</span></div><div><strong>{data.recordedDayCount}</strong><span>记录天数</span></div></div>
+        <dl className={styles.calendarStats}>
+          <div><dt>{month === thisMonth ? '本月笔记' : '当月笔记'}</dt><dd>{data.noteCount}</dd></div>
+          <div><dt>记录天数</dt><dd>{data.recordedDayCount}</dd></div>
+        </dl>
         <div className={styles.calendarGrid} role="group" aria-label={month + '记录日历'}>
           {['一', '二', '三', '四', '五', '六', '日'].map(day => <span className={styles.weekday} key={day}>{day}</span>)}
           {monthGrid(month).map((day, index) => {
@@ -51,8 +57,6 @@ export default function NotesCalendar({ userId, version }: { userId: string | nu
           <span>多</span>
         </div>
       </> : null}
-      {month !== thisMonth && <button type="button" className={styles.button} onClick={() => setMonth(thisMonth)}>回到本月</button>}
-      <p className={styles.calendarHint}>按北京时间与创建日期统计</p>
     </div>
   </div>;
 }

@@ -35,6 +35,18 @@ it('refreshes sidebar calendar after notes write without resetting its selected 
   expect(mocks.fetch.mock.calls.filter(([url])=>url.includes('/calendar'))).toHaveLength(3);
 });
 
+it('groups the month reset with the month arrows and returns to the current month', async () => {
+  render(<WorkspaceRoot><Probe /></WorkspaceRoot>);
+  const navigation = within(await screen.findByRole('group', { name: '月份切换' }));
+  expect(navigation.queryByRole('button', { name: '回到本月' })).not.toBeInTheDocument();
+  fireEvent.click(navigation.getByRole('button', { name: '上个月' }));
+  await screen.findByText('当月笔记');
+  expect(navigation.getByRole('button', { name: '下个月' })).toBeEnabled();
+  fireEvent.click(navigation.getByRole('button', { name: '回到本月' }));
+  expect(await screen.findByText('本月笔记')).toBeInTheDocument();
+  expect(navigation.getByRole('button', { name: '下个月' })).toBeDisabled();
+});
+
 it('shows fixed heat levels for daily counts and marks today independently', async () => {
   const today = beijingDate();
   const month = today.slice(0, 7);
