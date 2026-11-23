@@ -57,6 +57,9 @@ describe('NoteWorkspaceEditor', () => {
       ? <NoteWorkspaceEditor mode="edit" note={{ ...note, title: '', content: imageText, contentText: imageText, contentJson: imageJson }} userId="u1" updateNote={vi.fn()} onSaved={vi.fn()} onCancel={vi.fn()} />
       : <NoteWorkspaceEditor mode="compose" userId="u1" createNote={vi.fn()} onSaved={vi.fn()} onCancel={vi.fn()} />;
     render(<WorkspaceContext.Provider value={context}>{editor}</WorkspaceContext.Provider>);
+    expect(screen.queryByRole('textbox', { name: '笔记标题' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '添加标题' }));
+    expect(screen.getByRole('textbox', { name: '笔记标题' })).toHaveFocus();
     expect(screen.getByRole('textbox', { name: '笔记标题' })).not.toBeRequired();
     expect(screen.queryByRole('button', { name: '帮我拟个标题' })).not.toBeInTheDocument();
   });
@@ -96,7 +99,7 @@ describe('NoteWorkspaceEditor', () => {
     view.rerender(<WorkspaceContext.Provider value={{ ...context }}><span>设置已打开</span>{editor}</WorkspaceContext.Provider>);
     expect(screen.getByRole('textbox', { name: '笔记标题' })).toHaveValue('草稿');
     expect(unregister).not.toHaveBeenCalled(); expect(context.registerEditor).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    fireEvent.click(screen.getByRole('button', { name: '返回阅读' }));
     expect(context.requestAction).toHaveBeenCalled(); expect(onCancel).toHaveBeenCalled();
   });
 

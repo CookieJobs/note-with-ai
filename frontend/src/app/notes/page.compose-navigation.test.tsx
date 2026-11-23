@@ -1,5 +1,5 @@
 import React, { Suspense, useState } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceContext } from '../../components/workspace/WorkspaceContext';
 import { useWorkspaceNavigation } from '../../components/workspace/useWorkspaceNavigation';
@@ -47,7 +47,10 @@ describe('compose URL and real workspace navigation', () => {
 
   it('returns from a clean composer using the real root navigate action', async () => {
     render(<Harness />);
-    await screen.findByRole('textbox', { name: '笔记标题' });
+    await screen.findByRole('button', { name: '添加标题' });
+    const editor = within(screen.getByLabelText('笔记编辑'));
+    expect(editor.queryByText('新建笔记')).toBeNull();
+    expect(editor.queryByText('修改后请保存')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '侧栏笔记' }));
     await waitFor(() => expect(screen.queryByLabelText('笔记编辑')).toBeNull());
     expect(screen.getByTestId('notes-list-scroll')).toBeVisible();
@@ -83,6 +86,7 @@ describe('compose URL and real workspace navigation', () => {
 
   it('returns to Notes with the local draft and restores it when quick capture reopens', async () => {
     render(<Harness />);
+    fireEvent.click(await screen.findByRole('button', { name: '添加标题' }));
     fireEvent.change(await screen.findByRole('textbox', { name: '笔记标题' }), {target: {value: '稍后再写'}});
     fireEvent.click(screen.getByRole('button', { name: '保留草稿并返回' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

@@ -36,6 +36,7 @@ export type WorkspaceContextValue = {
   requestAction: (action: () => void) => void;
   registerEditor: (editor: WorkspaceEditor) => () => void;
   setRecentNotes: (notes: WorkspaceRecentNote[]) => void;
+  setNoteEditorActive?: (active: boolean) => void;
   topbarBack?: HTMLDivElement | null;
   topbarActions?: HTMLDivElement | null;
   refreshNotesCalendar?: () => void;

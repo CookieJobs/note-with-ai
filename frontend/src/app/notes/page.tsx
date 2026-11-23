@@ -97,6 +97,14 @@ function NotesContent() {
   const { captureMutation, applyCanonical, applyRecommendCache } = focused;
   const currentNote = notes.find((note) => note._id === highlightId) ?? focusedNote;
   const detail = Boolean(highlightId) || compose;
+  const edit = Boolean(currentNote && editing === user?.id + ':' + currentNote._id);
+  const editorActive = compose || edit;
+  const setNoteEditorActive = workspace?.setNoteEditorActive;
+  useEffect(() => {
+    if (!editorActive || !setNoteEditorActive) return;
+    setNoteEditorActive(true);
+    return () => setNoteEditorActive(false);
+  }, [editorActive, setNoteEditorActive]);
   const topbar = workspace?.topbarActions;
   useEffect(() => {
     const root = listRef.current;
@@ -253,9 +261,10 @@ function NotesContent() {
       </button>}
     </div>
   );
-  const backToList = <button type="button" className={topbar ? styles.button : styles.backButton} onClick={() => go('/notes')}
-    aria-label="返回笔记" title="返回笔记">
-    <ArrowLeft size={15} aria-hidden="true" /><span className={styles.detailActionLabel}>返回笔记</span>
+  const backToList = <button type="button" className={editorActive ? styles.editorBack : topbar ? styles.button : styles.backButton} onClick={() => go('/notes')}
+    aria-label="返回笔记" title={editorActive ? undefined : '返回笔记'}>
+    <ArrowLeft size={15} aria-hidden="true" />
+    <span className={styles.detailActionLabel}>{editorActive ? '返回' : '返回笔记'}</span>
   </button>;
   const backToChat = returnContext && <button type="button" className={styles.primaryButton}
     title={returnContext.sessionTitle?.trim() || '回到刚才的位置，继续未发送的内容'}
@@ -300,18 +309,19 @@ function NotesContent() {
     </>;
 
   return (
-    <main className={styles.workspace + (relatedId ? ' ' + styles.withRelated : '')}>
+    <main className={styles.workspace + (relatedId && !editorActive ? ' ' + styles.withRelated : '')}>
+      {editorActive && <div className={styles.editorScrim} aria-hidden="true" />}
       {user?.id ? <NoteDiscoveryPanel key={user.id} userId={user.id} enabled={!detail} renderLayout={renderDiscoveryLayout}
         onSession={session => go('/chat?session=' + encodeURIComponent(session.id))} /> : renderDiscoveryLayout()}
       {detail && <section className={styles.detail} aria-label="笔记详情">
-        {workspace?.topbarBack && <WorkspaceBackButton
+        {!editorActive && workspace?.topbarBack && <WorkspaceBackButton
           label={returnContext ? '返回刚才的对话' : '返回笔记'}
           title={returnContext?.sessionTitle}
           onClick={() => go(returnContext ? '/chat?session=' + encodeURIComponent(returnContext.sessionId) : '/notes')} />}
-        {topbar && returnContext && createPortal(<nav className={styles.detailNav} aria-label="笔记导航">
+        {!editorActive && topbar && returnContext && createPortal(<nav className={styles.detailNav} aria-label="笔记导航">
           {backToList}
         </nav>, topbar)}
-        {!workspace?.topbarBack && highlightId && returnContext && <nav className={styles.chatReturn} aria-label="返回原对话">
+        {!workspace?.topbarBack && highlightId && returnContext && !editorActive && <nav className={styles.chatReturn} aria-label="返回原对话">
           <div className={styles.chatReturnInner}>
             {backToChat}
             <div className={styles.chatReturnCopy}>
@@ -320,14 +330,18 @@ function NotesContent() {
             </div>
           </div>
         </nav>}
-        <div className={styles.scroll} ref={detailRef}>
-        <div className={styles.page}>
-          {(!workspace?.topbarBack || (returnContext && !topbar)) && backToList}
+        <div className={editorActive ? `${styles.scroll} ${styles.editorScroll}` : styles.scroll} ref={detailRef}>
+        {editorActive && <nav className={styles.editorNav} aria-label="笔记导航">
+          {backToList}
+          {backToChat}
+        </nav>}
+        <div className={editorActive ? styles.editorPage : styles.page}>
+          {!editorActive && (!workspace?.topbarBack || (returnContext && !topbar)) && backToList}
           {compose ? <NoteWorkspaceEditor key={'compose:' + (user?.id ?? '')} mode="compose" userId={user?.id ?? null} createNote={create} scrollRef={detailRef}
             onKeepDraft={() => router.push('/notes', { scroll: false })}
             onCancel={() => router.push('/notes', { scroll: false })}
             onSaved={() => { const id = createdNote.current?._id; router.push(id ? '/notes?highlight=' + encodeURIComponent(id) : '/notes', { scroll: false }); }} />
-            : currentNote ? editing === user?.id + ':' + currentNote._id ?
+            : currentNote ? edit ?
               <NoteWorkspaceEditor key={'edit:' + user?.id + ':' + currentNote._id} mode="edit" note={currentNote} userId={user?.id ?? null} updateNote={updateFocusedNote} scrollRef={detailRef}
                 onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); setError(''); }} />
               : <NoteWorkspaceReader key={currentNote._id} note={currentNote} relatedOpen={relatedId === currentNote._id}
@@ -345,7 +359,7 @@ function NotesContent() {
         </div>
         </div>
       </section>}
-      {relatedId && <RelatedNotesDrawer isOpen selectedNoteId={relatedId} onClose={() => setRelatedId(null)}
+      {relatedId && !editorActive && <RelatedNotesDrawer isOpen selectedNoteId={relatedId} onClose={() => setRelatedId(null)}
         allNotes={focusedNote ? [...notes, focusedNote] : notes} onRefreshRecommendCache={refreshSourceRecommendCache} onOpenNote={openNote} />}
       {pendingDelete && <div className={styles.modalBackdrop} onClick={() => { if (!deleting) setPendingDelete(null); }}>
         <div role="dialog" aria-modal="true" aria-labelledby="note-delete-title" className={styles.modal} ref={deleteRef} onClick={(event) => event.stopPropagation()}

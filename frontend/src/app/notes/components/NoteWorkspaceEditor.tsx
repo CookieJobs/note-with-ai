@@ -85,6 +85,8 @@ function EditorForm({ session, sessionId, userId, onSaved, onCancel, onKeepDraft
     else if (caret.bottom > visibleBottom) scroller.scrollTop += Math.ceil(caret.bottom - visibleBottom);
   }, [scrollRef]);
   const [tiptapEditor, setTiptapEditor] = useState<Editor | null>(null);
+  const [titleRequested, setTitleRequested] = useState(false);
+  const showTitle = titleRequested || Boolean(session.title);
   const latest = useRef({ session, onSaved, onCancel, workspace });
   latest.current = { session, onSaved, onCancel, workspace };
   const suggestion = useNoteTitleSuggestion({
@@ -131,16 +133,21 @@ function EditorForm({ session, sessionId, userId, onSaved, onCancel, onKeepDraft
         if (event.defaultPrevented || event.nativeEvent.isComposing || event.keyCode === 229) return;
         if (event.key === 'Escape') { event.preventDefault(); cancel(); }
       }}>
-      <div className={styles.editorTop}><span>{sessionId === 'compose' ? '新建笔记' : '编辑笔记'}</span><span>修改后请保存</span></div>
-      <NoteTitleField value={session.title}
-        onChange={(value) => { suggestion.invalidate('title'); session.changeTitle(value); }}
+      {!session.title && (
+        <div className={styles.editorTop}>
+          <button type="button" className={styles.titleToggle} aria-expanded={showTitle}
+            onClick={() => setTitleRequested(!titleRequested)}>{showTitle ? '收起标题' : '添加标题'}</button>
+        </div>
+      )}
+      {showTitle && <NoteTitleField value={session.title} focusOnMount={titleRequested}
+        onChange={(value) => { setTitleRequested(true); suggestion.invalidate('title'); session.changeTitle(value); }}
         suggestion={suggestion} hasBodyText={hasTitleSourceText(session.json, session.text)} saving={session.saving}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing || event.keyCode === 229 || event.key !== 'Enter') return;
           event.preventDefault();
           if (event.metaKey || event.ctrlKey) void saveAndRead();
           else focusProseMirrorWithin(rootRef.current);
-        }} />
+        }} />}
       <FormattingToolbar editor={tiptapEditor} toolbarRef={toolbarRef} />
       <div className={styles.editorBody}>
         <RichTextEditor value={session.json} onChange={(value) => { suggestion.invalidate('body'); session.changeBody(value); }}
@@ -152,7 +159,7 @@ function EditorForm({ session, sessionId, userId, onSaved, onCancel, onKeepDraft
       <div ref={actionsRef} className={styles.editorActions}>
         <span>⌘ / Ctrl + Enter 保存</span>
         {onKeepDraft && <button type="button" className={styles.button} onClick={onKeepDraft} disabled={session.saving}>保留草稿并返回</button>}
-        <button type="button" className={styles.button} onClick={cancel} disabled={session.saving}>取消</button>
+        {sessionId !== 'compose' && <button type="button" className={styles.button} onClick={cancel} disabled={session.saving}>返回阅读</button>}
         <button type="button" className={styles.primaryButton} disabled={session.saving || (sessionId === 'compose' && !session.text.trim())} onClick={() => void saveAndRead()}>{session.saving ? '保存中…' : '保存'}</button>
       </div>
     </div>

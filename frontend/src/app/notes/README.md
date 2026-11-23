@@ -4,7 +4,7 @@
 
 ## 列表、搜索与月历
 
-[NotesFeed](components/NotesFeed.tsx) 按返回数据顺序逐张放入当前最短列，DOM 与键盘顺序保持创建时间倒序。ResizeObserver 仅测量列表内卡片，返回阅读时保持已加载范围、搜索条件、滚动与焦点；阅读和编辑仍使用现有窄内容列。首图复用 noteReferenceDisplay，资源失败降级；不引入列表富文本编辑器。
+[NotesFeed](components/NotesFeed.tsx) 按返回数据顺序逐张放入当前最短列，DOM 与键盘顺序保持创建时间倒序。ResizeObserver 仅测量列表内卡片，返回阅读时保持已加载范围、搜索条件、滚动与焦点；阅读使用现有窄内容列。新建和编辑以浮层托起原富文本编辑器，卡片相对视口居中，返回笔记在卡片上方左对齐。新建用返回笔记离开，编辑已有笔记另有返回阅读入口。首图复用 noteReferenceDisplay，资源失败降级；不引入列表富文本编辑器。
 
 [useNoteSearch](hooks/useNoteSearch.ts) 为独立只读查询，不改变 useNotes 的普通列表、mutation、revision、临时笔记或富化轮询机制。关键词 300ms 防抖、输入法组字结束后查询，GET `/api/notes?q=...` 全库字面量匹配；普通列表、各关键词分页及滚动位置独立保留。缓存限定当前挂载页面和账号，切换账号清空；请求带取消信号且校验当前查询版本，迟到响应不能回填。新建、编辑或删除成功后更新只读查询版本；重新验证先前已加载的搜索页数，不把不匹配笔记塞入搜索，也不污染侧栏最近笔记。
 
@@ -14,7 +14,7 @@
 
 快速记录与侧栏统一使用 `/notes?compose=1`，URL 决定创建状态。保存、取消或离开才移除参数；刷新、前进后退与实际视图同步，通过 [useCreateNote](hooks/useCreateNote.ts) 恢复既有本机草稿。阅读器、编辑器和相关栏独立懒加载，不让列表首屏引入 Tiptap schema。
 
-标题可选，无标题阅读直接从正文开始；列表和侧栏用 `noteReferenceDisplay` 生成辨认文字，不写回标题。标签与话题目录已退役。编辑复用真实 Tiptap 与 [useNoteEditor](hooks/useNoteEditor.ts)，保留拟标题保护、格式、图片、链接、表格和 revision 冲突校验。标题与正文同事务显式保存，Cmd/Ctrl+Enter 与按钮共用保存链；未改动的既有笔记直接回阅读，不发空写入。
+标题可选。编辑时空标题默认收起，可从顶部「添加标题」展开；已有标题或恢复的草稿标题直接显示。无标题阅读直接从正文开始；列表和侧栏用 `noteReferenceDisplay` 生成辨认文字，不写回标题。标签与话题目录已退役。编辑复用真实 Tiptap 与 [useNoteEditor](hooks/useNoteEditor.ts)，保留拟标题保护、格式、图片、链接、表格和 revision 冲突校验。标题与正文同事务显式保存，Cmd/Ctrl+Enter 与按钮共用保存链；未改动的既有笔记直接回阅读，不发空写入。
 
 保存只有在服务端成功且没有后来输入时才结束当前编辑。失败或冲突保留内容，未改动字段使用服务端标准版本，保存中的新输入不能清除。历史无 `contentJson` 的正文走既有 Markdown viewer，阅读保留软换行，不写回原文或改变编辑器默认行为。
 

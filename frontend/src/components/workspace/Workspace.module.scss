@@ -127,6 +127,9 @@ button.backControl {
   &:focus-visible { outline: 2px solid var(--ws-focus, #3478f6); outline-offset: 2px; }
 }
 .topbar:has(.topbarBack > *, .topbarActions > *) { display: flex; position: relative; z-index: 6; border-bottom: 1px solid var(--ws-line); }
+.root[data-note-editor-active='true'] {
+  .skip, .topbar .expand { display: none; }
+}
 .content { flex: 1; min-height: 0; min-width: 0; overflow: hidden; outline: none; }
 // 未迁移页面继续保留完整滚动与操作范围，S2/S3 再迁移它们自己的构图。
 .content[data-page='profile'], .content[data-page='inspiration'] { overflow-y: auto; }

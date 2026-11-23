@@ -15,13 +15,13 @@
   width: 100%;
   padding: 8px 0;
   border: 0;
-  border-bottom: 1px solid var(--workspace-line, #e7e9ec);
+  border-bottom: 1px solid var(--ws-line);
   border-radius: 0;
   background: transparent;
-  color: var(--workspace-ink, #202327);
+  color: var(--ws-ink);
   font-family: inherit;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 500;
   line-height: 1.5;
   outline: none;
 
@@ -65,7 +65,7 @@
   border: 1px solid #bcc3cc;
   border-radius: 8px;
   background: #fff;
-  color: var(--workspace-ink, #202327);
+  color: var(--ws-ink);
   font-weight: 500;
 
   &:hover:not(:disabled) {

@@ -139,9 +139,14 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
     userRef.current = next; setUser(next);
     try { localStorage.setItem('user', JSON.stringify(next)); } catch { /* The server save remains valid if local cache is unavailable. */ }
   }, []);
+  const [noteEditorActive, setNoteEditorActive] = useState(false);
+  useEffect(() => {
+    sidebarRef.current?.toggleAttribute('inert', noteEditorActive);
+    if (noteEditorActive) setDrawerOpen(false);
+  }, [noteEditorActive]);
   const [topbarBack, setTopbarBack] = useState<HTMLDivElement | null>(null);
   const [topbarActions, setTopbarActions] = useState<HTMLDivElement | null>(null);
-  const context = useMemo(() => ({ navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar, topbarBack, topbarActions }), [navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar, topbarBack, topbarActions]);
+  const context = useMemo(() => ({ navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar, topbarBack, topbarActions, setNoteEditorActive }), [navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar, topbarBack, topbarActions]);
   const closeSettings = () => { setSettingsOpen(false); };
   const interceptLink = (event: MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !(event.target instanceof Element)) return;
@@ -153,7 +158,7 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
   };
 
   return <WorkspaceContext.Provider value={context}>
-    <div className={styles.root} data-workspace="" data-theme={theme} data-reading-size={preferences.readingSize} data-reduce-motion={preferences.reduceMotion || undefined} data-collapsed={preferences.collapsed} data-drawer-open={drawerOpen} onClick={interceptLink}>
+    <div className={styles.root} data-workspace="" data-theme={theme} data-reading-size={preferences.readingSize} data-reduce-motion={preferences.reduceMotion || undefined} data-collapsed={preferences.collapsed} data-drawer-open={drawerOpen} data-note-editor-active={noteEditorActive || undefined} onClick={interceptLink}>
       <a className={styles.skip} href="#workspace-content">跳到主要内容</a>
       {drawerOpen && <button type="button" className={styles.scrim} aria-label="关闭侧栏" onClick={() => setDrawerOpen(false)} />}
       <aside className={styles.sidebar} ref={sidebarRef} aria-label="工作区侧栏" aria-hidden={narrow && !drawerOpen || undefined} role={narrow && drawerOpen ? 'dialog' : undefined} aria-modal={narrow && drawerOpen || undefined}>

@@ -45,12 +45,83 @@ button.quickCapture {
 .excerpt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 3px; max-width: 100%; overflow-wrap: anywhere; color: var(--ws-secondary); font-size: 13px; line-height: 1.7; white-space: pre-line; }
 .excerpt:first-child { margin-top: 0; color: var(--ws-ink); font-size: 14px; }
 .noteMeta { margin-top: 7px; color: var(--ws-muted); font-size: 11px; line-height: 22px; }
+.editorScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgb(22 28 39 / 18%);
+  background: color-mix(in srgb, color-mix(in srgb, var(--ws-bg) 86%, var(--ws-ink)) 54%, transparent);
+  backdrop-filter: blur(7px);
+}
+.editorScroll {
+  position: fixed;
+  inset: 0;
+  z-index: 91;
+  display: grid;
+  grid-template-columns: minmax(0, 820px);
+  grid-template-rows: minmax(60px, 1fr) auto minmax(60px, 1fr);
+  justify-content: center;
+  padding-inline: clamp(12px, 3vw, 36px);
+}
+.editorNav {
+  display: flex;
+  align-items: center;
+  align-self: end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.editorPage {
+  min-width: 0;
+  padding: 20px clamp(16px, 3vw, 38px) 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: 16px;
+  background: var(--ws-bg);
+  box-shadow: 0 22px 56px -20px rgb(0 0 0 / 28%), 0 4px 14px rgb(0 0 0 / 6%);
+}
 .listFooter { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 0; color: var(--ws-muted); font-size: 12px; }
-.button, .primaryButton, .dangerButton, .iconButton, .backButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 6px 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ws-secondary); font-size: 13px; line-height: 1.4; white-space: nowrap; }
+.button, .primaryButton, .dangerButton, .iconButton, .backButton, .editorBack { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 6px 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ws-secondary); font-size: 13px; line-height: 1.4; white-space: nowrap; }
 .button:hover, .iconButton:hover, .backButton:hover { background: var(--ws-hover); color: var(--ws-ink); }
 button.primaryButton { background: var(--ws-accent); color: white; &:hover { background: var(--ws-accent-hover); } }
 .dangerButton { color: var(--ws-danger); &:hover { background: var(--ws-hover); } }
 .iconButton { width: 32px; padding: 4px; }
+button.editorBack {
+  gap: 0;
+  min-height: 44px;
+  padding-inline: 13.5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ws-bg) 55%, transparent);
+  color: var(--ws-secondary);
+
+  .detailActionLabel {
+    max-inline-size: var(--editor-back-label-width, 0);
+    margin-inline-start: var(--editor-back-label-gap, 0);
+    overflow: hidden;
+    opacity: var(--editor-back-label-opacity, 0);
+    transition: max-inline-size 160ms ease, margin-inline-start 160ms ease, opacity 120ms ease;
+  }
+
+  &:focus-visible {
+    --editor-back-label-width: 2.4em;
+    --editor-back-label-gap: 6px;
+    --editor-back-label-opacity: 1;
+    background: var(--ws-bg);
+    color: var(--ws-ink);
+  }
+
+  @media (hover: hover) {
+    &:hover {
+      --editor-back-label-width: 2.4em;
+      --editor-back-label-gap: 6px;
+      --editor-back-label-opacity: 1;
+      background: var(--ws-bg);
+      color: var(--ws-ink);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .detailActionLabel { transition: none; }
+  }
+}
 .backButton { margin: -4px 0 22px -8px; padding: 0 8px; }
 .reader { min-width: 0;
   h1 { margin: 0 0 28px; color: var(--ws-ink); font-size: 30px; font-weight: 600; line-height: 1.35; letter-spacing: -.025em; overflow-wrap: anywhere; }
@@ -77,11 +148,12 @@ button.primaryButton { background: var(--ws-accent); color: white; &:hover { bac
 .more { position: relative; }
 .moreMenu { position: absolute; top: calc(100% + 5px); right: 0; min-width: 140px; padding: 5px; border: 1px solid var(--ws-line); border-radius: var(--ws-radius); background: var(--ws-bg); box-shadow: 0 8px 28px rgb(0 0 0 / 10%); z-index: 5; button { width: 100%; justify-content: flex-start; } }
 .editor { min-width: 0;
-  input[type='text'] { color: var(--ws-ink); border-color: var(--ws-line); font-size: 24px; background: transparent; }
   input::placeholder { color: var(--ws-muted); }
   > div > div > div > button { background: var(--ws-bg); color: var(--ws-accent-ink); border-color: var(--ws-line); }
 }
-.editorTop { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 16px; color: var(--ws-muted); font-size: 12px; }
+.editorTop { margin-bottom: 16px; font-size: 12px; }
+.titleToggle { padding: 2px 5px; min-height: 24px; border: 0; border-radius: 4px; background: transparent; color: var(--ws-secondary); font: inherit; cursor: pointer; }
+.titleToggle:hover { background: var(--ws-hover); color: var(--ws-ink); }
 .formatToolbar { position: sticky; top: -1px; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 3px; margin: 0 0 20px; padding: 8px 0; border-block: 1px solid var(--ws-line); background: var(--ws-bg);
   button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 5px; background: transparent; color: var(--ws-secondary); }
   button:hover { background: var(--ws-hover); color: var(--ws-ink); }

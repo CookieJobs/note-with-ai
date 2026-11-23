@@ -1,4 +1,4 @@
-import type { KeyboardEventHandler, RefObject } from 'react';
+import type { KeyboardEventHandler } from 'react';
 import type { useNoteTitleSuggestion } from '../../../hooks/useNoteTitleSuggestion';
 import styles from '../styles/note-title-field.module.scss';
 
@@ -8,19 +8,19 @@ type Props = {
   suggestion: ReturnType<typeof useNoteTitleSuggestion>;
   hasBodyText: boolean;
   saving?: boolean;
-  inputRef?: RefObject<HTMLInputElement | null>;
+  focusOnMount?: boolean;
   onKeyDown: KeyboardEventHandler<HTMLInputElement>;
 };
 
 /** Only mounted inside a note's edit form, never on a reading card. */
 export default function NoteTitleField({ value, onChange, suggestion, hasBodyText, saving = false,
-  inputRef, onKeyDown }: Props) {
+  focusOnMount, onKeyDown }: Props) {
   const generating = suggestion.state === 'generating';
   return (
     <div className={styles.field} data-note-editor-inside="true">
       <div className={styles.row}>
         <input
-          ref={inputRef}
+          autoFocus={focusOnMount}
           type="text"
           aria-label="笔记标题"
           placeholder="标题（可选）"
