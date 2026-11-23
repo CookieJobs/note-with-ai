@@ -323,12 +323,12 @@ function NotesContent() {
         <div className={styles.scroll} ref={detailRef}>
         <div className={styles.page}>
           {(!workspace?.topbarBack || (returnContext && !topbar)) && backToList}
-          {compose ? <NoteWorkspaceEditor key={'compose:' + (user?.id ?? '')} mode="compose" userId={user?.id ?? null} createNote={create}
+          {compose ? <NoteWorkspaceEditor key={'compose:' + (user?.id ?? '')} mode="compose" userId={user?.id ?? null} createNote={create} scrollRef={detailRef}
             onKeepDraft={() => router.push('/notes', { scroll: false })}
             onCancel={() => router.push('/notes', { scroll: false })}
             onSaved={() => { const id = createdNote.current?._id; router.push(id ? '/notes?highlight=' + encodeURIComponent(id) : '/notes', { scroll: false }); }} />
             : currentNote ? editing === user?.id + ':' + currentNote._id ?
-              <NoteWorkspaceEditor key={'edit:' + user?.id + ':' + currentNote._id} mode="edit" note={currentNote} userId={user?.id ?? null} updateNote={updateFocusedNote}
+              <NoteWorkspaceEditor key={'edit:' + user?.id + ':' + currentNote._id} mode="edit" note={currentNote} userId={user?.id ?? null} updateNote={updateFocusedNote} scrollRef={detailRef}
                 onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); setError(''); }} />
               : <NoteWorkspaceReader key={currentNote._id} note={currentNote} relatedOpen={relatedId === currentNote._id}
                 onDiscuss={() => actSafely(() => { void discuss(currentNote); })} discussing={discussing}

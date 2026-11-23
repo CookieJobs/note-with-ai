@@ -5,8 +5,10 @@ Pos: notes/components；修改时同步 ../README.md
 */
 'use client';
 
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, type RefObject } from 'react';
 import type { Editor, JSONContent } from '@tiptap/react';
+import { TextSelection } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { Bold, Italic, Heading2, List, ListOrdered, ListTodo, Quote, Code2, Table2, Strikethrough } from 'lucide-react';
 import { useWorkspace } from '../../../components/workspace/WorkspaceContext';
 import type { WorkspaceEditor } from '../../../components/workspace/WorkspaceContext';
@@ -20,7 +22,7 @@ import RichTextEditor from './RichTextEditor';
 import { focusProseMirrorWithin } from './focusProseMirror';
 import styles from '../NotesWorkspace.module.scss';
 
-type Common = { userId: string | null; onSaved: () => void; onCancel: () => void };
+type Common = { userId: string | null; onSaved: () => void; onCancel: () => void; scrollRef?: RefObject<HTMLDivElement> };
 type Props = Common & (
   | { mode: 'edit'; note: Note; updateNote: (command: UpdateNoteCommand) => Promise<Note> }
   | { mode: 'compose'; onKeepDraft?: () => void; createNote: (command: CreateNoteCommand) => Promise<Note> }
@@ -34,7 +36,7 @@ type Session = {
 };
 const fromPlain = (text: string): JSONContent => ({ type: 'doc', content: text.split('\n').map((line) => ({ type: 'paragraph', content: line ? [{ type: 'text', text: line }] : [] })) });
 
-function FormattingToolbar({ editor }: { editor: Editor | null }) {
+function FormattingToolbar({ editor, toolbarRef }: { editor: Editor | null; toolbarRef: RefObject<HTMLDivElement> }) {
   const [, refresh] = useReducer((version) => version + 1, 0);
   useEffect(() => {
     if (!editor) return;
@@ -54,16 +56,34 @@ function FormattingToolbar({ editor }: { editor: Editor | null }) {
     { label: '代码块', icon: Code2, active: editor.isActive('codeBlock'), run: () => editor.chain().focus().toggleCodeBlock().run() },
     { label: '插入表格', icon: Table2, active: editor.isActive('table'), run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
   ];
-  return <div className={styles.formatToolbar} role="toolbar" aria-label="笔记格式">
+  return <div ref={toolbarRef} className={styles.formatToolbar} role="toolbar" aria-label="笔记格式">
     {commands.map(({ label, icon: Icon, active, run }) => <button type="button" key={label} aria-label={label} title={label} aria-pressed={active}
       onMouseDown={(event) => event.preventDefault()} onClick={run}><Icon size={16} /></button>)}
     <span>输入 / 插入更多</span>
   </div>;
 }
 
-function EditorForm({ session, sessionId, userId, onSaved, onCancel, onKeepDraft }: Common & { session: Session; sessionId: string; onKeepDraft?: () => void }) {
+function EditorForm({ session, sessionId, userId, onSaved, onCancel, onKeepDraft, scrollRef }: Common & { session: Session; sessionId: string; onKeepDraft?: () => void }) {
   const workspace = useWorkspace();
   const rootRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const revealCaret = useCallback((view: EditorView) => {
+    const scroller = scrollRef?.current;
+    const toolbar = toolbarRef.current;
+    const actions = actionsRef.current;
+    const { selection } = view.state;
+    if (!scroller || !toolbar || !actions || !view.hasFocus() || !(selection instanceof TextSelection)) return;
+
+    const { top, bottom } = scroller.getBoundingClientRect();
+    const visibleTop = Math.max(top, toolbar.getBoundingClientRect().bottom);
+    const visibleBottom = Math.min(bottom, actions.getBoundingClientRect().top);
+    if (visibleTop >= visibleBottom) return;
+
+    const caret = view.coordsAtPos(selection.head);
+    if (caret.top < visibleTop) scroller.scrollTop += Math.floor(caret.top - visibleTop);
+    else if (caret.bottom > visibleBottom) scroller.scrollTop += Math.ceil(caret.bottom - visibleBottom);
+  }, [scrollRef]);
   const [tiptapEditor, setTiptapEditor] = useState<Editor | null>(null);
   const latest = useRef({ session, onSaved, onCancel, workspace });
   latest.current = { session, onSaved, onCancel, workspace };
@@ -121,14 +141,15 @@ function EditorForm({ session, sessionId, userId, onSaved, onCancel, onKeepDraft
           if (event.metaKey || event.ctrlKey) void saveAndRead();
           else focusProseMirrorWithin(rootRef.current);
         }} />
-      <FormattingToolbar editor={tiptapEditor} />
+      <FormattingToolbar editor={tiptapEditor} toolbarRef={toolbarRef} />
       <div className={styles.editorBody}>
         <RichTextEditor value={session.json} onChange={(value) => { suggestion.invalidate('body'); session.changeBody(value); }}
-          placeholder="此刻在想什么？" showToolbar autoFocus="end" onEditorReady={setTiptapEditor} onModEnter={() => void saveAndRead()} />
+          placeholder="此刻在想什么？" showToolbar autoFocus="end" onEditorReady={setTiptapEditor} onModEnter={() => void saveAndRead()}
+          revealCaret={revealCaret} />
       </div>
       {session.error && <p className={styles.error} role="alert">{session.error}</p>}
       {session.status && !session.error && <p className={styles.status} role="status">{session.status}</p>}
-      <div className={styles.editorActions}>
+      <div ref={actionsRef} className={styles.editorActions}>
         <span>⌘ / Ctrl + Enter 保存</span>
         {onKeepDraft && <button type="button" className={styles.button} onClick={onKeepDraft} disabled={session.saving}>保留草稿并返回</button>}
         <button type="button" className={styles.button} onClick={cancel} disabled={session.saving}>取消</button>

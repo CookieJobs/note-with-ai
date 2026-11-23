@@ -8,6 +8,7 @@ Pos: notes/components；修改时同步 ../README.md
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useEditor, EditorContent, JSONContent, type Editor } from '@tiptap/react';
+import type { EditorView } from '@tiptap/pm/view';
 import { DragHandle } from './DragHandle';
 import styles from '../styles/rich-editor.module.scss';
 import { RichTextBubbleMenu } from './RichTextBubbleMenu';
@@ -32,6 +33,7 @@ type Props = {
   onFocus?: () => void;
   onModEnter?: () => void; // Cmd/Ctrl + Enter
   onEditorReady?: (editor: Editor | null) => void;
+  revealCaret?: (view: EditorView) => void;
   placeholder?: string;
   showToolbar?: boolean;
   toolbarVariant?: 'simple' | 'advanced';
@@ -51,6 +53,7 @@ export default function RichTextEditor({
   onFocus,
   onModEnter,
   onEditorReady,
+  revealCaret,
   placeholder,
   showToolbar = true,
   toolbarVariant = 'advanced',
@@ -122,7 +125,15 @@ export default function RichTextEditor({
       'aria-label': '笔记正文',
       'aria-multiline': 'true',
     },
+    handleScrollToSelection: (view: EditorView) => {
+      revealCaret?.(view);
+      return false; // Preserve ProseMirror's default scrolling in nested content.
+    },
     handleDOMEvents: {
+      compositionstart: (view: EditorView) => {
+        revealCaret?.(view);
+        return false;
+      },
       keydown: (_view: unknown, event: Event) => {
         const e = event as KeyboardEvent;
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -132,14 +143,16 @@ export default function RichTextEditor({
         return false;
       },
     },
-  }), [editorContentClassName, onModEnter]);
+  }), [editorContentClassName, onModEnter, revealCaret]);
 
   const editor = useEditor({
     extensions: memoizedExtensions,
     editorProps: memoizedEditorProps,
     content: initialContentRef.current,
     immediatelyRender: false,
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor, transaction }) => {
+      // Some editor commands, including Shift+Enter, update the document without requesting scroll.
+      if (!transaction.scrolledIntoView) revealCaret?.(editor.view);
       const markdown =
         ((editor.storage as { markdown?: { getMarkdown?: () => string } }).markdown?.getMarkdown?.() ??
           '');
