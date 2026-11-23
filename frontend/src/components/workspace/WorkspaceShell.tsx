@@ -37,7 +37,8 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
   const navigation = useWorkspaceNavigation();
   const { preferences, setPreferences, storageError, theme } = useWorkspacePreferences();
   const [user, setUser] = useState<User | null>(null);
-  const { recentNotes, setRecentNotes, status: recentStatus, retry: retryRecentNotes } = useWorkspaceRecentNotes(user?.id ?? null, pathname);
+  const isProfile = pathname.startsWith('/profile');
+  const { recentNotes, setRecentNotes, status: recentStatus, retry: retryRecentNotes } = useWorkspaceRecentNotes(user?.id ?? null, isProfile ? pathname : null);
   const [count, setCount] = useState(0);
   const [notesCalendarVersion, setNotesCalendarVersion] = useState(0);
   const refreshNotesCalendar = useCallback(() => setNotesCalendarVersion(version => version + 1), []);
@@ -157,7 +158,7 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
       {drawerOpen && <button type="button" className={styles.scrim} aria-label="关闭侧栏" onClick={() => setDrawerOpen(false)} />}
       <aside className={styles.sidebar} ref={sidebarRef} aria-label="工作区侧栏" aria-hidden={narrow && !drawerOpen || undefined} role={narrow && drawerOpen ? 'dialog' : undefined} aria-modal={narrow && drawerOpen || undefined}>
         <div className={styles.brandRow}><a href="/notes" className={styles.brand} aria-label="NoteWithAI 笔记首页"><span className={styles.brandMark}><BrandIcon size={29} /></span><span className={styles.expandedLabel}>NoteWithAI</span></a><button type="button" className={`${styles.iconButton} ${styles.collapse}`} aria-label="收起侧栏" onClick={() => { setPreferences(previous => ({ ...previous, collapsed: true })); setDrawerOpen(false); }}><PanelLeft size={18} /></button></div>
-        {pathname.startsWith('/profile') && <a href="/notes?compose=1" className={styles.newNote}><Plus size={18} strokeWidth={1.75} /><span className={styles.expandedLabel}>新建笔记</span></a>}
+        {isProfile && <a href="/notes?compose=1" className={styles.newNote}><Plus size={18} strokeWidth={1.75} /><span className={styles.expandedLabel}>新建笔记</span></a>}
         <nav aria-label="主导航" className={styles.mainNav}>{links.map(({ href, label: itemLabel, Icon }) => <a key={href} href={href} title={itemLabel} aria-label={itemLabel} aria-current={pathname.startsWith(href) ? 'page' : undefined}><Icon size={18} strokeWidth={1.75} /><span className={styles.expandedLabel}>{itemLabel}</span>{href === '/inspiration' && count > 0 && <span className={styles.badge} aria-label={`${count} 条新灵感`}>{count > 99 ? '99+' : count}</span>}</a>)}</nav>
         {pathname.startsWith('/chat') ? (
           <section className={styles.chatSection} aria-label="对话历史">
@@ -183,7 +184,19 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
               ) : <p>正在加载对话历史…</p>}
             </div>
           </section>
-        ) : pathname.startsWith('/notes') ? <section className={`${styles.notesCalendar} ${styles.expandedLabel}`} aria-label="记录月历"><NotesCalendar userId={user?.id ?? null} version={notesCalendarVersion} /></section> : <section className={`${styles.recent} ${styles.expandedLabel}`} aria-label="最近笔记"><h2>最近笔记</h2>{recentNotes.length ? <div>{recentNotes.map(note => <a key={note.id} href={note.href} title={note.title}>{note.title}</a>)}</div> : recentStatus === 'error' ? <><p role="alert">最近笔记加载失败。</p><button type="button" className={styles.button} aria-label="重试最近笔记" onClick={retryRecentNotes}>重试</button></> : <p>{recentStatus === 'ready' ? '还没有笔记。' : recentStatus === 'idle' ? '登录后查看最近笔记。' : '正在加载最近笔记…'}</p>}</section>}
+        ) : pathname.startsWith('/notes') ? (
+          <section className={`${styles.notesCalendar} ${styles.expandedLabel}`} aria-label="记录月历">
+            <NotesCalendar userId={user?.id ?? null} version={notesCalendarVersion} />
+          </section>
+        ) : isProfile ? (
+          <section className={`${styles.recent} ${styles.expandedLabel}`} aria-label="最近笔记">
+            <h2>最近笔记</h2>
+            {recentNotes.length ? <div>{recentNotes.map(note => <a key={note.id} href={note.href} title={note.title}>{note.title}</a>)}</div> : recentStatus === 'error' ? <>
+              <p role="alert">最近笔记加载失败。</p>
+              <button type="button" className={styles.button} aria-label="重试最近笔记" onClick={retryRecentNotes}>重试</button>
+            </> : <p>{recentStatus === 'ready' ? '还没有笔记。' : recentStatus === 'idle' ? '登录后查看最近笔记。' : '正在加载最近笔记…'}</p>}
+          </section>
+        ) : null}
         <div className={styles.accountArea} ref={accountMenuRef}>
           {accountOpen && <div className={styles.accountMenu} id="workspace-account-menu"><div className={styles.accountDetails}><strong>{user?.username || '我的账户'}</strong><span>{user?.email}</span></div><a href="/profile" onClick={() => setAccountOpen(false)}><UserRound size={17} />个人页面</a><button type="button" onClick={() => openSettings()}><Settings size={17} />设置</button><button type="button" onClick={() => { setAccountOpen(false); requestAction(logout); }}><LogOut size={17} />退出登录</button></div>}
           <button ref={accountRef} type="button" className={styles.accountButton} aria-label="账户菜单" aria-expanded={accountOpen} aria-controls="workspace-account-menu" onClick={() => setAccountOpen(value => !value)}><WorkspaceAvatar user={user} /><span className={`${styles.accountCopy} ${styles.expandedLabel}`}><strong>{user?.username || '我的账户'}</strong><small>个人工作区</small></span><ChevronDown size={15} className={styles.expandedLabel} /></button>

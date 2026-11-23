@@ -14,7 +14,7 @@ beforeEach(() => {
   mocks.fetch.mockImplementation(async (url:string) => ({ ok:true,json:async()=>url.includes('/calendar') ? {success:true,data:{month:new URL(url,'http://localhost').searchParams.get('month'),timezone:'Asia/Shanghai',noteCount:2,recordedDayCount:1,days:[]}} : {success:true,data:{notes:[{_id:'recent',title:'其他页面的最近笔记'}]}} }));
   Object.defineProperty(window,'matchMedia',{configurable:true,value:vi.fn(()=>({matches:false,addEventListener:vi.fn(),removeEventListener:vi.fn()}))});
 });
-it('replaces recent notes only inside the notes tab sidebar',async()=>{
+it('shows the calendar in Notes and recent notes only in Profile',async()=>{
   const view=render(<WorkspaceRoot><main>笔记正文</main></WorkspaceRoot>);
   const sidebar=screen.getByRole('complementary',{name:'工作区侧栏'});
   expect(await within(sidebar).findByRole('region',{name:'记录月历'})).toBeInTheDocument();
@@ -22,8 +22,11 @@ it('replaces recent notes only inside the notes tab sidebar',async()=>{
   expect(within(sidebar).queryByRole('region',{name:'最近笔记'})).not.toBeInTheDocument();
   expect(within(screen.getByRole('main')).queryByText('记录月历')).not.toBeInTheDocument();
   mocks.pathname='/inspiration';view.rerender(<WorkspaceRoot><main>灵感</main></WorkspaceRoot>);
-  expect(await within(sidebar).findByRole('link',{name:'其他页面的最近笔记'})).toBeInTheDocument();
   expect(within(sidebar).queryByRole('region',{name:'记录月历'})).not.toBeInTheDocument();
+  expect(within(sidebar).queryByRole('region',{name:'最近笔记'})).not.toBeInTheDocument();
+  expect(mocks.fetch.mock.calls.some(([url]) => url === '/api/notes')).toBe(false);
+  mocks.pathname='/profile';view.rerender(<WorkspaceRoot><main>个人页</main></WorkspaceRoot>);
+  expect(await within(sidebar).findByRole('link',{name:'其他页面的最近笔记'})).toBeInTheDocument();
 });
 it('refreshes sidebar calendar after notes write without resetting its selected month',async()=>{
   render(<WorkspaceRoot><Probe /></WorkspaceRoot>);

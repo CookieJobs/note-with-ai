@@ -66,7 +66,7 @@ describe('真实笔记页登记最近记录', () => {
     await waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1));
     await act(async () => first.reject(new Error('首屏读取失败')));
     expect(await screen.findByRole('alert')).toHaveTextContent('加载失败');
-    page.go('/inspiration');
+    page.go('/profile');
     expect(await recent().findByRole('link', { name: '真实服务笔记' })).toBeInTheDocument();
   });
 

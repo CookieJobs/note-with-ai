@@ -12,7 +12,7 @@ import type { WorkspaceRecentNote } from './WorkspaceContext';
 
 type Snapshot = { userId: string | null; status: 'idle' | 'loading' | 'ready' | 'error'; notes: WorkspaceRecentNote[] };
 
-export function useWorkspaceRecentNotes(userId: string | null, pathname: string) {
+export function useWorkspaceRecentNotes(userId: string | null, pathname: string | null) {
   const [snapshot, setSnapshot] = useState<Snapshot>({ userId: null, status: 'idle', notes: [] });
   const [attempt, setAttempt] = useState(0);
   const ownerRef = useRef({ userId, pathname });
@@ -35,7 +35,7 @@ export function useWorkspaceRecentNotes(userId: string | null, pathname: string)
   }, [userId]);
 
   useEffect(() => {
-    if (!userId || pathname.startsWith('/notes') || projectionUser.current === userId) return;
+    if (!userId || !pathname || projectionUser.current === userId) return;
     const owner = ownerRef.current;
     const controller = new AbortController();
     requestRef.current = controller;

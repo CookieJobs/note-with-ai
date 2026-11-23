@@ -94,6 +94,9 @@ describe('轻量最近笔记投影', () => {
     const view = render(<WorkspaceRoot><WorkspaceProbe /></WorkspaceRoot>);
     await waitFor(() => expect(fetchNotes).toHaveBeenCalledOnce());
     pathname.mockReturnValue('/inspiration'); view.rerender(<WorkspaceRoot><WorkspaceProbe /></WorkspaceRoot>);
+    expect(screen.queryByRole('region', { name: '最近笔记' })).not.toBeInTheDocument();
+    expect(fetchNotes).toHaveBeenCalledOnce();
+    pathname.mockReturnValue('/profile'); view.rerender(<WorkspaceRoot><WorkspaceProbe /></WorkspaceRoot>);
     expect(await screen.findByRole('link', { name: '当前路由记录' })).toBeInTheDocument();
     await act(async () => resolveOld(notesReply([{ _id: 'old', title: '旧路由迟到记录' }])));
     expect(screen.queryByRole('link', { name: '旧路由迟到记录' })).not.toBeInTheDocument();
