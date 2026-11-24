@@ -54,6 +54,8 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
   const inspirationSettings = useInspirationSettings(user?.id);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
+  const [sidebarMotion, setSidebarMotion] = useState<'desktop' | 'drawer' | null>(null);
+  const [noteEditorActive, setNoteEditorActive] = useState(false);
   const accountRef = useRef<HTMLButtonElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLDialogElement>(null);
@@ -63,7 +65,11 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
   useEffect(() => { setUser(getUser()); }, [pathname, settingsOpen]);
   useEffect(() => {
     const query = window.matchMedia('(max-width: 980px)');
-    const update = () => { setNarrow(query.matches); if (!query.matches) setDrawerOpen(false); };
+    const update = () => {
+      setNarrow(query.matches);
+      setSidebarMotion(null);
+      if (!query.matches) setDrawerOpen(false);
+    };
     update(); query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
   }, []);
@@ -88,6 +94,12 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
     else if (!navigation.pending && dialog?.open) dialog.close();
   }, [navigation.pending]);
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
+  useEffect(() => {
+    sidebarRef.current?.toggleAttribute('inert', noteEditorActive || (narrow && !drawerOpen));
+  }, [noteEditorActive, narrow, drawerOpen]);
+  useEffect(() => {
+    if (noteEditorActive) setDrawerOpen(false);
+  }, [noteEditorActive]);
   useEffect(() => {
     if (!drawerOpen) return;
     const sidebar = sidebarRef.current;
@@ -139,15 +151,24 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
     userRef.current = next; setUser(next);
     try { localStorage.setItem('user', JSON.stringify(next)); } catch { /* The server save remains valid if local cache is unavailable. */ }
   }, []);
-  const [noteEditorActive, setNoteEditorActive] = useState(false);
-  useEffect(() => {
-    sidebarRef.current?.toggleAttribute('inert', noteEditorActive);
-    if (noteEditorActive) setDrawerOpen(false);
-  }, [noteEditorActive]);
   const [topbarBack, setTopbarBack] = useState<HTMLDivElement | null>(null);
   const [topbarActions, setTopbarActions] = useState<HTMLDivElement | null>(null);
   const context = useMemo(() => ({ navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar, topbarBack, topbarActions, setNoteEditorActive }), [navigate, requestAction, registerEditor, setRecentNotes, user, openSettings, openAccountDialog, registerChatNavigation, inspirationSettings, refreshNotesCalendar, topbarBack, topbarActions]);
   const closeSettings = () => { setSettingsOpen(false); };
+  const collapseSidebar = () => {
+    if (!narrow) setSidebarMotion('desktop');
+    setPreferences(previous => ({ ...previous, collapsed: true }));
+    setDrawerOpen(false);
+  };
+  const expandSidebar = () => {
+    if (window.matchMedia('(max-width: 980px)').matches) {
+      setSidebarMotion('drawer');
+      setDrawerOpen(true);
+    } else {
+      setSidebarMotion('desktop');
+      setPreferences(previous => ({ ...previous, collapsed: false }));
+    }
+  };
   const interceptLink = (event: MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !(event.target instanceof Element)) return;
     const link = event.target.closest('a');
@@ -158,11 +179,11 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
   };
 
   return <WorkspaceContext.Provider value={context}>
-    <div className={styles.root} data-workspace="" data-theme={theme} data-reading-size={preferences.readingSize} data-reduce-motion={preferences.reduceMotion || undefined} data-collapsed={preferences.collapsed} data-drawer-open={drawerOpen} data-note-editor-active={noteEditorActive || undefined} onClick={interceptLink}>
+    <div className={styles.root} data-workspace="" data-theme={theme} data-reading-size={preferences.readingSize} data-reduce-motion={preferences.reduceMotion || undefined} data-collapsed={preferences.collapsed} data-sidebar-motion={sidebarMotion || undefined} data-drawer-open={drawerOpen} data-note-editor-active={noteEditorActive || undefined} onClick={interceptLink}>
       <a className={styles.skip} href="#workspace-content">跳到主要内容</a>
-      {drawerOpen && <button type="button" className={styles.scrim} aria-label="关闭侧栏" onClick={() => setDrawerOpen(false)} />}
+      <button type="button" className={styles.scrim} tabIndex={-1} aria-label="关闭侧栏" aria-hidden={!drawerOpen || undefined} onClick={() => setDrawerOpen(false)} />
       <aside className={styles.sidebar} ref={sidebarRef} aria-label="工作区侧栏" aria-hidden={narrow && !drawerOpen || undefined} role={narrow && drawerOpen ? 'dialog' : undefined} aria-modal={narrow && drawerOpen || undefined}>
-        <div className={styles.brandRow}><a href="/notes" className={styles.brand} aria-label="NoteWithAI 笔记首页"><span className={styles.brandMark}><BrandIcon size={29} /></span><span className={styles.expandedLabel}>NoteWithAI</span></a><button type="button" className={`${styles.iconButton} ${styles.collapse}`} aria-label="收起侧栏" onClick={() => { setPreferences(previous => ({ ...previous, collapsed: true })); setDrawerOpen(false); }}><PanelLeft size={18} /></button></div>
+        <div className={styles.brandRow}><a href="/notes" className={styles.brand} aria-label="NoteWithAI 笔记首页"><span className={styles.brandMark}><BrandIcon size={29} /></span><span className={styles.expandedLabel}>NoteWithAI</span></a><button type="button" className={`${styles.iconButton} ${styles.collapse}`} aria-label="收起侧栏" onClick={collapseSidebar}><PanelLeft size={18} /></button></div>
         {isProfile && <a href="/notes?compose=1" className={styles.newNote}><Plus size={18} strokeWidth={1.75} /><span className={styles.expandedLabel}>新建笔记</span></a>}
         <nav aria-label="主导航" className={styles.mainNav}>{links.map(({ href, label: itemLabel, Icon }) => <a key={href} href={href} title={itemLabel} aria-label={itemLabel} aria-current={pathname.startsWith(href) ? 'page' : undefined}><Icon size={18} strokeWidth={1.75} /><span className={styles.expandedLabel}>{itemLabel}</span>{href === '/inspiration' && count > 0 && <span className={styles.badge} aria-label={`${count} 条新灵感`}>{count > 99 ? '99+' : count}</span>}</a>)}</nav>
         {pathname.startsWith('/chat') ? (
@@ -191,7 +212,9 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
           </section>
         ) : pathname.startsWith('/notes') ? (
           <section className={`${styles.notesCalendar} ${styles.expandedLabel}`} aria-label="记录月历">
-            <NotesCalendar userId={user?.id ?? null} version={notesCalendarVersion} />
+            <div className={styles.notesCalendarScroll}>
+              <NotesCalendar userId={user?.id ?? null} version={notesCalendarVersion} />
+            </div>
           </section>
         ) : isProfile ? (
           <section className={`${styles.recent} ${styles.expandedLabel}`} aria-label="最近笔记">
@@ -208,7 +231,7 @@ export default function WorkspaceShell({ pathname, children }: { pathname: strin
         </div>
       </aside>
       <div className={styles.main}>
-        <header className={styles.topbar}><button type="button" className={`${styles.iconButton} ${styles.expand}`} aria-label="展开侧栏" onClick={() => { if (window.matchMedia('(max-width: 980px)').matches) setDrawerOpen(true); else setPreferences(previous => ({ ...previous, collapsed: false })); }}><PanelLeft size={19} /></button>
+        <header className={styles.topbar}><button type="button" className={`${styles.iconButton} ${styles.expand}`} aria-label="展开侧栏" onClick={expandSidebar}><PanelLeft size={19} /></button>
           <div className={styles.topbarBack} ref={setTopbarBack} />
           <div className={styles.topbarActions} ref={setTopbarActions} />
         </header>
