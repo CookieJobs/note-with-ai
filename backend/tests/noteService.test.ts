@@ -57,3 +57,33 @@ describe('noteService maintenance recovery', () => {
     assert.equal(set.analysisError, '笔记数量不足，画像已转为历史快照');
   });
 });
+
+
+it('applies simultaneous melts once each, including when historical frost fields are missing', async ({ mock }) => {
+  type StoredFrost = { frostThawedAt?: Date | null; frostMelted?: number };
+  const stored: StoredFrost = {};
+  const createdAt = new Date('2020-01-01T00:00:00Z');
+  mock.method(Note, 'findOne', () => {
+    const snapshot = { createdAt, ...stored };
+    return { ...snapshot, select: () => ({ lean: async () => snapshot }) };
+  });
+  mock.method(Note, 'updateOne', async (
+    filter: StoredFrost & { _id: string; userId: string },
+    update: { $set: StoredFrost },
+    options: { timestamps: boolean },
+  ) => {
+    assert.equal(filter._id, 'frozen');
+    assert.equal(filter.userId, 'owner');
+    assert.equal(options.timestamps, false);
+    const matches = (!('frostMelted' in filter) || (filter.frostMelted ?? null) === (stored.frostMelted ?? null))
+      && (!('frostThawedAt' in filter) || (filter.frostThawedAt ?? null) === (stored.frostThawedAt ?? null));
+    if (matches) Object.assign(stored, update.$set);
+    return { matchedCount: Number(matches) };
+  });
+  const results = await Promise.all([
+    noteService.meltNoteFrost('owner', 'frozen'),
+    noteService.meltNoteFrost('owner', 'frozen'),
+  ]);
+  assert.deepEqual(results.map(result => result.frostLayers).sort(), [3, 4]);
+  assert.equal(stored.frostMelted, 2);
+});

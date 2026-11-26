@@ -1,6 +1,6 @@
 /*
 Input: 当前认证账号、笔记读写参数与只读查询条件
-Output: 笔记路由、全库字面量搜索和北京时间月历
+Output: 笔记路由、全库字面量搜索、北京时间月历与单层擦冰入口
 Pos: 笔记 API 路由；静态查询注册于 /:id 之前
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
@@ -61,6 +61,9 @@ router.post('/:id/embed', authenticateToken, validate(noteIdParamSchema), asyncH
 
 // 单条笔记 summary 重生成
 router.post('/:id/summary', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.regenerateSummary(req, res, next)));
+
+// 擦除一层时光冰层（只写 frost 状态，不改正文/revision）
+router.post('/:id/frost/melt', authenticateToken, validate(noteIdParamSchema), asyncHandler((req, res, next) => noteController.meltFrost(req, res, next)));
 
 // 更新笔记标题
 router.post('/:id', authenticateToken, rejectRetiredKeywords, validate(updateTitleSchema), asyncHandler((req, res, next) => noteController.updateTitle(req, res, next)));

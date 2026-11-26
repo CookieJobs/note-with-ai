@@ -6,7 +6,7 @@
 
 [NotesFeed](components/NotesFeed.tsx) 按返回数据顺序逐张放入当前最短列，DOM 与键盘顺序保持创建时间倒序。ResizeObserver 仅测量列表内卡片，返回阅读时保持已加载范围、搜索条件、滚动与焦点；阅读使用现有窄内容列。新建和编辑以浮层托起原富文本编辑器，卡片相对视口居中，返回笔记在卡片上方左对齐。新建用返回笔记离开，编辑已有笔记另有返回阅读入口。首图复用 noteReferenceDisplay，资源失败降级；不引入列表富文本编辑器。
 
-[useNoteSearch](hooks/useNoteSearch.ts) 为独立只读查询，不改变 useNotes 的普通列表、mutation、revision、临时笔记或富化轮询机制。关键词 300ms 防抖、输入法组字结束后查询，GET `/api/notes?q=...` 全库字面量匹配；普通列表、各关键词分页及滚动位置独立保留。缓存限定当前挂载页面和账号，切换账号清空；请求带取消信号且校验当前查询版本，迟到响应不能回填。新建、编辑或删除成功后更新只读查询版本；重新验证先前已加载的搜索页数，不把不匹配笔记塞入搜索，也不污染侧栏最近笔记。
+[useNoteSearch](hooks/useNoteSearch.ts) 独立查询，清雪成功后同步缓存中已存在的匹配卡片。关键词 300ms 防抖、输入法组字结束后查询，GET `/api/notes?q=...` 全库字面量匹配；普通列表、各关键词分页及滚动位置独立保留。缓存限定当前挂载页面和账号，切换账号清空；请求带取消信号且校验当前查询版本，迟到响应不能回填。新建、编辑或删除成功后更新只读查询版本；重新验证先前已加载的搜索页数，不把不匹配笔记塞入搜索，也不污染侧栏最近笔记。
 
 [NotesCalendar](components/NotesCalendar.tsx) 和 [useNoteCalendar](hooks/useNoteCalendar.ts) 展示真实月份、笔记数和记录天数。数据来自 `/api/notes/calendar?month=YYYY-MM`，固定北京时间，按创建日期统计当前仍存在的笔记；搜索不改变统计，日期不可点击筛选。月历由工作区外壳在笔记 tab 的侧栏渲染，替换最近笔记，不占卡片区宽度；笔记阅读和编辑时仍保留，折叠 / 抽屉沿用侧栏行为。页面在创建 / 删除成功后通过 refreshNotesCalendar 通知外壳刷新。创建 / 删除成功刷新统计，编辑正文不刷新；切月和账号切换阻止旧数据回填。错误局部重试，不以 0 代替失败。
 
@@ -33,6 +33,12 @@
 总规则见 [DESIGN.md](../../../../DESIGN.md)、[现行架构](../../../../ARCHITECTURE_DOCUMENTATION.md)。回归入口为 `page*.test.tsx`、[编辑器保存保护](hooks/useNoteEditor.workspace.test.tsx)和 [useCreateNote.test.tsx](hooks/useCreateNote.test.tsx)；执行结果属于版本记录。列表新增验证入口为 `page.feed.test.tsx`、`useNoteSearch.test.tsx`、`useNoteCalendar.test.tsx` 与 `noteFeed.test.ts`；侧栏位置及刷新验证见 `Workspace.notes-calendar.test.tsx`。
 
 快速记录、搜索、卡片和月历使用工作区共享 tokens。卡片直接展示标题或正文，标题两行截断、摘要六行，沿用图片回退及 API 顺序。月历按 0、1、2–3、4–6、7 篇及以上显示固定色阶，今天用独立描边标记，悬停显示确切数量。
+
+## 顶部积雪
+
+笔记在创建或上次清空积雪后重新计时，卡片顶部最多累积 5 层雪。层数由服务端投影为 `frostLayers`。清空后最早 7 天长出新的一层。[NoteSnow](components/NoteSnow.tsx) 按笔记 ID 与层数生成右上角的霜区和冰晶位置。清雪后霜区收窄，冰晶分别滑向新位置，最后一层向窗角淡出。顶部按本次浏览的最大积雪状态留白，连续清雪时保持卡片高度和瀑布流位置。
+
+[NotesFeed](components/NotesFeed.tsx) 在卡片悬停或键盘聚焦时显示清雪操作和剩余层数。触屏可直接点按卡片，正在清雪和失败重试的提示即时显示。每张卡一次处理一个清雪请求，服务端确认后同步最近记录及搜索缓存。最后一层清除后进入可阅读状态，悬停或键盘聚焦时显示「打开笔记」，再点进入阅读。请求失败保留原层数并提示重试。每张卡复用同一组冰晶，减少动态效果时直接切换位置。验证入口为 `NotesFeed.test.tsx`、`page.feed.test.tsx`、`useNotes.test.tsx`、`useNoteSearch.test.tsx`。
 
 ## 从你的笔记继续
 

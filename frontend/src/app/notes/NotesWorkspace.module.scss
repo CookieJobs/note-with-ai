@@ -203,7 +203,8 @@ button.editorBack {
 .feedLayout { min-width: 0; }
 .feedMain { min-width: 0; }
 .noteFeed { position: relative; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-button.noteCard { display: flex; flex-direction: column; gap: 13px; width: 100%; padding: 21px; margin: 0; text-align: left; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-card); background: var(--ws-surface); color: var(--ws-ink); box-shadow: var(--ws-shadow); overflow: hidden;
+.cardShell { position: relative; min-width: 0; }
+button.noteCard { position: relative; display: flex; flex-direction: column; gap: 13px; width: 100%; padding: calc(20px + var(--card-snow-space, 0px)) 21px 21px; margin: 0; text-align: left; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-card); background: var(--ws-surface); color: var(--ws-ink); box-shadow: var(--ws-shadow); overflow: hidden;
   &:hover { border-color: var(--ws-accent-border); box-shadow: var(--ws-shadow-hover); }
   &:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: 3px; }
 }
@@ -213,6 +214,39 @@ button.noteCard { display: flex; flex-direction: column; gap: 13px; width: 100%;
   img { display: block; width: 100%; height: 100%; object-fit: cover; }
 }
 .cardMeta { color: var(--ws-muted); font-size: 12px; line-height: 1.6; margin-top: 2px; }
+button.noteCard[data-frozen] {
+  &:hover { border-color: rgba(150, 196, 240, .6); box-shadow: 0 8px 24px rgba(120, 170, 220, .12); }
+}
+.frostHint {
+  visibility: hidden;
+  position: absolute;
+  z-index: 5;
+  left: 21px;
+  top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: #2c5f9e;
+  background: rgba(255, 255, 255, .82);
+  box-shadow: 0 2px 10px rgba(80, 130, 190, .18), inset 0 0 0 1px rgba(150, 196, 240, .5);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+  svg { width: 13px; height: 13px; }
+}
+button.noteCard:focus-visible .frostHint,
+.frostHint[data-feedback] { visibility: visible; }
+
+@media (hover: hover) {
+  button.noteCard:hover .frostHint { visibility: visible; }
+}
+
+:global([data-workspace][data-theme='dark']) .frostHint { color: #cfe2f7; background: rgba(28, 38, 52, .78); box-shadow: 0 2px 10px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(160, 200, 245, .4); }
 .calendar {
   --calendar-cell-size: 27px;
   --calendar-cell-gap: 6px;

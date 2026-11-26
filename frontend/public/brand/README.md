@@ -16,6 +16,6 @@
 | src/app/favicon.ico | 包含 16/32/48px PNG 的 ICO，Next.js 自动生成兼容图标标签；浏览器标签页优先使用它 |
 | src/app/apple-icon.png | 180px 不透明白色画布，居中 120px 图形，适配 Apple 主屏幕 |
 
-文件约定是唯一图标元数据来源，根 layout 不再手写 icons。项目当前没有 Web App Manifest / PWA，192/512px PNG 仅作为后续可复用素材，不代表新增 PWA 功能。不要另外添加 `public/icon.svg` 或 `public/favicon.ico`，避免与 App Router 路径冲突。
+生产环境采用 App Router 文件约定。本地开发时根布局复用带版本号的 `/brand/icon-32.png` 来更新 Chrome 的本地图标缓存。项目当前没有 Web App Manifest / PWA，192/512px PNG 仅作为后续可复用素材，不代表新增 PWA 功能。不要另外添加 `public/icon.svg` 或 `public/favicon.ico`，避免与 App Router 路径冲突。
 
 界面统一使用 `src/components/brand/BrandIcon.tsx`，加载 `/brand/icon-192.png`；图形和 NoteWithAI 文字独立排版。修改母版后重新运行生成命令，不手改生成的图标。`icon.png` 与 Apple 图标由 Next.js 更新哈希；部分浏览器仍长期缓存固定路径 `favicon.ico`，上线后可能需要关闭旧标签页并重新打开或强制刷新。

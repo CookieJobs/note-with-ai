@@ -65,7 +65,7 @@ function NotesContent() {
   const listScroll = useRef(0);
   const createdNote = useRef<Note | null>(null);
   const user = useAuthGuard({ isAuthenticated, getUser, routerPush: router.push, redirectTo: '/auth' });
-  const { notes, isLoading, isSuccess, deleteNote, createNote, updateNote, refreshRecommendCache, refetchNotes,
+  const { notes, isLoading, isSuccess, deleteNote, createNote, updateNote, refreshRecommendCache, meltFrost, refetchNotes,
     loadMoreNotes, hasMoreNotes, isLoadingMore, loadMoreError } = useNotes(user, { onError: setError });
   const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
@@ -75,6 +75,12 @@ function NotesContent() {
   const lastOpened = useRef<string | null>(null);
   const lastOpenedIndex = useRef(0);
   const search = useNoteSearch(user?.id ?? null, query, readVersion);
+  const { applyFrostLayers } = search;
+  const clearFrost = useCallback(async (id: string) => {
+    const layers = await meltFrost(id);
+    if (layers != null) applyFrostLayers(id, layers);
+    return layers;
+  }, [meltFrost, applyFrostLayers]);
   const listNotes = query ? search.notes : notes;
   useEffect(() => {
     if (composingSearch) return;
@@ -294,7 +300,7 @@ function NotesContent() {
               {(query ? search.isLoading : isLoading && !notes.length) ? <p className={styles.empty} role="status">{query ? '正在搜索笔记…' : '正在加载笔记…'}</p> : !listNotes.length && !(query ? search.error : error) ? <div className={styles.empty}>
                 <h3>{query ? '没有找到相关笔记' : '从一个想法开始'}</h3>
                 {query ? <button type="button" className={styles.button} onClick={() => { setSearchInput(''); setQuery(''); }}>清除搜索条件</button> : <p>写下此刻的思考，让它们慢慢产生联系。</p>}
-              </div> : <NotesFeed notes={listNotes} onOpen={openNote} />}
+              </div> : <NotesFeed notes={listNotes} onOpen={openNote} onMelt={clearFrost} />}
               {!!listNotes.length && <footer className={styles.listFooter}>
                 {(query ? search.loadMoreError : loadMoreError) && <p role="alert" className={styles.error}>{query ? search.loadMoreError : loadMoreError}</p>}
                 {(query ? search.hasMore || search.loadMoreError : hasMoreNotes || loadMoreError) && <button type="button" className={styles.button} disabled={query ? search.isLoadingMore : isLoadingMore} onClick={() => { if (query) void search.loadMore(); else void loadMoreNotes(); }}>{(query ? search.isLoadingMore : isLoadingMore) ? '正在加载…' : (query ? search.loadMoreError : loadMoreError) ? '重试加载更早的笔记' : '加载更早的笔记'}</button>}

@@ -32,7 +32,7 @@ function makeResponse(): CapturedResponse {
 const canonicalResult = {
   note: {
     _id: 'note-1', content: '正文', contentText: '正文', contentJson: null, title: '正文',
-    summary: '', concepts: [], recommendCache: null, revision: 1,
+    summary: '', concepts: [], recommendCache: null, revision: 1, frostLayers: 0,
     createdAt: '2026-08-18T00:00:00.000Z', updatedAt: '2026-08-18T00:00:00.000Z',
   },
   enrichment: { sourceRevision: 1, status: 'pending' as const },

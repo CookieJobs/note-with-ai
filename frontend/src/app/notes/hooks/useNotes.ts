@@ -1,6 +1,6 @@
 /*
 Input: 当前用户与真实笔记服务、React Query 缓存
-Output: 笔记读写/分页及真实查询成功状态，供页面判定可登记投影
+Output: 笔记读写、清雪、分页及真实查询成功状态
 Pos: notes 数据 hook；修改时同步 ../README.md。
 */
 import { useEffect, useCallback, useRef, useState } from 'react';
@@ -135,6 +135,10 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
   const listGenerationRef = useRef(0);
+  const frostSession = useRef({ userId: user?.id, pending: new Map<string, Promise<number | null>>() });
+  if (frostSession.current.userId !== user?.id) {
+    frostSession.current = { userId: user?.id, pending: new Map() };
+  }
   const temporaryNoteIdsRef = useRef(new Set<string>());
   const nextCursorRef = useRef<string | null>(null);
   const [hasMoreNotes, setHasMoreNotes] = useState(false);
@@ -442,6 +446,32 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     return recommendCache;
   }, [commitNotesWrite, queryClient]);
 
+  const meltFrost = useCallback((noteId: string): Promise<number | null> => {
+    const session = frostSession.current;
+    const pending = session.pending.get(noteId);
+    if (pending) return pending;
+    const isCurrent = () => isMountedRef.current && frostSession.current === session;
+    const request = (async () => {
+      try {
+        const response = await authFetch(`/api/notes/${encodeURIComponent(noteId)}/frost/melt`, { method: 'POST' });
+        const payload: unknown = await response.json();
+        const layers = isRecord(payload) && payload.success === true && isRecord(payload.data)
+          ? payload.data.frostLayers : null;
+        if (!response.ok || typeof layers !== 'number' || !Number.isInteger(layers) || layers < 0) {
+          throw new Error('抖落积雪失败');
+        }
+        if (!isCurrent()) return null;
+        commitNotesWrite((notes = []) => notes.map((note) =>
+          note._id === noteId && note.frostLayers !== layers ? { ...note, frostLayers: layers } : note));
+        return layers;
+      } catch {
+        return null;
+      }
+    })().finally(() => session.pending.delete(noteId));
+    session.pending.set(noteId, request);
+    return request;
+  }, [commitNotesWrite]);
+
   const loadMoreNotes = useCallback(async () => {
     const cursor = nextCursorRef.current;
     if (!cursor || isLoadingMore) return;
@@ -474,6 +504,7 @@ export function useNotes(user: IUserProfile | null, options: UseNotesOptions = {
     createNote,
     updateNote,
     refreshRecommendCache,
+    meltFrost,
     refetchNotes: refetch,
     loadMoreNotes,
     hasMoreNotes,

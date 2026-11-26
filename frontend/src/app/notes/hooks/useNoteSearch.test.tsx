@@ -39,6 +39,19 @@ describe('independent read-only note search', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.notes).toEqual([]);
   });
+  it('keeps confirmed layers when an earlier search response finishes after a melt', async () => {
+    let finishSearch!: (response: unknown) => void;
+    authFetch.mockReturnValueOnce(new Promise(resolve => { finishSearch = resolve; }));
+    const { result } = renderHook(() => useNoteSearch('A', 'needle', 0));
+
+    act(() => result.current.applyFrostLayers('old', 0));
+    await act(async () => finishSearch({
+      ok: true,
+      json: async () => ({ success: true, data: { notes: [{ ...note('old'), frostLayers: 1 }], pageInfo: {} } }),
+    }));
+
+    expect(result.current.notes[0]?.frostLayers).toBe(0);
+  });
   it('distinguishes failures from zero matches and can retry', async () => {
     authFetch.mockRejectedValueOnce(Error('offline')).mockResolvedValue(reply([]));
     const { result } = renderHook(() => useNoteSearch('A', 'needle', 0));

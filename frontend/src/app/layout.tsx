@@ -1,6 +1,6 @@
 /*
 Input: 页面内容、全局服务及工作区路由边界
-Output: 公共Providers与标题元数据；图标由 App Router 文件约定统一管理
+Output: 公共 Providers、标题元数据及本地开发标签页图标
 Pos: 前端 模块
 Note: 一旦我被更新，务必更新我的开头注释，以及所属的文件夹的 README
 */
@@ -25,6 +25,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
+      {/* A distinct development URL refreshes Chrome's cached localhost favicon. */}
+      {process.env.NODE_ENV === 'development' && (
+        <head>
+          <link rel="icon" href="/brand/icon-32.png?v=local-1" type="image/png" sizes="32x32" />
+        </head>
+      )}
       {/* 主题背景/文字由 globals.scss 控制，避免被固定的 tailwind 背景色“压成纯色” */}
       <body className={interVariable}>
         <Providers>

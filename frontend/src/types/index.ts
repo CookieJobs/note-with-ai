@@ -131,6 +131,7 @@ export interface INote {
   recommendCache?: IRecommendCache | null;
   revision: number;
   enrichment?: INoteEnrichmentView;
+  frostLayers?: number;
   createdAt: string;
   updatedAt: string;
 }

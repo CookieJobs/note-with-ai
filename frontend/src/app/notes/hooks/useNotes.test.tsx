@@ -931,3 +931,31 @@ describe('useNotes cursor pagination', () => {
     expect(queryClient.getQueryData<Note[]>(['notes'])?.map((note) => note._id)).toEqual(['note-1']);
   });
 });
+
+
+it('clears a search-only card and joins a duplicate pending click', async () => {
+  const response = deferred<unknown>();
+  authFetch.mockReset().mockReturnValueOnce(response.promise);
+  const { wrapper } = makeHarness();
+  const { result } = renderHook(() => useNotes(null), { wrapper });
+
+  const first = result.current.meltFrost('search-only');
+  const duplicate = result.current.meltFrost('search-only');
+  expect(authFetch).toHaveBeenCalledExactlyOnceWith('/api/notes/search-only/frost/melt', { method: 'POST' });
+  response.resolve({ ok: true, json: async () => ({ success: true, data: { frostLayers: 0 } }) });
+  await act(async () => { expect(await Promise.all([first, duplicate])).toEqual([0, 0]); });
+});
+
+it('keeps the final layer until the service confirms the melt', async () => {
+  const response = deferred<unknown>();
+  authFetch.mockReset().mockReturnValueOnce(response.promise);
+  const { queryClient, wrapper } = makeHarness();
+  queryClient.setQueryData<Note[]>(['notes'], [{ ...staleNote, frostLayers: 1 }]);
+  const { result } = renderHook(() => useNotes(null), { wrapper });
+
+  const melt = result.current.meltFrost(staleNote._id);
+  expect(queryClient.getQueryData<Note[]>(['notes'])?.[0].frostLayers).toBe(1);
+  response.resolve({ ok: true, json: async () => ({ success: true, data: { frostLayers: 0 } }) });
+  await act(async () => { await melt; });
+  expect(queryClient.getQueryData<Note[]>(['notes'])?.[0].frostLayers).toBe(0);
+});

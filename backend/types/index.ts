@@ -82,6 +82,8 @@ export interface INote extends Document {
   embeddingMetadata?: INoteEmbeddingMetadata | null;
   revision: number;
   enrichment?: INoteEnrichmentState;
+  frostThawedAt?: Date | null;
+  frostMelted?: number;
   createdAt: Date;
   updatedAt: Date;
 }

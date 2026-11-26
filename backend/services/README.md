@@ -10,6 +10,10 @@
 
 验证：`noteListQueries.test.ts`、`noteReadQueries.test.ts`；真实 Mongo 查询测试 `noteReadQueries.mongo.test.ts` 默认跳过，只允许 `NOTE_READ_MONGO_TEST_URI=mongodb://127.0.0.1:27028/nwai_notes_feed_test_<suffix>` 的独立临时测试数据库，测试会清除该数据库，不能指向业务库。
 
+## 笔记时光冰封
+
+[noteFrost.ts](noteFrost.ts) 按笔记年龄投影最多 5 层积雪，首次为 2/7/21/60/180 天，清空后为 7/14/21/60/180 天。当前层数取本轮应结层数减去已擦层数，全部清空时重置本轮锚点。`POST /api/notes/:id/frost/melt` 经 [noteService.meltNoteFrost](noteService.ts) 按用户及原积雪状态条件更新，并在并发冲突时重新读取后重试。写入只更新积雪字段，保留正文 revision、`updatedAt` 及富化状态。普通 Note DTO 由 [toNoteDto](NoteUpdateOrchestrator.ts) 投影 `frostLayers`。验证入口为 `noteFrost.test.ts`、`noteService.test.ts`。
+
 ## 笔记写入与派生任务
 
 - [NoteUpdateOrchestrator.ts](NoteUpdateOrchestrator.ts) 是 Note 正文与标题的核心写入入口，提供 `create`、`update`，负责规范化、revision CAS、派生状态失效及任务安排。标题可空；标签写入返回 `NOTE_TAGS_RETIRED`。

@@ -82,6 +82,31 @@ describe('notes list feed integration', () => {
     fireEvent.click(screen.getByRole('button',{name:'清除搜索'}));
     expect(await screen.findByRole('button',{name:'阅读笔记：一条记录'})).toBeInTheDocument();
   });
+  it('opens a cleared search-only card and retains its clear state when revisiting the query', async () => {
+    const meltFrost = vi.fn().mockResolvedValue(0);
+    mocks.data.meltFrost = meltFrost;
+    mocks.fetch.mockResolvedValue({
+      ok: true, json: async () => ({
+        success: true,
+        data: { notes: [{ ...note, _id: 'outside', title: '库外积雪', frostLayers: 1 }], pageInfo: { hasMore: false } },
+      }),
+    });
+    renderPage();
+    const input = screen.getByRole('searchbox', { name: '搜索笔记' });
+    fireEvent.change(input, { target: { value: '库外' } });
+    fireEvent.click(await screen.findByRole('button', { name: '抖落积雪（还剩 1 层）：库外积雪' }));
+    expect(meltFrost).toHaveBeenCalledExactlyOnceWith('outside');
+    const clearCard = await screen.findByRole('button', { name: '阅读笔记：库外积雪' });
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '清除搜索' }));
+    expect(screen.getByRole('button', { name: '阅读笔记：一条记录' })).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: '库外' } });
+    fireEvent.click(await screen.findByRole('button', { name: '阅读笔记：库外积雪' }));
+    expect(clearCard).not.toHaveAttribute('data-frozen');
+    expect(mocks.push).toHaveBeenCalledWith('/notes?highlight=outside', { scroll: false });
+  });
+
   it('keeps the shared query focused when a topbar search makes the list shorter', async () => {
     const topbarActions = document.createElement('div');
     document.body.append(topbarActions);

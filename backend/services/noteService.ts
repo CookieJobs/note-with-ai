@@ -19,6 +19,7 @@ import {
 } from './NoteUpdateOrchestrator';
 import { runProductionNoteEnrichmentTask } from './noteEnrichmentWorker';
 import { decodeNoteCursor, encodeNoteCursor, parseNotePageLimit } from './noteListCursor';
+import { meltOneFrostLayer } from './noteFrost';
 import { invalidateDiscoverySourceBestEffort } from './noteDiscoveryService';
 
 type NoteListItem = NoteDto & { enrichment: ReturnType<typeof getEnrichmentView> };
@@ -77,6 +78,29 @@ class NoteService {
     if (!note) throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
     const value = typeof note.toObject === 'function' ? note.toObject() : note;
     return { ...toNoteDto(value), enrichment: getEnrichmentView(value) };
+  }
+
+  // 擦除一层时光冰层。只写 frost 字段，不触碰 updatedAt/revision，也不触发富化或发现调度。
+  async meltNoteFrost(userId: string, noteId: string): Promise<{ frostLayers: number }> {
+    const identity = { _id: noteId, userId };
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      // Lean reads preserve missing legacy fields so null can match both missing and explicit null.
+      const note = await Note.findOne(identity).select('createdAt frostThawedAt frostMelted').lean();
+      if (!note) throw ErrorHandler.createNotFoundError('笔记不存在或无权限');
+      const result = meltOneFrostLayer({
+        createdAt: note.createdAt,
+        thawedAt: note.frostThawedAt,
+        melted: note.frostMelted,
+      });
+      if (!result.changed) return { frostLayers: result.layers };
+      const written = await Note.updateOne(
+        { ...identity, frostThawedAt: note.frostThawedAt ?? null, frostMelted: note.frostMelted ?? null },
+        { $set: { frostThawedAt: result.thawedAt, frostMelted: result.melted } },
+        { timestamps: false },
+      );
+      if (written.matchedCount === 1) return { frostLayers: result.layers };
+    }
+    throw ErrorHandler.createDatabaseError('积雪状态更新冲突，请重试');
   }
 
   async createNote(userId: string, data: Pick<CreateNoteInput, 'body' | 'title'>): Promise<NoteWriteResult> {

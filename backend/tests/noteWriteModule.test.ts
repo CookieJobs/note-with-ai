@@ -238,7 +238,8 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
       body: { kind: 'plain-text', text: '  第一行\r\n\r\n第二行  ' },
     });
 
-    assert.deepEqual(result.note, {
+    const { frostLayers, ...noteFields } = result.note;
+    assert.deepEqual(noteFields, {
       _id: 'note-1',
       content: '第一行\n\n第二行',
       contentText: '第一行\n\n第二行',
@@ -251,6 +252,7 @@ describe('NoteUpdateOrchestrator public create/update contract', () => {
       createdAt: '2026-08-18T00:00:00.000Z',
       updatedAt: '2026-08-18T00:00:00.000Z',
     });
+    assert.ok(Number.isInteger(frostLayers) && frostLayers >= 0 && frostLayers <= 5);
     assert.deepEqual(result.enrichment, { sourceRevision: 1, status: 'pending' });
     assert.deepEqual(scheduler.tasks.map((task) => task.artifact), ['meta', 'embedding', 'recommendations']);
     assert.ok(scheduler.tasks.every((task) => task.sourceRevision === 1));

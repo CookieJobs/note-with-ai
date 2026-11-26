@@ -253,6 +253,14 @@ class NoteController {
     ResponseHandler.success(res, { summary }, 'summary 生成成功');
   }
 
+  // POST /:id/frost/melt
+  async meltFrost(req: Request, res: Response, next: NextFunction) {
+    const id = requireSingleRouteParam(req.params.id, 'id');
+    const user = await UserValidator.authenticateUser(req);
+    const result = await noteService.meltNoteFrost(user._id.toString(), id);
+    ResponseHandler.success(res, result, '冰层已擦除');
+  }
+
   // PATCH /:id
   async updateNote(req: Request, res: Response, next: NextFunction) {
     const id = requireSingleRouteParam(req.params.id, 'id');

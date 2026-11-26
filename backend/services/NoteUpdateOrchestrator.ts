@@ -9,6 +9,7 @@ import {
 import { createProductionNoteEnrichmentScheduler } from './noteEnrichmentWorker';
 import { invalidateDiscoverySourceBestEffort } from './noteDiscoveryService';
 import { noteDiscoveryScheduleService } from './noteDiscoveryScheduleService';
+import { currentFrostLayers } from './noteFrost';
 import logger from '../utils/logger';
 
 export type NoteBodyInput =
@@ -37,6 +38,7 @@ export type NoteDto = {
   concepts: string[];
   recommendCache: Record<string, unknown> | null;
   revision: number;
+  frostLayers: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -95,6 +97,8 @@ type NoteRecord = {
   recommendCache?: unknown;
   revision?: unknown;
   enrichment?: unknown;
+  frostThawedAt?: unknown;
+  frostMelted?: unknown;
   createdAt: unknown;
   updatedAt: unknown;
 };
@@ -246,6 +250,11 @@ export function toNoteDto(value: NoteRecord): NoteDto {
     concepts: asStringArray(value.concepts),
     recommendCache,
     revision: asRevision(value.revision),
+    frostLayers: currentFrostLayers({
+      createdAt: toIsoDate(value.createdAt),
+      thawedAt: value.frostThawedAt ? toIsoDate(value.frostThawedAt) : null,
+      melted: typeof value.frostMelted === 'number' ? value.frostMelted : 0,
+    }),
     createdAt: toIsoDate(value.createdAt),
     updatedAt: toIsoDate(value.updatedAt),
   };

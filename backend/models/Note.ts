@@ -90,6 +90,9 @@ const NoteSchema = new mongoose.Schema(
     topicIndexScheduled: { type: mongoose.Schema.Types.Mixed, select: false },
     // 仅用于内部 freshness 与降级投影，不会进入普通 Note DTO。
     enrichment: { type: NoteEnrichmentSchema, default: null },
+    // 时光冰封：本轮消融锚点（擦净最后一层的时刻）与本轮已擦层数；投影为 frostLayers，不直接暴露原始字段。
+    frostThawedAt: { type: Date, default: null },
+    frostMelted: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true } // 自动添加 createdAt 和 updatedAt 字段
 );

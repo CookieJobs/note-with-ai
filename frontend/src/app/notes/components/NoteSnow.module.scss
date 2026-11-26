@@ -1,0 +1,41 @@
+/* The frost footprint shrinks while the crystals move within a stable corner frame. */
+.corner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  width: min(184px, 66%);
+  pointer-events: none;
+  --frost-color: #517ba3;
+  --frost-glow: #c6def3;
+  --frost-wash: #dfeefa;
+  --frost-ease: cubic-bezier(.35, .14, .3, 1);
+  --frost-duration: 650ms;
+}
+
+.haze {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: radial-gradient(ellipse at 98% 2%, var(--frost-glow), var(--frost-wash) 31%, transparent 74%);
+  transition: width var(--frost-duration) var(--frost-ease), height var(--frost-duration) var(--frost-ease), opacity 560ms ease-out;
+}
+
+.crystal {
+  position: absolute;
+  color: var(--frost-color);
+  transform: translate(50%, -50%) rotate(var(--frost-angle));
+  transition: right var(--frost-duration) var(--frost-ease), top var(--frost-duration) var(--frost-ease),
+    transform var(--frost-duration) var(--frost-ease), opacity 560ms ease-out;
+  transition-delay: var(--frost-delay);
+}
+
+:global([data-workspace][data-theme='dark']) .corner {
+  --frost-color: #d0e6f8;
+  --frost-glow: #6b88a4;
+  --frost-wash: #43586e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .haze, .crystal { transition: none; }
+}
