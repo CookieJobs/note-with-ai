@@ -30,7 +30,9 @@
 
 ## 自动发现笔记延续
 
-`NOTE_DISCOVERY_ENABLED` 默认 false。即使打开，也需 `NOTE_DISCOVERY_PRICED_MODEL` 精确匹配模型、输入/输出及 embedding 单价已填、priced embedding provider/model 匹配，并配置 `NOTE_DISCOVERY_USER_DAILY_CNY`、`NOTE_DISCOVERY_GLOBAL_DAILY_CNY`、`NOTE_DISCOVERY_RUN_RESERVATION_CNY`；否则 fail closed。单价不得从测试 fixture 复制。API 与独立 worker 必须使用同一套核实后的配置。硬上限是 3 次模型、8 次工具、12 篇、24000 输入 / 4000 输出 tokens、90 秒，配置只可缩小。完整真实模型评估、预算及观测定义见[评估说明](note-continuation-evaluation.md)。
+在「AI 使用 → 笔记发现 Agent → 配置计费与预算」，所有者可录入生成模型输入、输出及向量模型单价（人民币元／百万 Token），以及每用户每日、全局每日和单次预留上限（人民币元）。表单以部署中的模型为准，模型、供应商和密钥仍由部署管理。保存后 API 与独立 worker 共用 MongoDB 中的设置，无需重启。修改前先关闭环境总开关，填好后单独开启。部署更换模型后，需要针对新模型重新确认单价。
+
+首次在后台保存前沿用既有 `NOTE_DISCOVERY_*` 部署配置，默认关闭。硬上限是 3 次模型、8 次工具、12 篇、24000 输入 / 4000 输出 tokens、90 秒。单价核实、真实模型评估和观测定义见[评估说明](note-continuation-evaluation.md)。
 
 本地和生产分别在各自数据库保存试用权限。管理员登录 `/admin/users`，按邮箱定位账号，在用户详情的「笔记发现 Agent」中开放或撤销试用。管理操作使用既有的管理员权限与审计流程，保存权限无需重启。AI 管理页显示服务端执行配置是否就绪，Worker 运行须单独核对。
 

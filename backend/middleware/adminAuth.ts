@@ -5,9 +5,9 @@ import { verifyAdminToken } from '../utils/adminJwt';
 import { recordAdminSecurityAudit } from '../services/admin/adminAuditService';
 import { ErrorHandler } from '../utils/errorHandler';
 
-export type AdminPermission = 'overview:read' | 'users:read' | 'users:status' | 'ai:read' | 'ai:retry' | 'feedback:read' | 'feedback:write' | 'system:read' | 'audit:read' | 'admins:manage';
-const all: AdminPermission[] = ['overview:read', 'users:read', 'users:status', 'ai:read', 'ai:retry', 'feedback:read', 'feedback:write', 'system:read', 'audit:read', 'admins:manage'];
-const permissions: Record<AdminRole, AdminPermission[]> = { owner: all, operator: all.filter(p => p !== 'admins:manage'), support: ['overview:read', 'users:read', 'ai:read', 'feedback:read', 'feedback:write', 'system:read'], viewer: ['overview:read', 'users:read', 'ai:read', 'feedback:read', 'system:read'] };
+export type AdminPermission = 'overview:read' | 'users:read' | 'users:status' | 'ai:read' | 'ai:retry' | 'ai:discovery_manage' | 'feedback:read' | 'feedback:write' | 'system:read' | 'audit:read' | 'admins:manage';
+const all: AdminPermission[] = ['overview:read', 'users:read', 'users:status', 'ai:read', 'ai:retry', 'ai:discovery_manage', 'feedback:read', 'feedback:write', 'system:read', 'audit:read', 'admins:manage'];
+const permissions: Record<AdminRole, AdminPermission[]> = { owner: all, operator: all.filter(p => p !== 'admins:manage' && p !== 'ai:discovery_manage'), support: ['overview:read', 'users:read', 'ai:read', 'feedback:read', 'feedback:write', 'system:read'], viewer: ['overview:read', 'users:read', 'ai:read', 'feedback:read', 'system:read'] };
 export function hasAdminPermission(role: AdminRole, permission: AdminPermission): boolean { return permissions[role].includes(permission); }
 
 declare global { namespace Express { interface Request { admin?: { id: string; email: string; displayName: string; role: AdminRole }; requestId: string; } } }

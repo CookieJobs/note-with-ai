@@ -1,10 +1,10 @@
+import { isNoteDiscoveryRunnable } from './noteDiscoveryEnvironment';
 import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { createHash, randomUUID } from 'node:crypto';
 import Chat from '../models/Chat';
 import { NoteDiscoveryChatTurn } from '../models/NoteDiscoveryChatTurn';
-import { config } from '../config';
 import { isNoteDiscoveryAccessGranted } from './noteDiscoveryAccess';
-import { noteDiscoveryProvider, type DiscoveryProvider } from './noteDiscoveryProvider';
+import { getRuntimeDiscoveryProvider, type DiscoveryProvider } from './noteDiscoveryProvider';
 import { noteDiscoveryBudgetService, discoveryCostMicros, type NoteDiscoveryBudgetService } from './noteDiscoveryBudgetService';
 import { AppError, ErrorType } from '../utils/errorHandler';
 import type { IMessage } from '../types';
@@ -61,8 +61,9 @@ export class NoteDiscoveryConversationService {
         throw error('上次请求尚不能重新申请，请保留原请求核对结果', 'CHAT_RETRY_NOT_ALLOWED');
       }
     }
-    if (!await bounded(isNoteDiscoveryAccessGranted(userId)) || !(this.options.enabled?.() ?? config.NOTE_DISCOVERY_RUNNABLE)) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
-    const provider = this.options.provider === undefined ? noteDiscoveryProvider : this.options.provider;
+    const runnable = () => bounded(Promise.resolve(this.options.enabled?.() ?? isNoteDiscoveryRunnable()));
+    if (!await bounded(isNoteDiscoveryAccessGranted(userId)) || !await runnable()) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
+    const provider = this.options.provider === undefined ? await bounded(getRuntimeDiscoveryProvider()) : this.options.provider;
     if (!provider) throw error('AI 服务暂时不可用，请稍后重试', 'CHAT_PROVIDER_UNAVAILABLE', 503);
     const chat = await bounded(Chat.findOne({ _id: chatId, userId, sourceMode: 'multi_note_discovery' }).lean());
     if (!chat) throw error('会话不存在或无权限', 'CHAT_UNAVAILABLE', 404);
@@ -100,6 +101,7 @@ export class NoteDiscoveryConversationService {
     }
     const fence = { runId: String(operation._id), userId, generation: 1, leaseToken: operation.leaseToken };
     const assertTurnAccess = async () => {
+      if (!await runnable()) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
       if (!await bounded(isNoteDiscoveryAccessGranted(userId)) || await bounded(NoteDiscoveryChatTurn.exists({
         _id: operation._id, status: 'running', executionCancelled: true, cleanupRequested: { $ne: true },
       }))) throw error('本轮生成已停止，笔记发现权限已撤销', DISCOVERY_ACCESS_REVOKED, 503);
@@ -121,7 +123,7 @@ export class NoteDiscoveryConversationService {
       }, { signal: abort.signal, deadline }));
       await assertTurnAccess();
       if (!reservation) throw error('本轮可用额度不足，请稍后再试', 'CHAT_BUDGET_EXHAUSTED', 429);
-      if (abort.signal.aborted || !(this.options.enabled?.() ?? config.NOTE_DISCOVERY_RUNNABLE)
+      if (abort.signal.aborted
         || !await bounded(budget.isDispatchableReservation(fence, reservation.id))) throw error('本轮生成已停止，请重新发起', 'CHAT_ATTEMPT_EXPIRED');
       const marked = await bounded(NoteDiscoveryChatTurn.updateOne({ _id: operation._id, status: 'running', cleanupRequested: { $ne: true }, executionCancelled: { $ne: true }, leaseToken: operation.leaseToken,
         $expr: { $gt: ['$leaseUntil', '$$NOW'] }, providerStartedAt: { $exists: false } },

@@ -7,10 +7,10 @@ if (process.env.NOTE_DISCOVERY_EVAL_PROCESS_ONLY !== 'true') {
   dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 }
 
-const discoveryPrice = z.string().trim().regex(/^(?:\d+(?:\.\d{1,12})?)?$/)
+export const discoveryPrice = z.string().trim().regex(/^(?:\d+(?:\.\d{1,12})?)?$/)
   .transform((value) => value === '' ? undefined : Number(value))
   .pipe(z.number().nonnegative().optional()).optional();
-const discoveryCnyCap = z.string().trim().regex(/^(?:\d+(?:\.\d{1,6})?)?$/)
+export const discoveryCnyCap = z.string().trim().regex(/^(?:\d+(?:\.\d{1,6})?)?$/)
   .transform((value) => {
     if (value === '') return undefined;
     // Form the integer directly to avoid rounding CNY before converting to micros.
@@ -158,24 +158,36 @@ export function parseConfig(environment: Environment = process.env) {
     NOTE_DISCOVERY_RUN_RESERVATION_CNY: NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS,
     ...environmentConfig
   } = result.data;
-  const NOTE_DISCOVERY_RUNNABLE = environmentConfig.NOTE_DISCOVERY_ENABLED
-    && environmentConfig.NOTE_DISCOVERY_PRICED_MODEL === environmentConfig.NOTE_DISCOVERY_MODEL
-    && environmentConfig.NOTE_DISCOVERY_PRICED_EMBEDDING_PROVIDER === environmentConfig.EMBEDDING_PROVIDER
-    && environmentConfig.NOTE_DISCOVERY_PRICED_EMBEDDING_MODEL === environmentConfig.EMBEDDING_MODEL
-    && [
-      NOTE_DISCOVERY_USER_DAILY_CNY_MICROS,
-      NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
-      NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS,
-      environmentConfig.NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION,
-      environmentConfig.NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION,
-      environmentConfig.NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION,
-    ].every((value) => value !== undefined);
+  const configurationIssues: Array<{ key: string; reason: 'missing' | 'mismatch' }> = [];
+  const required = {
+    NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION: environmentConfig.NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION,
+    NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION: environmentConfig.NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION,
+    NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION: environmentConfig.NOTE_DISCOVERY_EMBEDDING_CNY_PER_MILLION,
+    NOTE_DISCOVERY_USER_DAILY_CNY: NOTE_DISCOVERY_USER_DAILY_CNY_MICROS,
+    NOTE_DISCOVERY_GLOBAL_DAILY_CNY: NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
+    NOTE_DISCOVERY_RUN_RESERVATION_CNY: NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS,
+  };
+  const identities = {
+    NOTE_DISCOVERY_PRICED_MODEL: [environmentConfig.NOTE_DISCOVERY_PRICED_MODEL, environmentConfig.NOTE_DISCOVERY_MODEL],
+    NOTE_DISCOVERY_PRICED_EMBEDDING_PROVIDER: [environmentConfig.NOTE_DISCOVERY_PRICED_EMBEDDING_PROVIDER, environmentConfig.EMBEDDING_PROVIDER],
+    NOTE_DISCOVERY_PRICED_EMBEDDING_MODEL: [environmentConfig.NOTE_DISCOVERY_PRICED_EMBEDDING_MODEL, environmentConfig.EMBEDDING_MODEL],
+  };
+  for (const [key, [value, expected]] of Object.entries(identities)) {
+    if (!value) configurationIssues.push({ key, reason: 'missing' });
+    else if (value !== expected) configurationIssues.push({ key, reason: 'mismatch' });
+  }
+  for (const [key, value] of Object.entries(required)) {
+    if (value === undefined) configurationIssues.push({ key, reason: 'missing' });
+  }
+  const NOTE_DISCOVERY_CONFIGURED = configurationIssues.length === 0;
   return {
     ...environmentConfig,
     NOTE_DISCOVERY_USER_DAILY_CNY_MICROS,
     NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
     NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS,
-    NOTE_DISCOVERY_RUNNABLE,
+    NOTE_DISCOVERY_CONFIGURATION_ISSUES: configurationIssues,
+    NOTE_DISCOVERY_CONFIGURED,
+    NOTE_DISCOVERY_RUNNABLE: environmentConfig.NOTE_DISCOVERY_ENABLED && NOTE_DISCOVERY_CONFIGURED,
   };
 }
 

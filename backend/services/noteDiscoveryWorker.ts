@@ -1,12 +1,13 @@
+import { isNoteDiscoveryRunnable } from './noteDiscoveryEnvironment';
 import { recoverDiscoveryUserCleanup } from './noteDiscoveryApiService';
 import { recoverDiscoveryConversations } from './noteDiscoveryConversationService';
-import { config } from '../config';
 import type { DiscoveryRunStatus, DiscoveryRunUsage } from '../types/noteDiscovery';
 import logger from '../utils/logger';
 import { DiscoveryExecutionError, NoteContinuationAgent, type DiscoveryAgentOptions } from './noteContinuationAgent';
 import { DiscoveryReservationRecoveryError } from './noteDiscoveryBudgetService';
 import { noteDiscoveryScheduleService } from './noteDiscoveryScheduleService';
 import { cleanUnpublishedDiscoveries } from './noteDiscoveryService';
+import { getRuntimeDiscoveryProvider } from './noteDiscoveryProvider';
 import { noteDiscoveryWorkerStore } from './noteDiscoveryWorkerStore';
 
 interface WorkerOptions {
@@ -21,7 +22,7 @@ interface WorkerOptions {
 export class NoteDiscoveryWorker {
   private readonly store: typeof noteDiscoveryWorkerStore;
   private readonly schedule: typeof noteDiscoveryScheduleService;
-  private readonly enabled: () => boolean;
+  private readonly enabled: () => boolean | Promise<boolean>;
   private readonly heartbeatMs: number;
   private initialized = false;
   private nextCleanup = 0;
@@ -29,7 +30,7 @@ export class NoteDiscoveryWorker {
   constructor(private readonly options: WorkerOptions = {}) {
     this.store = options.store ?? noteDiscoveryWorkerStore;
     this.schedule = options.schedule ?? noteDiscoveryScheduleService;
-    this.enabled = options.enabled ?? (() => config.NOTE_DISCOVERY_RUNNABLE);
+    this.enabled = options.enabled ?? isNoteDiscoveryRunnable;
     this.heartbeatMs = options.heartbeatMs ?? 10_000;
   }
 
@@ -37,7 +38,8 @@ export class NoteDiscoveryWorker {
     if (signal.aborted) return;
     await recoverDiscoveryUserCleanup();
     await recoverDiscoveryConversations();
-    if (!this.enabled()) {
+    if (!await this.enabled()) {
+      this.initialized = false;
       await this.store.cancelAllQueued();
       await this.store.recoverExpiredRuns();
       return;
@@ -51,9 +53,9 @@ export class NoteDiscoveryWorker {
       try { await cleanUnpublishedDiscoveries(); }
       catch { logger.warn('Note discovery cleanup failed', { code: 'DISCOVERY_CLEANUP_FAILED' }); }
     }
-    if (signal.aborted || !this.enabled()) return;
+    if (signal.aborted || !await this.enabled()) return;
     await this.schedule.scanDue();
-    if (signal.aborted || !this.enabled()) return;
+    if (signal.aborted || !await this.enabled()) return;
     const run = await this.store.claimNext();
     if (!run) return;
 
@@ -67,7 +69,7 @@ export class NoteDiscoveryWorker {
       if (renewing || closed) return;
       renewing = true;
       try {
-        if (!await this.store.renewLease(runId, run.leaseToken) && !closed) leaseLoss.abort();
+        if ((!await this.enabled() || !await this.store.renewLease(runId, run.leaseToken)) && !closed) leaseLoss.abort();
       } catch {
         if (!closed) leaseLoss.abort();
       } finally {
@@ -109,10 +111,13 @@ export class NoteDiscoveryWorker {
       if (admission.status !== 'authorized') return;
 
       agent = new NoteContinuationAgent(run, {
-        ...this.options.agentOptions, store: this.store, budget: this.options.budget, signal: activeSignal,
+        ...this.options.agentOptions,
+        provider: this.options.agentOptions?.provider === undefined
+          ? await getRuntimeDiscoveryProvider() : this.options.agentOptions.provider,
+        store: this.store, budget: this.options.budget, signal: activeSignal,
       });
       const outcome = await agent.runDiscovery(userId, runId, async () =>
-        await this.schedule.canPublish(run) && !activeSignal.aborted && this.enabled());
+        await this.schedule.canPublish(run) && !activeSignal.aborted && await this.enabled());
       // External abort returns cancelled normally, but its pre-send storage write
       // may still need cleanup. Keep it recoverable just as on deadline failure.
       if (outcome === 'cancelled' && deferPendingDispatch(agent, 'cancelled')) return;

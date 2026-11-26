@@ -55,7 +55,7 @@ const session = (role: AdminRole): { admin: AdminIdentity } => ({
 });
 
 const discoveryStatus = '/api/admin/ai/note-discovery-status';
-const environment = { enabled: true, runnable: true };
+const environment = { enabled: true, configured: true, runnable: true };
 
 function mockPage(role: AdminRole = 'owner') {
   return vi.spyOn(api, 'adminFetch').mockImplementation((url) => {
@@ -69,6 +69,74 @@ function mockPage(role: AdminRole = 'owner') {
 
 describe('AiPage', () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it('shows the configuration key blocking the owner from enabling discovery', async () => {
+    const fetch = mockPage('owner');
+    const original = fetch.getMockImplementation()!;
+    fetch.mockImplementation((url, options) => url === discoveryStatus ? Promise.resolve({
+      enabled: false, configured: false, runnable: false,
+      configurationIssues: [{ key: 'NOTE_DISCOVERY_USER_DAILY_CNY', reason: 'missing' }],
+    }) : original(url, options));
+    render(<AiPage />);
+
+    expect(await screen.findByRole('button', { name: '开启环境总开关' })).toBeDisabled();
+    const details = screen.getByText('查看配置缺项（1 项）');
+    fireEvent.click(details);
+    expect(screen.getByText('NOTE_DISCOVERY_USER_DAILY_CNY')).toBeVisible();
+    expect(screen.getByText('未填写')).toBeVisible();
+  });
+
+  it('saves billing in the card and enables the switch without turning it on', async () => {
+    const fetch = mockPage('owner');
+    const original = fetch.getMockImplementation()!;
+    const billingUrl = '/api/admin/ai/note-discovery-billing';
+    const values = { inputPrice: '2', outputPrice: '8', embeddingPrice: '0', userDaily: '1', globalDaily: '5', reservation: '0.1' };
+    fetch.mockImplementation((url, options) => {
+      if (url === discoveryStatus) return Promise.resolve({ enabled: false, configured: false, runnable: false });
+      if (url === billingUrl) return Promise.resolve(options?.method === 'POST'
+        ? { enabled: false, configured: true, runnable: false }
+        : { model: 'deepseek-flash', embeddingProvider: 'openrouter', embeddingModel: 'vector-model', enabled: false, values });
+      return original(url, options);
+    });
+    render(<AiPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '配置计费与预算' }));
+    fireEvent.change(await screen.findByLabelText(/全局每日上限/), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存计费与预算' }));
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.change(dialog.getByRole('textbox', { name: '原因' }), { target: { value: '设置本地试用预算' } });
+    fireEvent.click(dialog.getByRole('button', { name: '确认' }));
+    expect(await screen.findByText('计费与预算已保存。')).toBeVisible();
+    expect(screen.getByRole('button', { name: '开启环境总开关' })).toBeEnabled();
+    expect(fetch).toHaveBeenCalledWith(billingUrl, expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        ...values, globalDaily: '4', model: 'deepseek-flash', embeddingProvider: 'openrouter', embeddingModel: 'vector-model',
+        reason: '设置本地试用预算',
+      }),
+    }));
+  });
+
+  it('lets the owner enable discovery with an audited reason', async () => {
+    const fetch = mockPage('owner');
+    fetch.mockImplementation((url, options) => {
+      if (url === discoveryStatus) return Promise.resolve({ enabled: options?.method === 'POST', runnable: options?.method === 'POST', configured: true });
+      if (url === '/api/admin/auth/me') return Promise.resolve(session('owner'));
+      if (url.startsWith('/api/admin/ai/usage')) return Promise.resolve(usage);
+      return Promise.resolve(failures());
+    });
+    render(<AiPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '开启环境总开关' }));
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.change(dialog.getByRole('textbox', { name: '原因' }), { target: { value: '为试用用户开启笔记发现' } });
+    fireEvent.click(dialog.getByRole('button', { name: '确认' }));
+    expect(await screen.findByRole('button', { name: '关闭环境总开关' })).toBeEnabled();
+    expect(fetch).toHaveBeenCalledWith(discoveryStatus, expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ enabled: true, reason: '为试用用户开启笔记发现' }),
+    }));
+  });
 
   it('shows independent loading states while all three requests are pending', () => {
     vi.spyOn(api, 'adminFetch').mockImplementation(() => new Promise(() => undefined));

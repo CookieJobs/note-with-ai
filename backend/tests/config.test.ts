@@ -37,6 +37,7 @@ test('discovery refuses to run with any missing monetary cap or selected-provide
       [key]: undefined,
     });
     assert.equal(config.NOTE_DISCOVERY_RUNNABLE, false, key);
+    assert.deepEqual(config.NOTE_DISCOVERY_CONFIGURATION_ISSUES, [{ key, reason: 'missing' }]);
   }
 });
 
@@ -71,6 +72,9 @@ test('discovery uses its own chat model and pricing configuration', () => {
   });
   assert.equal(alternate.NOTE_DISCOVERY_MODEL, 'deepseek-alternate');
   assert.equal(alternate.NOTE_DISCOVERY_RUNNABLE, false);
+  assert.deepEqual(alternate.NOTE_DISCOVERY_CONFIGURATION_ISSUES, [
+    { key: 'NOTE_DISCOVERY_PRICED_MODEL', reason: 'mismatch' },
+  ]);
   assert.equal(parseConfig({
     ...environment,
     NOTE_DISCOVERY_MODEL: 'deepseek-alternate',

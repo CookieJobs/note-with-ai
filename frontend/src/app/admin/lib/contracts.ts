@@ -36,6 +36,8 @@ export type AdminUser = {
 
 export type NoteDiscoveryEnvironment = {
   enabled: boolean;
+  configured: boolean;
+  configurationIssues?: { key: string; reason: 'missing' | 'mismatch' }[];
   runnable: boolean;
 };
 

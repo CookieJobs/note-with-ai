@@ -1,19 +1,15 @@
 import { isObjectIdOrHexString } from 'mongoose';
-import { config } from '../../config';
+import { getNoteDiscoveryEnvironment } from '../noteDiscoveryEnvironment';
 import User from '../../models/User';
 import { ErrorHandler } from '../../utils/errorHandler';
 import { hasNoteDiscoveryGrant } from '../noteDiscoveryAccess';
 import { noteDiscoveryWorkerStore } from '../noteDiscoveryWorkerStore';
 
-export function getNoteDiscoveryEnvironment() {
-  return { enabled: config.NOTE_DISCOVERY_ENABLED, runnable: config.NOTE_DISCOVERY_RUNNABLE };
-}
-
 export async function getAdminNoteDiscoveryAccess(id: string) {
   if (!isObjectIdOrHexString(id)) throw ErrorHandler.createNotFoundError('用户不存在');
   const user = await User.findById(id).select('isActive +noteDiscoveryAccess').lean<{ noteDiscoveryAccess?: boolean | null } | null>();
   if (!user) throw ErrorHandler.createNotFoundError('用户不存在');
-  return { granted: hasNoteDiscoveryGrant(id, user.noteDiscoveryAccess), environment: getNoteDiscoveryEnvironment() };
+  return { granted: hasNoteDiscoveryGrant(id, user.noteDiscoveryAccess), environment: await getNoteDiscoveryEnvironment() };
 }
 
 export async function setAdminNoteDiscoveryAccess(id: string, granted: boolean) {
@@ -28,5 +24,5 @@ export async function setAdminNoteDiscoveryAccess(id: string, granted: boolean) 
     throw ErrorHandler.createNotFoundError('用户不存在');
   }
   if (!granted) await noteDiscoveryWorkerStore.cancelAccountRuns(id);
-  return { granted, environment: getNoteDiscoveryEnvironment() };
+  return { granted, environment: await getNoteDiscoveryEnvironment() };
 }

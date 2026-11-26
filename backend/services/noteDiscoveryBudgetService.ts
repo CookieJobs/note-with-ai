@@ -1,8 +1,8 @@
+import { getNoteDiscoveryRuntime } from './noteDiscoveryEnvironment';
 import { isNoteDiscoveryAccessGranted } from './noteDiscoveryAccess';
 import { isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { randomUUID } from 'node:crypto';
 import { Types } from 'mongoose';
-import { config } from '../config';
 import NoteDiscoveryBudget, {
   PROVIDER_DELIVERY_DISPOSITIONS, type BudgetReservation, type ProviderDeliveryDisposition,
 } from '../models/NoteDiscoveryBudget';
@@ -31,6 +31,8 @@ export type UsageResult =
 
 interface BudgetSettings {
   enabled: boolean;
+  billingRevision?: string;
+  prices?: { model?: string; inputPrice?: number; outputPrice?: number };
   userCapMicros: number | undefined;
   globalCapMicros: number | undefined;
   attemptCapMicros: number | undefined;
@@ -103,18 +105,22 @@ export class DiscoveryReservationRecoveryError extends Error {
 
 export class NoteDiscoveryBudgetService {
   constructor(
-    private readonly settings: BudgetSettings,
+    private readonly settings: BudgetSettings | (() => Promise<BudgetSettings>),
     private readonly now: () => Date = () => new Date(),
   ) {}
 
   async reserve(runId: string, userId: string, generation: number, estimate: CostEstimate, options?: ReserveOptions, operationKind: 'discovery' | 'conversation' = 'discovery'): Promise<BudgetReservation | null> {
     if (options?.signal.aborted) return null;
-    const { enabled, userCapMicros, globalCapMicros, attemptCapMicros } = this.settings;
+    const { enabled, userCapMicros, globalCapMicros, attemptCapMicros, prices, billingRevision } =
+      typeof this.settings === 'function' ? await this.settings() : this.settings;
     if (!enabled || !nonnegativeInteger(userCapMicros) || userCapMicros === 0
       || !nonnegativeInteger(globalCapMicros) || globalCapMicros === 0
       || !nonnegativeInteger(attemptCapMicros) || attemptCapMicros === 0
       || !Types.ObjectId.isValid(runId) || !Types.ObjectId.isValid(userId) || !nonnegativeInteger(generation)
       || !estimate || !validIdentity(estimate.provider) || !validIdentity(estimate.model)) return null;
+
+    if (prices && (estimate.model !== prices.model || estimate.inputCnyPerMillion !== prices.inputPrice
+      || estimate.outputCnyPerMillion !== prices.outputPrice)) return null;
 
     const amount = discoveryCostMicros(
       estimate.inputCnyPerMillion, estimate.outputCnyPerMillion, estimate.maxInputTokens, estimate.maxOutputTokens,
@@ -135,6 +141,7 @@ export class NoteDiscoveryBudgetService {
     const reservation: BudgetReservation = {
       operationKind, id: `${day}:${randomUUID()}`, day, runId: run._id, userId: owner, generation,
       leaseToken: run.leaseToken, leaseUntil: run.leaseUntil, provider: estimate.provider, model: estimate.model,
+      ...(billingRevision ? { billingRevision } : {}),
       maxInputTokens: estimate.maxInputTokens, maxOutputTokens: estimate.maxOutputTokens,
       reservedMicros: amount, state: 'reserved', createdAt,
     };
@@ -286,8 +293,12 @@ export class NoteDiscoveryBudgetService {
 
   async isDispatchableReservation(fence: DiscoveryRunFence, reservationId: string): Promise<boolean> {
     const reservation = await this.findReservation(reservationId);
-    return !!reservation && this.matchesFence(reservation, fence)
-      && reservation.state === 'reserved' && !(await this.blocked());
+    if (!reservation || !this.matchesFence(reservation, fence) || reservation.state !== 'reserved') return false;
+    if (typeof this.settings === 'function') {
+      const settings = await this.settings();
+      if (!settings.enabled || reservation.billingRevision !== settings.billingRevision) return false;
+    }
+    return !(await this.blocked());
   }
 
   async settledDelivery(fence: DiscoveryRunFence, reservationId: string): Promise<ProviderDeliveryDisposition | null> {
@@ -391,9 +402,14 @@ export class NoteDiscoveryBudgetService {
   }
 }
 
-export const noteDiscoveryBudgetService = new NoteDiscoveryBudgetService({
-  enabled: config.NOTE_DISCOVERY_RUNNABLE,
-  userCapMicros: config.NOTE_DISCOVERY_USER_DAILY_CNY_MICROS,
-  globalCapMicros: config.NOTE_DISCOVERY_GLOBAL_DAILY_CNY_MICROS,
-  attemptCapMicros: config.NOTE_DISCOVERY_RUN_RESERVATION_CNY_MICROS,
+export const noteDiscoveryBudgetService = new NoteDiscoveryBudgetService(async () => {
+  const { runnable, billing, billingRevision } = await getNoteDiscoveryRuntime();
+  return {
+    enabled: runnable,
+    userCapMicros: billing.userCapMicros,
+    globalCapMicros: billing.globalCapMicros,
+    attemptCapMicros: billing.attemptCapMicros,
+    prices: billing,
+    billingRevision,
+  };
 });

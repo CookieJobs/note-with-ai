@@ -1,8 +1,8 @@
+import { isNoteDiscoveryRunnable } from './noteDiscoveryEnvironment';
 import { fenceDiscoveryNoteTarget } from './discoveryNoteDeletionFence';
 import { NoteDiscoveryCleanup, isDiscoveryUserCleaningUp } from '../models/NoteDiscoveryCleanup';
 import { noteDiscoveryBudgetService } from './noteDiscoveryBudgetService';
 import mongoose, { Types } from 'mongoose';
-import { config } from '../config';
 import { isNoteDiscoveryAccessGranted } from './noteDiscoveryAccess';
 import NoteDiscovery from '../models/NoteDiscovery';
 import NoteDiscoveryRun from '../models/NoteDiscoveryRun';
@@ -34,7 +34,7 @@ export class NoteDiscoveryApiService {
   constructor(private readonly options: { schedule?: typeof noteDiscoveryScheduleService; enabled?: () => boolean; now?: () => Date } = {}) {}
   private get schedule() { return this.options.schedule ?? noteDiscoveryScheduleService; }
   private now() { return this.options.now?.() ?? new Date(); }
-  private enabled() { return this.options.enabled?.() ?? config.NOTE_DISCOVERY_RUNNABLE; }
+  private enabled() { return this.options.enabled?.() ?? isNoteDiscoveryRunnable(); }
   private async owned(userId: string, id: string) {
     validId(id);
     await this.assertActive(userId);
@@ -96,7 +96,7 @@ export class NoteDiscoveryApiService {
           : latest.status === 'queued' && latest.availableAt ? { retryAt: latest.availableAt.toISOString() } : {}) };
     }
     if (admission.status === 'blocked') run = { status: 'idle', errorCode: 'DISCOVERY_DELIVERY_UNCERTAIN' };
-    return { items, run, automaticEnabled: preference?.automaticEnabled ?? false, timeZone, available: this.enabled() };
+    return { items, run, automaticEnabled: preference?.automaticEnabled ?? false, timeZone, available: await this.enabled() };
   }
   private async expose(userId: string, discoveryId: string, timeZone: string): Promise<Date | null> {
     try { await NoteDiscoveryExposure.updateOne({ userId }, { $setOnInsert: { receipts: [], version: 0 } }, { upsert: true, writeConcern }); }
@@ -139,7 +139,7 @@ export class NoteDiscoveryApiService {
     if (input.timeZone !== undefined) await this.schedule.initializeOnVisit(userId, input.timeZone, this.now());
     if (input.automaticEnabled !== undefined) await this.schedule.setAutomaticEnabled(userId, input.automaticEnabled, this.now());
     const preference = await NoteDiscoveryPreference.findOne({ userId }).lean();
-    return { automaticEnabled: preference?.automaticEnabled ?? false, timeZone: preference?.timeZone || 'Asia/Shanghai', available: this.enabled() };
+    return { automaticEnabled: preference?.automaticEnabled ?? false, timeZone: preference?.timeZone || 'Asia/Shanghai', available: await this.enabled() };
   }
   async feedback(userId: string, id: string, kind: DiscoveryFeedbackKind) {
     if (!DISCOVERY_FEEDBACK_KINDS.includes(kind)) throw error('请选择有效的反馈类型', 'DISCOVERY_FEEDBACK_INVALID');
@@ -183,7 +183,7 @@ export class NoteDiscoveryApiService {
     let action: any = await NoteDiscoveryAction.findOne({ userId, discoveryId: id, kind: 'session' });
     let existing = action ? await Chat.findOne({ _id: action.targetId, userId }) : null;
     if (!existing) {
-      if (!this.enabled()) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
+      if (!await this.enabled()) throw error('笔记发现暂未开启', 'DISCOVERY_DISABLED', 503);
       await this.usable(userId, item);
       action = await this.action(userId, id, 'session', { title: item.title,
         sourceIds: [...new Set(item.evidence.map(e => String(e.noteId)))],

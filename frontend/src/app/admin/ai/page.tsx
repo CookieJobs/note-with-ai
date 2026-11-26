@@ -145,7 +145,7 @@ export default function AiPage() {
         </div>
       </header>
 
-      <NoteDiscoveryEnvironmentPanel />
+      <NoteDiscoveryEnvironmentPanel canManage={admin?.role === 'owner'} />
 
       <section aria-labelledby="ai-identity-title">
         <h3 id="ai-identity-title" className={styles.visuallyHidden}>重试权限</h3>

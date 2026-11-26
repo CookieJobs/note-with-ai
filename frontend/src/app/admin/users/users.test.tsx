@@ -50,7 +50,7 @@ function requestedUrl(call: unknown[]): URL {
 }
 
 const discoveryEndpoint = '/api/admin/users/user-1/note-discovery-access';
-const unopened: NoteDiscoveryAccess = { granted: false, environment: { enabled: false, runnable: false } };
+const unopened: NoteDiscoveryAccess = { granted: false, environment: { enabled: false, configured: false, runnable: false } };
 
 function mockDetail(role: AdminRole, rows: AdminUser[] = [user]) {
   let detailRequest = 0;

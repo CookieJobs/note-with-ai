@@ -2,6 +2,7 @@ import axios from 'axios';
 import { config } from '../config';
 import type { ProviderUsage } from './aiUsageService';
 import { discoveryCostMicros } from './noteDiscoveryBudgetService';
+import { getNoteDiscoveryRuntime } from './noteDiscoveryEnvironment';
 import type { NoteDiscoveryTool } from './noteDiscoveryTools';
 
 const endpoint = 'https://api.deepseek.com/chat/completions';
@@ -200,3 +201,16 @@ export const noteDiscoveryProvider = createDiscoveryProvider({
   inputCnyPerMillion: config.NOTE_DISCOVERY_MODEL_INPUT_CNY_PER_MILLION,
   outputCnyPerMillion: config.NOTE_DISCOVERY_MODEL_OUTPUT_CNY_PER_MILLION,
 });
+
+
+export async function getRuntimeDiscoveryProvider(): Promise<DiscoveryProvider | null> {
+  const { runnable, billing } = await getNoteDiscoveryRuntime();
+  if (!runnable) return null;
+  return createDiscoveryProvider({
+    key: config.DEEPSEEK_API_KEY,
+    model: config.NOTE_DISCOVERY_MODEL,
+    pricedModel: billing.model,
+    inputCnyPerMillion: billing.inputPrice,
+    outputCnyPerMillion: billing.outputPrice,
+  });
+}

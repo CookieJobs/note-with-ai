@@ -123,11 +123,11 @@ Compose 从服务器项目根目录 `.env` 插值注入 worker 环境；不会�
 
 ## 笔记自动发现 worker（默认关闭）
 
-本节是准备说明，不授权发布或启用。依本指南核对 `origin/main` 精确 SHA、配置/数据库/旧镜像备份、候选构建检查后，才可按会话发布授权切换。独立 worker 入口为 `npm run worker:note-discovery`（backend 构建后），当前 `docker-compose.yml` 尚未声明对应服务；发布前须为该入口配置独立 worker 进程/服务及与 API 一致的环境注入，不能假设已有 Compose 服务；API 与 worker 配置须一致。保留默认 `NOTE_DISCOVERY_ENABLED=false`，供应商单价或人民币上限未核实时保持关闭。真实模型质量及配置前置条件见 [评估说明](../docs/note-continuation-evaluation.md)。
+发布按本指南核对批准的 `origin/main`、备份与候选构建。API 与 `note-discovery-worker` 服务共用部署配置和 MongoDB；确认模型、向量单价和人民币预算后，使用 `docker compose --profile note-discovery up -d note-discovery-worker` 启动独立 worker。仅启动 worker 不会打开总开关。生产发布时 API 与 worker 须使用同一版本和部署变量。
 
-灰度开放：在生产 Admin 用户管理中按邮箱定位账号，在「笔记发现 Agent」里登记试用权限。账号资格默认关闭，后台可在环境配置就绪前保存授权。正式启用后检查 API 返回用户资格、Worker 运行状态以及对应账号的手动检查与继续探索。使用者可单独开启自动发现。撤销控制该账号的新任务与发布，并保留已发请求的结算记录。AI 管理页的环境状态反映执行配置，Worker 是否运行须通过独立进程核对。
+灰度开放：所有者可在「AI 使用 → 笔记发现 Agent」开启或关闭环境总开关，填写的原因会进入审计。开关保存在 MongoDB 并由 API 和 worker 读取，修改后无需重启。首次没有后台设置时沿用 `NOTE_DISCOVERY_ENABLED`，默认关闭。所有者可在同一张卡片填写模型单价和预算。首次保存前沿用已有的部署单价与预算。账号试用权限在用户详情中单独设置。使用者可自行开启自动发现。验收时分别检查用户入口、独立 worker 进程、手动检查和继续探索。
 
-关闭：将 API 与 worker 的 flag 均设 false 并按当前运行方式重启；停止 worker 可立即阻止新发送，但已经发出的请求仍可能收费。disabled worker tick 仍执行清理恢复并取消排队任务。不要删除预算账本或重置发送未知标记来重试。
+关闭：通过后台关闭后，API 停止接收新发现任务，worker 取消排队任务并在执行检查点停止处理。已发出的请求可能仍需结算。紧急停机可停止 worker；不要删除预算账本或重置发送未知标记。
 
 恢复：保留 Mongo 账本/租约/run，worker 重启后按过期租约恢复；generation fence 阻止旧进程发布。发送未知保守按预留结算且禁止自动重发；结算或 marker 清理失败留给租约恢复。观察失败类别、reserved/spent 和未知费用，不根据进程已启动声称恢复完成。清理 staging 行由 worker 定期执行，不直接全表删除。
 

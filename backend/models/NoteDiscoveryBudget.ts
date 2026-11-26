@@ -14,6 +14,7 @@ export interface BudgetReservation {
   leaseUntil: Date;
   provider: string;
   model: string;
+  billingRevision?: string;
   maxInputTokens: number;
   maxOutputTokens: number;
   reservedMicros: number;
@@ -56,6 +57,7 @@ const ReservationSchema = new mongoose.Schema<BudgetReservation>({
   leaseUntil: { type: Date, required: true },
   provider: { type: String, required: true, maxlength: 200 },
   model: { type: String, required: true, maxlength: 200 },
+  billingRevision: String,
   maxInputTokens: nonnegativeInteger,
   maxOutputTokens: nonnegativeInteger,
   reservedMicros: nonnegativeInteger,
